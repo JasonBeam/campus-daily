@@ -1,0 +1,37 @@
+name: 测试意向
+description: 仅收集非敏感的测试条件，不代表已经提供可安装包
+title: "[测试意向] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        面向广东工商职业技术大学同学。请勿填写姓名、学号、手机号、精确宿舍、设备编号或任何凭据。公开 Issue 中的信息所有人可见。
+  - type: input
+    id: ios
+    attributes:
+      label: iOS 版本
+    validations:
+      required: true
+  - type: dropdown
+    id: tools
+    attributes:
+      label: Mac / Xcode 条件
+      options:
+        - 有 Mac 和 Xcode，愿意自行签名
+        - 有 Mac，尚未准备 Xcode
+        - 暂时没有 Mac，仅关注后续进展
+    validations:
+      required: true
+  - type: checkboxes
+    id: functions
+    attributes:
+      label: 想测试的功能
+      options:
+        - label: 校园卡与宿舍
+        - label: 热水
+        - label: U净洗衣
+  - type: textarea
+    id: note
+    attributes:
+      label: 补充说明（可选，仅非敏感内容）
+      description: 不粘贴配置、日志、请求、付款链接或原始截图。

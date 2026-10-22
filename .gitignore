@@ -1,0 +1,26 @@
+# Local configuration, diagnostics and signing products
+private/
+artifacts/
+.build/
+.swiftpm/
+build/
+CampusHotWater.xcodeproj/
+.DS_Store
+xcuserdata/
+*.xcuserstate
+*.waterconfig
+*.campusconfig
+*.campuscache
+*.laundryconfig
+*.laundryrecovery
+*.har
+*.pklg
+*.pcap*
+*.mobileprovision
+*.p12
+*.ipa
+*.xcarchive
+*.xcresult
+*.log
+Vendor/AlipaySDK-15.8.30/AlipaySDK.xcframework/
+Vendor/AlipaySDK-15.8.30/AlipaySDK.bundle/
