@@ -1,10 +1,18 @@
 # 个人配置
 
-当前没有统一登录向导，需要分别导入本人有效的 JSON。示例全是占位符，不能直接使用；不要填写别人的身份或设备信息，也不要把配置交给开发者代管。
+## 0.7.0 及之后的正常使用流程
 
-在首页右上角「设置与个人配置」中分别导入校园卡、热水、U净配置。不要将配置打进安装包。未结算热水或待核对洗衣订单存在时，先核对交易，不通过清除记录更换身份。
+一般使用不再要求用户导入配置 JSON：在 App 内登录学校官方门户，从一卡通“更多”入口进入钱包后读取当前会话并选宿舍；再使用本人 U净手机号获取验证码登录，扫描或从照片识别洗衣机二维码。登录口令、验证码不发送给开发者，App 不读取学校密码字段。
 
-## 校园卡与宿舍
+热水宿舍读取需要共享服务端签名参数。当前开发构建只从本机忽略文件 `private/distribution/WaterPlatformProfile.json` 注入参数，生成的 Debug IPA 可被提取密钥；只限受控开发测试。不要把这样的 IPA 传给多人或上传 GitHub。Release/Archive 不带此参数，当前不能用于新用户首次选宿舍。公开发行需要服务端代理。
+
+以下 JSON 项仅供旧版迁移、开发诊断和个人恢复，普通新用户不需要按此手工配置。
+
+第一版导入个人 JSON，不自动登录校园平台，也不从其他 App 获取身份。用自己的校园账号正常完成一次操作后，从自己的证据提取配置。不要向开发者或群聊发送完整 HAR、系统诊断文件、Cookie 或密码。
+
+## 校园卡与宿舍配置（0.2.0）
+
+在「设置 → 校园卡配置」单独导入，与热水配置分开保存在钥匙串。兼容已有校园余额项目的配置字段：
 
 ```json
 {
@@ -15,18 +23,22 @@
   "custid": "YOUR_OWN_CARD_CUSTOMER_ID",
   "userAgent": "",
   "timestamp": "",
-  "dorm_room": "YOUR_OWN_DORM_LABEL",
+  "dorm_room": "你已确认的宿舍号",
   "campus_version": "v1.1.55"
 }
 ```
 
-身份与 token 必须来自本人已授权的校园会话。可以在本机参考已使用的校园余额配置；不要公开导出内容。没有有效配置时，不要让 AI 编造字段值。
+`buildingID` 为空时，宿舍显示个人配置中已保存的 `dorm_room`；这是绑定信息，不声称刚从电表接口取得。配置 `buildingID` 后，App 通过已有的电表状态接口读取 `piplineName` 或 `roomName`，多电表时不自动选择。`custid` 可留空，但必须只有一张绑定校园卡才会自动获取。
 
-`buildingID` 为空时，宿舍来自本人保存的 `dorm_room`，并非刚查询到的电表数据。配置 `buildingID` 后通过学校电表状态接口读取宿舍名称；多绑定不自动挑选。`custid` 为空时，仅在唯一绑定校园卡的情况下自动取得。
+本机开发配置的宿舍来自已有小组件推送缓存，身份与 token 来自用户自己的既有抓包。没有修改原 Scriptable、ESP32 配置或小组件数据。校园接口固定为学校域名，拒绝跳转，token 不转发给其他域名。
 
-`areacode` 与版本示例用于说明结构，是否适用于本人会话仍需核对。余额标注查询时间，失败保留旧值；不代表服务端账本更新时间。
+余额展示的是查询结果，以查询时间标注，不将 HTTP 日期或本地查询时间描述成服务端账本更新时间。刷新失败保留旧金额；超过 20 分钟或发生查询错误显示「上次余额」。更换账户、校园卡或宿舍后不会混用其他身份的缓存。
 
-## 热水
+开发安装使用 `Documents/bootstrap.campusconfig` 传入配置；导入钥匙串后移除临时文件。可选 `bootstrap.campuscache` 仅导入 owner 匹配的真实查询结果，不包含 token。
+
+## 热水配置
+
+导入格式与本机验证成功的 Python 原型相同：
 
 ```json
 {
@@ -34,7 +46,7 @@
   "secret": "YOUR_PROVIDER_SIGNING_SECRET",
   "sid": "YOUR_PROVIDER_SID",
   "student_id": "YOUR_OWN_ACCOUNT_ID",
-  "school_id": "YOUR_OWN_SCHOOL_ID",
+  "school_id": "YOUR_SCHOOL_ID",
   "machine_id": "11223344",
   "ble_name": "YOUR_WATER_CONTROLLER_NAME",
   "type_id": 1,
@@ -42,30 +54,31 @@
 }
 ```
 
-`machine_id` 为示例的 4 字节十六进制设备编号，必须更换为本人现场确认的设备。`ble_name` 是该水控的广播名，不能只凭编号猜测。`student_id` 是本人账户身份，不是某次授权响应中的临时标识。`sid`、`school_id`、`type_id`、`version` 应与本人已验证协议一致。
+以上全是占位示例，不是可直接使用的配置。`type_id`、`version` 应取自己的已验证请求值，不能照抄示例数字。
 
-`secret` 是匹配该服务商协议的签名配置，不是 Apple 密码，也不是旧请求里的 `sign`。完整 HAR 不保证包含密钥，不能从一个旧 `sign` 直接推导可用密钥。当前仅支持已具备完整合法配置的迁移，没有自动获取密钥或自动 HAR 转配置工具。缺少必要字段时停在这里，不尝试伪造授权。
+## 字段来源
 
-结束标识由 App 从当次授权响应保存，无需手工填入。不要重放旧授权数据。
+| 字段 | 来源 |
+| --- | --- |
+| student_id / school_id / machine_id / type_id / version | 自己的授权请求中 `wxcode` 对应字段；使用账户身份，不是授权响应中的临时 studentId |
+| sid | 同一授权请求的表单字段 |
+| ble_name | 目标水控的蓝牙广播名称；仅有 HAR 一般不足以得到此字段 |
+| secret | 与该服务商实际协议匹配的签名配置；不是 Apple 密码，也不是把 HAR 中的 sign 当作 secret |
 
-## U净
+完整 HAR 本身不保证包含所有配置，尤其不会直接给出签名密钥。不能仅凭旧抓包中的 sign 推导出可用于新请求的密钥。当前只支持既有原型已验证的完整配置迁移；面向其他同学的自动 HAR 提取与登录流程尚未实现。
 
-```json
-{
-  "headers": {
-    "Authorization": "Bearer YOUR_OWN_VALID_UJING_ACCESS_TOKEN"
-  },
-  "qrCode": "https://q.ujing.com.cn/ucqrc/index.html?cd=YOUR_OWN_MACHINE_CODE",
-  "deviceId": "YOUR_OWN_DEVICE_ID"
-}
-```
+`machine_id` 是 4 字节十六进制设备编号；读取设备的 20 字节回复后还会再次比对它。结束用的 4 字节标识来自当次授权响应，App 自动保存，用户不需要填写。
 
-当前要求本人 U净有效登录凭据、目标机器的二维码原文和匹配的 `deviceId`。`headers` 如需版本业务头，应来自本人当前官方会话，不照抄他人参数。支持的请求头范围可查看 `Sources/WaterCore/Laundry.swift`，不需要额外收集无关 Cookie。
+## 保存和更换
 
-App 没有内置短信登录或读取其他 App 会话的能力。配置获取需在本人设备及授权范围内处理；不要把完整抓包上传给公开 AI 或发到 Issue。登录失效后通过官方入口重新登录，并在本机更新有效配置。
+文件可以使用 `.json` 或 `.waterconfig` 扩展名。导入后配置保存在本机钥匙串。普通导入不会替用户删除“文件”App 里的原始文件，请自行保管。不公开配置文件，也不要把它加入 Git。
 
-保存机器信息用于后续查询，不代表所有机型都能直接启动。付款仍走后台签发的官方支付宝路径，不自行拼接付款 URL。
+有未结算记录时禁止更换配置，避免丢失该记录所需的身份。App 不会导出钥匙串原值。
 
-## 保存
+开发安装可通过 Xcode/devicectl 将自己的配置复制到 App 沙箱 `Documents/bootstrap.waterconfig`。首页启动后只导入该文件，不执行控制；钥匙串保存成功后删除沙箱中的临时文件。不要把 bootstrap 配置作为 App 资源打进安装包。
 
-配置进入 `WhenUnlockedThisDeviceOnly` 钥匙串。普通文件导入后，「文件」App 的原文件仍需自行保管。开发用 `bootstrap.*` 文件只能放进本人的 App 沙箱，不能作为资源、提交 Git 或附到 Release。订单与诊断目录同样不得公开。
+## U净只读查询（0.3.0）
+
+设置中可导入个人 JSON，字段为 `headers`、`qrCode`、`deviceId`。headers只使用本人的Authorization和官方版本业务头，导入后放入独立本机钥匙串。固定查询phoenix.ujing.online，不接受任意API地址。个人数据不得放入源码、安装包或GitHub。登录过期时重新取得本人配置；不会自动发送短信、登录、下单或付款。
+
+本机开发引导文件为App Documents下的bootstrap.laundryconfig，导入成功后删除。首次查询由用户打开洗衣页触发，正常60秒内复用，手动刷新可立即只读查询。页面时长和价格来自接口，不使用照片内固定价格。

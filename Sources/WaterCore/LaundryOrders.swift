@@ -262,6 +262,10 @@ public struct LaundryCheckoutRecord: Codable, Sendable {
     public var orderId: String?
     public var order: LaundryOrder?
     public var orderUpdatedAt: Date? = nil
+    public var credentialIdentity: String? = nil
+    public func belongs(to config: LaundryConfig) -> Bool {
+        deviceId == config.deviceId && (credentialIdentity == nil || credentialIdentity == config.credentialIdentity)
+    }
 }
 @MainActor public protocol LaundryCheckoutStore {
     func load() throws -> LaundryCheckoutRecord?
@@ -283,6 +287,16 @@ public enum LaundryCheckoutError: String, Error, LocalizedError {
     public init(store: any LaundryCheckoutStore, api: any LaundryOrdering) throws {
         self.store = store; self.api = api; record = try store.load()
     }
+    public func associateLegacyAccount(config: LaundryConfig) throws {
+        guard !busy, var next = record, next.credentialIdentity == nil, next.deviceId == config.deviceId else { return }
+        next.credentialIdentity = config.credentialIdentity
+        try store.save(next); record = next
+    }
+    public func migrateCompletedAccount(from old: LaundryConfig, to new: LaundryConfig) throws {
+        guard !busy, var next = record, next.stage == .completed, next.belongs(to:old), old.deviceId == new.deviceId else { return }
+        next.credentialIdentity = new.credentialIdentity
+        try store.save(next); record = next
+    }
     public func create(config: LaundryConfig, snapshot: LaundrySnapshot, program: LaundryProgram) async throws {
         guard !busy, record == nil || record?.stage == .completed else { throw LaundryCheckoutError.pending }
         guard snapshot.deviceId == config.deviceId, snapshot.moduleType == 7,
@@ -292,6 +306,7 @@ public enum LaundryCheckoutError: String, Error, LocalizedError {
         busy = true; defer { busy = false }
         var next = LaundryCheckoutRecord(deviceId:config.deviceId,programId:program.id,programName:program.workModelName,
             expectedPrice:program.price,createdAt:Date(),stage:.creating)
+        next.credentialIdentity = config.credentialIdentity
         try store.save(next); record = next
         // A timeout/crash leaves 'creating' durable. Never automatically retry creation.
         let receipt = try await api.create(config:config,snapshot:snapshot,program:program)
@@ -307,7 +322,7 @@ public enum LaundryCheckoutError: String, Error, LocalizedError {
         try store.save(next); record = next
     }
     public func payment(config: LaundryConfig) async throws -> LaundryPayment {
-        guard !busy, var next = record, next.deviceId == config.deviceId,
+        guard !busy, var next = record, next.belongs(to:config),
               next.stage == .created, let id = next.orderId,
               let order = next.order, ["10","17"].contains(order.status.text), order.payFlag?.text == "0" else { throw LaundryCheckoutError.pending }
         guard let amount = order.payPrice, amount >= 0, amount <= next.expectedPrice else { throw LaundryCheckoutError.changed }
@@ -317,7 +332,7 @@ public enum LaundryCheckoutError: String, Error, LocalizedError {
         return try await api.payment(config:config,id:id)
     }
     public func refresh(config: LaundryConfig) async throws {
-        guard !busy, var next = record, next.deviceId == config.deviceId, let id = next.orderId else { throw LaundryCheckoutError.uncertain }
+        guard !busy, var next = record, next.belongs(to:config), let id = next.orderId else { throw LaundryCheckoutError.uncertain }
         busy = true; defer { busy = false }
         let order = try await api.order(config:config,id:id)
         guard order.id == id, order.deviceId == next.deviceId,
@@ -329,7 +344,7 @@ public enum LaundryCheckoutError: String, Error, LocalizedError {
     }
     public func recover(config: LaundryConfig, candidateOrderId: String) async throws {
         guard !busy, var next = record, next.stage == .creating,
-              next.deviceId == config.deviceId, next.orderId == nil,
+              next.belongs(to:config), next.orderId == nil,
               LaundryProvider.validOrderId(candidateOrderId) else { throw LaundryCheckoutError.pending }
         busy = true; defer { busy = false }
         let order = try await api.order(config:config,id:candidateOrderId)
@@ -344,7 +359,7 @@ public enum LaundryCheckoutError: String, Error, LocalizedError {
     }
     public func cancel(config: LaundryConfig) async throws {
         guard !busy, var next = record, [.created,.paymentRequested].contains(next.stage),
-              next.deviceId == config.deviceId, let id = next.orderId else { throw LaundryCheckoutError.pending }
+              next.belongs(to:config), let id = next.orderId else { throw LaundryCheckoutError.pending }
         busy = true; defer { busy = false }
         let fresh = try await api.order(config:config,id:id)
         guard fresh.id == id, fresh.deviceId == next.deviceId,

@@ -36,7 +36,16 @@ assetref = obj('assetref', 'isa = PBXFileReference; lastKnownFileType = folder.a
 assetbuild = obj('assetbuild', f'isa = PBXBuildFile; fileRef = {assetref};')
 sdkresources = obj('alipay-resource-ref', 'isa = PBXFileReference; lastKnownFileType = wrapper.plug-in; path = "Vendor/AlipaySDK-15.8.30/AlipaySDK.bundle"; sourceTree = SOURCE_ROOT;')
 sdkresourcebuild = obj('alipay-resource-build', f'isa = PBXBuildFile; fileRef = {sdkresources};')
-resphase = obj('resources', f'isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = ({assetbuild},{sdkresourcebuild}); runOnlyForDeploymentPostprocessing = 0;')
+extra_resources = []
+profile = root / 'private/distribution/WaterPlatformProfile.json'
+resource_files = [assetbuild, sdkresourcebuild] + extra_resources
+resphase = obj('resources', f'isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = ({",".join(resource_files)}); runOnlyForDeploymentPostprocessing = 0;')
+profilephase = obj('private-water-profile-debug-only', '''isa = PBXShellScriptBuildPhase; buildActionMask = 2147483647; files = ();
+    inputPaths = ("$(SRCROOT)/private/distribution/WaterPlatformProfile.json");
+    name = "Development-only private water profile";
+    outputPaths = ("$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/WaterPlatformProfile.json");
+    runOnlyForDeploymentPostprocessing = 0; shellPath = /bin/sh;
+    shellScript = "if [ \\\"$CONFIGURATION\\\" = \\\"Debug\\\" ] && [ -f \\\"$SRCROOT/private/distribution/WaterPlatformProfile.json\\\" ]; then\\n  mkdir -p \\\"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH\\\"\\n  cp \\\"$SRCROOT/private/distribution/WaterPlatformProfile.json\\\" \\\"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/WaterPlatformProfile.json\\\"\\n  echo \\\"WARNING: private WaterPlatformProfile is embedded in this DEBUG app. Do not distribute it.\\\"\\nfi\\n";''')
 project_configs = []
 target_configs = []
 for mode in ('Debug','Release'):
@@ -46,10 +55,11 @@ for mode in ('Debug','Release'):
     OTHER_LDFLAGS = ("$(inherited)", "-ObjC", "-lc++", "-lz");
     INFOPLIST_KEY_CFBundleDisplayName = "校日常";
     INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "连接你选择的校园水控，完成授权和结束结算。";
+    INFOPLIST_KEY_NSCameraUsageDescription = "扫描洗衣机机身二维码，保存你的常用机器。";
     INFOPLIST_KEY_UILaunchScreen_Generation = YES; INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
     INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
     INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
-    TARGETED_DEVICE_FAMILY = 1; MARKETING_VERSION = 0.4.6; CURRENT_PROJECT_VERSION = 12;
+    TARGETED_DEVICE_FAMILY = 1; MARKETING_VERSION = 0.7.0; CURRENT_PROJECT_VERSION = 22;
     ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
     SWIFT_EMIT_LOC_STRINGS = YES; ENABLE_PREVIEWS = YES;
     LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
@@ -58,7 +68,7 @@ for mode in ('Debug','Release'):
     target_configs.append(obj('target:'+mode, f'isa = XCBuildConfiguration; name = {mode}; buildSettings = {{ {settings} }};'))
 pc = obj('project-configs', f'isa = XCConfigurationList; buildConfigurations = ({",".join(project_configs)}); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release;')
 tc = obj('target-configs', f'isa = XCConfigurationList; buildConfigurations = ({",".join(target_configs)}); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release;')
-target = obj('target', f'isa = PBXNativeTarget; buildConfigurationList = {tc}; buildPhases = ({srcphase},{fwphase},{resphase}); buildRules = (); dependencies = (); name = CampusHotWater; packageProductDependencies = ({dependency}); productName = CampusHotWater; productReference = {product}; productType = "com.apple.product-type.application";')
+target = obj('target', f'isa = PBXNativeTarget; buildConfigurationList = {tc}; buildPhases = ({srcphase},{fwphase},{resphase},{profilephase}); buildRules = (); dependencies = (); name = CampusHotWater; packageProductDependencies = ({dependency}); productName = CampusHotWater; productReference = {product}; productType = "com.apple.product-type.application";')
 main = obj('project', f'isa = PBXProject; attributes = {{ LastUpgradeCheck = 2700; }}; buildConfigurationList = {pc}; compatibilityVersion = "Xcode 14.0"; developmentRegion = zh-Hans; hasScannedForEncodings = 0; knownRegions = ("zh-Hans",en,Base); mainGroup = {group}; productRefGroup = {products}; projectDirPath = ""; projectRoot = ""; packageReferences = ({package}); targets = ({target});')
 (project / 'project.pbxproj').write_text('// !$*UTF8*$!\n{ archiveVersion = 1; classes = {}; objectVersion = 56; objects = {\n' + '\n'.join(objects) + f'\n}}; rootObject = {main}; }}\n')
 schemes = project / 'xcshareddata/xcschemes'

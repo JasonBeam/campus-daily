@@ -9,8 +9,13 @@ do {
     let config = try JSONDecoder().decode(WaterConfig.self,
         from: Data(contentsOf: URL(fileURLWithPath: CommandLine.arguments[1])))
     try config.validate()
-    let har = try JSONSerialization.jsonObject(with: Data(contentsOf: URL(fileURLWithPath: CommandLine.arguments[2]))) as! [String: Any]
-    let entries = (har["log"] as! [String: Any])["entries"] as! [[String: Any]]
+    let root = try JSONSerialization.jsonObject(
+        with: Data(contentsOf: URL(fileURLWithPath: CommandLine.arguments[2])))
+    guard let har = root as? [String: Any],
+          let log = har["log"] as? [String: Any],
+          let entries = log["entries"] as? [[String: Any]] else {
+        throw WaterError.invalidConfig
+    }
     var matched = 0
     for entry in entries {
         guard let request = entry["request"] as? [String: Any], let url = request["url"] as? String,

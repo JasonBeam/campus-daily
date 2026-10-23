@@ -1,9 +1,29 @@
 import Foundation
 
 @MainActor public protocol WaterTransport: AnyObject {
-    func connect(config: WaterConfig, expectedPeripheral: String?) async throws -> String
+    func connect(config: WaterConfig, expectedPeripheral: String?, preferredPeripheral: String?) async throws -> String
     func exchange(_ data: Data) async throws -> Data
     func disconnect()
+}
+
+extension WaterTransport {
+    public func connect(config: WaterConfig, expectedPeripheral: String?) async throws -> String {
+        try await connect(config:config,expectedPeripheral:expectedPeripheral,preferredPeripheral:nil)
+    }
+}
+
+public enum WaterTargetSelection {
+    public static func select(_ candidates: [String], required: String?, preferred: String?) throws -> String {
+        let ids = Set(candidates)
+        if let required {
+            guard ids.contains(required) else { throw WaterError.targetMissing }
+            return required
+        }
+        if let preferred, ids.contains(preferred) { return preferred }
+        guard !ids.isEmpty else { throw WaterError.targetMissing }
+        guard ids.count == 1, let id = ids.first else { throw WaterError.targetAmbiguous }
+        return id
+    }
 }
 @MainActor public protocol WaterProvider: AnyObject {
     func authorize(config: WaterConfig, frame: Data) async throws -> Authorization
@@ -38,7 +58,8 @@ import Foundation
         try config.validate()
         busy = true
         defer { transport.disconnect(); busy = false }
-        let id = try await transport.connect(config: config, expectedPeripheral: nil)
+        let preferred = session?.machineID == config.machineID.uppercased() ? session?.peripheralID : nil
+        let id = try await transport.connect(config: config, expectedPeripheral: nil, preferredPeripheral: preferred)
         let frame = try await transport.exchange(Data([0xAA]))
         guard try WaterProtocol.identity(frame) == config.machineID.uppercased() else { throw WaterError.wrongDevice }
         try Task.checkCancellation()

@@ -14,6 +14,8 @@ public enum WaterError: String, Error, LocalizedError {
     case bluetooth = "蓝牙连接失败，请靠近水控并退出其他水控连接页面"
     case bluetoothOff = "请打开蓝牙并允许本 App 使用蓝牙"
     case targetNotFound = "未找到唯一的目标水控，请靠近后重试"
+    case targetMissing = "未发现目标水控，请靠近设备并退出其他水控连接页面"
+    case targetAmbiguous = "发现多个同名水控，尚无法确认目标设备"
     case timedOut = "设备回复超时；若已有授权，请先查看当前记录"
     case interrupted = "操作已中断，保留当前记录"
     public var errorDescription: String? { rawValue }

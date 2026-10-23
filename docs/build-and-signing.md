@@ -54,4 +54,4 @@ xcodebuild -project CampusHotWater.xcodeproj -scheme CampusHotWater \
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test --build-system native --scratch-path /tmp/xiaorichang-tests
 ```
 
-测试不需要个人配置，不联网发起交易，也不操作蓝牙。公开副本已运行通过 35 项 XCTest 与 33 项 Swift Testing，共 68 项。当前 Xcode/Swift 环境的默认测试构建在 Documents 目录遇到文件扩展属性导致的临时测试包签名错误，因此本次使用 native 构建系统和独立 scratch 目录。Swift 6.4 会提示 native 选项已弃用；这是工具链提示，不是业务测试失败。
+测试不需要个人配置，不联网发起交易，也不操作蓝牙。0.7.0 build 22 已运行通过 54 项 XCTest 与 37 项 Swift Testing，共 91 项。

@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 #if canImport(FoundationNetworking)
 import FoundationNetworking
 #endif
@@ -11,11 +12,46 @@ public enum LaundryError: String, Error, LocalizedError {
     public var errorDescription: String? { rawValue }
 }
 
+public enum WasherQRCode {
+    public static func validate(_ text: String) throws {
+        guard text.utf8.count <= 2048, let url = URLComponents(string:text), url.scheme == "https",
+              url.host == "q.ujing.com.cn", url.path == "/ucqrc/index.html", url.user == nil, url.password == nil,
+              url.port == nil || url.port == 443, url.fragment == nil else { throw LaundryError.configuration }
+        let codes = (url.queryItems ?? []).filter { $0.name == "cd" }
+        guard codes.count == 1, let code = codes[0].value, code.count == 18,
+              code.utf8.allSatisfy({ (48...57).contains($0) }) else { throw LaundryError.configuration }
+    }
+}
+
+public struct SavedWasher: Codable, Identifiable, Equatable, Sendable {
+    public let id: String
+    public let qrCode: String
+    public var name: String
+    public let savedAt: Date
+    public init(id: String, qrCode: String, name: String, savedAt: Date = Date()) {
+        self.id = id; self.qrCode = qrCode; self.name = name; self.savedAt = savedAt
+    }
+}
+
 public struct LaundryConfig: Codable, Sendable {
     public var headers: [String:String]
     public var qrCode: String
     public var deviceId: String
+    public var accountID: String? = nil
+    public init(headers: [String:String], qrCode: String, deviceId: String, accountID: String? = nil) {
+        self.headers = headers; self.qrCode = qrCode; self.deviceId = deviceId
+        self.accountID = accountID
+    }
+    public var credentialIdentity: String {
+        let token = headers.first { $0.key.lowercased() == "authorization" }?.value ?? ""
+        let identity = accountID.map { "account:" + $0 } ?? token
+        return SHA256.hash(data:Data(identity.utf8)).map { String(format:"%02x",$0) }.joined()
+    }
     public func validate() throws {
+        try WasherQRCode.validate(qrCode)
+        if let accountID {
+            guard !accountID.isEmpty, accountID.count <= 32, accountID.utf8.allSatisfy({ (48...57).contains($0) }) else { throw LaundryError.configuration }
+        }
         guard !deviceId.isEmpty, deviceId.count <= 128,
               let qr = URLComponents(string: qrCode), qr.scheme == "https",
               qr.host == "q.ujing.com.cn", qr.path == "/ucqrc/index.html",
@@ -89,10 +125,14 @@ public final class LaundryProvider: @unchecked Sendable {
     }
     func request<T: Decodable>(_ path: String, config: LaundryConfig,
         method: String = "GET", body: Data? = nil, emptyValue: T? = nil) async throws -> T {
+        try await request(path,headers:config.headers,method:method,body:body,emptyValue:emptyValue)
+    }
+    private func request<T: Decodable>(_ path: String, headers: [String:String],
+        method: String = "GET", body: Data? = nil, emptyValue: T? = nil) async throws -> T {
         var req = URLRequest(url:URL(string:"https://phoenix.ujing.online" + path)!)
         req.httpMethod = method; req.httpBody = body
-        let allowed = Set(["authorization","x-app-code","x-app-version","weex-version","user-agent","content-type"])
-        for (key,value) in config.headers where allowed.contains(key.lowercased()) { req.setValue(value,forHTTPHeaderField:key) }
+        let allowed = Set(["authorization","x-app-code","x-app-version","weex-version","user-agent","content-type","x-mobile-id","x-mobile-brand"])
+        for (key,value) in headers where allowed.contains(key.lowercased()) { req.setValue(value,forHTTPHeaderField:key) }
         req.setValue("application/json",forHTTPHeaderField:"Content-Type")
         let data: Data; let response: URLResponse
         do { (data,response) = try await session.data(for:req) }
@@ -116,6 +156,24 @@ public final class LaundryProvider: @unchecked Sendable {
         var parts = URLComponents(); parts.queryItems = [URLQueryItem(name:"deviceId",value:config.deviceId)]
         let info: LaundryInfo = try await request("/api/v1/app/washer/devices/program/info?" + (parts.percentEncodedQuery ?? ""),config:config)
         return try Self.snapshot(scan:scan,info:info,expected:config.deviceId)
+    }
+    /// Resolves a scanned label with the user's existing account. Does not bind or order.
+    public func discover(config: LaundryConfig, qrCode: String) async throws -> (LaundryConfig, LaundrySnapshot) {
+        try config.validate()
+        return try await discover(headers:config.headers,accountID:config.accountID,qrCode:qrCode)
+    }
+    public func discover(headers: [String:String], accountID: String? = nil, qrCode: String) async throws -> (LaundryConfig, LaundrySnapshot) {
+        try WasherQRCode.validate(qrCode)
+        guard headers.contains(where:{ $0.key.lowercased() == "authorization" && $0.value.hasPrefix("Bearer ") && $0.value.count > 20 }),
+              headers.values.allSatisfy({ $0.rangeOfCharacter(from:.controlCharacters) == nil }) else { throw LaundryError.authentication }
+        let body = try JSONSerialization.data(withJSONObject:["qrCode":qrCode])
+        let scan: LaundryScan = try await request("/api/v1/devices/scanWasherCode",headers:headers,method:"POST",body:body)
+        guard !scan.result.deviceId.isEmpty, scan.result.moduleType == 7 else { throw LaundryError.response }
+        let resolved = LaundryConfig(headers:headers,qrCode:qrCode,deviceId:scan.result.deviceId,accountID:accountID)
+        try resolved.validate()
+        var parts = URLComponents(); parts.queryItems = [URLQueryItem(name:"deviceId",value:resolved.deviceId)]
+        let info: LaundryInfo = try await request("/api/v1/app/washer/devices/program/info?" + (parts.percentEncodedQuery ?? ""),config:resolved)
+        return (resolved,try Self.snapshot(scan:scan,info:info,expected:resolved.deviceId))
     }
     public func activeOrderID(config: LaundryConfig) async throws -> String? {
         try config.validate()

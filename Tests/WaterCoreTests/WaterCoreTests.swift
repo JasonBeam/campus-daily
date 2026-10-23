@@ -11,10 +11,11 @@ private let ack = Data([0xAA] + [UInt8](repeating: 0, count: 8))
     var replies: [Result<Data, Error>] = [.success(frame), .success(ack)]
     var writes: [Data] = []
     var expected: String?
+    var preferred: String?
     var connections = 0
     var disconnections = 0
-    func connect(config: WaterConfig, expectedPeripheral: String?) async throws -> String {
-        connections += 1; expected = expectedPeripheral; return "owned-device"
+    func connect(config: WaterConfig, expectedPeripheral: String?, preferredPeripheral: String?) async throws -> String {
+        connections += 1; expected = expectedPeripheral; preferred = preferredPeripheral; return "owned-device"
     }
     func exchange(_ data: Data) async throws -> Data {
         writes.append(data)
@@ -60,6 +61,21 @@ private let ack = Data([0xAA] + [UInt8](repeating: 0, count: 8))
 }
 
 @Suite @MainActor struct ControllerTests {
+    @Test func nextStartPrefersLastPeripheralForSameWaterController() async throws {
+        let t = Transport(), p = Provider(), s = Store()
+        s.value = WaterSession(stage:.settled,machineID:config.machineID,peripheralID:"previous-device")
+        let c = try WaterController(transport:t,provider:p,store:s)
+        try await c.start(config:config)
+        #expect(t.preferred == "previous-device" && t.expected == nil)
+        #expect(p.authorizations == 1)
+    }
+    @Test func differentMachineDoesNotReuseLastPeripheralHint() async throws {
+        let t = Transport(), p = Provider(), s = Store()
+        s.value = WaterSession(stage:.settled,machineID:"55667788",peripheralID:"other-device")
+        let c = try WaterController(transport:t,provider:p,store:s)
+        try await c.start(config:config)
+        #expect(t.preferred == nil)
+    }
     @Test func freshAuthorization() async throws {
         let t = Transport(), p = Provider(), s = Store()
         let c = try WaterController(transport: t, provider: p, store: s)
@@ -212,6 +228,17 @@ private let ack = Data([0xAA] + [UInt8](repeating: 0, count: 8))
 }
 
 @Suite struct ProtocolTests {
+    @Test func targetSelectionDistinguishesMissingAndAmbiguousWithoutGuessing() throws {
+        #expect(throws:WaterError.targetMissing) { try WaterTargetSelection.select([],required:nil,preferred:nil) }
+        #expect(throws:WaterError.targetAmbiguous) { try WaterTargetSelection.select(["a","b"],required:nil,preferred:nil) }
+        #expect(try WaterTargetSelection.select(["a","b"],required:nil,preferred:"b") == "b")
+        #expect(try WaterTargetSelection.select(["a"],required:nil,preferred:"old-id") == "a")
+        #expect(throws:WaterError.targetAmbiguous) { try WaterTargetSelection.select(["a","b"],required:nil,preferred:"old-id") }
+    }
+    @Test func endingNeverFallsBackToAnotherPeripheral() throws {
+        #expect(throws:WaterError.targetMissing) { try WaterTargetSelection.select(["other"],required:"owned",preferred:"other") }
+        #expect(try WaterTargetSelection.select(["owned","other"],required:"owned",preferred:"other") == "owned")
+    }
     @Test func splitAndCombinedFrames() throws {
         var decoder = FrameDecoder()
         #expect(try decoder.append(Data(frame.prefix(7))).isEmpty)

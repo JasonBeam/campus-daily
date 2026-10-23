@@ -39,7 +39,8 @@ struct LaundryDetail: View {
                     }
                 } else {
                     ContentUnavailableView(laundry.configured ? "等待设备信息" : "尚未配置洗衣机",
-                        systemImage:"washer",description:Text(laundry.configured ? "下拉刷新查看机器" : "在设置中导入个人U净配置"))
+                        systemImage:"washer",description:Text(laundry.configured ? "下拉刷新查看机器" : "先登录 U净，再扫码添加常用机器"))
+                    NavigationLink("设置常用洗衣机") { WasherSetupView() }
                 }
                 if let issue = laundry.issue { Label(issue,systemImage:"exclamationmark.circle").font(.footnote).foregroundStyle(.orange) }
                 if laundry.checkout == nil, let issue = laundry.checkoutIssue { Text(issue).font(.footnote).foregroundStyle(.orange) }
@@ -59,7 +60,7 @@ struct LaundryDetail: View {
                 }
             }
             .safeAreaInset(edge:.bottom) {
-                if laundry.checkout == nil || laundry.checkout?.stage == .completed {
+                if laundry.configured && (laundry.checkout == nil || laundry.checkout?.stage == .completed) {
                     Button {
                         Task {
                             await laundry.refresh(force:true)
@@ -68,10 +69,13 @@ struct LaundryDetail: View {
                         }
                     } label: {
                         HStack {
-                            Text(laundry.loading ? "正在核对" : "确认程序")
+                            if laundry.checkoutBusy { ProgressView().controlSize(.small) }
+                            Text(laundry.checkoutBusy ? (laundry.checkoutProgress ?? "正在处理…") : (laundry.loading ? "正在核对" : "确认程序"))
                             Spacer()
-                            if let selected { Text(selected.price,format:.currency(code:"CNY")).monospacedDigit() }
-                            Image(systemName:"arrow.right")
+                            if !laundry.checkoutBusy {
+                                if let selected { Text(selected.price,format:.currency(code:"CNY")).monospacedDigit() }
+                                Image(systemName:"arrow.right")
+                            }
                         }.padding(.horizontal,18).frame(minHeight:54)
                     }.buttonStyle(WaterButtonStyle(primary:true,accent:accent))
                         .disabled(!laundry.mayCreate).padding(.horizontal,20).padding(.vertical,12)
@@ -148,6 +152,13 @@ struct LaundryDetail: View {
             }
             if record.order?.payFlag?.text == "0" { Text("未支付").font(.caption).foregroundStyle(.secondary) }
             if let issue = laundry.checkoutIssue { Text(issue).font(.footnote).foregroundStyle(.orange) }
+            if let progress = laundry.checkoutProgress {
+                HStack(spacing:9) {
+                    if laundry.checkoutBusy { ProgressView().controlSize(.small) }
+                    else { Image(systemName:"arrow.up.right.square") }
+                    Text(progress).font(.footnote).foregroundStyle(.secondary)
+                }
+            }
             if let order = record.order, order.status.text == "10", let seconds = order.countDown, seconds > 0 {
                 TimelineView(.periodic(from:.now,by:1)) { context in
                     let remaining = max(0,seconds - Int(context.date.timeIntervalSince(record.orderUpdatedAt ?? record.createdAt)))
@@ -173,7 +184,8 @@ struct LaundryDetail: View {
                     Label("取消订单",systemImage:"xmark.circle").frame(maxWidth:.infinity,minHeight:44)
                 }.accessibilityIdentifier("cancelLaundryOrder")
             }
-            if record.stage == .creating || record.stage == .paymentRequested || record.stage == .cancellationRequested {
+            if record.stage == .creating || record.stage == .cancellationRequested ||
+               (record.stage == .paymentRequested && record.order?.paid != true && record.order?.running != true) {
                 Text("结果未确认时请勿重复下单或付款，可在U净订单中核对。")
                     .font(.caption).foregroundStyle(.secondary)
             }

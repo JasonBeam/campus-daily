@@ -56,7 +56,18 @@ private enum CampusConfigStore {
                cached.owner == config.cacheIdentity { snapshot = cached }
         } catch { issue = "校园配置暂时无法读取，请解锁后重新打开 App" }
     }
-    var room: String { snapshot?.room ?? config?.dormRoom.nonEmpty ?? "未配置" }
+    var room: String {
+        let full = snapshot?.room ?? config?.dormRoom.nonEmpty ?? "未配置"
+        let parts = full.components(separatedBy:" · ")
+        if parts.count == 4, parts[1].hasSuffix("栋") {
+            let building = String(parts[1].dropLast())
+            let number = parts[3]
+            if !building.isEmpty, !number.isEmpty, building.allSatisfy(\.isNumber), number.allSatisfy(\.isNumber) {
+                return building + "栋" + number
+            }
+        }
+        return full
+    }
     var balanceText: String {
         guard let value = snapshot?.balance else { return "—" }
         let formatter = NumberFormatter()
@@ -84,6 +95,25 @@ private enum CampusConfigStore {
         try CampusConfigStore.save(value)
         if config?.cacheIdentity != value.cacheIdentity { snapshot = nil }
         config = value; configured = true; issue = nil; lastAttempt = nil
+    }
+    func acceptLogin(_ value: CampusConfig) throws {
+        guard !loading else { throw WaterError.busy }
+        var next = value
+        if let previous = config, previous.custid == value.custid, previous.areacode == value.areacode {
+            next.buildingID = previous.buildingID; next.dormRoom = previous.dormRoom
+        }
+        try next.validate(); try CampusConfigStore.save(next)
+        if config?.cacheIdentity != next.cacheIdentity { snapshot = nil }
+        config = next; configured = true; issue = nil; lastAttempt = nil
+    }
+    func saveDormName(_ room: String) throws {
+        guard !loading, var next = config else { throw WaterError.busy }
+        next.dormRoom = room; next.buildingID = ""
+        try next.validate(); try CampusConfigStore.save(next)
+        config = next
+        snapshot?.owner = next.cacheIdentity
+        snapshot?.recordRoom(.success(room))
+        saveSnapshot()
     }
     func importDevelopmentConfigIfPresent() {
         let root = FileManager.default.urls(for:.documentDirectory,in:.userDomainMask)[0]

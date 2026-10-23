@@ -14,9 +14,10 @@ import WaterCore
     @Published private(set) var hasReceipt = false
     private var controller: WaterController?
     private var config: WaterConfig?
+    private let bluetooth = BluetoothTransport()
     private init() {
         do {
-            controller = try WaterController(transport: BluetoothTransport(), provider: HTTPSWaterProvider(), store: FileSessionStore())
+            controller = try WaterController(transport: bluetooth, provider: HTTPSWaterProvider(), store: FileSessionStore())
             config = try PrivateConfigStore.load()
             configured = config != nil
             refresh()
@@ -25,6 +26,18 @@ import WaterCore
     var mayStart: Bool { configured && controller != nil && !busy && (stage == nil || stage == .settled) && controller?.storageBlocked == false }
     var mayFinish: Bool { configured && !busy && stage?.mayClose == true && controller?.storageBlocked == false }
     var mayImport: Bool { controller != nil && !busy && (stage == nil || stage == .settled) && controller?.storageBlocked == false }
+    var onboardingSeed: WaterConfig? { config }
+    var onboardingProfile: WaterPlatformProfile? {
+        if let config { return WaterPlatformProfile(legacy:config) }
+        guard let url = Bundle.main.url(forResource:"WaterPlatformProfile",withExtension:"json"),
+              let bytes = try? Data(contentsOf:url), bytes.count <= 4096 else { return nil }
+        return try? JSONDecoder().decode(WaterPlatformProfile.self,from:bytes)
+    }
+    func acceptDorm(_ value: WaterConfig) throws {
+        guard mayImport else { throw WaterError.unresolved }
+        try value.validate(); try PrivateConfigStore.save(value)
+        config = value; configured = true; problem = false; refresh()
+    }
     private func refresh() {
         stage = controller?.session?.stage
         lastEnded = controller?.session?.endedAt
@@ -60,6 +73,14 @@ import WaterCore
         refresh()
         problem = true
         status = (error as? WaterError)?.rawValue ?? "操作未确认，请查看当前记录后再继续"
+    }
+    func inspectBluetooth() async {
+        guard !busy, let config else { return }
+        busy = true; status = "正在检查附近水控…"
+        defer { busy = false }
+        let remembered = controller?.session?.machineID == config.machineID.uppercased() ? controller?.session?.peripheralID : nil
+        do { status = try await bluetooth.inspect(config:config,remembered:remembered) }
+        catch { show(error) }
     }
     func run(start: Bool) async throws {
         guard !busy else { throw WaterError.busy }

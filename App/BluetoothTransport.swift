@@ -9,6 +9,7 @@ import WaterCore
     private var retiring: CBPeripheral?
     private var targets: [UUID: CBPeripheral] = [:]
     private var targetName = ""
+    private var observedIDs = Set<UUID>()
     private var notify: CBCharacteristic?
     private var write: CBCharacteristic?
     private var decoder = FrameDecoder()
@@ -40,7 +41,7 @@ import WaterCore
         timer?.cancel(); timer = nil
         continuation?.resume(with: result)
     }
-    func connect(config: WaterConfig, expectedPeripheral: String?) async throws -> String {
+    private func prepare(config: WaterConfig) async throws {
         if manager == nil { manager = CBCentralManager(delegate: self, queue: .main) }
         if manager.state == .unknown || manager.state == .resetting {
             try await wait("power") {}
@@ -51,17 +52,33 @@ import WaterCore
         }
         retiring = nil
         targetName = config.bleName
-        targets.removeAll()
+    }
+    private func scanTargets() async throws {
+        targets.removeAll(); observedIDs.removeAll()
         // Some water controllers omit FFE0 from advertising, so inspect names first.
         manager.scanForPeripherals(withServices: nil, options: [CBCentralManagerScanOptionAllowDuplicatesKey: false])
-        do { try await Task.sleep(for: .seconds(6)) }
+        do { try await Task.sleep(for: .seconds(12)) }
         catch { manager.stopScan(); throw WaterError.interrupted }
         manager.stopScan()
-        let matches = targets.values.filter { expectedPeripheral == nil || $0.identifier.uuidString == expectedPeripheral }
-        guard matches.count == 1, let chosen = matches.first else { throw WaterError.targetNotFound }
+    }
+    private func scan(config: WaterConfig) async throws {
+        try await prepare(config:config)
+        try await scanTargets()
+    }
+    private func recordScan(remembered: String?, scanSeconds: Int = 12, cachedPeripheral: Bool = false) {
+        let object: [String:Any] = ["observedAt":ISO8601DateFormatter().string(from:Date()),"scanSeconds":scanSeconds,
+            "observedCount":observedIDs.count,"matchingCount":targets.count,
+            "rememberedFound":cachedPeripheral || (remembered.map { id in targets.keys.contains { $0.uuidString == id } } ?? false),
+            "cachedPeripheralUsed":cachedPeripheral]
+        let folder = FileManager.default.urls(for:.applicationSupportDirectory,in:.userDomainMask)[0].appendingPathComponent("WaterSession",isDirectory:true)
+        if let bytes = try? JSONSerialization.data(withJSONObject:object) {
+            try? bytes.write(to:folder.appendingPathComponent("last-scan.json"),options:[.atomic,.completeFileProtectionUntilFirstUserAuthentication])
+        }
+    }
+    private func establish(_ chosen: CBPeripheral) async throws -> String {
         peripheral = chosen
         chosen.delegate = self
-        try await wait("connect") { manager.connect(chosen) }
+        if chosen.state != .connected { try await wait("connect") { manager.connect(chosen) } }
         try await wait("service") { chosen.discoverServices([CBUUID(string: WaterProtocol.service)]) }
         guard let service = chosen.services?.first(where: { $0.uuid == CBUUID(string: WaterProtocol.service) }) else {
             throw WaterError.bluetooth
@@ -77,6 +94,48 @@ import WaterCore
         decoder = FrameDecoder(); pendingFrame = nil; channelError = nil
         try await wait("subscribe") { chosen.setNotifyValue(true, for: notify) }
         return chosen.identifier.uuidString
+    }
+    private func abandon(_ chosen: CBPeripheral) async {
+        if chosen.state != .disconnected {
+            retiring = chosen
+            if peripheral === chosen { peripheral = nil }
+            try? await wait("disconnect", seconds:4) { manager.cancelPeripheralConnection(chosen) }
+        }
+        if peripheral === chosen { peripheral = nil }
+        if retiring === chosen { retiring = nil }
+        chosen.delegate = nil
+        write = nil; notify = nil
+    }
+    func inspect(config: WaterConfig, remembered: String?) async throws -> String {
+        try await scan(config:config)
+        recordScan(remembered:remembered)
+        if targets.isEmpty { return WaterError.targetMissing.rawValue }
+        if let remembered, targets.keys.contains(where: { $0.uuidString == remembered }) {
+            return "发现 \(targets.count) 个同名水控，已识别上次使用的设备"
+        }
+        return targets.count == 1 ? "发现 1 个目标候选，开始时会核对水控编号" : WaterError.targetAmbiguous.rawValue
+    }
+    func connect(config: WaterConfig, expectedPeripheral: String?, preferredPeripheral: String?) async throws -> String {
+        try await prepare(config:config)
+        let remembered = expectedPeripheral ?? preferredPeripheral
+        if let remembered, let uuid = UUID(uuidString:remembered),
+           let cached = manager.retrievePeripherals(withIdentifiers:[uuid]).first {
+            targets.removeAll(); observedIDs.removeAll()
+            do {
+                let id = try await establish(cached)
+                recordScan(remembered:remembered,scanSeconds:0,cachedPeripheral:true)
+                return id
+            } catch {
+                await abandon(cached)
+                // Connecting by remembered CoreBluetooth ID is only a fast path. If it fails,
+                // rescan and keep the existing exact/preferred-device selection rules.
+            }
+        }
+        try await scanTargets()
+        recordScan(remembered:remembered)
+        let id = try WaterTargetSelection.select(targets.keys.map(\.uuidString),required:expectedPeripheral,preferred:preferredPeripheral)
+        guard let uuid = UUID(uuidString:id), let chosen = targets[uuid] else { throw WaterError.targetMissing }
+        return try await establish(chosen)
     }
     func exchange(_ data: Data) async throws -> Data {
         if let channelError { throw channelError }
@@ -107,6 +166,7 @@ import WaterCore
     }
     func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral,
                         advertisementData: [String: Any], rssi RSSI: NSNumber) {
+        observedIDs.insert(peripheral.identifier)
         if peripheral.name == targetName || advertisementData[CBAdvertisementDataLocalNameKey] as? String == targetName {
             targets[peripheral.identifier] = peripheral
         }

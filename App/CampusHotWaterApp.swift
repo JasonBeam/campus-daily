@@ -28,6 +28,8 @@ struct WaterHome: View {
     @EnvironmentObject private var laundry: LaundryModel
     @Environment(\.scenePhase) private var phase
     @State private var settings = false
+    @State private var firstRun = false
+    @AppStorage("didSeeQuickSetup") private var didSeeQuickSetup = false
     @ScaledMetric(relativeTo:.largeTitle) private var balanceSize: CGFloat = 48
     private let accent = Color(red:0.10,green:0.35,blue:0.68)
     var body: some View {
@@ -80,6 +82,16 @@ struct WaterHome: View {
                 }
                 .refreshable { await campus.refresh(force:true); await laundry.refresh(force:true) }
                 .sheet(isPresented:$settings) { SettingsView() }
+                .sheet(isPresented:$firstRun,onDismiss:{ didSeeQuickSetup = true }) {
+                    NavigationStack {
+                        QuickSetupView().toolbar {
+                            ToolbarItem(placement:.confirmationAction) { Button("稍后设置") { firstRun = false } }
+                        }
+                    }
+                }
+                .task {
+                    if !didSeeQuickSetup && !campus.configured && !water.configured && !laundry.configured { firstRun = true }
+                }
                 .onChange(of:phase) { _,value in
                     if value == .active { Task { await campus.refresh(); await laundry.refresh(); await laundry.refreshOrder() } }
                 }
@@ -157,7 +169,7 @@ struct WaterDetail: View {
                     .font(.title2).foregroundStyle(water.problem ? Color.orange : accent)
                     .frame(width:44,height:44).background(accent.opacity(0.08),in:RoundedRectangle(cornerRadius:14))
                 VStack(alignment:.leading,spacing:6) {
-                    Text(water.busy ? "正在处理" : water.stage == .settled ? "本次已结算" : water.stage?.mayClose == true ? "热水已授权" : "准备洗澡")
+                    Text(water.busy ? "正在处理" : water.problem ? "本次未完成" : water.stage == .settled ? "上次已结算" : water.stage?.mayClose == true ? "热水已授权" : "准备洗澡")
                         .font(.headline)
                     Text(water.status).font(.subheadline).foregroundStyle(water.problem ? Color.orange : Color.secondary)
                         .fixedSize(horizontal:false,vertical:true).accessibilityIdentifier("waterStatus")
@@ -173,6 +185,14 @@ struct WaterDetail: View {
                     Label("结束结算",systemImage:"stop.circle").frame(maxWidth:.infinity,minHeight:52)
                 }.buttonStyle(WaterButtonStyle(primary:water.mayFinish,accent:accent))
                     .disabled(!water.mayFinish).accessibilityIdentifier("finishWater")
+            }
+            if water.configured {
+                DisclosureGroup("连接检查") {
+                    Button { Task { await water.inspectBluetooth() } } label: {
+                        Label("检查蓝牙（不启动用水）",systemImage:"antenna.radiowaves.left.and.right")
+                            .frame(maxWidth:.infinity,minHeight:44)
+                    }.disabled(water.busy).accessibilityIdentifier("inspectWaterBluetooth")
+                }
             }
             if let date = water.lastEnded {
                 if water.stage == .settled {
@@ -222,6 +242,13 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 Section {
+                    NavigationLink { QuickSetupView() } label: { Label("快速设置",systemImage:"checklist") }
+                        .accessibilityIdentifier("quickSetupEntry")
+                }
+                Section {
+                    NavigationLink { CampusOnboardingView() } label: {
+                        Label("校园登录与宿舍",systemImage:"person.crop.circle")
+                    }.accessibilityIdentifier("campusOnboardingEntry")
                     LabeledContent("宿舍",value:campus.room)
                     Button {
                         importKind = .campus; importing = true
@@ -242,6 +269,9 @@ struct SettingsView: View {
                     Text(water.stage?.label ?? "暂无用水记录").font(.subheadline).foregroundStyle(.secondary)
                 } header: { Text("热水") } footer: { Text("有未结算记录时不能更换热水配置。") }
                 Section {
+                    NavigationLink { WasherSetupView() } label: {
+                        Label("常用洗衣机",systemImage:"qrcode.viewfinder")
+                    }.accessibilityIdentifier("washerSetupEntry")
                     Button { importKind = .laundry; importing = true } label: {
                         LabeledContent("U净配置",value:laundry.configured ? "已配置 · 更换" : "导入")
                     }.disabled(!laundry.mayImport)
