@@ -1,5 +1,7 @@
 # Campus Daily / 校日常 0.7.0
 
+![校日常 0.7.0 宣传封面](https://raw.githubusercontent.com/JasonBeam/campus-daily/main/docs/social/xhs-01-cover.png)
+
 校日常是面向广东工商职业技术大学的非官方 iPhone 工具。
 
 我做它的原因很直接：每天都要用的校园卡、宿舍热水和 U净洗衣分散在不同入口里，小程序跳转和无关页面太多。这个版本把常用数据与操作集中起来，也让宿舍热水和洗衣机可以少走几次重复步骤。
