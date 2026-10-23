@@ -51,7 +51,7 @@ xcodebuild -project CampusHotWater.xcodeproj -scheme CampusHotWater \
 ## 离线测试
 
 ```sh
-DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test --build-system native --scratch-path /tmp/xiaorichang-tests
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test --build-system native --scratch-path /tmp/campus-daily-tests
 ```
 
 测试不需要个人配置，不联网发起交易，也不操作蓝牙。0.7.0 build 22 已运行通过 54 项 XCTest 与 37 项 Swift Testing，共 91 项。

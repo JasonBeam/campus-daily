@@ -1,10 +1,26 @@
-# 校日常
+# Campus Daily / 校日常
 
 广东工商职业技术大学的非官方 iPhone 校园生活工具。把校园卡余额、宿舍、热水和 U净洗衣放进一个 App，少走几次小程序入口，少看几次无关页面。
 
 这是我自己每天都要用的工具：洗澡、洗衣服本来只需要几步，却被分散在不同小程序和跳转里。校日常把常用数据和操作收在一起；桌面名称是「校日常」，首页叫「校园生活」。
 
-**当前是面向有基础能力同学的自签名测试源码。没有 TestFlight，也没有所有人都能直接安装的公开 IPA。** 免费 Apple Personal Team 通常每 7 天后要重新签名；后续会研究更稳定的证书和分发方式。
+**当前是面向有基础能力同学的自签名测试版。没有 TestFlight；GitHub 提供的是无签名开发 IPA，下载后必须用你自己的 Apple 身份签名才能安装。** 免费 Apple Personal Team 通常每 7 天后要重新签名；后续会研究更稳定的证书和分发方式。
+
+## 配置教程与 AI 上手
+
+新用户不需要照着抓包猜字段，优先按 App 内流程走：
+
+1. 打开「设置 → 校园登录与宿舍」，使用学校官方网页登录。
+2. 逐级选择校区、楼栋、楼层和寝室，核对目标水控后保存。
+3. 打开「常用洗衣机」，使用本人 U净绑定手机号完成短信登录。
+4. 扫描或从照片识别洗衣机机身二维码，保存为常用机器。
+
+详细说明：
+
+- [配置与使用边界](docs/configuration.md)：各功能配置、导入格式与禁止公开的数据。
+- [构建与签名](docs/build-and-signing.md)：获取 SDK、生成工程、编译和无签名 IPA。
+- [AI 辅助上手](docs/ai-guide.md)：可直接交给 AI 的排错提示，包括安装、配置和异常处理边界。
+- [故障排查](docs/troubleshooting.md)：登录、蓝牙、二维码、订单和签名问题。
 
 ## 当前能做什么
 
@@ -28,6 +44,15 @@
 </p>
 
 原分辨率视频在 [`docs/media`](docs/media)：热水流程、洗衣流程和首次配置各有 GIF 与 MP4。
+
+小红书风格 3:4 宣传图也已整理为四页轮播：
+
+<p>
+  <img src="docs/social/xhs-01-cover.png" width="240" alt="校日常宣传封面">
+  <img src="docs/social/xhs-02-water.png" width="240" alt="热水流程宣传页">
+  <img src="docs/social/xhs-03-laundry.png" width="240" alt="洗衣流程宣传页">
+  <img src="docs/social/xhs-04-setup.png" width="240" alt="首次配置宣传页">
+</p>
 
 ## 为什么做它
 
@@ -83,12 +108,22 @@ xcodebuild -project CampusHotWater.xcodeproj -scheme CampusHotWater \
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test
 ```
 
+## GitHub IPA 怎么安装
+
+Release 中提供 **`CampusDaily-0.7.0-build22-unsigned.ipa`**。它是无签名开发包，不能直接点开安装，也不能绕过 Apple 签名：
+
+- 使用你自己的 Mac/Xcode 签名；或在确认工具来源可信后，用 SideStore、AltStore 等按自己的 Apple 账号重签。
+- 免费 Personal Team 一般约 7 天失效，需要刷新签名。
+- 这个公开 IPA 不包含作者的开发签名、设备信息或共享平台签名参数。新用户首次热水宿舍读取仍需完整的本机平台配置；只下载 IPA 不代表开箱即用。
+- 如果这一门槛无法接受，请等后续服务端签名代理和更稳定的分发方案。
+
 ## 0.7.0 审查状态
 
 - SwiftUI + CoreBluetooth + App Intents 原生 iOS App，最低 iOS 17。
 - 本轮运行 54 项 XCTest 与 37 项 Swift Testing，共 **91 项离线测试全部通过**。
 - iPhoneOS Debug 签名构建、Release 不签名构建和 Xcode 静态分析均通过。
-- 本地测试包为 **0.7.0 build 22**，严格代码签名验证通过；它包含本机私测所需的资源，不上传 GitHub。
+- 本人私测包为 **0.7.0 build 22**，严格代码签名验证通过；它包含本机私测所需的资源，不上传 GitHub。
+- 公开 Release IPA 为 build 22 的无签名版本，已确认不包含共享平台签名参数。
 - 本人 0.7.0 实机已完成校园登录、宿舍保存、U净短信登录、常用机器查询和重启持久化检查。
 - 下单、支付、取消、洗衣启动和热水出水仍以用户本人现场操作为准，不能由离线测试替代。
 
@@ -106,7 +141,7 @@ App 在每条请求里使用当前用户身份和设备挑战，不重放旧的�
 
 优先寻找广东工商职业技术大学、使用 iPhone、愿意自行签名并保护个人配置的同学。
 
-可通过仓库的[测试意向 Issue](https://github.com/JasonBeam/xiaorichang/issues/new?template=tester.yml)留下 iOS 版本、是否有 Mac/Xcode 和想测试的功能。不要填写姓名、学号、手机号、宿舍或设备编号。测试意向不代表已经获得可安装包。
+可通过仓库的[测试意向 Issue](https://github.com/JasonBeam/campus-daily/issues/new?template=tester.yml)留下 iOS 版本、是否有 Mac/Xcode 和想测试的功能。不要填写姓名、学号、手机号、宿舍或设备编号。测试意向不代表已经获得可直接安装的包。
 
 ## 许可与致谢
 

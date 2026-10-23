@@ -1,4 +1,4 @@
-# 校日常 0.7.0：把校园卡、宿舍、热水和洗衣放进一个 App
+# Campus Daily / 校日常 0.7.0
 
 校日常是面向广东工商职业技术大学的非官方 iPhone 工具。
 
@@ -18,9 +18,35 @@
 
 仓库内有三组 GIF 和 MP4：热水、洗衣、首次配置。它们是脱敏界面流程模拟，不代表真实出水、扣费或机器启动录像。
 
+## 下载与安装
+
+Release 资产包含：
+
+- `CampusDaily-0.7.0-build22-unsigned.ipa`：无签名开发包，下载后必须用自己的 Apple 身份签名才能安装。
+- `CampusDaily-0.7.0-build22-unsigned.ipa.sha256`：下载完整性校验。
+- GitHub 自动提供的源码 zip/tar 压缩包。
+
+这个 IPA 不包含作者的开发签名、设备 UDID、描述文件或共享平台签名参数。使用自己的 Mac/Xcode 或可信的 SideStore/AltStore 流程重签后，才能装到自己的设备。
+
+## 配置教程与 AI 上手
+
+优先使用 App 内流程：
+
+1. 学校官方网页登录。
+2. 选择校区、楼栋、楼层和寝室。
+3. U净手机号 + 验证码登录。
+4. 扫描洗衣机机身二维码并保存常用机器。
+
+完整教程：
+
+- [配置与使用边界](https://github.com/JasonBeam/campus-daily/blob/main/docs/configuration.md)
+- [构建与签名](https://github.com/JasonBeam/campus-daily/blob/main/docs/build-and-signing.md)
+- [AI 辅助上手](https://github.com/JasonBeam/campus-daily/blob/main/docs/ai-guide.md)
+- [故障排查](https://github.com/JasonBeam/campus-daily/blob/main/docs/troubleshooting.md)
+
 ## 当前门槛
 
-- 目前没有 TestFlight，也没有公开 IPA。
+- 目前没有 TestFlight；公开 IPA 是无签名开发包，必须自行签名。
 - 免费 Apple Personal Team 通常每 7 天要重新签名。
 - 需要 macOS、完整 Xcode、可签名 Apple 账号和本人合法取得的学校/U净登录条件。
 - 当前重点验证的是我实际使用的一种水控和本校流程，不代表其他学校或所有设备通用。
@@ -45,6 +71,6 @@ open CampusHotWater.xcodeproj
 
 在 Xcode 中用你自己的 Team 和 Bundle Identifier 签名。不要使用作者的设备、描述文件或本机配置。
 
-遇到问题请先读 [构建与签名](https://github.com/JasonBeam/xiaorichang/blob/main/docs/build-and-signing.md)、[AI 辅助上手](https://github.com/JasonBeam/xiaorichang/blob/main/docs/ai-guide.md)和[故障排查](https://github.com/JasonBeam/xiaorichang/blob/main/docs/troubleshooting.md)。
+遇到问题请先读 [配置与使用边界](https://github.com/JasonBeam/campus-daily/blob/main/docs/configuration.md)、[构建与签名](https://github.com/JasonBeam/campus-daily/blob/main/docs/build-and-signing.md)、[AI 辅助上手](https://github.com/JasonBeam/campus-daily/blob/main/docs/ai-guide.md)和[故障排查](https://github.com/JasonBeam/campus-daily/blob/main/docs/troubleshooting.md)。
 
 不要在 Issue 中上传配置、HAR、Cookie、token、手机号、学号、精确宿舍、设备二维码、付款链接或签名文件。

@@ -40,5 +40,5 @@
 
 - Exclude personal configuration, captured traffic, signing products and transaction diagnostics from the public snapshot.
 
-[0.4.6]: https://github.com/JasonBeam/xiaorichang/releases/tag/v0.4.6
-[0.7.0]: https://github.com/JasonBeam/xiaorichang/releases/tag/v0.7.0
+[0.4.6]: https://github.com/JasonBeam/campus-daily/releases/tag/v0.4.6
+[0.7.0]: https://github.com/JasonBeam/campus-daily/releases/tag/v0.7.0

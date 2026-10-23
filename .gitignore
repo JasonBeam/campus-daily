@@ -3,6 +3,8 @@ private/
 artifacts/
 .build/
 .swiftpm/
+.playwright-cli/
+output/
 build/
 CampusHotWater.xcodeproj/
 .DS_Store
