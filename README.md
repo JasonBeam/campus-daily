@@ -51,15 +51,6 @@
 
 原分辨率视频在 [`docs/media`](docs/media)：热水流程、洗衣流程和首次配置各有 GIF 与 MP4。
 
-小红书风格 3:4 宣传图也已整理为四页轮播：
-
-<p>
-  <img src="docs/social/xhs-01-cover.png" width="240" alt="校日常宣传封面">
-  <img src="docs/social/xhs-02-water.png" width="240" alt="热水流程宣传页">
-  <img src="docs/social/xhs-03-laundry.png" width="240" alt="洗衣流程宣传页">
-  <img src="docs/social/xhs-04-setup.png" width="240" alt="首次配置宣传页">
-</p>
-
 ## 为什么做它
 
 - 每天都要用的校园服务散落在多个小程序里，入口难找。
