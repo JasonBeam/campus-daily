@@ -6,6 +6,12 @@
 
 **当前是面向有基础能力同学的自签名测试版。没有 TestFlight；GitHub 提供的是无签名开发 IPA，下载后必须用你自己的 Apple 身份签名才能安装。** 免费 Apple Personal Team 通常每 7 天后要重新签名；后续会研究更稳定的证书和分发方式。
 
+## 下载
+
+[下载 0.7.0 build 28 无签名 IPA](https://github.com/JasonBeam/campus-daily/releases/download/v0.7.0/CampusDaily-0.7.0-build28-unsigned.ipa) · [下载说明与当前门槛](docs/download.md)
+
+下载后自行签名安装；首次热水配置仍需合法取得的平台配置，公开包不含作者的私测参数。
+
 ## 配置教程与 AI 上手
 
 新用户不需要照着抓包猜字段，优先按 App 内流程走：
@@ -110,14 +116,16 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test
 
 ## GitHub IPA 怎么安装
 
-Release 中提供 **`CampusDaily-0.7.0-build22-unsigned.ipa`**。它是无签名开发包，不能直接点开安装，也不能绕过 Apple 签名：
+Release 当前提供 **`CampusDaily-0.7.0-build28-unsigned.ipa`**（[下载与对应源码](docs/download.md)）。它是无签名开发包，不能直接点开安装，也不能绕过 Apple 签名：
 
 - 使用你自己的 Mac/Xcode 签名；或在确认工具来源可信后，用 SideStore、AltStore 等按自己的 Apple 账号重签。
 - 免费 Personal Team 一般约 7 天失效，需要刷新签名。
 - 这个公开 IPA 不包含作者的开发签名、设备信息或共享平台签名参数。新用户首次热水宿舍读取仍需完整的本机平台配置；只下载 IPA 不代表开箱即用。
 - 如果这一门槛无法接受，请等后续服务端签名代理和更稳定的分发方案。
 
-## 0.7.0 审查状态
+## 0.7.0 首发审查状态
+
+build 28 的新增验证与下载见[下载说明](docs/download.md)，以下保留首发 build 22 的记录。
 
 - SwiftUI + CoreBluetooth + App Intents 原生 iOS App，最低 iOS 17。
 - 本轮运行 54 项 XCTest 与 37 项 Swift Testing，共 **91 项离线测试全部通过**。
