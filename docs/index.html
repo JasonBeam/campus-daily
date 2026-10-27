@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f3f5f8">
+  <title>校日常 · 安装</title>
+  <style>
+    :root { color-scheme: light dark; --bg:#f3f5f8; --card:#fff; --ink:#17202d; --muted:#667184; --line:#e2e7ee; --blue:#2767d8; --soft:#edf3ff; --amber:#8c5b00; --amber-bg:#fff4da; }
+    @media (prefers-color-scheme: dark) { :root { --bg:#11151b; --card:#1a2029; --ink:#eef2f7; --muted:#a0aaba; --line:#303a48; --blue:#8ab4ff; --soft:#202d43; --amber:#ffd178; --amber-bg:#382b15; } }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.55 -apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Microsoft YaHei",sans-serif; }
+    main { width:min(100% - 32px, 760px); margin:0 auto; padding: max(clamp(28px,7vw,64px),env(safe-area-inset-top)) 0 max(40px,env(safe-area-inset-bottom)); }
+    .eyebrow { color:var(--muted); font:600 12px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace; letter-spacing:.11em; text-transform:uppercase; }
+    h1 { margin:10px 0 8px; font-size:clamp(30px,8vw,46px); line-height:1.12; letter-spacing:-.045em; }
+    .intro { max-width:600px; margin:0; color:var(--muted); }
+    .platforms { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin:28px 0 18px; }
+    .card { min-width:0; padding:20px; border:1px solid var(--line); border-radius:18px; background:var(--card); box-shadow:0 8px 24px #15233b0b; }
+    .card[data-recommended="true"] { border-color:var(--blue); box-shadow:0 0 0 2px color-mix(in srgb,var(--blue) 14%,transparent); }
+    .card h2 { margin:0 0 4px; font-size:20px; letter-spacing:-.02em; }
+    .state { display:flex; align-items:center; gap:8px; margin:0 0 16px; color:var(--muted); font-size:13px; }
+    .dot { width:8px; height:8px; border-radius:50%; background:#d78b12; flex:none; }
+    .copy { min-height:128px; color:var(--muted); font-size:14px; }
+    .copy p { margin:0 0 10px; }
+    .button { display:flex; min-height:46px; align-items:center; justify-content:center; padding:10px 14px; border:1px solid var(--line); border-radius:12px; color:var(--ink); text-decoration:none; font-weight:650; text-align:center; }
+    .button.primary { border-color:var(--blue); background:var(--blue); color:#fff; }
+    .button.disabled { color:var(--muted); background:var(--bg); cursor:not-allowed; }
+    .note { margin-top:14px; padding:15px 17px; border:1px solid #efdcae; border-radius:14px; background:var(--amber-bg); color:var(--amber); font-size:14px; }
+    .note strong { display:block; margin-bottom:3px; }
+    .links { display:flex; flex-wrap:wrap; gap:10px 18px; margin-top:18px; color:var(--muted); font-size:13px; }
+    a { color:var(--blue); }
+    footer { margin-top:28px; padding-top:16px; border-top:1px solid var(--line); color:var(--muted); font-size:12px; }
+    @media (max-width:620px) { .platforms { grid-template-columns:1fr; } .copy { min-height:0; } }
+    @media (prefers-reduced-motion:no-preference) { .card { transition:border-color .16s ease, transform .16s ease, box-shadow .16s ease; } .card:hover { transform:translateY(-2px); border-color:color-mix(in srgb,var(--blue) 35%,var(--line)); box-shadow:0 12px 28px #15233b12; } }
+    @media (prefers-reduced-motion:reduce) { *,*::before,*::after { scroll-behavior:auto !important; transition:none !important; } }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="eyebrow">CAMPUS DAILY / INSTALL</div>
+    <h1>校日常，安装说明</h1>
+    <p class="intro">Android 可以从网页下载签名 APK 后安装。iPhone 需要 Apple 认可的签名分发方式；Safari 下载 IPA 本身不会安装 App。</p>
+
+    <section class="platforms" aria-label="按设备选择安装方式">
+      <article class="card" id="android">
+        <h2>Android</h2>
+        <p class="state"><span class="dot" aria-hidden="true"></span>0.2.0-alpha3 · 安卓测试版 · 41.2 MiB</p>
+        <div class="copy">
+          <p>下载 APK 后，按手机提示确认安装。安装包已由项目方签名，你不需要自己的开发者证书。</p>
+          <p>首次安装仍可能需要允许浏览器或文件管理安装应用。华为 HarmonyOS 4.2 还会显示外部 APK 安全确认。</p>
+        </div>
+        <a class="button primary" href="https://github.com/JasonBeam/campus-daily/releases/download/android-v0.2.0-alpha3/campus-daily-android-0.2.0-alpha3.apk">下载 Android APK</a>
+        <p style="font-size:13px;color:var(--muted)">首次使用需配置本人账号；热水需导入个人配置。三款目标手机的实机验证待完成，不支持 HarmonyOS NEXT。</p>
+      </article>
+
+      <article class="card" id="ios">
+        <h2>iPhone</h2>
+        <p class="state"><span class="dot" aria-hidden="true"></span>网页直装尚未开通</p>
+        <div class="copy">
+          <p>目前 GitHub 上是无签名开发 IPA。下载后还要使用自己的 Apple 身份签名；免费 Personal Team 通常约 7 天需重新安装。</p>
+          <p>要让同学从网页直接安装，可使用 TestFlight 测试邀请；Safari OTA 安装则需要付费开发者账号、Ad Hoc 签名并预先登记设备。</p>
+        </div>
+        <a class="button primary" href="https://github.com/JasonBeam/campus-daily/releases/download/v0.7.0/CampusDaily-0.7.0-build28-unsigned.ipa">下载当前 IPA（需自行签名）</a>
+      </article>
+    </section>
+
+    <aside class="note">
+      <strong>为什么 iPhone 还不能像 Android 那样点网页安装？</strong>
+      iOS 原生 App 必须经过 Apple 签名。中国大陆校园用户目前不能使用 Apple 的欧盟网页分发；Ad Hoc 网页安装还需要开发者的付费账号、已登记的设备和配置描述文件。网页本身不能绕过这些条件。
+    </aside>
+
+    <nav class="links" aria-label="项目资料">
+      <a href="https://github.com/JasonBeam/campus-daily#readme">项目介绍</a>
+      <a href="https://github.com/JasonBeam/campus-daily/blob/main/docs/download.md">下载与门槛</a>
+      <a href="https://github.com/JasonBeam/campus-daily/blob/main/docs/configuration.md">配置教程</a>
+      <a href="https://github.com/JasonBeam/campus-daily/blob/main/docs/ai-guide.md">AI 上手教程</a>
+    </nav>
+
+    <nav class="links" aria-label="官方安装规则">
+      <a href="https://developer.android.com/studio/publish">Android 网页分发说明</a>
+      <a href="https://developer.apple.com/help/app-store-connect/test-a-beta-version/testflight-overview/">Apple TestFlight 说明</a>
+      <a href="https://developer.apple.com/help/account/provisioning-profiles/create-an-ad-hoc-provisioning-profile">Apple Ad Hoc 说明</a>
+    </nav>
+
+    <footer>非学校官方应用。请只使用本人账号；不要公开上传校园令牌、手机号、学号、宿舍信息或设备二维码。</footer>
+  </main>
+  <script>
+    const ua = navigator.userAgent;
+    const target = /iPhone|iPad|iPod/i.test(ua) ? "ios" : /Android/i.test(ua) ? "android" : null;
+    if (target) document.getElementById(target).setAttribute("data-recommended", "true");
+  </script>
+</body>
+</html>
