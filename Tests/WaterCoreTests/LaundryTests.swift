@@ -21,6 +21,12 @@ final class LaundryTests: XCTestCase {
     func testFailureEnvelopeCannotBecomeEmptySuccess() {
         XCTAssertThrowsError(try LaundryProvider.decodeEvidence(scanData:Data(#"{"code":401,"data":null}"#.utf8),infoData:info,expectedDeviceId:"fixture-device"))
     }
+    func testMachineInUseIsNotGenericUnavailable() throws {
+        let changed = Data(String(decoding:scan,as:UTF8.self).replacingOccurrences(of:"\"status\":0",with:"\"status\":1").replacingOccurrences(of:"\"createOrderEnabled\":true",with:"\"createOrderEnabled\":false").utf8)
+        let value = try LaundryProvider.decodeEvidence(scanData:changed,infoData:info,expectedDeviceId:"fixture-device")
+        XCTAssertEqual(value.stateLabel,"洗衣中")
+        XCTAssertFalse(value.createOrderEnabled)
+    }
     func testUnknownStatusNotReportedAsIdle() throws {
         let changed = Data(String(decoding:scan,as:UTF8.self).replacingOccurrences(of:"\"status\":0",with:"\"status\":99").utf8)
         let value = try LaundryProvider.decodeEvidence(scanData:changed,infoData:info,expectedDeviceId:"fixture-device")

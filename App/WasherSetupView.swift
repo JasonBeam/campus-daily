@@ -15,7 +15,10 @@ struct WasherSetupView: View {
     var body: some View {
         Form {
             Section {
-                LabeledContent("U净账号",value:laundry.accountConnected ? "已登录" : "尚未登录")
+                Text(laundry.accountConnected ? "下一步：扫描机身二维码" : "第一步：用手机号登录 U净")
+                    .font(.headline)
+                Text(laundry.accountConnected ? "机器名称会自动填写，核对后点保存即可。" : "收到验证码后登录，再扫一次二维码，以后就能直接找到机器。")
+                    .font(.footnote).foregroundStyle(.secondary)
                 Button(laundry.accountConnected ? "更新 U净登录" : "登录 U净") { login = true }
                     .disabled(!laundry.mayImport).accessibilityIdentifier("ujingLoginEntry")
             }
@@ -47,7 +50,7 @@ struct WasherSetupView: View {
                 Section("核对并保存") {
                     LabeledContent("机器",value:"\(value.deviceNo)号 · \(value.storeName)")
                     LabeledContent("当前状态",value:value.stateLabel)
-                    TextField("例如：本层 1 号机",text:$alias).accessibilityIdentifier("washerAlias")
+                    TextField("机器名称（已自动填写，可修改）",text:$alias).accessibilityIdentifier("washerAlias")
                     Button("保存为常用机器") {
                         do { try laundry.savePreparedMachine(name:alias); issue = nil }
                         catch { issue = (error as? LocalizedError)?.errorDescription }
@@ -56,7 +59,8 @@ struct WasherSetupView: View {
                 }
             }
             if let text = issue ?? laundry.issue { Section { Text(text).font(.footnote).foregroundStyle(.orange) } }
-        }.navigationTitle("常用洗衣机").navigationBarTitleDisplayMode(.inline)
+        }.scrollContentBackground(.hidden).background(NothingTheme.background).tint(NativeTheme.tint)
+            .navigationTitle("常用洗衣机").navigationBarTitleDisplayMode(.inline)
             .sheet(isPresented:$login) { UjingLoginView() }
             .sheet(isPresented:$camera) {
                 NavigationStack {

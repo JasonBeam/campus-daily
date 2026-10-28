@@ -48,6 +48,13 @@ object CampusSymbols {
             }
         }
     }.build()
+    val GridOutline=outline("Daily outline") {
+        for(x in listOf(2.5f,13.5f))for(y in listOf(2.5f,13.5f)) {
+            moveTo(x+1.6f,y);lineTo(x+6.4f,y);quadTo(x+8f,y,x+8f,y+1.6f)
+            lineTo(x+8f,y+6.4f);quadTo(x+8f,y+8f,x+6.4f,y+8f)
+            lineTo(x+1.6f,y+8f);quadTo(x,y+8f,x,y+6.4f);lineTo(x,y+1.6f);quadTo(x,y,x+1.6f,y);close()
+        }
+    }
     val ChevronForward=outline("Forward"){moveTo(8f,4f);lineTo(16f,12f);lineTo(8f,20f)}
     val ChevronBack=outline("Back"){moveTo(15f,4f);lineTo(7f,12f);lineTo(15f,20f)}
     val ArrowUpRight=outline("Open"){moveTo(5f,19f);lineTo(19f,5f);moveTo(6f,5f);lineTo(19f,5f);lineTo(19f,18f)}

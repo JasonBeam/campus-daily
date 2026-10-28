@@ -10,7 +10,7 @@ import kotlinx.coroutines.withContext
 
 data class CampusConfig(val syscustid:String = "", val token:String = "", val areaCode:String = "", val custid:String = "",
                         val timestamp:String = "", val userAgent:String = "", val dorm:String = "",
-                        val buildingId:String = "", val meterId:String = "", val campusVersion:String = "v1.1.55") {
+                        val buildingId:String = "", val meterId:String = "", val campusVersion:String = "v1.1.55",val portalDormAddress:String="") {
     val configured get() = listOf(syscustid,token,areaCode).all { it.isNotBlank() }
     val owner get() = java.security.MessageDigest.getInstance("SHA-256").digest("$syscustid|$areaCode".toByteArray()).joinToString("") { "%02x".format(it) }
 }
@@ -189,12 +189,12 @@ fun amount(raw:Any?):String {
 }
 
 fun parseOfficialSession(j:JSONObject):CampusConfig {
-    val login=j.optJSONObject("loginInfo") ?: error("请登录学校门户，再打开一卡通旁的“更多”")
+    val login=j.optJSONObject("loginInfo") ?: error("尚未连接校园卡，请完成学校官方登录后等待自动同步")
     val card=j.optJSONObject("custInfo")
     fun text(o:JSONObject?,key:String)=o?.opt(key)?.takeIf {it is String || it is Number}?.toString().orEmpty()
     val c=CampusConfig(text(login,"syscustid"),text(j,"logintoken"),text(j,"schoolid").ifBlank {text(login,"areacode")},
         text(card,"custid").ifBlank {text(login,"custid").ifBlank {text(j,"custid")}},text(login,"timestamp"),text(j,"userAgent"))
-    require(c.configured && c.custid.isNotBlank() && listOf(c.syscustid,c.token,c.areaCode,c.custid,c.userAgent).all { it.length<=8192 && it.none(Char::isISOControl) }) { "请打开学校一卡通页面后再读取登录" }
+    require(c.configured && c.custid.isNotBlank() && listOf(c.syscustid,c.token,c.areaCode,c.custid,c.userAgent).all { it.length<=8192 && it.none(Char::isISOControl) }) { "校园卡信息尚未就绪，请等待自动同步或重试连接" }
     return c
 }
 

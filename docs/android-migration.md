@@ -5,6 +5,16 @@ This port follows the selected **03 原生清爽 / Native Clear** design in
 grouped surfaces, independent balance timestamps and 日常／订单／设备 navigation.
 It does not use the earlier Nothing/dot-matrix proposal.
 
+## Current Android test build — 0.2.0-alpha12
+
+- Version code 14. School login now follows the official campus-card page and reads the portal residence address for setup suggestions.
+- Better room-path matching, BLE scanning and water-controller identity checks.
+- Electricity meters still require manual selection; automatic matching is not ready.
+- 35 unit tests, 5 flow/UI checks, 23 layout scenarios and lint passed. The alpha12 package was installed over an existing vivo installation with data preserved.
+- No water authorization, physical water flow, settlement, laundry order or payment was performed in this release check.
+
+Download the tested package from the [current release notes](release-0.8.0-beta.1.md).
+
 ## Methods reviewed and applied
 
 | Source | Applied in this app |
@@ -144,8 +154,8 @@ The full upstream license is included in the APK at
 - Lint: zero errors; remaining warnings are retained in the local HTML report.
 - APK v1/v2 signature verification passed; unsigned/Apple-profile installation
   claims are not made. The public app contains no personal profile or platform key.
-- Gallery and evidence: `artifacts/android/native-glass/preview.html`,
-  `verification.json`, `build.log`, `layout-test.log`, `SHA256SUMS.txt`.
+- Detailed screenshots and build logs are kept locally and are not part of the
+  public repository or release assets.
 
 Physical Huawei nova 10/HarmonyOS 4.2, vivo X200 Pro/OriginOS 6 and Samsung
 SM-S9280/Android 16 are still pending. No live login, SMS, authorization, settlement,
@@ -157,8 +167,8 @@ platform profile described above.
 
 ## Screenshot correction — alpha3
 
-The approximate alpha2 preview was rejected by the user. The next pass uses
-actual installed-iPhone screenshots, keeps tabs on detail pages, matches the
-compact form layout, and exports same-viewport pairs. See
-[the screenshot alignment record](android-ios-parity.md). The local alpha3
-package is in `artifacts/android/ios-match/`; visual review was approved on 2026-10-27. The approved APK is distributed in the android-v0.2.0-alpha3 prerelease.
+The approximate alpha2 preview was rejected by the user. The next pass used
+installed-iPhone screenshots, kept tabs on detail pages, matched the compact
+form layout and compared the screens at the same viewport. See
+[the screenshot alignment record](android-ios-parity.md). The visual review was
+approved on 2026-10-27, and the alpha3 APK was published as an earlier prerelease.

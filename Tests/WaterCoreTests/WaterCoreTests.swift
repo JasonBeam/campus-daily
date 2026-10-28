@@ -61,6 +61,35 @@ private let ack = Data([0xAA] + [UInt8](repeating: 0, count: 8))
 }
 
 @Suite @MainActor struct ControllerTests {
+    @Test func deviceBindingOnlyReadsIdentity() async throws {
+        let t = Transport(), p = Provider(), s = Store()
+        let c = try WaterController(transport:t,provider:p,store:s)
+        let id = try await c.identify(config:config)
+        #expect(id == "owned-device")
+        #expect(t.writes == [Data([0xAA])] && t.disconnections == 1)
+        #expect(p.authorizations == 0 && p.settlements == 0 && s.value == nil)
+    }
+    @Test func bindingRejectsAnotherDormWithoutAuthorization() async throws {
+        let t = Transport(), p = Provider(), s = Store()
+        t.replies = [.success(Data([0x55,0,0,0,0] + [UInt8](repeating:0,count:15)))]
+        let c = try WaterController(transport:t,provider:p,store:s)
+        await #expect(throws:WaterError.wrongDevice) { try await c.identify(config:config) }
+        #expect(p.authorizations == 0 && s.value == nil && t.disconnections == 1)
+    }
+    @Test func bindingCannotReplaceAnActiveSession() async throws {
+        let t = Transport(), p = Provider(), s = Store()
+        s.value = WaterSession(stage:.active,machineID:config.machineID,peripheralID:"original")
+        let c = try WaterController(transport:t,provider:p,store:s)
+        await #expect(throws:WaterError.unresolved) { try await c.identify(config:config) }
+        #expect(t.connections == 0 && c.session?.peripheralID == "original")
+    }
+    @Test func firstStartUsesVerifiedBindingButStillChecksIdentity() async throws {
+        let t = Transport(), p = Provider(), s = Store()
+        t.replies = [.success(Data([0x55,0,0,0,0] + [UInt8](repeating:0,count:15)))]
+        let c = try WaterController(transport:t,provider:p,store:s)
+        await #expect(throws:WaterError.wrongDevice) { try await c.start(config:config,preferredPeripheral:"selected-device") }
+        #expect(t.preferred == "selected-device" && p.authorizations == 0 && s.value == nil)
+    }
     @Test func nextStartPrefersLastPeripheralForSameWaterController() async throws {
         let t = Transport(), p = Provider(), s = Store()
         s.value = WaterSession(stage:.settled,machineID:config.machineID,peripheralID:"previous-device")

@@ -82,7 +82,7 @@ private fun CampusApp(activity:ComponentActivity,vm:CampusViewModel=viewModel())
     fun import()=importer.launch(arrayOf("application/json","application/octet-stream","*/*"))
     LaunchedEffect(Unit) {vm.resume()}
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {vm.resume();mode=glassMode(activity,glassEnabled)}
-    LaunchedEffect(page,tab) {
+    LaunchedEffect(page,tab,state.campus.owner,state.water.hasPlatform) {
         if(page=="powerSetup" && state.campus.configured)vm.loadPower()
         if(page=="dorm" && state.campus.configured && state.water.hasPlatform && state.dormSetup.levels.isEmpty())vm.loadDorm()
         if(page=="laundry")vm.refreshWasher()
@@ -92,12 +92,17 @@ private fun CampusApp(activity:ComponentActivity,vm:CampusViewModel=viewModel())
     LaunchedEffect(state.message) {state.message?.let {snackbar.showSnackbar(it);vm.notice(null)}}
     BackHandler(page.isNotBlank()) {page=if(page=="scanner")"laundry" else ""}
     if(page=="scanner") {BarcodeCamera(onFound={page="laundry";vm.scanWasher(it)},onClose={page="laundry"},onError=vm::notice);return}
-    val titles=mapOf("water" to "热水洗澡","laundry" to "洗衣机","setup" to "首次配置","dorm" to "宿舍与水控","powerSetup" to "绑定宿舍电表","login" to "学校账号","laundryLogin" to "U净登录","rechargeCard" to "校园卡充值","rechargePower" to "宿舍电费充值","import" to "导入热水配置","washerSetup" to "常用洗衣机")
+    val titles=mapOf("water" to "热水洗澡","laundry" to "洗衣机","setup" to "首次配置","dorm" to "宿舍与水控","powerSetup" to "绑定宿舍电表","login" to "连接校园卡","laundryLogin" to "U净登录","rechargeCard" to "校园卡充值","rechargePower" to "宿舍电费充值","import" to "导入热水配置","washerSetup" to "常用洗衣机")
+    // WebView draws through Android's native view hierarchy. Do not record its
+    // content into the Compose glass backdrop; vendor GPU paths can retain a
+    // blank frame while the DOM continues loading normally.
+    val nativeBrowserPage=page in setOf("login","rechargeCard","rechargePower")
     Scaffold(containerColor=MaterialTheme.colorScheme.background,contentWindowInsets=WindowInsets.safeDrawing,
         topBar={CampusHeader(titles[page] ?: listOf("校园生活","最近订单","设备与设置")[tab],large=page.isBlank() && tab!=2,back=if(page.isNotBlank())({page=""})else null,settings=if(page.isEmpty() && tab==0)({tab=2})else null,refresh=if(page=="laundry")({vm.refreshWasher()})else null)},
-        bottomBar={CampusTabBar(tab,{tab=it;page=""},backdrop,mode)},
+        bottomBar={RefinedTabBar(tab,{tab=it;page=""},backdrop,if(nativeBrowserPage)GlassMode.SOLID else mode)},
         snackbarHost={SnackbarHost(snackbar)}) {padding ->
-        Box(Modifier.fillMaxSize().layerBackdrop(backdrop).background(MaterialTheme.colorScheme.background)) {
+        val contentModifier=Modifier.fillMaxSize().then(if(nativeBrowserPage)Modifier else Modifier.layerBackdrop(backdrop))
+        Box(contentModifier.background(MaterialTheme.colorScheme.background)) {
         when(page) {
             "water"->WaterScreen(state,padding,::navigate){finish->withBle(if(finish)"finish" else "start")}
             "setup"->SetupScreen(state,padding,::navigate)
@@ -106,7 +111,7 @@ private fun CampusApp(activity:ComponentActivity,vm:CampusViewModel=viewModel())
             "washerSetup"->WasherSetupScreen(state,padding,LaundryActions(vm::selectWasher,vm::scanWasher,{vm.refreshWasher()},vm::createOrder),::navigate,::scan)
             "laundryLogin"->LaundryLoginScreen(state,padding,vm)
             "laundry"->LaundryScreen(state,padding,LaundryActions(vm::selectWasher,vm::scanWasher,{vm.refreshWasher()},vm::createOrder,{vm.refreshOrder()},vm::cancelOrder,::payOrder),::navigate,::scan)
-            "login"->Column(Modifier.padding(padding).consumeWindowInsets(padding).padding(horizontal=12.dp)) {OfficialBrowser(onLogin={vm.acceptLogin(it);page="setup"},onError=vm::notice)}
+            "login"->Column(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).padding(horizontal=12.dp)) {OfficialBrowser(onLogin={value->vm.acceptLogin(value){page=if(value.portalDormAddress.isNotBlank() && state.water.hasPlatform)"dorm" else "setup"}},onError=vm::notice)}
             "rechargeCard","rechargePower"->Column(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).padding(horizontal=12.dp)) {
                 if("recharge" in state.busy) {LinearProgressIndicator(Modifier.fillMaxWidth());Hint("正在确认学校登录…")}
                 val session=state.webSession

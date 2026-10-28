@@ -12,6 +12,14 @@
 				<string>com.beamjason.campushotwater.alipay</string>
 			</array>
 		</dict>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>CampusDaily.navigation</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>campusdaily</string>
+			</array>
+		</dict>
 	</array>
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
@@ -19,5 +27,13 @@
 		<string>alipays</string>
 		<string>alipayqr</string>
 	</array>
+	<key>UIAppFonts</key>
+	<array>
+		<string>Fonts/Doto[ROND,wght].ttf</string>
+		<string>Fonts/SpaceGrotesk[wght].ttf</string>
+		<string>Fonts/SpaceMono-Regular.ttf</string>
+	</array>
+	<key>CampusKeychainGroup</key>
+	<string>$(AppIdentifierPrefix)com.beamjason.campushotwater</string>
 </dict>
 </plist>

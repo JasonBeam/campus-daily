@@ -2,12 +2,29 @@ import Foundation
 @preconcurrency import CoreBluetooth
 import WaterCore
 
+struct WaterDeviceCandidate: Identifiable {
+    let id: String
+    let name: String
+    let rssi: Int?
+}
+
+struct VerifiedWaterDevice {
+    let id: String
+    let name: String
+    let machineID: String
+    let rssi: Int?
+    let nearbyCount: Int
+    let verifiedAt: Date
+}
+
 // CoreBluetooth delegates are delivered on the explicit main queue below.
 @MainActor final class BluetoothTransport: NSObject, WaterTransport, @preconcurrency CBCentralManagerDelegate, @preconcurrency CBPeripheralDelegate {
     private var manager: CBCentralManager!
     private var peripheral: CBPeripheral?
     private var retiring: CBPeripheral?
     private var targets: [UUID: CBPeripheral] = [:]
+    var targetPicker: (([WaterDeviceCandidate]) async throws -> String)?
+    private var signalLevels: [UUID: Int] = [:]
     private var targetName = ""
     private var observedIDs = Set<UUID>()
     private var notify: CBCharacteristic?
@@ -54,7 +71,7 @@ import WaterCore
         targetName = config.bleName
     }
     private func scanTargets() async throws {
-        targets.removeAll(); observedIDs.removeAll()
+        targets.removeAll(); observedIDs.removeAll(); signalLevels.removeAll()
         // Some water controllers omit FFE0 from advertising, so inspect names first.
         manager.scanForPeripherals(withServices: nil, options: [CBCentralManagerScanOptionAllowDuplicatesKey: false])
         do { try await Task.sleep(for: .seconds(12)) }
@@ -99,12 +116,16 @@ import WaterCore
         if chosen.state != .disconnected {
             retiring = chosen
             if peripheral === chosen { peripheral = nil }
-            try? await wait("disconnect", seconds:4) { manager.cancelPeripheralConnection(chosen) }
+            if Task.isCancelled { manager.cancelPeripheralConnection(chosen) }
+            else { try? await wait("disconnect", seconds:4) { manager.cancelPeripheralConnection(chosen) } }
         }
         if peripheral === chosen { peripheral = nil }
         if retiring === chosen { retiring = nil }
         chosen.delegate = nil
         write = nil; notify = nil
+    }
+    func verifiedInformation(id: String, machineID: String) -> VerifiedWaterDevice {
+        VerifiedWaterDevice(id:id,name:targetName,machineID:machineID.uppercased(),rssi:UUID(uuidString:id).flatMap { signalLevels[$0] },nearbyCount:targets.count,verifiedAt:Date())
     }
     func inspect(config: WaterConfig, remembered: String?) async throws -> String {
         try await scan(config:config)
@@ -133,7 +154,41 @@ import WaterCore
         }
         try await scanTargets()
         recordScan(remembered:remembered)
-        let id = try WaterTargetSelection.select(targets.keys.map(\.uuidString),required:expectedPeripheral,preferred:preferredPeripheral)
+        let id: String
+        do {
+            id = try WaterTargetSelection.select(targets.keys.map(\.uuidString),required:expectedPeripheral,preferred:preferredPeripheral)
+        } catch WaterError.targetAmbiguous {
+            guard expectedPeripheral == nil else { throw WaterError.targetAmbiguous }
+            let candidates = targets.values.map {
+                WaterDeviceCandidate(id:$0.identifier.uuidString,name:targetName,rssi:signalLevels[$0.identifier])
+            }.sorted {
+                if $0.rssi != $1.rssi { return ($0.rssi ?? -127) > ($1.rssi ?? -127) }
+                return $0.id < $1.id
+            }
+            // Resolve the configured hardware ID, not the shared BT19-S radio name.
+            // This sends only 0xAA, never an authorization, valve or settlement command.
+            do {
+                let matched = try await WaterIdentitySelection.match(candidates.map(\.id),machineID:config.machineID) { [self] candidate in
+                    guard let uuid = UUID(uuidString:candidate), let device = targets[uuid] else { throw WaterError.targetMissing }
+                    do {
+                        _ = try await establish(device)
+                        let frame = try await exchange(Data([0xAA]))
+                        if (try? WaterProtocol.identity(frame)) != config.machineID.uppercased() { await abandon(device) }
+                        return frame
+                    } catch {
+                        await abandon(device)
+                        throw error
+                    }
+                }
+                return matched
+            } catch WaterError.targetMissing {
+                // Keep manual selection only when read-only identification could not resolve a target.
+            }
+            guard let targetPicker else { throw WaterError.targetMissing }
+            let selected = try await targetPicker(candidates)
+            try Task.checkCancellation()
+            id = try WaterTargetSelection.select(targets.keys.map(\.uuidString),required:selected,preferred:nil)
+        }
         guard let uuid = UUID(uuidString:id), let chosen = targets[uuid] else { throw WaterError.targetMissing }
         return try await establish(chosen)
     }
@@ -169,6 +224,7 @@ import WaterCore
         observedIDs.insert(peripheral.identifier)
         if peripheral.name == targetName || advertisementData[CBAdvertisementDataLocalNameKey] as? String == targetName {
             targets[peripheral.identifier] = peripheral
+            if RSSI.intValue != 127 { signalLevels[peripheral.identifier] = RSSI.intValue }
         }
     }
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {

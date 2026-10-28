@@ -26,10 +26,10 @@ data class WaterSettings(
 
 fun CampusConfig.json() = JSONObject().put("syscustid",syscustid).put("acc_token",token).put("areacode",areaCode)
     .put("custid",custid).put("timestamp",timestamp).put("userAgent",userAgent).put("dorm",dorm)
-    .put("buildingID",buildingId).put("meterID",meterId).put("campusVersion",campusVersion)
+    .put("buildingID",buildingId).put("meterID",meterId).put("campusVersion",campusVersion).put("portal_dorm_address",portalDormAddress)
 fun readCampus(j: JSONObject) = CampusConfig(j.text("syscustid"),j.text("acc_token").ifBlank { j.text("token") },
     j.text("areacode").ifBlank { j.text("areaCode") },j.text("custid"),j.text("timestamp"),j.text("userAgent"),
-    j.text("dorm").ifBlank { j.text("dormRoom") },j.text("buildingID"),j.text("meterID"),j.text("campusVersion").ifBlank { "v1.1.55" })
+    j.text("dorm").ifBlank { j.text("dormRoom") },j.text("buildingID"),j.text("meterID"),j.text("campusVersion").ifBlank { "v1.1.55" },j.text("portal_dorm_address"))
 fun UjingAccount.json() = JSONObject().put("id",id).put("businessUserId",businessUserId).put("token",token).put("clientId",clientId).put("userAgent",userAgent)
 fun readAccount(j: JSONObject) = UjingAccount(j.getString("id"),j.getString("businessUserId"),j.getString("token"),j.getString("clientId"),j.getString("userAgent"))
 

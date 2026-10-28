@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CampusKeychainGroup</key>
+	<string>$(AppIdentifierPrefix)com.beamjason.campushotwater</string>
+	<key>NSExtension</key>
+	<dict>
+		<key>NSExtensionPointIdentifier</key>
+		<string>com.apple.widgetkit-extension</string>
+	</dict>
+	<key>UIAppFonts</key>
+	<array>
+		<string>Fonts/Doto[ROND,wght].ttf</string>
+		<string>Fonts/SpaceGrotesk[wght].ttf</string>
+		<string>Fonts/SpaceMono-Regular.ttf</string>
+	</array>
+</dict>
+</plist>

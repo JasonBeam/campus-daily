@@ -14,7 +14,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 data class DormSetup(val identity:DormIdentity?=null,val levels:List<List<Option>> = emptyList(),val path:List<Option> = emptyList(),
-    val machines:List<DormWater> = emptyList(),val selected:DormWater?=null,val candidates:List<BleCandidate> = emptyList(),val verifiedAddress:String?=null)
+    val machines:List<DormWater> = emptyList(),val selected:DormWater?=null,val candidates:List<BleCandidate> = emptyList(),val verifiedAddress:String?=null,
+    val readIdentities:Map<String,String> = emptyMap(),val checkingAddress:String?=null,val suggestedPower:CampusPowerSuggestion?=null,val autoMatched:Boolean=false)
 data class PowerSetup(val options:List<Option> = emptyList(),val path:List<Option> = emptyList(),val meters:List<PowerMeter> = emptyList())
 data class CampusUiState(val campus:CampusConfig=CampusConfig(),val water:WaterSettings=WaterSettings(),val account:UjingAccount?=null,
     val washers:List<SavedWasher> = emptyList(),val selectedWasher:String?=null,val washer:WasherSnapshot?=null,val cache:BalanceCache=BalanceCache(),
@@ -53,6 +54,26 @@ class CampusViewModel(application:Application):AndroidViewModel(application) {
     private val _state=MutableStateFlow(load())
     val state=_state.asStateFlow()
     private val attempts=mutableMapOf<String,Long>()
+    init { provisionDevelopmentPlatform() }
+
+    // Developer-controlled test devices can be prepared over their authorized
+    // USB connection. No platform key is compiled into the public APK.
+    private fun provisionDevelopmentPlatform() {
+        if(!com.beamjason.xiaorichang.BuildConfig.DEBUG)return
+        val file=java.io.File(getApplication<Application>().noBackupFilesDir,"development-water-platform.json")
+        if(!file.isFile)return
+        val current=_state.value
+        if(current.unresolvedWater || current.transactionBusy || current.storageIssue)return
+        try {
+            if(!current.water.hasPlatform) {
+                require(file.length()<=8192)
+                val seed=parseDevelopmentPlatform(file.readText())
+                saveSettings(current.campus,seed)
+                _state.update{it.copy(water=seed,dormSetup=DormSetup(),message="热水接入已准备，可选择自己的宿舍")}
+            }
+            check(file.delete())
+        } catch(_:Exception) {notice("热水接入准备未完成，请联系内测提供者核对")}
+    }
 
     private fun load():CampusUiState {
         fun <T> parse(key:String,block:(JSONObject)->T):T? = read(key)?.let { try { block(it) } catch(_:Exception) { startupError=true; null } }
@@ -82,7 +103,7 @@ class CampusViewModel(application:Application):AndroidViewModel(application) {
         }
     }
     fun notice(value:String?) { _state.update { it.copy(message=value) } }
-    fun resume() { refresh(); if(_state.value.checkout?.orderId!=null) refreshOrder(false); selectedWasher()?.let { refreshWasher(it,false) } }
+    fun resume() { provisionDevelopmentPlatform(); refresh(); if(_state.value.checkout?.orderId!=null) refreshOrder(false); selectedWasher()?.let { refreshWasher(it,false) } }
     fun refresh(force:Boolean=false) {
         val c=_state.value.campus; if(!c.configured) return
         fun due(key:String):Boolean {
@@ -104,16 +125,17 @@ class CampusViewModel(application:Application):AndroidViewModel(application) {
             } catch(e:Exception) { if(e is CancellationException) throw e; if(_state.value.campus==c) _state.update { it.copy(powerError=message(e)) } }
         }
     }
-    fun acceptLogin(c:CampusConfig) = action("login") {
+    fun acceptLogin(c:CampusConfig,onSaved:()->Unit={}) = action("login") {
         transactionAllowed(); check(!_state.value.transactionBusy && !_state.value.unresolvedWater && !_state.value.unresolvedLaundry) { "请先完成或核对当前订单，再更换学校账号" }
         val old=_state.value.campus
-        val next=if(old.syscustid==c.syscustid && old.areaCode==c.areaCode) c.copy(dorm=old.dorm,buildingId=old.buildingId,meterId=old.meterId) else c
+        val own=c.copy(dorm=PortalDormAddress.parse(c.portalDormAddress)?.shortRoom.orEmpty())
+        val next=if(old.syscustid==c.syscustid && old.areaCode==c.areaCode) own.copy(dorm=old.dorm.ifBlank{own.dorm},buildingId=old.buildingId,meterId=old.meterId,portalDormAddress=c.portalDormAddress.ifBlank{old.portalDormAddress}) else own
         val changed=old.syscustid!=c.syscustid || old.areaCode!=c.areaCode
         val water=if(changed) _state.value.water.copy(studentId="",schoolId="",machineId="",address=null,room="") else _state.value.water
         saveSettings(next,water)
         _state.update { it.copy(campus=next,water=if(changed) it.water.copy(studentId="",schoolId="",machineId="",address=null,room="") else it.water,
             cache=if(changed) BalanceCache(owner=next.owner) else it.cache,cardError=null,powerError=null,webSession=null,dormSetup=DormSetup(),message="学校账号已保存") }
-        attempts.clear(); refresh(true)
+        attempts.clear(); onSaved(); refresh(true)
     }
     fun importConfig(text:String) = action("import") {
         transactionAllowed(); require(text.toByteArray().size<=65536); check(!_state.value.unresolvedWater && !_state.value.transactionBusy) { "请先核对当前热水会话" }
@@ -126,11 +148,25 @@ class CampusViewModel(application:Application):AndroidViewModel(application) {
         saveSettings(_state.value.campus,safe); _state.update { it.copy(water=safe,dormSetup=DormSetup(),message="热水配置已导入，可继续选择自己的宿舍") }
     }
     fun loadDorm() = action("dorm") {
-        val s=_state.value; require(s.campus.configured) { "请先登录学校账号" }; require(s.water.hasPlatform) { "请先导入内测热水平台配置" }
+        val s=_state.value; require(s.campus.configured) { "请先登录学校账号" }; require(s.water.hasPlatform) { "热水接入尚未准备，请先完成内测初始化" }
         check(!s.unresolvedWater) { "当前有未完成热水会话，暂不能更换设备" }
         val identity=campusApi.readDormIdentity(s.campus,s.water.platform())
         val root=campusApi.dormOptions(identity.schoolId,false,s.water.platform())
-        val draft=autoSingleDorm(s,DormSetup(identity=identity,levels=listOf(root)))
+        var draft=autoSingleDorm(s,DormSetup(identity=identity,levels=listOf(root)))
+        val address=PortalDormAddress.parse(s.campus.portalDormAddress)
+        if(address!=null) {
+            while(draft.path.size<4) {
+                val level=draft.path.size
+                val option=draft.levels.getOrNull(level)?.filter{address.matches(it.name,level)}?.singleOrNull() ?: break
+                val path=draft.path+option
+                draft=if(level==3)draft.copy(path=path,machines=campusApi.waterMachines(option.id,identity.schoolId,s.water.platform()))
+                    else draft.copy(path=path,levels=draft.levels+listOf(campusApi.dormOptions(option.id,level==2,s.water.platform())))
+            }
+            if(draft.path.size==4 && draft.path.withIndex().all{(level,option)->address.matches(option.name,level)}) {
+                val power=try {withTimeoutOrNull(15_000){campusApi.suggestPower(s.campus,address)}} catch(e:CancellationException){throw e}catch(_:Exception){null}
+                draft=draft.copy(autoMatched=true,selected=draft.machines.singleOrNull(),suggestedPower=power)
+            }
+        }
         check(_state.value.campus==s.campus && _state.value.water==s.water) { "学校账号或宿舍已变化，请重新读取" }
         _state.update { it.copy(dormSetup=draft) }
         require(root.isNotEmpty()) { "学校未返回宿舍列表，请稍后重试" }
@@ -142,11 +178,11 @@ class CampusViewModel(application:Application):AndroidViewModel(application) {
         if(level==3) {
             val machines=campusApi.waterMachines(option.id,who.schoolId,s.water.platform())
             check(_state.value.campus==s.campus && _state.value.water==s.water)
-            _state.update { it.copy(dormSetup=d.copy(path=path,levels=d.levels.take(4),machines=machines,selected=null,candidates=emptyList(),verifiedAddress=null)) }
+            _state.update { it.copy(dormSetup=d.copy(path=path,levels=d.levels.take(4),machines=machines,selected=null,candidates=emptyList(),verifiedAddress=null,readIdentities=emptyMap(),checkingAddress=null,suggestedPower=null,autoMatched=false)) }
             require(machines.isNotEmpty()) { "该寝室未返回水控，请重新核对房间" }
         } else {
             val next=campusApi.dormOptions(option.id,level==2,s.water.platform())
-            val draft=autoSingleDorm(s,d.copy(path=path,levels=d.levels.take(level+1)+listOf(next),machines=emptyList(),selected=null,candidates=emptyList(),verifiedAddress=null))
+            val draft=autoSingleDorm(s,d.copy(path=path,levels=d.levels.take(level+1)+listOf(next),machines=emptyList(),selected=null,candidates=emptyList(),verifiedAddress=null,readIdentities=emptyMap(),checkingAddress=null,suggestedPower=null,autoMatched=false))
             check(_state.value.campus==s.campus && _state.value.water==s.water)
             _state.update { it.copy(dormSetup=draft) }
         }
@@ -164,13 +200,38 @@ class CampusViewModel(application:Application):AndroidViewModel(application) {
     }
     fun selectMachine(m:DormWater) {
         val d=_state.value.dormSetup; if(m !in d.machines) return
-        _state.update { it.copy(dormSetup=d.copy(selected=m,candidates=emptyList(),verifiedAddress=null)) }
+        _state.update { it.copy(dormSetup=d.copy(selected=m,candidates=emptyList(),verifiedAddress=null,readIdentities=emptyMap(),checkingAddress=null)) }
     }
     fun scanWater() = action("verify") {
-        check(_state.value.busy.none { it in setOf("water","order","payment","cancel") } && !_state.value.unresolvedWater)
-        val found=transport.scanCandidates(_state.value.water.bleName)
-        _state.update { it.copy(dormSetup=it.dormSetup.copy(candidates=found,verifiedAddress=null)) }
+        val s=_state.value
+        check(s.busy.none { it in setOf("water","order","payment","cancel") } && !s.unresolvedWater)
+        val machine=s.dormSetup.selected ?: error("请先选择学校返回的水控")
+        val found=transport.scanCandidates(s.water.bleName)
+        fun stillCurrent() = _state.value.campus==s.campus && _state.value.water==s.water && _state.value.dormSetup.selected==machine
+        check(stillCurrent()){ "宿舍已变化，请重新扫描" }
+        _state.update { it.copy(dormSetup=it.dormSetup.copy(candidates=found,verifiedAddress=null,readIdentities=emptyMap(),checkingAddress=null)) }
         require(found.isNotEmpty()) { "未发现水控，请靠近设备、打开蓝牙后重试" }
+        try {
+            for(candidate in found.take(8)) {
+                check(stillCurrent()){ "宿舍已变化，请重新扫描" }
+                _state.update{it.copy(dormSetup=it.dormSetup.copy(checkingAddress=candidate.address))}
+                val actual=try {
+                    withTimeoutOrNull(9_000) {
+                        transport.connect(s.water.bleName,candidate.address)
+                        com.beamjason.xiaorichang.core.WaterProtocol.identity(transport.exchange(byteArrayOf(0xAA.toByte())))
+                    }
+                } catch(e:CancellationException){throw e}
+                  catch(_:Exception){null}
+                finally {transport.disconnect()}
+                check(stillCurrent()){ "宿舍已变化，请重新扫描" }
+                if(actual!=null) {
+                    val matches=actual.equals(machine.machineId,true)
+                    _state.update {it.copy(dormSetup=it.dormSetup.copy(readIdentities=it.dormSetup.readIdentities+(candidate.address to actual),verifiedAddress=if(matches)candidate.address else null))}
+                    if(matches){notice("已找到本宿舍水控并核对编号");return@action}
+                }
+            }
+            notice("未找到匹配的宿舍水控，请靠近设备后重试")
+        } finally {_state.update{it.copy(dormSetup=it.dormSetup.copy(checkingAddress=null))}}
     }
     fun verifyWater(candidate:BleCandidate) = action("verify") {
         val s=_state.value; check(!s.unresolvedWater); val m=s.dormSetup.selected ?: error("请先选择学校返回的水控")
@@ -179,17 +240,23 @@ class CampusViewModel(application:Application):AndroidViewModel(application) {
             transport.connect(s.water.bleName,candidate.address)
             val actual=com.beamjason.xiaorichang.core.WaterProtocol.identity(transport.exchange(byteArrayOf(0xAA.toByte())))
             require(actual.equals(m.machineId,true)) { "这台蓝牙水控与所选编号不一致，请选择另一台" }
-            _state.update { it.copy(dormSetup=it.dormSetup.copy(verifiedAddress=candidate.address),message="已通过蓝牙读取并核对水控编号") }
+            _state.update { it.copy(dormSetup=it.dormSetup.copy(verifiedAddress=candidate.address,readIdentities=it.dormSetup.readIdentities+(candidate.address to actual)),message="已通过蓝牙读取并核对水控编号") }
         } finally { transport.disconnect() }
     }
     fun saveDorm() = action("saveDorm") {
         transactionAllowed(); val s=_state.value; check(!s.unresolvedWater && !s.transactionBusy)
         val d=s.dormSetup; val m=d.selected ?: error("请选择自己的水控"); val who=d.identity ?: error("本人身份尚未读取")
-        require(d.path.size==4); val room=d.path.takeLast(3).filterIndexed { index,_ -> index!=1 }.joinToString(" · "){ it.name }
+        require(d.path.size==4); val room=d.path[1].name+d.path[3].name
         val water=s.water.copy(studentId=who.studentId,schoolId=who.schoolId,machineId=m.machineId,address=d.verifiedAddress,room=room)
         water.profile().validate()
-        val c=s.campus.copy(dorm=room); saveSettings(c,water)
-        _state.update { it.copy(water=water,campus=c,message=if(water.address!=null) "宿舍和已核对水控已保存" else "宿舍已保存，首次开始时会读取并核对水控编号") }
+        val power=d.suggestedPower
+        val address=PortalDormAddress.parse(s.campus.portalDormAddress)
+        val portalMatches=address!=null && d.path.withIndex().all{(level,option)->address.matches(option.name,level)}
+        val keepPower=portalMatches && s.cache.power?.let{address!!.matchesMeterRoom(it.room)}==true
+        val c=s.campus.copy(dorm=room,buildingId=power?.building ?: if(keepPower)s.campus.buildingId else "",meterId=power?.meter?.id ?: if(keepPower)s.campus.meterId else "")
+        val cache=if(power!=null)s.cache.copy(power=power.meter,powerAt=System.currentTimeMillis()) else if(keepPower)s.cache else s.cache.copy(power=null,powerAt=0)
+        saveSettings(c,water);write("campus.balance-cache",cache.json())
+        _state.update { it.copy(water=water,campus=c,cache=cache,message=if(power!=null)"宿舍、热水和电表已同步保存" else if(water.address!=null) "宿舍和已核对水控已保存" else "宿舍已保存，首次开始时会读取并核对水控编号") }
     }
     fun loadPower() = action("powerSetup") {
         val c=_state.value.campus; require(c.configured) { "请先登录学校账号" }

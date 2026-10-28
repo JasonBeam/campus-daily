@@ -4,6 +4,13 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+val sharedAutomationRoot=providers.gradleProperty("campusSharedAssetsDir")
+    .orElse(rootProject.file("../../Shared").absolutePath)
+val syncCampusAutomation=tasks.register<Copy>("syncCampusAutomation") {
+    from(sharedAutomationRoot){include("CampusLoginAutomation.js")}
+    into(layout.buildDirectory.dir("generated/campusAutomationAssets"))
+}
+
 android {
     namespace = "com.beamjason.xiaorichang"
     compileSdk = 36
@@ -13,11 +20,12 @@ android {
         // support API 23+, so Android 6.0 is the broadest supported baseline.
         minSdk = 23
         targetSdk = 35
-        versionCode = 5
-        versionName = "0.2.0-alpha3"
+        versionCode = 14
+        versionName = "0.2.0-alpha12"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildFeatures { compose = true; buildConfig = true }
+    sourceSets["main"].assets.srcDir(syncCampusAutomation.map{it.destinationDir})
     buildTypes {
         debug { applicationIdSuffix = ".debug"; versionNameSuffix = "-debug" }
         release { isMinifyEnabled = true; proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro") }
@@ -25,6 +33,7 @@ android {
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
 }
+tasks.named("preBuild").configure {dependsOn(syncCampusAutomation)}
 
 dependencies {
     implementation(platform("androidx.compose:compose-bom:2025.11.00"))

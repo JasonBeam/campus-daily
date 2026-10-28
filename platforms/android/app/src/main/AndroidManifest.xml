@@ -5,9 +5,9 @@
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30" />
-    <!-- We do not derive location. Omitting neverForLocation avoids filtering BLE devices -->
-    <!-- on vendor stacks that treat the target controller as a beacon. -->
-    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
+    <!-- Foreground water-controller discovery does not derive physical location.
+         Android 12+ requires this assertion when fine location is limited to API 30. -->
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.CAMERA" />
     <queries>

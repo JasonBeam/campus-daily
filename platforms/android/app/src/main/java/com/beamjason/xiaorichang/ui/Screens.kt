@@ -38,8 +38,10 @@ import java.util.Locale
 
 @Composable
 fun Page(padding:PaddingValues=PaddingValues(),modifier:Modifier=Modifier,spacing:Dp=18.dp,top:Dp=20.dp,content:@Composable ColumnScope.()->Unit) {
-    LazyColumn(modifier.fillMaxSize(),contentPadding=PaddingValues(start=20.dp,end=20.dp,
-        top=padding.calculateTopPadding()+top,bottom=padding.calculateBottomPadding()+24.dp),horizontalAlignment=Alignment.CenterHorizontally) {
+    // Keep the scroll viewport above the interactive tab bar: a child can be
+    // geometrically visible while its button is still covered by floating tabs.
+    LazyColumn(modifier.fillMaxSize().padding(bottom=padding.calculateBottomPadding()),contentPadding=PaddingValues(start=20.dp,end=20.dp,
+        top=padding.calculateTopPadding()+top,bottom=24.dp),horizontalAlignment=Alignment.CenterHorizontally) {
         item { Column(Modifier.widthIn(max=560.dp).fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(spacing),content=content) }
     }
 }
@@ -232,13 +234,13 @@ fun SetupScreen(s:CampusUiState,padding:PaddingValues,navigate:(String)->Unit) =
         LinearProgressIndicator(progress={s.setupCount/3f},modifier=Modifier.fillMaxWidth(),trackColor=MaterialTheme.colorScheme.primary.copy(alpha=.12f))
     }
     Group(padding=PaddingValues(horizontal=16.dp),spacing=0.dp) {
-        NavRow("学校账号",if(s.campus.configured)"已登录，可查询校园卡余额" else "在学校官方页面登录",Icons.Outlined.AccountCircle,s.campus.configured){navigate("login")}
+        NavRow("学校账号",if(s.campus.configured)"已登录，可查询校园卡余额" else "登录后自动同步校园卡余额",Icons.Outlined.AccountCircle,s.campus.configured){navigate("login")}
         HorizontalDivider(Modifier.padding(start=40.dp))
         NavRow("选择宿舍与水控",s.water.room.ifBlank {"选择楼栋房间，确认自己的设备"},Icons.Outlined.Apartment,s.water.configured){navigate("dorm")}
         HorizontalDivider(Modifier.padding(start=40.dp))
         NavRow("绑定洗衣机",if(s.washers.isEmpty())"登录 U净，扫码保存常用机器" else "已保存 ${s.washers.size} 台机器",CampusSymbols.Washer,s.account!=null && s.washers.isNotEmpty()){navigate(if(s.account==null)"laundryLogin" else "washerSetup")}
     }
-    ActionButton(if(s.setupCount==3)"完成设置" else if(!s.campus.configured)"登录学校账号" else if(!s.water.configured)"继续选择宿舍" else if(s.account==null)"登录 U净" else "扫描洗衣机二维码") {
+    ActionButton(if(s.setupCount==3)"完成设置" else if(!s.campus.configured)"登录并连接校园卡" else if(!s.water.configured)"继续选择宿舍" else if(s.account==null)"登录 U净" else "扫描洗衣机二维码") {
         navigate(if(s.setupCount==3)"" else if(!s.campus.configured)"login" else if(!s.water.configured)"dorm" else if(s.account==null)"laundryLogin" else "washerSetup")
     }
     Surface(onClick={navigate("powerSetup")},shape=RoundedCornerShape(16.dp),color=MaterialTheme.colorScheme.surface){
@@ -250,21 +252,43 @@ fun SetupScreen(s:CampusUiState,padding:PaddingValues,navigate:(String)->Unit) =
     Hint("这里只读取和保存配置，不会出水、下单或付款。")
 }
 
+data class DormActions(val reload:()->Unit={},val choose:(Option,Int)->Unit={_,_->},val select:(DormWater)->Unit={},val verify:(com.beamjason.xiaorichang.ble.BleCandidate)->Unit={},val save:()->Unit={},val provision:()->Unit={})
+
 @Composable
-fun DormScreen(s:CampusUiState,padding:PaddingValues,vm:CampusViewModel,requestScan:()->Unit,import:()->Unit,navigate:(String)->Unit) = Page(padding) {
+fun DormScreen(s:CampusUiState,padding:PaddingValues,vm:CampusViewModel,requestScan:()->Unit,import:()->Unit,navigate:(String)->Unit) {
+    DormSetupContent(s,padding,DormActions(vm::loadDorm,vm::chooseDorm,vm::selectMachine,vm::verifyWater,vm::saveDorm,vm::resume),requestScan,import,navigate)
+}
+
+@Composable
+fun DormSetupContent(s:CampusUiState,padding:PaddingValues,actions:DormActions,requestScan:()->Unit={},import:()->Unit={},navigate:(String)->Unit={}) = Page(padding) {
     var expandedLevel by rememberSaveable { mutableIntStateOf(-1) }
+    var showManualDorm by rememberSaveable {mutableStateOf(false)}
+    var showOtherRadios by rememberSaveable { mutableStateOf(false) }
+    if(s.campus.portalDormAddress.isNotBlank()) Group {
+        NativeText("学校登记宿舍",style=MaterialTheme.typography.titleMedium)
+        Hint(s.campus.portalDormAddress)
+        if(s.dormSetup.autoMatched)Hint(if(s.dormSetup.suggestedPower!=null)"已匹配热水和电表，核对后一起保存。" else "已匹配热水宿舍。电表未唯一匹配时保留原设置。")
+    }
     var search by rememberSaveable { mutableStateOf("") }
+    var advancedImport by rememberSaveable { mutableStateOf(false) }
     val d=s.dormSetup; val busy="dorm" in s.busy || "verify" in s.busy || "saveDorm" in s.busy
-    Hint("先选择宿舍，再选择学校返回的水控。附近出现多台设备时，可以逐台核对编号。")
+    if(!d.autoMatched)Hint("登录学校账号后匹配本人宿舍；信息缺失时可手动选择。")
     if(!s.campus.configured) ActionButton("先登录学校账号") { navigate("login") }
     else if(!s.water.hasPlatform) Group {
-        NativeText("导入一次内测热水配置",style=MaterialTheme.typography.titleMedium)
-        Hint("使用提供给你的平台配置文件，之后便可通过学校账号选择本人宿舍。")
-        ActionButton("选择配置文件",onClick=import)
+        NativeText("热水接入尚未准备好",style=MaterialTheme.typography.titleMedium)
+        Hint("请联系内测提供者完成初始化。准备好后，可直接选择自己的宿舍和水控。")
+        ActionButton("重新检查接入",onClick=actions.provision)
+        TextButton({advancedImport=!advancedImport}){NativeText("高级选项")}
+        if(advancedImport)OutlinedButton(import){NativeText("导入本人已有配置")}
     } else {
-        OutlinedButton(vm::loadDorm,enabled=!busy && !s.unresolvedWater,modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)) { NativeText(if(d.levels.isEmpty()) "读取我的宿舍信息" else "重新选择宿舍") }
+        OutlinedButton(actions.reload,enabled=!busy && !s.unresolvedWater,modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)) { NativeText(if(d.levels.isEmpty()) "读取我的宿舍信息" else "重新选择宿舍") }
         if(s.unresolvedWater) Hint("请先结束或核对当前热水会话，再更换水控。",true)
-        d.levels.forEachIndexed { level,options ->
+        if(d.autoMatched)Group(padding=PaddingValues(horizontal=16.dp),spacing=0.dp) {
+            Row(Modifier.fillMaxWidth().heightIn(min=52.dp),verticalAlignment=Alignment.CenterVertically){NativeText("已匹配宿舍",Modifier.weight(1f));NativeText(PortalDormAddress.parse(s.campus.portalDormAddress)?.shortRoom ?: s.campus.dorm,color=MaterialTheme.colorScheme.onSurfaceVariant)}
+            HorizontalDivider()
+            TextButton({showManualDorm=!showManualDorm},modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)){NativeText(if(showManualDorm)"收起宿舍选择" else "更换宿舍")}
+        }
+        if(!d.autoMatched || showManualDorm)d.levels.forEachIndexed { level,options ->
             Group {
                 val selected=d.path.getOrNull(level)
                 Row(verticalAlignment=Alignment.CenterVertically) {
@@ -274,7 +298,7 @@ fun DormScreen(s:CampusUiState,padding:PaddingValues,vm:CampusViewModel,requestS
                 if(selected==null || expandedLevel==level) {
                     if(options.size>8)OutlinedTextField(search,{search=it},label={NativeText("搜索")},singleLine=true,modifier=Modifier.fillMaxWidth())
                     options.filter {search.isBlank() || it.name.contains(search,true)}.forEach {o->
-                        ChoiceRow(o.name,selected==o,enabled=!busy){expandedLevel=-1;search="";vm.chooseDorm(o,level)}
+                        ChoiceRow(o.name,selected==o,enabled=!busy){expandedLevel=-1;search="";actions.choose(o,level)}
                     }
                 }
             }
@@ -282,17 +306,28 @@ fun DormScreen(s:CampusUiState,padding:PaddingValues,vm:CampusViewModel,requestS
         if(d.path.size==4) Group {
             NativeText("选择自己的水控",style=MaterialTheme.typography.titleMedium)
             if(d.machines.isEmpty()) Hint("未返回设备，请核对宿舍后重新读取。")
-            d.machines.forEach { m -> ChoiceRow("${m.name} · ${m.machineId}",d.selected==m,enabled=!busy) { vm.selectMachine(m) } }
+            if(d.autoMatched && d.machines.size==1) {
+                NativeText(d.machines.single().name,style=MaterialTheme.typography.bodyLarge)
+                Hint("水控编号 ${d.machines.single().machineId}")
+            } else d.machines.forEach { m -> ChoiceRow("${m.name} · ${m.machineId}",d.selected==m,enabled=!busy) { actions.select(m) } }
         }
         if(d.selected!=null) Group {
             NativeText("蓝牙核对",style=MaterialTheme.typography.titleMedium)
-            Hint("靠近水控，扫描并选择设备。只读取编号，不申请用水授权。")
-            OutlinedButton(requestScan,enabled=!busy && !s.unresolvedWater,modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)) { NativeText("扫描附近水控") }
-            d.candidates.forEach { c ->
-                NavRow(c.name,"${c.address.takeLast(8)} · 信号 ${c.rssi} dBm${if(d.verifiedAddress==c.address) " · 编号已核对" else " · 点击核对"}",Icons.Default.Bluetooth,d.verifiedAddress==c.address) { if(!busy) vm.verifyWater(c) }
+            Hint("靠近水控后自动读取编号，匹配本宿舍设备。")
+            OutlinedButton(requestScan,enabled=!busy && !s.unresolvedWater,modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)) { NativeText(if(busy)"正在查找本宿舍水控…" else if(d.verifiedAddress!=null)"重新查找" else "查找本宿舍水控") }
+            if(d.checkingAddress!=null)Hint("发现 ${d.candidates.size} 台附近设备，正在核对宿舍编号…")
+            val own=d.candidates.firstOrNull{it.address==d.verifiedAddress}
+            if(own!=null) {
+                NavRow("本宿舍水控","${d.selected.name} · 编号已核对",Icons.Default.Bluetooth,true){}
+                val others=d.candidates.filter{it.address!=d.verifiedAddress}
+                if(others.isNotEmpty())TextButton({showOtherRadios=!showOtherRadios}){NativeText(if(showOtherRadios)"收起其他附近设备" else "其他附近设备（${others.size}）")}
+                if(showOtherRadios)others.forEach{c->Hint(if(d.readIdentities.containsKey(c.address))"其他水控 · 与本宿舍编号不匹配" else "其他附近设备 · 无需选择")}
+            } else if(!busy)d.candidates.forEach { c ->
+                if(d.readIdentities[c.address]?.equals(d.selected.machineId,true)==false)Hint("其他宿舍水控 · 编号不匹配")
+                else NavRow("待确认的水控","信号 ${c.rssi} dBm · 点按重新核对",Icons.Default.Bluetooth){if(!busy)actions.verify(c)}
             }
-            if(d.verifiedAddress==null) Hint("尚未完成蓝牙编号核对。也可以先保存宿舍，在首次开始时核对。")
-            ActionButton(if(d.verifiedAddress!=null) "保存宿舍与已核对水控" else "保存宿舍，稍后核对",enabled=!busy && !s.unresolvedWater, onClick=vm::saveDorm)
+            if(d.verifiedAddress==null && !busy) Hint("尚未找到本宿舍水控。也可以先保存宿舍，稍后靠近设备再核对。")
+            ActionButton(if(d.suggestedPower!=null) "保存热水和电表" else if(d.verifiedAddress!=null) "保存宿舍与已核对水控" else "保存宿舍，稍后核对",enabled=!busy && !s.unresolvedWater, onClick=actions.save)
         }
     }
     if(busy) LinearProgressIndicator(Modifier.fillMaxWidth())

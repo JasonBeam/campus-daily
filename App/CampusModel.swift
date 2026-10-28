@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import Security
+import WidgetKit
 import WaterCore
 
 private enum CampusConfigStore {
@@ -58,6 +59,7 @@ private enum CampusConfigStore {
     }
     var room: String {
         let full = snapshot?.room ?? config?.dormRoom.nonEmpty ?? "未配置"
+        if let address = PortalDormAddress.parse(full) {return address.shortRoom}
         let parts = full.components(separatedBy:" · ")
         if parts.count == 4, parts[1].hasSuffix("栋") {
             let building = String(parts[1].dropLast())
@@ -80,9 +82,23 @@ private enum CampusConfigStore {
         if let snapshot, snapshot.balance != nil { return snapshot.balanceIsStale() ? "上次余额" : "已更新" }
         return configured ? "暂未获取" : "待配置"
     }
+    var powerConfigured: Bool { config?.buildingID.isEmpty == false }
+    func savePowerBinding(building: String, meter: CampusElectricity) throws {
+        guard !loading, var next = config else { throw WaterError.busy }
+        next.buildingID = building; next.meterID = meter.id
+        try next.validate(); try CampusConfigStore.save(next)
+        config = next
+        snapshot = CampusSnapshot(owner:next.cacheIdentity)
+        snapshot?.recordPower(.success(meter))
+        saveSnapshot()
+    }
     private func saveSnapshot() {
         guard let snapshot else { return }
-        do { try JSONEncoder().encode(snapshot).write(to:cacheURL,options:[.atomic,.completeFileProtectionUntilFirstUserAuthentication]) }
+        do {
+            try JSONEncoder().encode(snapshot).write(to:cacheURL,options:[.atomic,.completeFileProtectionUntilFirstUserAuthentication])
+            try CampusSharedCache.save(snapshot)
+            WidgetCenter.shared.reloadTimelines(ofKind:"CampusDailyBalances")
+        }
         catch { issue = "余额已读取，本机缓存未保存" }
     }
     func importConfig(_ url: URL) throws {
@@ -93,24 +109,32 @@ private enum CampusConfigStore {
         let value = try JSONDecoder().decode(CampusConfig.self,from:Data(contentsOf:url))
         try value.validate()
         try CampusConfigStore.save(value)
-        if config?.cacheIdentity != value.cacheIdentity { snapshot = nil }
+        if config?.cacheIdentity != value.cacheIdentity { snapshot = nil; CampusSharedCache.clear(); WidgetCenter.shared.reloadTimelines(ofKind:"CampusDailyBalances") }
         config = value; configured = true; issue = nil; lastAttempt = nil
     }
+    var onboardingLogin: CampusConfig? { config }
     func acceptLogin(_ value: CampusConfig) throws {
         guard !loading else { throw WaterError.busy }
         var next = value
-        if let previous = config, previous.custid == value.custid, previous.areacode == value.areacode {
-            next.buildingID = previous.buildingID; next.dormRoom = previous.dormRoom
+        if let previous = config, previous.syscustid == value.syscustid, previous.areacode == value.areacode {
+            next.buildingID = previous.buildingID; next.meterID = previous.meterID; next.dormRoom = previous.dormRoom
+            if next.portalDormAddress.isEmpty {next.portalDormAddress = previous.portalDormAddress}
         }
+        if next.dormRoom.isEmpty, let address = PortalDormAddress.parse(next.portalDormAddress) {next.dormRoom = address.shortRoom}
         try next.validate(); try CampusConfigStore.save(next)
-        if config?.cacheIdentity != next.cacheIdentity { snapshot = nil }
+        if config?.cacheIdentity != next.cacheIdentity { snapshot = nil; CampusSharedCache.clear(); WidgetCenter.shared.reloadTimelines(ofKind:"CampusDailyBalances") }
         config = next; configured = true; issue = nil; lastAttempt = nil
     }
-    func saveDormName(_ room: String) throws {
+    func saveDormName(_ room: String, power: CampusPowerSuggestion? = nil) throws {
         guard !loading, var next = config else { throw WaterError.busy }
-        next.dormRoom = room; next.buildingID = ""
+        let changed = next.dormRoom != room
+        next.dormRoom = room
+        if let power {next.buildingID = power.building;next.meterID = power.meter.id}
+        else if changed {next.buildingID = "";next.meterID = ""}
         try next.validate(); try CampusConfigStore.save(next)
         config = next
+        if changed || power != nil {snapshot?.electricity = nil; snapshot?.powerFetchedAt = nil; snapshot?.powerError = nil}
+        if let power {snapshot?.recordPower(.success(power.meter))}
         snapshot?.owner = next.cacheIdentity
         snapshot?.recordRoom(.success(room))
         saveSnapshot()
@@ -121,6 +145,17 @@ private enum CampusConfigStore {
         if FileManager.default.fileExists(atPath:file.path) {
             do { try importConfig(file); try FileManager.default.removeItem(at:file) }
             catch { issue = "校园配置导入失败，请检查格式" }
+        }
+        let powerFile = root.appendingPathComponent("bootstrap.campuspowerbinding")
+        if let config, let data = try? Data(contentsOf:powerFile),
+           let binding = try? JSONSerialization.jsonObject(with:data) as? [String:String],
+           binding["syscustid"] == config.syscustid, binding["areacode"] == config.areacode,
+           let building = binding["buildingID"], let meter = binding["meterID"] {
+            var next = config; next.buildingID = building; next.meterID = meter
+            if (try? CampusConfigStore.save(next)) != nil {
+                self.config = next; snapshot = nil; lastAttempt = nil; CampusSharedCache.clear()
+                try? FileManager.default.removeItem(at:powerFile)
+            }
         }
         let cache = root.appendingPathComponent("bootstrap.campuscache")
         if let config, let bytes = try? Data(contentsOf:cache),
@@ -137,11 +172,25 @@ private enum CampusConfigStore {
         if !force, let lastAttempt, Date().timeIntervalSince(lastAttempt) < 300 { return }
         loading = true; lastAttempt = Date(); issue = nil
         defer { loading = false }
-        var next = snapshot ?? CampusSnapshot(owner:config.cacheIdentity)
+        if let shared = CampusSharedCache.read(CampusSnapshot.self), shared.owner == config.cacheIdentity,
+           (shared.balanceFetchedAt ?? .distantPast) > (snapshot?.balanceFetchedAt ?? .distantPast) { snapshot = shared }
+        var next = snapshot?.owner == config.cacheIdentity ? snapshot! : CampusSnapshot(owner:config.cacheIdentity)
         do { next.recordBalance(.success(try await provider.balance(config:config))) }
         catch { next.recordBalance(.failure((error as? CampusError) ?? .network)) }
-        do { next.recordRoom(.success(try await provider.room(config:config))) }
-        catch { next.recordRoom(.failure((error as? CampusError) ?? .network)) }
+        if !config.buildingID.isEmpty {
+            // The selected meter already returns its room and remaining energy.
+            // Reuse that one response, rather than querying the same room twice.
+            do {
+                let meter = try await provider.electricity(config:config)
+                next.recordPower(.success(meter));next.recordRoom(.success(meter.room))
+            } catch {
+                let issue = (error as? CampusError) ?? .network
+                next.recordPower(.failure(issue));next.recordRoom(.failure(issue))
+            }
+        } else {
+            do { next.recordRoom(.success(try await provider.room(config:config))) }
+            catch { next.recordRoom(.failure((error as? CampusError) ?? .network)) }
+        }
         snapshot = next
         issue = next.cardError?.rawValue
         if issue == nil, next.room == nil, config.dormRoom.isEmpty { issue = next.roomError?.rawValue }

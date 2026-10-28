@@ -23,7 +23,11 @@
 
 ## 安全和发行边界
 
-本机 iOS 生成器当前会把共享 `WaterPlatformProfile.secret` 作为 JSON 资源加入 App 包。这种做法在 Android/Harmony 上也会泄露，不能靠混淆解决。公开发行前必须设计服务端签名代理或取消客户端共享密钥。仅为受控的单人测试时，私有测试构建仍需明确告知测试者该密钥可从包中提取；测试包不得进入 GitHub Release。
+本机 iOS 生成器只会在 Debug 配置且本机存在 `private/distribution/WaterPlatformProfile.json` 时复制该资源；Debug App 可被提取出其中参数，不得分发。Release IPA 不带该资源，首次设置热水仍需本人合法取得的平台参数。公开源码与 Release 资产不得包含 `private/`、账号信息、共享参数或签名材料。
+
+Android 测试包也不内置平台参数。开发者可以使用 `tools/provision-android-water.py` 将仅含平台字段的本机文件暂存到指定 Debug 测试设备；App 会在本机加密并消费一次性文件。该脚本不应对 Release 包或他人设备使用。HarmonyOS 尚未实现；若后续移植，身份与平台参数仍须按用户授权在设备端处理。
+
+如果要让全新用户无需自己取得热水平台参数，需要设计服务端签名代理或取消客户端共享密钥依赖；不能靠混淆或把共享密钥放进 APK/IPA 解决。
 
 Android/Harmony 构建需由各自 SDK 编译、签名和真机运行。没有编译器产物、设备日志和实机结果时，源代码检查不等于支持已验证。
 

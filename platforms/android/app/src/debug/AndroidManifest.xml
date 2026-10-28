@@ -1,3 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <application><activity android:name=".PreviewActivity" android:exported="true" android:windowSoftInputMode="adjustResize" /></application>
+    <application>
+        <activity android:name=".PreviewActivity" android:exported="true" android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".BleReadOnlyActivity" android:exported="true" android:permission="android.permission.DUMP" />
+    </application>
 </manifest>

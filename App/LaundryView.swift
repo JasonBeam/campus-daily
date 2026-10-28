@@ -9,7 +9,7 @@ struct LaundryDetail: View {
     @State private var review = false
     @State private var confirmPayment = false
     @State private var confirmCancellation = false
-    private let accent = Color(red:0.37,green:0.31,blue:0.65)
+    private let accent = NativeTheme.tint
     private var selected: LaundryProgram? {
         laundry.snapshot?.programs.first(where: { $0.id == selectedId }) ?? laundry.snapshot?.programs.first
     }
@@ -24,7 +24,7 @@ struct LaundryDetail: View {
                                 Text(record.order?.label ?? "上次订单已结束").font(.subheadline)
                                 Spacer()
                                 Text(record.order?.paid == true ? "已付款" : "未支付").font(.caption).foregroundStyle(.secondary)
-                            }.padding(16).background(Color(uiColor:.secondarySystemGroupedBackground),in:RoundedRectangle(cornerRadius:18))
+                            }.padding(16).background(NothingTheme.surface,in:RoundedRectangle(cornerRadius:18))
                         } else { orderCard(record) }
                     }
                     if laundry.checkout == nil || laundry.checkout?.stage == .completed {
@@ -49,7 +49,7 @@ struct LaundryDetail: View {
                         .font(.footnote).foregroundStyle(.secondary).fixedSize(horizontal:false,vertical:true)
                 }
             }.padding(20).frame(maxWidth:560).frame(maxWidth:.infinity)
-        }.background(Color(uiColor:.systemGroupedBackground))
+        }.background(NativeTheme.background).tint(NativeTheme.tint)
             .navigationTitle("洗衣机").navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement:.topBarTrailing) {
@@ -79,7 +79,7 @@ struct LaundryDetail: View {
                         }.padding(.horizontal,18).frame(minHeight:54)
                     }.buttonStyle(WaterButtonStyle(primary:true,accent:accent))
                         .disabled(!laundry.mayCreate).padding(.horizontal,20).padding(.vertical,12)
-                        .background(.regularMaterial).accessibilityIdentifier("reviewLaundryOrder")
+                        .background(NativeTheme.background).accessibilityIdentifier("reviewLaundryOrder")
                 }
             }
             .task { await laundry.refresh(); await laundry.refreshOrder() }
@@ -108,7 +108,7 @@ struct LaundryDetail: View {
     private func deviceCard(_ value: LaundrySnapshot) -> some View {
         VStack(alignment:.leading,spacing:14) {
             HStack(alignment:.top,spacing:14) {
-                Image(systemName:"washer.fill").font(.title).foregroundStyle(accent)
+                Image(systemName:"washer").font(.title).foregroundStyle(accent)
                     .frame(width:52,height:52).background(accent.opacity(0.08),in:RoundedRectangle(cornerRadius:16))
                 VStack(alignment:.leading,spacing:6) {
                     Text("\(value.deviceNo)号 · \(value.deviceTypeName)").font(.headline)
@@ -122,7 +122,7 @@ struct LaundryDetail: View {
             }
             Text("查询于 \(value.fetchedAt.formatted(date:.omitted,time:.standard))").font(.caption).foregroundStyle(.secondary)
         }.padding(20).frame(maxWidth:.infinity,alignment:.leading)
-            .background(Color(uiColor:.secondarySystemGroupedBackground),in:RoundedRectangle(cornerRadius:24))
+            .background(NothingTheme.surface,in:RoundedRectangle(cornerRadius:16))
     }
     private func programRow(_ program: LaundryProgram) -> some View {
         let isSelected = selected?.id == program.id
@@ -136,20 +136,19 @@ struct LaundryDetail: View {
                 Spacer(minLength:8)
                 Text(program.price,format:.currency(code:"CNY")).font(.title3.weight(.semibold)).monospacedDigit().foregroundStyle(.primary)
             }.padding(18).frame(maxWidth:.infinity,minHeight:82)
-                .background(isSelected ? accent.opacity(0.08) : Color(uiColor:.secondarySystemGroupedBackground),in:RoundedRectangle(cornerRadius:20))
-                .overlay(RoundedRectangle(cornerRadius:20).strokeBorder(isSelected ? accent.opacity(0.5) : .clear,lineWidth:1))
+                .background(isSelected ? accent.opacity(0.08) : NothingTheme.surface,in:RoundedRectangle(cornerRadius:16))
+                .overlay(RoundedRectangle(cornerRadius:16).strokeBorder(isSelected ? accent.opacity(0.5) : .clear,lineWidth:1))
         }.buttonStyle(.plain).disabled(laundry.checkoutBusy)
             .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
     private func orderCard(_ record: LaundryCheckoutRecord) -> some View {
         VStack(alignment:.leading,spacing:14) {
-            Text(record.stage == .completed ? "上次洗衣订单" : "洗衣订单").font(.caption).foregroundStyle(.secondary)
-            Text(record.order?.label ?? "正在核对预约结果").font(.title3.weight(.semibold))
-            HStack {
-                Text(record.programName).foregroundStyle(.secondary)
-                Spacer()
-                Text(record.order?.payPrice ?? record.expectedPrice,format:.currency(code:"CNY")).fontWeight(.semibold).monospacedDigit()
-            }
+            Text(record.stage == .completed ? "上次洗衣订单" : "当前洗衣订单").font(.subheadline).foregroundStyle(.secondary)
+            Text(record.order?.label ?? "正在核对预约结果").font(.headline)
+            Text(record.order?.payPrice ?? record.expectedPrice,format:.currency(code:"CNY"))
+                .font(.system(.largeTitle,design:.rounded).weight(.semibold)).monospacedDigit()
+            Text("实际金额以支付宝收银台为准").font(.caption).foregroundStyle(.secondary)
+            LabeledContent("洗衣程序",value:record.programName).font(.subheadline)
             if record.order?.payFlag?.text == "0" { Text("未支付").font(.caption).foregroundStyle(.secondary) }
             if let issue = laundry.checkoutIssue { Text(issue).font(.footnote).foregroundStyle(.orange) }
             if let progress = laundry.checkoutProgress {
@@ -171,8 +170,9 @@ struct LaundryDetail: View {
             }
             if record.stage == .created, let order = record.order,
                ["10","17"].contains(order.status.text), order.payFlag?.text == "0" {
+                Text("请先放好衣物，付款可能启动洗衣机。").font(.footnote).foregroundStyle(.secondary)
                 Button { confirmPayment = true } label: {
-                    Label("去支付 · 支付宝",systemImage:"arrow.up.right.square").frame(maxWidth:.infinity,minHeight:50)
+                    Label("前往支付宝",systemImage:"arrow.up.right.square").frame(maxWidth:.infinity,minHeight:50)
                 }.buttonStyle(WaterButtonStyle(primary:true,accent:accent)).disabled(laundry.checkoutBusy)
             }
             Button { Task { await laundry.refreshOrder() } } label: {
@@ -189,7 +189,7 @@ struct LaundryDetail: View {
                 Text("结果未确认时请勿重复下单或付款，可在U净订单中核对。")
                     .font(.caption).foregroundStyle(.secondary)
             }
-        }.padding(20).background(Color(uiColor:.secondarySystemGroupedBackground),in:RoundedRectangle(cornerRadius:24))
+        }.padding(20).background(NothingTheme.surface,in:RoundedRectangle(cornerRadius:16))
             .task(id:record.orderUpdatedAt) {
                 if let order = record.order, order.status.text == "10", let seconds = order.countDown, seconds > 0 {
                     do { try await Task.sleep(for:.seconds(seconds + 1)) } catch { return }
@@ -245,7 +245,7 @@ private struct LaundryReviewSheet: View {
                         .font(.subheadline).foregroundStyle(.secondary)
                     Button { submitted = true; confirm() } label: {
                         Text("下单并前往支付宝").frame(maxWidth:.infinity,minHeight:52)
-                    }.buttonStyle(WaterButtonStyle(primary:true,accent:Color(red:0.37,green:0.31,blue:0.65)))
+                    }.buttonStyle(WaterButtonStyle(primary:true,accent:Color.primary))
                         .disabled(submitted).accessibilityIdentifier("submitLaundryOrder")
                 }.padding(24)
             }.navigationTitle("核对订单").navigationBarTitleDisplayMode(.inline)

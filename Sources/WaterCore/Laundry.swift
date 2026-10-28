@@ -86,6 +86,15 @@ public struct LaundrySnapshot: Codable, Sendable {
     public var deviceTypeId: Int? = nil
     public var activeOrderId: String? = nil
     public var stateLabel: String {
+        switch status {
+        case 1: return "洗衣中"
+        case 11: return "已被预约"
+        case 2: return "设备故障"
+        case 8: return "设备离线"
+        case 7: return "尚未开通"
+        case 9: return "设备停用"
+        default: break
+        }
         if activeOrderId != nil { return status == 10 ? "已预约" : "已有订单" }
         return status == 0 && createOrderEnabled ? "空闲" : "暂不可用"
     }

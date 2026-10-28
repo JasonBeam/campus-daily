@@ -8,7 +8,7 @@ import WaterCore
     @StateObject private var laundry = LaundryModel()
     var body: some Scene {
         WindowGroup {
-            WaterHome().environmentObject(water).environmentObject(campus).environmentObject(laundry)
+            CampusRootView().environmentObject(water).environmentObject(campus).environmentObject(laundry)
                 .task {
                     water.importDevelopmentConfigIfPresent()
                     campus.importDevelopmentConfigIfPresent()
@@ -17,7 +17,7 @@ import WaterCore
                     await campus.refresh()
                     await laundry.refresh()
                 }
-                .onOpenURL { AlipayBridge.shared.handle($0); Task { await laundry.refreshOrder() } }
+                .onOpenURL { if $0.scheme != "campusdaily" { AlipayBridge.shared.handle($0); Task { await laundry.refreshOrder() } } }
         }
     }
 }
@@ -27,210 +27,291 @@ struct WaterHome: View {
     @EnvironmentObject private var campus: CampusModel
     @EnvironmentObject private var laundry: LaundryModel
     @Environment(\.scenePhase) private var phase
+    @Environment(\.dynamicTypeSize) private var typeSize
     @State private var settings = false
     @State private var firstRun = false
     @AppStorage("didSeeQuickSetup") private var didSeeQuickSetup = false
-    @ScaledMetric(relativeTo:.largeTitle) private var balanceSize: CGFloat = 48
-    private let accent = Color(red:0.10,green:0.35,blue:0.68)
+    @ScaledMetric(relativeTo:.largeTitle) private var balanceSize: CGFloat = 34
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment:.leading,spacing:24) {
-                    balanceCard
-                    HStack {
-                        Text("日常服务").font(.title3.weight(.semibold))
+                VStack(alignment:.leading,spacing:18) {
+                    HStack(alignment:.firstTextBaseline) {
+                        Text(campus.room).font(.subheadline).foregroundStyle(.secondary).accessibilityIdentifier("dormRoom")
                         Spacer()
-                        Text("点开即用").font(.caption).foregroundStyle(.secondary)
-                    }.padding(.horizontal,4)
+                        if campus.loading { ProgressView().controlSize(.small).accessibilityLabel("更新余额") }
+                    }
+                    balances
+                    if !campus.configured || !water.configured || !laundry.configured {
+                        NavigationLink { QuickSetupView() } label: {
+                            HStack(spacing:12) {
+                                Image(systemName:"slider.horizontal.3").foregroundStyle(NativeTheme.tint)
+                                VStack(alignment:.leading,spacing:5) {
+                                    Text("继续完成设置").font(.subheadline.weight(.medium))
+                                    Text("账号、宿舍和常用洗衣机").font(.caption).foregroundStyle(.secondary)
+                                }
+                                Spacer(); Image(systemName:"chevron.right").font(.caption).foregroundStyle(.secondary)
+                            }.foregroundStyle(.primary).padding(16).background(NativeTheme.surface,in:RoundedRectangle(cornerRadius:16))
+                        }.buttonStyle(.plain)
+                    }
                     ViewThatFits(in:.horizontal) {
-                        HStack(alignment:.top,spacing:14) { waterTile.frame(minWidth:155); laundryTile.frame(minWidth:155) }
-                        VStack(spacing:14) { waterTile; laundryTile }
+                        HStack(alignment:.top,spacing:12) { waterTile.frame(minWidth:145); laundryTile.frame(minWidth:145) }
+                        VStack(spacing:12) { waterTile; laundryTile }
                     }
                     if let record = laundry.checkout, record.stage != .completed {
                         NavigationLink { LaundryDetail() } label: {
-                            HStack(spacing:14) {
-                                Image(systemName:"clock.arrow.circlepath").font(.title2)
+                            HStack(spacing:13) {
+                                Image(systemName:"clock.arrow.circlepath").foregroundStyle(NativeTheme.tint)
                                 VStack(alignment:.leading,spacing:5) {
                                     Text("洗衣订单").font(.headline)
                                     Text(record.order?.label ?? "订单结果待核对").font(.subheadline).foregroundStyle(.secondary)
                                 }
-                                Spacer(); Image(systemName:"chevron.right").font(.caption)
-                            }.padding(20).foregroundStyle(.primary)
-                                .background(Color(uiColor:.secondarySystemGroupedBackground),in:RoundedRectangle(cornerRadius:24))
+                                Spacer(); Image(systemName:"chevron.right").font(.caption).foregroundStyle(.secondary)
+                            }.foregroundStyle(.primary).padding(17).background(NativeTheme.surface,in:RoundedRectangle(cornerRadius:16))
                         }.buttonStyle(.plain)
                     }
                     if let ended = water.lastEnded {
-                        HStack(alignment:.top,spacing:12) {
-                            Image(systemName:"checkmark.circle").foregroundStyle(.secondary)
+                        HStack(spacing:12) {
                             VStack(alignment:.leading,spacing:5) {
-                                Text("上次热水已结算").font(.subheadline.weight(.medium))
+                                Text("上次热水 · 已结算").font(.subheadline)
                                 Text(ended.formatted(date:.abbreviated,time:.shortened)).font(.caption).foregroundStyle(.secondary)
                             }
                             Spacer()
-                            if let cost = water.lastCost { Text(cost,format:.currency(code:"CNY")).font(.subheadline.weight(.semibold)).monospacedDigit() }
-                        }.padding(.horizontal,4)
+                            if let cost = water.lastCost { Text(cost,format:.currency(code:"CNY")).font(.subheadline.weight(.medium)).monospacedDigit() }
+                        }.padding(16).background(NativeTheme.surface,in:RoundedRectangle(cornerRadius:16))
                     }
-                }.padding(.horizontal,20).padding(.top,12).padding(.bottom,28)
-                    .frame(maxWidth:560).frame(maxWidth:.infinity)
-            }.background(Color(uiColor:.systemGroupedBackground))
+                    Text("下拉刷新余额").font(.caption).foregroundStyle(.secondary).padding(.horizontal,4)
+                }.padding(20).frame(maxWidth:560).frame(maxWidth:.infinity)
+            }.background(NativeTheme.background)
                 .navigationTitle("校园生活").navigationBarTitleDisplayMode(.large)
-                .toolbar {
-                    ToolbarItem(placement:.topBarTrailing) {
-                        Button { settings = true } label: { Image(systemName:"gearshape").frame(width:44,height:44) }
-                            .accessibilityLabel("设置与个人配置")
-                    }
-                }
+                .toolbar { ToolbarItem(placement:.topBarTrailing) {
+                    Button { settings = true } label: { Image(systemName:"slider.horizontal.3").frame(width:44,height:44) }.accessibilityLabel("设置与个人配置")
+                } }
                 .refreshable { await campus.refresh(force:true); await laundry.refresh(force:true) }
                 .sheet(isPresented:$settings) { SettingsView() }
                 .sheet(isPresented:$firstRun,onDismiss:{ didSeeQuickSetup = true }) {
-                    NavigationStack {
-                        QuickSetupView().toolbar {
-                            ToolbarItem(placement:.confirmationAction) { Button("稍后设置") { firstRun = false } }
-                        }
-                    }
+                    NavigationStack { QuickSetupView().toolbar {
+                        ToolbarItem(placement:.confirmationAction) { Button("稍后设置") { firstRun = false } }
+                    } }
                 }
-                .task {
-                    if !didSeeQuickSetup && !campus.configured && !water.configured && !laundry.configured { firstRun = true }
-                }
-                .onChange(of:phase) { _,value in
-                    if value == .active { Task { await campus.refresh(); await laundry.refresh(); await laundry.refreshOrder() } }
-                }
-                .onChange(of:water.stage) { old,value in
-                    if old != .settled, value == .settled { Task { await campus.refresh(force:true) } }
-                }
-        }.tint(accent)
+                .task { if !didSeeQuickSetup && !campus.configured && !water.configured && !laundry.configured { firstRun = true } }
+                .onChange(of:phase) { _,value in if value == .active { Task { await campus.refresh(); await laundry.refresh(); await laundry.refreshOrder() } } }
+                .onChange(of:water.stage) { old,value in if old != .settled, value == .settled { Task { await campus.refresh(force:true) } } }
+        }.tint(NativeTheme.tint)
     }
     private var waterTile: some View {
         NavigationLink { WaterDetail() } label: {
-            ServiceTile(title:"热水洗澡",symbol:"drop.fill",status:water.busy ? "处理中" : water.problem ? "待核对" : !water.configured ? "待配置" : water.stage?.mayClose == true ? "用水中" : "随时可用",
-                detail:water.stage?.mayClose == true ? "结束后记得结算" : "开始 · 结束结算",color:accent)
+            ServiceTile(title:"热水洗澡",symbol:"drop",status:water.busy ? "处理中" : water.problem ? "待核对" : !water.configured ? "待配置" : water.stage == .active ? "已授权" : water.stage?.mayClose == true ? "待核对" : "可连接",
+                detail:campus.room,color:NativeTheme.tint)
         }.buttonStyle(.plain).accessibilityIdentifier("waterEntry")
     }
     private var laundryTile: some View {
         NavigationLink { LaundryDetail() } label: {
-            ServiceTile(title:"洗衣机",symbol:"washer.fill",status:laundry.deviceStateText,
-                detail:laundry.snapshot.map { "\($0.deviceNo)号 · \($0.storeName)" } ?? "常用机器 · 选择程序",color:Color(red:0.37,green:0.31,blue:0.65))
+            ServiceTile(title:"洗衣机",symbol:"washer",status:laundry.deviceStateText,
+                detail:laundry.snapshot.map { "常用 · \($0.deviceNo)号" } ?? "登录与扫码绑定",color:NativeTheme.tint)
         }.buttonStyle(.plain).accessibilityIdentifier("laundryEntry")
     }
-    private var balanceCard: some View {
-        VStack(alignment:.leading,spacing:20) {
+    private var balances: some View {
+        VStack(alignment:.leading,spacing:16) {
             HStack {
-                Label("校园卡余额",systemImage:"creditcard").font(.subheadline.weight(.medium)).foregroundStyle(.secondary)
+                Text("双余额").font(.headline)
                 Spacer()
-                HStack(spacing:5) {
-                    if campus.loading { ProgressView().controlSize(.mini) }
-                    Text(campus.freshness)
-                }.font(.caption).foregroundStyle(.secondary)
+                NavigationLink { CampusPowerSetupView() } label: {
+                    Text(campus.powerConfigured ? "电表设置" : "绑定电表").font(.caption).frame(minHeight:44)
+                }
             }
-            HStack(alignment:.firstTextBaseline,spacing:5) {
-                Text("¥").font(.title2.weight(.medium)).foregroundStyle(.secondary)
-                Text(campus.balanceText).font(.system(size:balanceSize,weight:.semibold,design:.rounded))
-                    .monospacedDigit().minimumScaleFactor(0.55).lineLimit(1)
-                    .accessibilityIdentifier("campusBalance")
-            }.accessibilityElement(children:.ignore)
-                .accessibilityLabel("校园卡余额 \(campus.balanceText == "—" ? "暂未获取" : campus.balanceText + "元")")
-            Divider()
-            HStack(alignment:.firstTextBaseline,spacing:12) {
-                Label("宿舍",systemImage:"building.2").foregroundStyle(.secondary)
-                Spacer(minLength:8)
-                Text(campus.room).fontWeight(.medium).multilineTextAlignment(.trailing)
-                    .textSelection(.enabled).accessibilityIdentifier("dormRoom")
-            }.font(.subheadline)
-            if let issue = campus.issue {
-                Text(issue).font(.caption).foregroundStyle(.orange).fixedSize(horizontal:false,vertical:true)
-            }
-            if let date = campus.snapshot?.balanceFetchedAt {
-                Text("查询于 \(date.formatted(date:.abbreviated,time:.shortened))").font(.caption).foregroundStyle(.tertiary)
+            if typeSize.isAccessibilitySize {
+                powerMetric; Divider(); cardMetric
             } else {
-                Text(campus.configured ? "下拉可更新余额" : "在设置中导入校园卡配置").font(.caption).foregroundStyle(.tertiary)
+                ViewThatFits(in:.horizontal) {
+                    HStack(alignment:.top,spacing:16) { powerMetric.frame(minWidth:140); cardMetric.frame(minWidth:130) }
+                    VStack(alignment:.leading,spacing:18) { powerMetric; Divider(); cardMetric }
+                }
             }
-        }.padding(22).background(Color(uiColor:.secondarySystemGroupedBackground),in:RoundedRectangle(cornerRadius:24))
+            if let issue = campus.issue { Text(issue).font(.footnote).foregroundStyle(.orange).fixedSize(horizontal:false,vertical:true) }
+            if let error = campus.snapshot?.powerError { Text("电费：" + error.rawValue).font(.footnote).foregroundStyle(.orange).fixedSize(horizontal:false,vertical:true) }
+        }.padding(.horizontal,16).padding(.bottom,16).padding(.top,6)
+            .background(NativeTheme.surface,in:RoundedRectangle(cornerRadius:16))
     }
-
+    private var powerMetric: some View {
+        VStack(alignment:.leading,spacing:10) {
+            Text("宿舍电量").font(.subheadline).foregroundStyle(.secondary)
+            metricValue(campus.snapshot?.electricity.map { decimal($0.remainingKWh) } ?? "—",unit:"度")
+            VStack(alignment:.leading,spacing:6) {
+                Text("电费 " + (campus.snapshot?.electricity.map { "¥" + decimal($0.balanceYuan) } ?? "未获取"))
+                Text("昨日 " + (campus.snapshot?.electricity?.yesterdayKWh.map { decimal($0) + " 度" } ?? "未返回"))
+            }.font(.caption).foregroundStyle(.secondary)
+            if let stamp = campus.snapshot?.powerFetchedAt {
+                Text((campus.snapshot?.powerIsStale() == true ? "上次 " : "查询 ") + stamp.formatted(date:.omitted,time:.shortened)).font(.caption2).foregroundStyle(.secondary)
+            }
+            NavigationLink { CampusRechargeView(kind:.power) } label: { Text("充电费 ↗").font(.subheadline).frame(minHeight:44) }
+        }.frame(maxWidth:.infinity,alignment:.leading)
+    }
+    private var cardMetric: some View {
+        VStack(alignment:.leading,spacing:10) {
+            Text("校园卡").font(.subheadline).foregroundStyle(.secondary)
+            metricValue(campus.balanceText,unit:"元").accessibilityIdentifier("campusBalance")
+            VStack(alignment:.leading,spacing:6) {
+                Text("校园消费余额")
+                Text(campus.freshness)
+            }.font(.caption).foregroundStyle(.secondary)
+            if let stamp = campus.snapshot?.balanceFetchedAt { Text("查询 " + stamp.formatted(date:.omitted,time:.shortened)).font(.caption2).foregroundStyle(.secondary) }
+            NavigationLink { CampusRechargeView(kind:.card) } label: { Text("充校园卡 ↗").font(.subheadline).frame(minHeight:44) }
+        }.frame(maxWidth:.infinity,alignment:.leading)
+    }
+    private func metricValue(_ value: String,unit: String) -> some View {
+        HStack(alignment:.firstTextBaseline,spacing:4) {
+            Text(value).font(.system(size:balanceSize,weight:.semibold)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
+            Text(unit).font(.caption).foregroundStyle(.secondary)
+        }.accessibilityElement(children:.combine)
+    }
+    private func decimal(_ value: Decimal) -> String {
+        let formatter = NumberFormatter(); formatter.locale = Locale(identifier:"zh_CN")
+        formatter.minimumFractionDigits = 2; formatter.maximumFractionDigits = 2
+        return formatter.string(from:NSDecimalNumber(decimal:value)) ?? "—"
+    }
 }
 
 struct WaterDetail: View {
     @EnvironmentObject private var water: WaterModel
-    private let accent = Color(red:0.10,green:0.35,blue:0.68)
+    @EnvironmentObject private var campus: CampusModel
+    @Environment(\.scenePhase) private var phase
     var body: some View {
         ScrollView {
-            VStack(alignment:.leading,spacing:20) {
-                waterCard
-                Label("开始后按设备出水键，结束后确认已停水。",systemImage:"info.circle")
-                    .font(.footnote).foregroundStyle(.secondary)
-            }.padding(20).frame(maxWidth:560).frame(maxWidth:.infinity)
-        }.background(Color(uiColor:.systemGroupedBackground))
-            .navigationTitle("热水洗澡").navigationBarTitleDisplayMode(.inline)
-    }
-    private var waterCard: some View {
-        VStack(alignment:.leading,spacing:20) {
-            HStack(alignment:.top,spacing:14) {
-                Image(systemName:water.problem ? "exclamationmark.circle" : water.stage == .settled ? "checkmark.circle" : "drop")
-                    .font(.title2).foregroundStyle(water.problem ? Color.orange : accent)
-                    .frame(width:44,height:44).background(accent.opacity(0.08),in:RoundedRectangle(cornerRadius:14))
-                VStack(alignment:.leading,spacing:6) {
-                    Text(water.busy ? "正在处理" : water.problem ? "本次未完成" : water.stage == .settled ? "上次已结算" : water.stage?.mayClose == true ? "热水已授权" : "准备洗澡")
-                        .font(.headline)
-                    Text(water.status).font(.subheadline).foregroundStyle(water.problem ? Color.orange : Color.secondary)
+            VStack(alignment:.leading,spacing:24) {
+                HStack { Text("宿舍热水"); Spacer(); Text(campus.room) }.font(.subheadline).foregroundStyle(.secondary)
+                VStack(alignment:.leading,spacing:13) {
+                    HStack(spacing:9) {
+                        if water.busy { ProgressView().controlSize(.small) }
+                        else { Circle().fill(water.problem ? Color.orange : NativeTheme.tint).frame(width:7,height:7).accessibilityHidden(true) }
+                        Text(headline).font(.title2.bold()).accessibilityIdentifier("waterHeadline")
+                    }
+                    Text(water.inspecting ? "正在只读核对附近水控，不会出水。" : water.status).font(.subheadline).foregroundStyle(water.problem ? Color.orange : Color.secondary)
                         .fixedSize(horizontal:false,vertical:true).accessibilityIdentifier("waterStatus")
                 }
-                if water.busy { Spacer(minLength:0); ProgressView() }
-            }
-            VStack(spacing:10) {
-                Button { perform(start:true) } label: {
-                    Label("开始洗澡",systemImage:"drop.fill").frame(maxWidth:.infinity,minHeight:52)
-                }.buttonStyle(WaterButtonStyle(primary:!water.mayFinish,accent:accent))
-                    .disabled(!water.mayStart).accessibilityIdentifier("startWater")
-                Button { perform(start:false) } label: {
-                    Label("结束结算",systemImage:"stop.circle").frame(maxWidth:.infinity,minHeight:52)
-                }.buttonStyle(WaterButtonStyle(primary:water.mayFinish,accent:accent))
-                    .disabled(!water.mayFinish).accessibilityIdentifier("finishWater")
-            }
-            if water.configured {
-                DisclosureGroup("连接检查") {
-                    Button { Task { await water.inspectBluetooth() } } label: {
-                        Label("检查蓝牙（不启动用水）",systemImage:"antenna.radiowaves.left.and.right")
-                            .frame(maxWidth:.infinity,minHeight:44)
-                    }.disabled(water.busy).accessibilityIdentifier("inspectWaterBluetooth")
-                }
-            }
-            if let date = water.lastEnded {
-                if water.stage == .settled {
-                    HStack {
-                        Text("本次费用").foregroundStyle(.secondary)
-                        Spacer()
-                        if let cost = water.lastCost {
-                            Text(cost,format:.currency(code:"CNY")).font(.title3.weight(.semibold)).monospacedDigit()
-                                .accessibilityIdentifier("settlementCost")
-                        } else {
-                            Text(water.hasReceipt ? "金额未返回" : "旧版未保存金额").font(.subheadline).foregroundStyle(.secondary)
+                HStack {
+                    Text("本次费用").foregroundStyle(.secondary)
+                    Spacer()
+                    if water.stage == .settled, let cost = water.lastCost {
+                        Text(cost,format:.currency(code:"CNY")).font(.title2.weight(.semibold)).monospacedDigit().accessibilityIdentifier("settlementCost")
+                    } else if water.stage == .settled {
+                        Text(water.hasReceipt ? "金额未返回" : "旧记录未保存金额").font(.subheadline).foregroundStyle(.secondary)
+                    } else { Text("结算后显示").font(.subheadline) }
+                }.padding(18).background(NativeTheme.surface,in:RoundedRectangle(cornerRadius:16))
+                if let ended = water.lastEnded {
+                    VStack(alignment:.leading,spacing:14) {
+                        Text("最近一次用水").font(.subheadline).foregroundStyle(.secondary)
+                        HStack {
+                            VStack(alignment:.leading,spacing:6) {
+                                Text("已结算").font(.subheadline)
+                                Text(ended.formatted(date:.abbreviated,time:.shortened)).font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            if let cost = water.lastCost { Text(cost,format:.currency(code:"CNY")).font(.subheadline).monospacedDigit() }
                         }
-                    }.accessibilityElement(children:.combine)
+                    }.padding(18).background(NativeTheme.surface,in:RoundedRectangle(cornerRadius:16))
                 }
-                Text("上次结算 \(date.formatted(date:.abbreviated,time:.shortened))").font(.caption).foregroundStyle(.tertiary)
+                if !water.configured {
+                    NavigationLink("设置校园账号与宿舍") { CampusOnboardingView() }.frame(minHeight:44)
+                }
+                if water.configured {
+                    DisclosureGroup("连接检查与设备信息") {
+                        Button { Task { await water.inspectBluetooth() } } label: {
+                            Label(water.inspecting ? "正在核对…" : "扫描并核对本宿舍水控",systemImage:"antenna.radiowaves.left.and.right").frame(maxWidth:.infinity,minHeight:44,alignment:.leading)
+                        }.disabled(!water.mayImport).accessibilityIdentifier("inspectWaterBluetooth")
+                        if let message = water.inspectionStatus {
+                            Text(message).font(.subheadline).foregroundStyle(.secondary).accessibilityIdentifier("waterInspectionStatus")
+                        }
+                        if let device = water.verifiedDevice {
+                            VStack(alignment:.leading,spacing:12) {
+                                Label("已识别的宿舍设备",systemImage:"checkmark.circle.fill").font(.headline).foregroundStyle(NativeTheme.tint)
+                                LabeledContent("设备名称",value:device.name)
+                                LabeledContent("水控编号",value:device.machineID).accessibilityIdentifier("verifiedWaterMachine")
+                                if let rssi = device.rssi { LabeledContent("本次信号",value:"\(rssi) dBm") }
+                                Text("设备标识 " + String(device.id.prefix(8)) + "…").font(.caption).foregroundStyle(.secondary)
+                                Text("发现 \(device.nearbyCount) 台同名设备，已按宿舍水控编号匹配。").font(.caption).foregroundStyle(.secondary)
+                                Text("核对于 " + device.verifiedAt.formatted(date:.omitted,time:.standard)).font(.caption).foregroundStyle(.secondary)
+                                Text("核对后已断开；开始洗澡时再连接。").font(.footnote).foregroundStyle(.secondary)
+                            }.font(.subheadline).padding(.vertical,10)
+                        }
+                        Text("只读取设备编号，不会出水。").font(.footnote).foregroundStyle(.secondary)
+                    }.font(.subheadline).padding(18).background(NativeTheme.surface,in:RoundedRectangle(cornerRadius:16))
+                }
+            }.padding(20).frame(maxWidth:560).frame(maxWidth:.infinity)
+        }.background(NativeTheme.background)
+            .navigationTitle("热水洗澡").navigationBarTitleDisplayMode(.inline)
+            .safeAreaInset(edge:.bottom) {
+                VStack(spacing:10) {
+                    Button { perform(start:!closing) } label: {
+                        HStack {
+                            if water.busy { ProgressView().tint(.white).controlSize(.small) }
+                            Text(water.busy ? "正在处理…" : closing ? "结束并结算" : water.stage == .settled ? "再次开始洗澡" : "开始洗澡")
+                            Spacer(); Image(systemName:closing ? "stop.circle" : "arrow.up.right")
+                        }.padding(.horizontal,18).frame(minHeight:52)
+                    }.buttonStyle(WaterButtonStyle(primary:true,accent:NativeTheme.tint))
+                        .disabled(closing ? !water.mayFinish : !water.mayStart)
+                        .accessibilityIdentifier(closing ? "finishWater" : "startWater")
+                    Text(closing ? "结算完成前，请留在水控附近。" : "授权后，按水控上的出水键。")
+                        .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                }.padding(.horizontal,20).padding(.top,12).padding(.bottom,12).background(NativeTheme.background)
             }
-        }.padding(20).background(Color(uiColor:.secondarySystemGroupedBackground),in:RoundedRectangle(cornerRadius:24))
+            .sheet(isPresented:Binding(get:{ !water.deviceCandidates.isEmpty },set:{ if !$0 { water.cancelDeviceSelection() } })) {
+                NavigationStack {
+                    List {
+                        Section {
+                            Text("附近有多台同名水控，请靠近自己宿舍的设备后选择。信号强度仅供参考，连接后还会核对宿舍水控编号。")
+                                .font(.subheadline).foregroundStyle(.secondary)
+                        }
+                        Section("选择水控") {
+                            ForEach(water.deviceCandidates) { device in
+                                Button { water.chooseDevice(device.id) } label: {
+                                    HStack(spacing:12) {
+                                        Image(systemName:"antenna.radiowaves.left.and.right")
+                                        VStack(alignment:.leading,spacing:6) {
+                                            Text(device.name).font(.headline)
+                                            Text("设备标识 " + device.id).font(.caption).foregroundStyle(.secondary)
+                                            if let rssi = device.rssi { Text("信号 \(rssi) dBm").font(.caption).foregroundStyle(.secondary) }
+                                        }
+                                    }.frame(maxWidth:.infinity,minHeight:60,alignment:.leading)
+                                }.accessibilityIdentifier("waterDevice-" + device.id)
+                            }
+                        }
+                    }.navigationTitle("选择水控设备").navigationBarTitleDisplayMode(.inline)
+                        .toolbar { ToolbarItem(placement:.cancellationAction) { Button("取消") { water.cancelDeviceSelection() } } }
+                }
+            }
+            .onChange(of:phase) { _,value in if value == .background { water.cancelDeviceSelection() } }
+            .onDisappear { water.cancelDeviceSelection() }
     }
-    private func perform(start:Bool) { Task { try? await water.run(start:start) } }
+    private var closing: Bool { water.stage?.mayClose == true }
+    private var headline: String {
+        if water.inspecting { return "正在核对设备" }
+        if water.busy { return "正在处理" }
+        if water.problem { return "本次待核对" }
+        if !water.configured { return "尚未配置热水" }
+        if water.stage == .active { return "热水已授权" }
+        if water.stage == .settled { return "结算完成" }
+        if water.stage != nil { return "当前记录待核对" }
+        return "准备洗澡"
+    }
+    private func perform(start:Bool) { Task { try? await water.run(start:start,allowDeviceSelection:true) } }
 }
 
 struct WaterButtonStyle: ButtonStyle {
     let primary: Bool
     let accent: Color
     @Environment(\.isEnabled) private var enabled
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     func makeBody(configuration:Configuration) -> some View {
         configuration.label.font(.body.weight(.semibold))
-            .foregroundStyle(enabled ? (primary ? Color.white : accent) : Color.secondary)
-            .background(enabled ? (primary ? accent : accent.opacity(0.08)) : Color(uiColor:.tertiarySystemFill),in:RoundedRectangle(cornerRadius:16))
-            .opacity(configuration.isPressed ? 0.84 : 1)
-            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.98 : 1)
-            .animation(reduceMotion ? nil : .easeOut(duration:0.12),value:configuration.isPressed)
+            .foregroundStyle(primary ? Color.white : accent)
+            .background(primary ? NativeTheme.action : NativeTheme.tint.opacity(0.10),in:RoundedRectangle(cornerRadius:12))
+            .opacity(enabled ? (configuration.isPressed ? 0.76 : 1) : 0.4)
     }
 }
 
 private enum ConfigImport { case water, campus, laundry }
 struct SettingsView: View {
+    var showsDone = true
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var water: WaterModel
     @EnvironmentObject private var campus: CampusModel
@@ -242,54 +323,43 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 Section {
-                    NavigationLink { QuickSetupView() } label: { Label("快速设置",systemImage:"checklist") }
-                        .accessibilityIdentifier("quickSetupEntry")
+                    NavigationLink { QuickSetupView() } label: {
+                        VStack(alignment:.leading,spacing:8) {
+                            Text("首次配置").font(.caption).foregroundStyle(.secondary)
+                            Text("账号与设备设置").font(.headline)
+                            Text("跟着步骤登录、选宿舍、扫机器").font(.footnote).foregroundStyle(.secondary)
+                        }.padding(.vertical,10)
+                    }.accessibilityIdentifier("quickSetupEntry")
                 }
-                Section {
+                Section("我的信息") {
                     NavigationLink { CampusOnboardingView() } label: {
-                        Label("校园登录与宿舍",systemImage:"person.crop.circle")
+                        LabeledContent("校园账号与宿舍",value:campus.configured ? campus.room : "去登录")
                     }.accessibilityIdentifier("campusOnboardingEntry")
-                    LabeledContent("宿舍",value:campus.room)
-                    Button {
-                        importKind = .campus; importing = true
-                    } label: { LabeledContent("校园卡配置",value:campus.configured ? "已配置 · 更换" : "导入") }
-                        .disabled(campus.loading)
-                    Button { Task { await campus.refresh(force:true) } } label: {
-                        Label(campus.loading ? "正在更新…" : "更新余额",systemImage:"arrow.clockwise")
-                    }.disabled(!campus.configured || campus.loading)
-                    if let issue = campus.issue { Text(issue).font(.footnote).foregroundStyle(.secondary) }
-                } header: { Text("校园卡与宿舍") } footer: {
-                    Text("配置保存在本机钥匙串。查询失败保留上次余额，并显示查询状态。")
-                }
-                Section {
-                    Button {
-                        importKind = .water; importing = true
-                    } label: { LabeledContent("热水配置",value:water.configured ? "已配置 · 更换" : "导入") }
-                        .disabled(!water.mayImport)
-                    Text(water.stage?.label ?? "暂无用水记录").font(.subheadline).foregroundStyle(.secondary)
-                } header: { Text("热水") } footer: { Text("有未结算记录时不能更换热水配置。") }
-                Section {
                     NavigationLink { WasherSetupView() } label: {
-                        Label("常用洗衣机",systemImage:"qrcode.viewfinder")
+                        LabeledContent("常用洗衣机",value:laundry.accountConnected ? "已登录 · \(laundry.savedMachines.count) 台" : "去设置")
                     }.accessibilityIdentifier("washerSetupEntry")
-                    Button { importKind = .laundry; importing = true } label: {
-                        LabeledContent("U净配置",value:laundry.configured ? "已配置 · 更换" : "导入")
-                    }.disabled(!laundry.mayImport)
-                    if let issue = laundry.issue { Text(issue).font(.footnote).foregroundStyle(.secondary) }
-                } header: { Text("洗衣机") } footer: {
-                    Text("个人登录凭据保存在本机钥匙串。有待核对订单时不能更换配置。")
+                    Button { Task { await campus.refresh(force:true) } } label: { Text(campus.loading ? "正在更新余额…" : "更新校园卡余额") }
+                        .disabled(!campus.configured || campus.loading)
                 }
-                Section("快捷指令") {
-                    Text("在快捷指令 App 搜索“校日常”，添加“开始洗澡”或“结束结算”。可放到主屏幕，或绑定操作按钮。")
-                    Text("使用时保持手机解锁并靠近水控。首次需要允许蓝牙和网络访问。")
+                Section("快捷使用") {
+                    Text("在快捷指令 App 搜索“校日常”，添加“开始洗澡”或“结束结算”，放到主屏幕。")
+                        .font(.footnote).foregroundStyle(.secondary)
                 }
-                Section("未确认的操作") {
-                    Text("超时后不要重复提交。先确认现场停水，再通过校园官方入口核对账单；App 会保留记录，不会自动重发。")
-                    Text("本版本尚未提供不确定交易的自动恢复，请勿卸载 App 清记录。")
+                Section {
+                    DisclosureGroup("高级设置与故障排查") {
+                        Text("通常无需导入文件。请优先使用上方账号与设备设置。")
+                            .font(.footnote).foregroundStyle(.secondary)
+                        Button("导入校园卡配置") { importKind = .campus; importing = true }.disabled(campus.loading)
+                        Button("导入热水配置") { importKind = .water; importing = true }.disabled(!water.mayImport)
+                        Button("导入 U净配置") { importKind = .laundry; importing = true }.disabled(!laundry.mayImport)
+                        Text("有未结算记录时请勿卸载或更换配置。操作未确认时，先核对现场及官方记录。")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    }
+                    LabeledContent("版本",value:version).font(.footnote).foregroundStyle(.secondary)
                 }
-                Section { LabeledContent("版本",value:version) }
-            }.navigationTitle("设置").navigationBarTitleDisplayMode(.inline)
-                .toolbar { ToolbarItem(placement:.confirmationAction) { Button("完成") { dismiss() } } }
+            }.scrollContentBackground(.hidden).background(NativeTheme.background).tint(NativeTheme.tint)
+                .navigationTitle(showsDone ? "设置" : "设备与设置").navigationBarTitleDisplayMode(.inline)
+                .toolbar { if showsDone { ToolbarItem(placement:.confirmationAction) { Button("完成") { dismiss() } } } }
                 .fileImporter(isPresented:$importing,allowedContentTypes:[.json,.data]) { result in
                     do {
                         let url = try result.get()

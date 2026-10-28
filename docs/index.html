@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#f3f5f8">
-  <title>校日常 · 安装</title>
+  <title>校日常 · 下载与安装</title>
   <style>
     :root { color-scheme: light dark; --bg:#f3f5f8; --card:#fff; --ink:#17202d; --muted:#667184; --line:#e2e7ee; --blue:#2767d8; --soft:#edf3ff; --amber:#8c5b00; --amber-bg:#fff4da; }
     @media (prefers-color-scheme: dark) { :root { --bg:#11151b; --card:#1a2029; --ink:#eef2f7; --muted:#a0aaba; --line:#303a48; --blue:#8ab4ff; --soft:#202d43; --amber:#ffd178; --amber-bg:#382b15; } }
@@ -37,52 +37,47 @@
 </head>
 <body>
   <main>
-    <div class="eyebrow">CAMPUS DAILY / INSTALL</div>
-    <h1>校日常，安装说明</h1>
-    <p class="intro">Android 可以从网页下载签名 APK 后安装。iPhone 需要 Apple 认可的签名分发方式；Safari 下载 IPA 本身不会安装 App。</p>
+    <div class="eyebrow">CAMPUS DAILY / DOWNLOAD</div>
+    <h1>校日常，按设备下载</h1>
+    <p class="intro">校日常是面向广东工商职业技术大学的非官方校园生活工具。请选择你的设备，查看对应的测试版安装方式。</p>
 
     <section class="platforms" aria-label="按设备选择安装方式">
       <article class="card" id="android">
         <h2>Android</h2>
-        <p class="state"><span class="dot" aria-hidden="true"></span>0.2.0-alpha3 · 安卓测试版 · 41.2 MiB</p>
+        <p class="state"><span class="dot" aria-hidden="true"></span>0.2.0-alpha12 · Android 测试版</p>
         <div class="copy">
-          <p>下载 APK 后，按手机提示确认安装。安装包已由项目方签名，你不需要自己的开发者证书。</p>
-          <p>首次安装仍可能需要允许浏览器或文件管理安装应用。华为 HarmonyOS 4.2 还会显示外部 APK 安全确认。</p>
+          <p>下载 APK 并打开文件，按手机提示完成安装。无需自己的开发者证书。</p>
+          <p>首次使用请登录本人校园账号。宿舍电表目前需要手动选择；热水首次配置需要本人取得的平台参数。</p>
         </div>
-        <a class="button primary" href="https://github.com/JasonBeam/campus-daily/releases/download/android-v0.2.0-alpha3/campus-daily-android-0.2.0-alpha3.apk">下载 Android APK</a>
-        <p style="font-size:13px;color:var(--muted)">首次使用需配置本人账号；热水需导入个人配置。三款目标手机的实机验证待完成，不支持 HarmonyOS NEXT。</p>
+        <a class="button primary" href="https://github.com/JasonBeam/campus-daily/releases/download/v0.8.0-beta.1/campus-daily-android-0.2.0-alpha12-debug.apk">下载 Android 测试版</a>
+        <p style="font-size:13px;color:var(--muted)">支持 Android 6.0 及以上；HarmonyOS 4.2 为兼容目标，不支持 HarmonyOS NEXT。</p>
       </article>
 
       <article class="card" id="ios">
         <h2>iPhone</h2>
-        <p class="state"><span class="dot" aria-hidden="true"></span>网页直装尚未开通</p>
+        <p class="state"><span class="dot" aria-hidden="true"></span>0.8.0 Beta 1 · iPhone 测试版</p>
         <div class="copy">
-          <p>目前 GitHub 上是无签名开发 IPA。下载后还要使用自己的 Apple 身份签名；免费 Personal Team 通常约 7 天需重新安装。</p>
-          <p>要让同学从网页直接安装，可使用 TestFlight 测试邀请；Safari OTA 安装则需要付费开发者账号、Ad Hoc 签名并预先登记设备。</p>
+          <p>下载后需使用自己的 Apple 账号签名才能安装。免费个人签名通常约 7 天后需要重新签名。</p>
+          <p>Safari 下载 IPA 不会直接安装 App；当前 iPhone 网页直装尚未开通。</p>
         </div>
-        <a class="button primary" href="https://github.com/JasonBeam/campus-daily/releases/download/v0.7.0/CampusDaily-0.7.0-build28-unsigned.ipa">下载当前 IPA（需自行签名）</a>
+        <a class="button primary" href="https://github.com/JasonBeam/campus-daily/releases/download/v0.8.0-beta.1/CampusDaily-0.8.0-build29-unsigned.ipa">下载 iPhone IPA（需自行签名）</a>
       </article>
     </section>
 
     <aside class="note">
-      <strong>为什么 iPhone 还不能像 Android 那样点网页安装？</strong>
-      iOS 原生 App 必须经过 Apple 签名。中国大陆校园用户目前不能使用 Apple 的欧盟网页分发；Ad Hoc 网页安装还需要开发者的付费账号、已登记的设备和配置描述文件。网页本身不能绕过这些条件。
+      <strong>当前版本的已知限制</strong>
+      校园卡可在学校网页登录后同步；宿舍电表还不能自动匹配，需要手动选择。校日常只面向广东工商职业技术大学环境，不代表学校或相关服务方。
     </aside>
 
     <nav class="links" aria-label="项目资料">
       <a href="https://github.com/JasonBeam/campus-daily#readme">项目介绍</a>
-      <a href="https://github.com/JasonBeam/campus-daily/blob/main/docs/download.md">下载与门槛</a>
+      <a href="https://github.com/JasonBeam/campus-daily/blob/main/docs/download.md">安装说明</a>
       <a href="https://github.com/JasonBeam/campus-daily/blob/main/docs/configuration.md">配置教程</a>
       <a href="https://github.com/JasonBeam/campus-daily/blob/main/docs/ai-guide.md">AI 上手教程</a>
+      <a href="https://github.com/JasonBeam/campus-daily/releases">全部测试版本</a>
     </nav>
 
-    <nav class="links" aria-label="官方安装规则">
-      <a href="https://developer.android.com/studio/publish">Android 网页分发说明</a>
-      <a href="https://developer.apple.com/help/app-store-connect/test-a-beta-version/testflight-overview/">Apple TestFlight 说明</a>
-      <a href="https://developer.apple.com/help/account/provisioning-profiles/create-an-ad-hoc-provisioning-profile">Apple Ad Hoc 说明</a>
-    </nav>
-
-    <footer>非学校官方应用。请只使用本人账号；不要公开上传校园令牌、手机号、学号、宿舍信息或设备二维码。</footer>
+    <footer>非学校官方应用。请只使用本人账号，不要公开分享密码、校园令牌、学号、宿舍信息或设备二维码。</footer>
   </main>
   <script>
     const ua = navigator.userAgent;

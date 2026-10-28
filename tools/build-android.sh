@@ -6,7 +6,7 @@ if [[ -z "${JAVA_HOME:-}" && "$(uname -s)" == "Darwin" ]]; then
   export JAVA_HOME
 fi
 cd "$project_root/platforms/android"
-./gradlew :app:assembleDebug :app:testDebugUnitTest :app:lintDebug --console=plain "$@"
+./gradlew :app:assembleDebug :app:testDebugUnitTest :app:lintDebug --console=plain "-PcampusSharedAssetsDir=$project_root/Shared" "$@"
 apk="$PWD/app/build/outputs/apk/debug/app-debug.apk"
 ls -lh "$apk"
 shasum -a 256 "$apk"

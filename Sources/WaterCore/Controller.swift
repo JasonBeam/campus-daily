@@ -25,6 +25,29 @@ public enum WaterTargetSelection {
         return id
     }
 }
+/// Probe with the read-only identity command before presenting same-name radios as targets.
+/// RSSI orders probes only; it never establishes device ownership.
+public enum WaterIdentitySelection {
+    @MainActor public static func match(_ candidates: [String], machineID: String,
+        probe: (String) async throws -> Data) async throws -> String {
+        var seen = Set<String>()
+        var sawOtherIdentity = false
+        for id in candidates where seen.insert(id).inserted {
+            try Task.checkCancellation()
+            do {
+                let frame = try await probe(id)
+                let identity = try WaterProtocol.identity(frame)
+                if identity == machineID.uppercased() { try Task.checkCancellation(); return id }
+                sawOtherIdentity = true
+            } catch is CancellationError { throw CancellationError() }
+              catch WaterError.interrupted { throw WaterError.interrupted }
+              catch { /* Busy, malformed and unreachable devices are not verified targets. */ }
+        }
+        try Task.checkCancellation()
+        throw sawOtherIdentity ? WaterError.wrongDevice : WaterError.targetMissing
+    }
+}
+
 @MainActor public protocol WaterProvider: AnyObject {
     func authorize(config: WaterConfig, frame: Data) async throws -> Authorization
     func settle(config: WaterConfig, frame: Data) async throws -> SettlementReceipt
@@ -50,7 +73,22 @@ public enum WaterTargetSelection {
         session = value
         do { try store.save(value) } catch { storageBlocked = true; throw WaterError.storage }
     }
-    public func start(config: WaterConfig) async throws {
+    /// Read the hardware identity without requesting authorization or creating a session.
+    public func identify(config: WaterConfig) async throws -> String {
+        try Task.checkCancellation()
+        guard !busy else { throw WaterError.busy }
+        guard !storageBlocked else { throw WaterError.storage }
+        guard session == nil || session?.stage == .settled else { throw WaterError.unresolved }
+        try config.validate()
+        busy = true
+        defer { transport.disconnect(); busy = false }
+        let id = try await transport.connect(config:config,expectedPeripheral:nil,preferredPeripheral:nil)
+        let frame = try await transport.exchange(Data([0xAA]))
+        guard try WaterProtocol.identity(frame) == config.machineID.uppercased() else { throw WaterError.wrongDevice }
+        try Task.checkCancellation()
+        return id
+    }
+    public func start(config: WaterConfig, preferredPeripheral: String? = nil) async throws {
         try Task.checkCancellation()
         guard !busy else { throw WaterError.busy }
         guard !storageBlocked else { throw WaterError.storage }
@@ -59,7 +97,7 @@ public enum WaterTargetSelection {
         busy = true
         defer { transport.disconnect(); busy = false }
         let preferred = session?.machineID == config.machineID.uppercased() ? session?.peripheralID : nil
-        let id = try await transport.connect(config: config, expectedPeripheral: nil, preferredPeripheral: preferred)
+        let id = try await transport.connect(config: config, expectedPeripheral: nil, preferredPeripheral: preferredPeripheral ?? preferred)
         let frame = try await transport.exchange(Data([0xAA]))
         guard try WaterProtocol.identity(frame) == config.machineID.uppercased() else { throw WaterError.wrongDevice }
         try Task.checkCancellation()

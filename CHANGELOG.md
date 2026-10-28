@@ -2,6 +2,25 @@
 
 版本记录采用 Keep a Changelog 格式。仓库只包含源码、教程和脱敏素材，不包含个人开发签名安装包。
 
+## [0.8.0-beta.1] - 2026-10-28
+
+### Added
+
+- Add the Android alpha12 test package, the unsigned iPhone build 29 IPA, and a device-specific download page.
+- Read the residence address from the school portal during official campus login.
+- Add an AI-assisted setup guide and Android page previews with clearly marked sample data.
+
+### Changed
+
+- Reorganize the README around the project summary, main features, downloads, setup and support links.
+- Align the iPhone and Android campus, water, laundry, order and device pages.
+- Improve Android dorm matching, BLE scanning and water-controller identity checks.
+- Keep electricity-meter selection manual until automatic matching is reliable.
+
+### Security
+
+- Keep personal accounts, campus sessions, water-platform parameters and signing keys out of public packages.
+
 ## [0.7.0] - 2026-10-23
 
 ### Added
@@ -42,3 +61,4 @@
 
 [0.4.6]: https://github.com/JasonBeam/campus-daily/releases/tag/v0.4.6
 [0.7.0]: https://github.com/JasonBeam/campus-daily/releases/tag/v0.7.0
+[0.8.0-beta.1]: https://github.com/JasonBeam/campus-daily/releases/tag/v0.8.0-beta.1
