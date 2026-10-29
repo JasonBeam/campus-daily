@@ -4,11 +4,7 @@
 
 ## 下载
 
-- [Android 测试版 APK（0.2.0-alpha12）](https://github.com/JasonBeam/campus-daily/releases/download/v0.8.0-beta.1/campus-daily-android-0.2.0-alpha12-debug.apk) · [SHA-256 校验文件](https://github.com/JasonBeam/campus-daily/releases/download/v0.8.0-beta.1/SHA256SUMS.txt)
-- [iPhone 无签名 IPA（0.8.0 build 29）](https://github.com/JasonBeam/campus-daily/releases/download/v0.8.0-beta.1/CampusDaily-0.8.0-build29-unsigned.ipa) · [SHA-256 校验文件](https://github.com/JasonBeam/campus-daily/releases/download/v0.8.0-beta.1/CampusDaily-0.8.0-build29-unsigned.ipa.sha256)
-- [安装与配置说明](https://github.com/JasonBeam/campus-daily/blob/main/docs/download.md) · [AI 使用教程](https://github.com/JasonBeam/campus-daily/blob/main/docs/ai-guide.md)
-
-Android APK 已由项目方签名，按手机提示下载并安装即可。iPhone IPA 未签名，需要使用自己的 Apple 账号签名后安装；Safari 下载不会直接安装 App。
+Beta 1 的旧安装包已停止公开下载。请前往 [Beta 2 下载页](https://jasonbeam.github.io/campus-daily/)或 [Beta 2 版本说明](https://github.com/JasonBeam/campus-daily/releases/tag/v0.8.0-beta.2)。下面的内容作为 Beta 1 的历史记录保留。
 
 ## 更新内容
 

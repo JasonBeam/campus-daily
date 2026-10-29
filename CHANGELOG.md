@@ -81,6 +81,6 @@
 - Exclude personal configuration, captured traffic, signing products and transaction diagnostics from the public snapshot.
 
 [0.4.6]: https://github.com/JasonBeam/campus-daily/releases/tag/v0.4.6
-[0.7.0]: https://github.com/JasonBeam/campus-daily/releases/tag/v0.7.0
-[0.8.0-beta.1]: https://github.com/JasonBeam/campus-daily/releases/tag/v0.8.0-beta.1
+[0.7.0]: https://github.com/JasonBeam/campus-daily/tree/v0.7.0
+[0.8.0-beta.1]: https://github.com/JasonBeam/campus-daily/tree/v0.8.0-beta.1
 [0.8.0-beta.2]: https://github.com/JasonBeam/campus-daily/releases/tag/v0.8.0-beta.2
