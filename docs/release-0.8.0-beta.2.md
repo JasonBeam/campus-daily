@@ -1,35 +1,29 @@
 # 校日常 0.8.0 Beta 2
 
-Beta 2 把首次连接改为学校登录后的自动配置流程：App 直接核验本人的热水身份，从学校门户读取宿舍，并按校园目录匹配电表。正常首次设置不需要抓包、导入个人配置或连接开发者电脑。
+Beta 2 支持通过学校官方登录连接校园卡，读取登记宿舍并匹配电表。热水配置可核对本人身份和宿舍水控，正常首次设置无需抓包或导入个人配置。
 
-📦 [按设备下载 Beta 2](https://jasonbeam.github.io/campus-daily/) · [GitHub Release](https://github.com/JasonBeam/campus-daily/releases/tag/v0.8.0-beta.2)
+Android 测试包为 0.2.0-alpha22；iPhone 测试包为 0.8.0 build 36，包含校园双余额小组件。
 
-📖 [安装与签名说明](download.md) · 🔗 [连接与配置教程](configuration.md) · ✨ [界面预览](previews/README.md) · [AI 使用教程](ai-guide.md)
+📦 [选择设备下载](https://jasonbeam.github.io/campus-daily/) · [下载及校验文件](https://github.com/JasonBeam/campus-daily/releases/tag/v0.8.0-beta.2)
 
-## 本版包含
+📖 [安装与签名教程](https://github.com/JasonBeam/campus-daily/blob/main/docs/download.md) · 🔗 [连接与使用教程](https://github.com/JasonBeam/campus-daily/blob/main/docs/configuration.md)
 
-- **Android：**0.2.0-alpha22（versionCode 24），由用户确认在本人设备上安装并可正常使用；候选 APK 与本机验收副本 SHA-256 一致。
-- **iPhone：**0.8.0 build 36 无签名 IPA，包含校园双余额小组件；安装前必须用自己的 Apple 账号签名。
-- 学校官方登录、校园卡与宿舍信息读取，以及宿舍电表目录匹配。匹配到多个同名公寓时，需要本人确认公寓位置后再读取电表。
-- 热水身份、宿舍和附近水控编号核对；同名蓝牙设备按设备编号确认。
-- U 净账号登录、常用洗衣机、状态查询和订单页面。
-- 校园账号、宿舍或水控变更时保护旧数据；电表查询结果不会覆盖后来选择的新账号或宿舍。
+✨ [界面预览](https://github.com/JasonBeam/campus-daily/blob/main/docs/previews/README.md) · [AI 使用教程](https://github.com/JasonBeam/campus-daily/blob/main/docs/ai-guide.md)
 
-## 审查与验收范围
+## 本版更新
 
-- Beta 2 候选的 Android 自动化记录为 65 项测试通过、lint 0 个错误；lint 另有 43 条提示。用户确认 Android 端在本人设备上安装、配置后可正常使用。
-- 本轮重新运行的 iOS 核心检查为 110 项 XCTest 与 41 项 Swift Testing 全部通过；iPhoneOS Release 构建和 Xcode 静态分析通过。
-- iOS build 36 已在用户 iPhone 上覆盖安装，余额、宿舍与既有结算记录仍显示。当前发布 IPA 会从本轮审查后的源码重新构建；本轮没有重新连接手机验收该 IPA。
-- 自动匹配、电表与热水并行查询、账号和宿舍切换、保存回滚、只读蓝牙识别和本地缓存隔离均有对应测试。
-- 本轮未执行真实热水授权、出水或结算。测试通过和只读设备核对不等于真实交易验收；请勿在不熟悉设备时用本 App 做首次用水测试。
-- 其他 Android 机型、iOS 全新用户流程、第三方签名团队下的小组件，以及真实热水交易尚未完成等效验收。
+- 学校登录后读取校园卡和登记宿舍；电表唯一匹配时自动保存，同名公寓需本人确认。
+- 热水配置支持核对宿舍和水控编号，Android 可在热水页面进行只读连接检查。
+- 校园账号、宿舍或设备变更时保护原有记录，避免旧查询结果覆盖新的选择。
+- 使用本人 U 净账号管理常用洗衣机，查询状态、程序和价格。
 
-## 安装与配置
+## 注意事项
 
-- Android 下载 APK 后按系统提示安装，使用本人学校账号登录。
-- iPhone 下载无签名 IPA 后，使用自己的 Apple 账号签名安装。免费 Personal Team 通常约 7 天后需要重新签名；IPA 不是可由 Safari 直接安装的网页安装包。
-- 完成学校登录后，唯一宿舍与电表匹配会自动保存；遇到同名公寓时按页面提示确认。没有完整宿舍信息时，可在 App 中手动选择。
-- 安装包包含仅供平台协议使用的通用参数，持有者可能提取。包内不包含作者的学校账号、宿舍、水控编号、交易记录或 Apple 签名证书。参数由本机私有文件注入，未提交至 GitHub 源码。
-- 使用本人账号。校园登录、热水平台和 U 净的个人数据不要贴进 Issue、截图、AI 对话或公开文件。
+- 这是测试版。Android APK 可按手机提示安装；iPhone IPA 未签名，需要用自己的 Apple 账号签名。Safari 下载 IPA 后不会直接完成安装；免费个人签名通常约 7 天需要续签。
+- Android alpha22 已在一台用户设备上确认安装和配置后可用。其他 Android 机型、iPhone 全新用户流程、第三方签名小组件，以及完整热水授权、出水和结算尚未完成验收。
+- iPhone build 36 曾在用户设备上覆盖安装并保留余额、宿舍与结算记录；本次发布的重新构建 IPA 未再次实机安装。热水操作可能产生费用，请本人现场核对设备和官方结果。
+- 本轮 iOS 核心测试 151 项、Android 单元测试 65 项通过；Android lint 有 43 条提示、无错误。构建与测试结果不能代替真实设备和交易验收。
+- 安装包包含可被提取的通用热水平台参数，不含作者的个人账号、宿舍、水控编号、交易记录或 Apple 签名证书。请勿公开自己的密码、验证码、校园令牌、宿舍信息、设备二维码或交易链接。
+- 界面预览使用示例数据，展示的是较早 Android 版本，页面细节可能与当前版本不同。
 
-详细步骤见[下载与安装](download.md)、[配置与使用](configuration.md)、[AI 辅助上手](ai-guide.md)和[故障排查](troubleshooting.md)。
+详细情况见[首次使用审查](https://github.com/JasonBeam/campus-daily/blob/main/docs/first-use-review-2026-10-29.md)和[配置教程](https://github.com/JasonBeam/campus-daily/blob/main/docs/configuration.md)。
