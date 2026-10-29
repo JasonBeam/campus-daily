@@ -7,6 +7,9 @@ import java.net.URL
 import javax.net.ssl.HttpsURLConnection
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 
 data class CampusConfig(val syscustid:String = "", val token:String = "", val areaCode:String = "", val custid:String = "",
                         val timestamp:String = "", val userAgent:String = "", val dorm:String = "",
@@ -35,7 +38,7 @@ data class CampusWebSession(val state:JSONObject,val cardId:String,val ownerId:S
         else "https://ecykt.gdbtu.edu.cn/ykt-view/recharge?isbind=1"
 }
 
-open class CampusClient {
+open class CampusClient(private val schoolReader:(suspend (String,JSONObject)->Any)?=null) {
     suspend fun webSession(c:CampusConfig):CampusWebSession = withContext(Dispatchers.IO) {
         val login=call("/ykt-mini/api/customer/loginBySysId",c,JSONObject().put("areacode",c.areaCode)
             .put("version",c.campusVersion).put("appid","wx7077a0b57d156efe").put("redirect","/recharge?isbind=1")) as? JSONObject ?: error("学校身份格式异常")
@@ -74,10 +77,12 @@ open class CampusClient {
     suspend fun balance(c: CampusConfig): String = withContext(Dispatchers.IO) {
         validate(c)
         var balanceId = c.syscustid
-        runCatching { call("/ykt-mini/api/customer/loginBySysId", c, JSONObject()
+        val login=try { call("/ykt-mini/api/customer/loginBySysId", c, JSONObject()
             .put("areacode", c.areaCode).put("version", c.campusVersion)
-            .put("appid", "wx7077a0b57d156efe").put("redirect", "/recharge?isbind=1")) as? JSONObject }
-            .getOrNull()?.optString("syscustid")?.takeIf { it.isNotBlank() }?.let { balanceId = it }
+            .put("appid", "wx7077a0b57d156efe").put("redirect", "/recharge?isbind=1")) as? JSONObject
+        } catch(e:CancellationException){throw e}catch(_:Exception){null}
+        currentCoroutineContext().ensureActive()
+        login?.optString("syscustid")?.takeIf {it.isNotBlank()}?.let {balanceId=it}
         var cardId = c.custid
         if (cardId.isBlank()) {
             val cards = call("/ykt-mini/api/customer/getSysBindCustInfo", c,
@@ -146,7 +151,8 @@ open class CampusClient {
         }
     }
 
-    private fun call(path:String,c:CampusConfig,payload:JSONObject,power:Boolean=false):Any {
+    private suspend fun call(path:String,c:CampusConfig,payload:JSONObject,power:Boolean=false):Any {
+        currentCoroutineContext().ensureActive()
         validate(c)
         val allowed=setOf("/ykt-mini/api/customer/getSignData","/ykt-mini/api/customer/loginBySysId",
             "/ykt-mini/api/customer/getSysBindCustInfo","/ykt-mini/scanpay/getUserBalance","/ykt-mini/api/electricnew/service")
@@ -154,6 +160,11 @@ open class CampusClient {
         if(!payload.has("syscustid")) payload.put("syscustid",c.syscustid)
         payload.put("acc_token",c.token)
         if(c.timestamp.isNotBlank()) payload.put("timestamp",c.timestamp)
+        schoolReader?.let {reader->
+            val value=reader(path,payload)
+            currentCoroutineContext().ensureActive()
+            return value
+        }
         val conn=(URL("https://ecykt.gdbtu.edu.cn$path").openConnection() as HttpsURLConnection).apply {
             instanceFollowRedirects=false; requestMethod="POST"; connectTimeout=12000; readTimeout=18000
             setRequestProperty("Content-Type","application/json"); setRequestProperty("Accept","application/json")
@@ -164,8 +175,11 @@ open class CampusClient {
         return try {
             conn.outputStream.use { it.write(payload.toString().toByteArray()) }
             require(conn.responseCode==200) { if(conn.responseCode in listOf(401,403)) "校园登录已失效，请重新登录" else "校园服务暂时无法连接" }
-            parseCampusEnvelope(JSONObject(conn.inputStream.use { it.readLimited(1_048_576) }.toString(Charsets.UTF_8)))
-        } finally { conn.disconnect() }
+            val body=conn.inputStream.use { it.readLimited(1_048_576) }
+            currentCoroutineContext().ensureActive()
+            parseCampusEnvelope(JSONObject(body.toString(Charsets.UTF_8)))
+        } catch(e:Exception){currentCoroutineContext().ensureActive();throw e}
+          finally { conn.disconnect() }
     }
 
     private fun signed(path:String,fields:Map<String,String>,p:HotWaterProfile,requestType:Boolean=false):JSONObject {

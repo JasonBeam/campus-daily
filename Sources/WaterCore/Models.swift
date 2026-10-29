@@ -84,6 +84,9 @@ public struct WaterSession: Codable, Equatable, Sendable {
     public let startedAt: Date
     public var endedAt: Date?
     public var receipt: SettlementReceipt?
+    /// Persist an observed mismatch so relaunch cannot present a stale authorization as current.
+    public var stateReviewRequired: Bool?
+    public var requiresStateReview: Bool { stateReviewRequired == true }
     public init(stage: SessionStage, machineID: String, peripheralID: String) {
         self.stage = stage; self.machineID = machineID; self.peripheralID = peripheralID
         startedAt = Date()

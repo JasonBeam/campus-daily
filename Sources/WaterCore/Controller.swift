@@ -64,14 +64,17 @@ public enum WaterIdentitySelection {
     private let transport: WaterTransport
     private let provider: WaterProvider
     private let store: SessionStore
-    public init(transport: WaterTransport, provider: WaterProvider, store: SessionStore) throws {
+    private let diagnostics: WaterDiagnostics?
+    public init(transport: WaterTransport, provider: WaterProvider, store: SessionStore, diagnostics: WaterDiagnostics? = nil) throws {
         self.transport = transport; self.provider = provider; self.store = store
+        self.diagnostics = diagnostics
         do { session = try store.load() } catch { throw WaterError.storage }
     }
     private func persist(_ value: WaterSession) throws {
         // Keep the more conservative in-memory state even if disk persistence fails.
         session = value
         do { try store.save(value) } catch { storageBlocked = true; throw WaterError.storage }
+        diagnostics?.record(.sessionSaved, stage: value.stage)
     }
     /// Read the hardware identity without requesting authorization or creating a session.
     public func identify(config: WaterConfig) async throws -> String {
@@ -95,7 +98,9 @@ public enum WaterIdentitySelection {
         guard session == nil || session?.stage == .settled else { throw WaterError.unresolved }
         try config.validate()
         busy = true
-        defer { transport.disconnect(); busy = false }
+        diagnostics?.record(.startRequested, stage: session?.stage)
+        var retainConnection = false
+        defer { if !retainConnection { transport.disconnect() }; busy = false }
         let preferred = session?.machineID == config.machineID.uppercased() ? session?.peripheralID : nil
         let id = try await transport.connect(config: config, expectedPeripheral: nil, preferredPeripheral: preferredPeripheral ?? preferred)
         let frame = try await transport.exchange(Data([0xAA]))
@@ -115,9 +120,37 @@ public enum WaterIdentitySelection {
         value.stage = .authorizationWritePending
         try persist(value)
         let ack = try await transport.exchange(auth.payload)
+        diagnostics?.record(.authorizationReply, frame: ack)
         guard ack.count == 9, ack.first == 0xAA else { throw WaterError.malformedFrame }
         value.stage = .active
         try persist(value)
+        // The official client retains BLE after authorization and clears it after close.
+        // Do not impose a link-loss event on controllers which monitor the connection.
+        retainConnection = true
+    }
+    /// Inspect the retained session without authorization, close or settlement requests.
+    public func review(config: WaterConfig) async throws -> Bool {
+        try Task.checkCancellation()
+        guard !busy else { throw WaterError.busy }
+        guard !storageBlocked else { throw WaterError.storage }
+        guard var value = session, value.stage.mayClose else { throw WaterError.noSession }
+        try config.validate()
+        guard value.machineID == config.machineID.uppercased() else { throw WaterError.wrongDevice }
+        busy = true
+        diagnostics?.record(.reviewRequested, stage: value.stage)
+        var retainConnection = false
+        defer { if !retainConnection { transport.disconnect() }; busy = false }
+        _ = try await transport.connect(config: config, expectedPeripheral: value.peripheralID)
+        let reply = try await transport.exchange(Data([0xAA]))
+        diagnostics?.record(.stateReply, stage: value.stage, frame: reply)
+        let active = reply == Data([0xA5])
+        if !active {
+            guard try WaterProtocol.identity(reply) == value.machineID else { throw WaterError.wrongDevice }
+        }
+        value.stateReviewRequired = !active
+        try persist(value)
+        retainConnection = active
+        return active
     }
     public func finish(config: WaterConfig) async throws {
         try Task.checkCancellation()
@@ -130,13 +163,22 @@ public enum WaterIdentitySelection {
         guard value.machineID == config.machineID.uppercased() else { throw WaterError.wrongDevice }
         let command = try WaterProtocol.closeCommand(authID)
         busy = true
+        diagnostics?.record(.finishRequested, stage: value.stage)
         defer { transport.disconnect(); busy = false }
         _ = try await transport.connect(config: config, expectedPeripheral: value.peripheralID)
         let first = try await transport.exchange(Data([0xAA]))
-        guard first == Data([0xA5]) else { throw WaterError.notActive }
+        diagnostics?.record(.stateReply, stage: value.stage, frame: first)
+        guard first == Data([0xA5]) else {
+            value.stateReviewRequired = true
+            try persist(value)
+            diagnostics?.record(.finishBlocked, stage: value.stage, error: .notActive)
+            throw WaterError.notActive
+        }
         try Task.checkCancellation()
         value.stage = .closeWritePending
+        value.stateReviewRequired = false
         try persist(value)
+        diagnostics?.record(.closeRequested, stage: value.stage)
         let consumption = try await transport.exchange(command)
         guard try WaterProtocol.identity(consumption) == value.machineID else { throw WaterError.wrongDevice }
         value.consumption = consumption

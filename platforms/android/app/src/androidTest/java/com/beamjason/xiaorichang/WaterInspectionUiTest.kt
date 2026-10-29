@@ -22,6 +22,15 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class WaterInspectionUiTest {
+    @Test fun persistedMismatchShowsReviewAndReadOnlyInspectionDoesNotStartWater() {
+        var reads=0;var starts=0
+        val s=previewFixture().copy(waterSession=ShowerSession(ShowerStage.ACTIVE,"AABBCCDD","fixture-address",stateReviewRequired=true))
+        compose.setContent {NativeTheme {WaterScreen(s,PaddingValues(),{},review={reads++},operate={starts++})}}
+        compose.onNodeWithText("本次待核对").assertExists()
+        compose.onNodeWithText("连接检查与设备信息").performScrollTo().performClick()
+        compose.onNodeWithText("只读检查本次水控状态").performScrollTo().performClick()
+        assertEquals(1,reads);assertEquals(0,starts)
+    }
     @get:Rule val compose=createComposeRule()
     @Test fun inspectionWorksOnWaterPageWithoutNavigatingOrStartingWater() {
         val s=previewFixture().copy(waterSession=null);var inspections=0;var starts=0;var destinations=0

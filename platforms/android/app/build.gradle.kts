@@ -35,8 +35,8 @@ android {
         // support API 23+, so Android 6.0 is the broadest supported baseline.
         minSdk = 23
         targetSdk = 35
-        versionCode = 24
-        versionName = "0.2.0-alpha22"
+        versionCode = 25
+        versionName = "0.2.0-alpha23"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildFeatures { compose = true; buildConfig = true }

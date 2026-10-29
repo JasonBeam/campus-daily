@@ -47,6 +47,8 @@ class BleWaterTransport(private val context:Context):WaterTransport {
     @Volatile private var generation=0L
     @Volatile private var gatt:BluetoothGatt?=null
     @Volatile private var writeCharacteristic:BluetoothGattCharacteristic?=null
+    @Volatile private var readyAddress:String?=null
+    @Volatile private var linkLost=false
     private var decoder=FrameDecoder()
     private var exchange:Exchange?=null
     private val serviceUuid=UUID.fromString("0000FFE0-0000-1000-8000-00805F9B34FB")
@@ -63,8 +65,15 @@ class BleWaterTransport(private val context:Context):WaterTransport {
     override suspend fun connect(deviceName:String,expectedAddress:String?):String {
         support.event("connect-start")
         permissions(scan=expectedAddress==null)
-        check(gatt==null) { "GATT already open" }
         check(adapter.isEnabled) { "请先打开蓝牙" }
+        synchronized(this) {
+            if(expectedAddress!=null && readyAddress==expectedAddress && gatt!=null && !linkLost) {
+                support.event("reuse-connection")
+                return expectedAddress
+            }
+            if(gatt!=null && linkLost)disconnect()
+            check(gatt==null) { "GATT already open" }
+        }
         // A saved address is used only after physical identity verification. Every start
         // still reads and compares the 4-byte machine ID before requesting authorization.
         val chosen=if(expectedAddress!=null) {
@@ -84,6 +93,7 @@ class BleWaterTransport(private val context:Context):WaterTransport {
                 if(token!=generation) return@synchronized
                 support.event("connection-state",mapOf("status" to status,"state" to newState))
                 if(status!=BluetoothGatt.GATT_SUCCESS || newState==BluetoothProfile.STATE_DISCONNECTED) {
+                    linkLost=true;readyAddress=null
                     ready.completeExceptionally(IllegalStateException("BLE 连接中断")); exchange?.let { e -> e.ack.completeExceptionally(IllegalStateException("BLE 连接中断")); e.frame.completeExceptionally(IllegalStateException("BLE 连接中断")) }
                     return@synchronized
                 }
@@ -137,7 +147,11 @@ class BleWaterTransport(private val context:Context):WaterTransport {
             check(token==generation) { "BLE 连接已取消" }
             gatt=chosen.connectGatt(context,false,callback,BluetoothDevice.TRANSPORT_LE)
         }
-        return try { withTimeout(20_000) { ready.await() }; support.event("gatt-ready"); chosen.address } catch(t:Throwable) { support.event("connect-failed");disconnect();throw t }
+        return try {
+            withTimeout(20_000) { ready.await() }
+            synchronized(this){check(token==generation && !linkLost){"BLE 连接中断"};readyAddress=chosen.address}
+            support.event("gatt-ready");chosen.address
+        } catch(t:Throwable) { support.event("connect-failed");disconnect();throw t }
     }
 
     /** Returns with the verified GATT connection open. Sends only the 0xAA identity query. */
@@ -166,6 +180,8 @@ class BleWaterTransport(private val context:Context):WaterTransport {
                 @Suppress("DEPRECATION") g.writeCharacteristic(c)
             }
             check(initiated) { "水控写入未开始" }
+            val command=when {bytes.contentEquals(byteArrayOf(0xAA.toByte()))->1;bytes.size==15->2;bytes.size==5 && bytes[0]==0xAC.toByte()->3;else->0}
+            support.event("write",mapOf("command" to command))
             val pair=withTimeout(10_000) { current.ack.await(); current.frame.await() }
             return pair
         } finally { synchronized(this) { if(exchange===current) exchange=null } }
@@ -175,6 +191,7 @@ class BleWaterTransport(private val context:Context):WaterTransport {
         try {
             val frames=decoder.append(bytes)
             require(frames.size<=1) { "收到多帧水控通知" }
+            frames.forEach{support.event("reply",mapOf("bytes" to it.size,"frameKind" to WaterDiagnostics.frameKind(it)))}
             if(frames.isNotEmpty()) exchange?.frame?.complete(frames.first())
         } catch(t:Throwable) { exchange?.frame?.completeExceptionally(t) }
     }
@@ -209,8 +226,9 @@ class BleWaterTransport(private val context:Context):WaterTransport {
     }
 
     @Synchronized override fun disconnect() {
+        support.event("disconnect")
         generation++
-        val g=gatt; gatt=null; writeCharacteristic=null
+        val g=gatt; gatt=null; writeCharacteristic=null;readyAddress=null;linkLost=false
         exchange?.let { val error=IllegalStateException("BLE disconnected"); it.ack.completeExceptionally(error); it.frame.completeExceptionally(error) }
         exchange=null
         try {g?.disconnect()} catch(_:SecurityException) { /* Revoked while connected. */ }

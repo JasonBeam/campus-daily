@@ -2,6 +2,26 @@
 
 版本记录采用 Keep a Changelog 格式。源码仓库不保存个人签名证书或个人配置；测试安装包通过 GitHub Release 单独分发。
 
+## [0.8.0] - 2026-10-29
+
+### Fixed
+
+- Keep campus-card and electricity refreshes independent of a SwiftUI refresh control's cancellation; concurrent refresh entry points share one read.
+- Propagate cancelled school requests without labelling them as network failures or continuing the card-identity fallback.
+- Apply the automatic-refresh cooldown only after successful reads, leaving failed or cancelled refreshes immediately retryable.
+
+- Retain the Bluetooth connection after successful authorization, matching the official client lifecycle; disconnect after ending or a failed attempt. The effect on the reported device still requires physical validation.
+- Persist an observed inactive-water-controller mismatch so restarting the app keeps the session marked for review.
+- Retain compatibility with existing saved sessions and block close/settlement on an inactive reply.
+
+### Added
+
+- Add read-only inspection of the controller belonging to an unresolved session, without authorization, valve or payment actions.
+- Add a bounded, identifier-free water diagnostic report and expose the build number in Settings.
+- Port the iOS fixes to Android 0.2.0-alpha23 (versionCode 25): persist controller mismatches, retain and reuse an authorized BLE connection, add session inspection and diagnostic sharing, and allow immediate retries after failed or cancelled campus refreshes.
+
+The reported brief dispensing followed by stopping is not yet diagnosed. Physical hot-water behavior still requires on-site verification. The Android package remains an alpha23 debug build; users have reported an Alipay launch issue on HarmonyOS.
+
 ## [0.8.0-beta.2] - 2026-10-29
 
 ### Added

@@ -167,8 +167,15 @@ public enum CampusParser {
         request.setValue(Self.base + referer, forHTTPHeaderField: "Referer")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         let bytes: Data, response: URLResponse
-        do { (bytes,response) = try await session.data(for: request) }
+        do {
+            try Task.checkCancellation()
+            (bytes,response) = try await session.data(for: request)
+            try Task.checkCancellation()
+        }
         catch {
+            if error is CancellationError || (error as? URLError)?.code == .cancelled {
+                throw CancellationError()
+            }
             #if DEBUG
             print("CAMPUS_READ_NETWORK urlError=\((error as? URLError)?.errorCode ?? 0)")
             #endif
@@ -228,9 +235,13 @@ public enum CampusParser {
     public func balance(config: CampusConfig) async throws -> Decimal {
         // Match the existing Scriptable flow; a captured card identity remains a fallback.
         var balanceID = config.syscustid
-        let login = try? await call("/ykt-mini/api/customer/loginBySysId", payload: [
-            "areacode":config.areacode,"version":config.campusVersion,"appid":"wx7077a0b57d156efe",
-            "redirect":"/recharge?isbind=1"], config: config)
+        var login: Any?
+        do {
+            login = try await call("/ykt-mini/api/customer/loginBySysId", payload: [
+                "areacode":config.areacode,"version":config.campusVersion,"appid":"wx7077a0b57d156efe",
+                "redirect":"/recharge?isbind=1"], config: config)
+        } catch is CancellationError { throw CancellationError() }
+          catch { /* Retain the existing captured-card fallback for other login-bridge errors. */ }
         if let data = login as? [String:Any], let id = data["syscustid"] as? String, !id.isEmpty { balanceID = id }
         try Task.checkCancellation()
         var custid = config.custid

@@ -1,20 +1,20 @@
 # 下载与安装
 
-先在[下载页](https://jasonbeam.github.io/campus-daily/)选择设备，或从 [Beta 2 Release](https://github.com/JasonBeam/campus-daily/releases/tag/v0.8.0-beta.2)下载对应安装包。校日常仍为测试版。
+先在[下载页](https://jasonbeam.github.io/campus-daily/)选择设备，或从 [0.8.0 Release](https://github.com/JasonBeam/campus-daily/releases/tag/v0.8.0)下载对应安装包。Android 安装包仍为 alpha23 测试包。
 
 ## Android
 
-[下载 Android 0.2.0-alpha22 APK](https://github.com/JasonBeam/campus-daily/releases/download/v0.8.0-beta.2/campus-daily-android-0.2.0-alpha22-debug.apk) · [SHA-256 校验文件](https://github.com/JasonBeam/campus-daily/releases/download/v0.8.0-beta.2/SHA256SUMS.txt)
+[下载 Android 0.2.0-alpha23 APK](https://github.com/JasonBeam/campus-daily/releases/download/v0.8.0/CampusDaily-0.2.0-alpha23-debug.apk) · [SHA-256 校验文件](https://github.com/JasonBeam/campus-daily/releases/download/v0.8.0/SHA256SUMS.txt)
 
 1. 下载 APK 并打开文件。
 2. 如果系统提示，允许当前浏览器或文件管理器安装应用，然后确认安装。
 3. 打开校日常，使用本人的学校账号登录。
 
-目标系统为 Android 6.0 或更新版本。HarmonyOS 4.2 是兼容目标之一；本次发布不代表所有 Android 或鸿蒙机型都已完成实机验收。首次使用不需要开发者证书；APK 中的通用热水平台参数可以被提取。
+支持 Android 6.0 或更新版本。用户反馈鸿蒙 6.0 至 7.0 可通过卓易通安装使用，但目前在鸿蒙设备上无法跳转支付宝；兼容性可能因设备而异。首次使用不需要开发者证书；APK 中的通用热水平台参数可以被提取。
 
 ## iPhone
 
-[下载 iPhone 0.8.0 build 36 无签名 IPA](https://github.com/JasonBeam/campus-daily/releases/download/v0.8.0-beta.2/CampusDaily-0.8.0-build36-unsigned.ipa) · [SHA-256 校验文件](https://github.com/JasonBeam/campus-daily/releases/download/v0.8.0-beta.2/SHA256SUMS.txt)
+[下载 iPhone 0.8.0 build 38 无签名 IPA](https://github.com/JasonBeam/campus-daily/releases/download/v0.8.0/CampusDaily-0.8.0-build38-unsigned.ipa) · [SHA-256 校验文件](https://github.com/JasonBeam/campus-daily/releases/download/v0.8.0/SHA256SUMS.txt)
 
 IPA 需要使用你自己的 Apple 账号签名后才能安装。**Safari 下载 IPA 不会直接安装 App**，当前版本没有 TestFlight 或网页直装。免费 Personal Team 签名通常约 7 天后需要重新签名。具体步骤见[构建与签名](build-and-signing.md)。
 

@@ -30,7 +30,7 @@ import WaterCore
             return try await self.requestDevice(candidates)
         }
         do {
-            controller = try WaterController(transport: bluetooth, provider: HTTPSWaterProvider(), store: FileSessionStore())
+            controller = try WaterController(transport: bluetooth, provider: HTTPSWaterProvider(), store: FileSessionStore(), diagnostics: WaterDiagnosticReport.trace)
             config = try PrivateConfigStore.load()
             importedPlatform = try WaterPlatformStore.load()
             configured = config != nil
@@ -144,7 +144,10 @@ import WaterCore
         lastEnded = controller?.session?.endedAt
         lastCost = controller?.session?.receipt?.amountYuan
         hasReceipt = controller?.session?.receipt != nil
-        if residenceReviewRequired && (stage == nil || stage == .settled) {
+        if controller?.session?.requiresStateReview == true {
+            problem = true
+            status = WaterError.notActive.rawValue + "；请核对现场及官方用水记录"
+        } else if residenceReviewRequired && (stage == nil || stage == .settled) {
             status = "学校宿舍已变更，请先重新确认宿舍水控";problem = true
         } else if let stage { status = stage.label }
         else if configured { status = config?.access?.isCurrent == false ? "请重新登录学校账号以更新热水连接" : "准备好了，靠近水控即可开始" }
@@ -176,6 +179,7 @@ import WaterCore
         refresh()
         problem = true
         status = (error as? LocalizedError)?.errorDescription ?? "操作未确认，请查看当前记录后再继续"
+        WaterDiagnosticReport.trace.record(.operationFailed, stage: stage, error: (error as? WaterError) ?? .interrupted)
         if (error as? WaterError) == .wrongDevice, mayImport {
             status = "所选水控不属于已保存的宿舍，请在连接检查中重新选择设备"
         }
@@ -202,6 +206,18 @@ import WaterCore
         choice?.resume(throwing:WaterError.interrupted)
     }
     private func deviceKey(_ config: WaterConfig) -> String { "water.verifiedPeripheral." + config.machineID.uppercased() }
+    func exportDiagnostics() throws -> URL {
+        try WaterDiagnosticReport.export(stage: stage, needsReview: controller?.session?.requiresStateReview == true)
+    }
+    func reviewCurrentSession() async {
+        guard mayFinish, let controller, let config else { return }
+        busy = true; status = "正在只读检查水控状态…"
+        defer { busy = false }
+        do {
+            _ = try await controller.review(config: config)
+            problem = false; refresh()
+        } catch { show(error) }
+    }
     func inspectBluetooth() async {
         guard mayImport, let config, let controller else { return }
         busy = true; inspecting = true; selectionAllowed = true; verifiedDevice = nil
