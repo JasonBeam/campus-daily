@@ -113,7 +113,10 @@ private let ack = Data([0xAA] + [UInt8](repeating: 0, count: 8))
         #expect(p.authorizations == 1)
         #expect(s.stages == [.authorizationPending,.authorizationIssued,.authorizationWritePending,.active])
         #expect(c.session?.stage == .active)
-        #expect(t.disconnections == 1)
+        #expect(t.disconnections == 0)
+        t.replies = [.success(Data([0xA5])), .success(frame)]
+        try await c.finish(config: config)
+        #expect(t.disconnections == 1 && c.session?.stage == .settled)
     }
     @Test func wrongDeviceNeverRequestsAuthorization() async throws {
         let t = Transport(), p = Provider(), s = Store()
@@ -221,11 +224,58 @@ private let ack = Data([0xAA] + [UInt8](repeating: 0, count: 8))
     }
     @Test func wrongActiveStateNeverSendsCloseCommand() async throws {
         let t = Transport(), p = Provider(), s = Store()
-        let c = try WaterController(transport: t, provider: p, store: s)
+        let log = WaterDiagnostics()
+        let c = try WaterController(transport: t, provider: p, store: s, diagnostics: log)
         try await c.start(config: config)
         t.replies = [.success(frame)]
         await #expect(throws: WaterError.notActive) { try await c.finish(config: config) }
         #expect(t.writes.count == 3 && p.settlements == 0 && s.value?.stage == .active)
+        let restarted = try WaterController(transport: t, provider: p, store: s)
+        #expect(restarted.session?.requiresStateReview == true)
+        #expect(log.entries.contains { $0.event == .finishBlocked && $0.error == "notActive" })
+        #expect(!log.entries.contains { $0.event == .closeRequested })
+        t.replies = [.success(Data([0xA5])), .success(frame)]
+        try await restarted.finish(config: config)
+        #expect(restarted.session?.stage == .settled && restarted.session?.requiresStateReview == false)
+    }
+    @Test func oldSessionsAndPrivatePayloadsStayCompatibleWithDiagnostics() throws {
+        let session = WaterSession(stage: .active, machineID: config.machineID, peripheralID: "private-radio-id")
+        let oldData = try JSONEncoder().encode(session)
+        #expect(try JSONDecoder().decode(WaterSession.self, from: oldData).requiresStateReview == false)
+        let log = WaterDiagnostics()
+        for _ in 0..<210 { log.record(.stateReply, frame: frame) }
+        #expect(log.entries.count == 200)
+        #expect(log.entries.last?.frameKind == .identity && log.entries.last?.byteCount == 20)
+        let encoded = String(decoding: try JSONEncoder().encode(log.entries), as: UTF8.self)
+        for secret in [config.secret, config.sid, config.studentID, config.machineID, "private-radio-id", frame.upperHex] {
+            #expect(!encoded.contains(secret))
+        }
+    }
+    @Test func reviewChecksRetainedDeviceWithoutTransactions() async throws {
+        let t = Transport(), p = Provider(), s = Store()
+        s.value = WaterSession(stage: .active, machineID: config.machineID, peripheralID: "owned-device")
+        let c = try WaterController(transport: t, provider: p, store: s)
+        t.replies = [.success(frame)]
+        #expect(try await c.review(config: config) == false)
+        #expect(c.session?.requiresStateReview == true && t.expected == "owned-device")
+        t.replies = [.success(Data([0xA5]))]
+        #expect(try await c.review(config: config) == true)
+        #expect(c.session?.requiresStateReview == false)
+        #expect(t.disconnections == 1) // Inactive probe disconnected; active probe retained BLE.
+        #expect(t.writes == [Data([0xAA]), Data([0xAA])])
+        #expect(p.authorizations == 0 && p.settlements == 0)
+    }
+    @Test func readOnlyReviewRejectsAnotherDeviceAndUncertainSettlement() async throws {
+        let t = Transport(), p = Provider(), s = Store()
+        s.value = WaterSession(stage: .active, machineID: config.machineID, peripheralID: "owned-device")
+        let c = try WaterController(transport: t, provider: p, store: s)
+        t.replies = [.success(Data([0x55] + [UInt8](repeating: 0, count: 19)))]
+        await #expect(throws: WaterError.wrongDevice) { try await c.review(config: config) }
+        #expect(s.value?.requiresStateReview == false)
+        s.value = WaterSession(stage: .settlementPending, machineID: config.machineID, peripheralID: "owned-device")
+        let resumed = try WaterController(transport: t, provider: p, store: s)
+        await #expect(throws: WaterError.noSession) { try await resumed.review(config: config) }
+        #expect(t.connections == 1 && p.authorizations == 0 && p.settlements == 0)
     }
     @Test func invalidConsumptionNeverSettlesAnotherDevice() async throws {
         let t = Transport(), p = Provider(), s = Store()

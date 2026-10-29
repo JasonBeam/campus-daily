@@ -61,6 +61,7 @@ class CampusViewModel @JvmOverloads constructor(application:Application,
     private val _state=MutableStateFlow(load())
     val state=_state.asStateFlow()
     private val attempts=mutableMapOf<String,Long>()
+    private val balanceRefresh=CampusRefreshSchedule()
     init { provisionBundledPlatform();provisionDevelopmentPlatform() }
 
     private fun provisionBundledPlatform() {
@@ -126,22 +127,22 @@ class CampusViewModel @JvmOverloads constructor(application:Application,
     fun resume() { provisionBundledPlatform();provisionDevelopmentPlatform(); refresh(); matchPowerAutomatically(); if(_state.value.checkout?.orderId!=null) refreshOrder(false); selectedWasher()?.let { refreshWasher(it,false) } }
     fun refresh(force:Boolean=false) {
         val c=_state.value.campus; if(!c.configured) return
-        fun due(key:String):Boolean {
-            val now=System.currentTimeMillis(); if(now-(attempts[key] ?: 0)<if(force) 5_000 else 300_000) return false
-            attempts[key]=now; return true
-        }
-        if(due("card")) action("card") {
+        val cardKey="card:${c.cardOwner}"
+        val powerKey="power:${c.owner}:${c.buildingId}:${c.meterId}"
+        if(balanceRefresh.due(cardKey,force)) action("card") {
             try {
                 val value=campusApi.balance(c); if(!_state.value.campus.sameCardSession(c)) return@action
                 val next=_state.value.cache.copy(card=value,cardAt=System.currentTimeMillis(),cardOwner=c.cardOwner); write("campus.balance-cache",next.json())
                 _state.update { it.copy(cache=next,cardError=null) }
+                balanceRefresh.succeeded(cardKey)
             } catch(e:Exception) { if(e is CancellationException) throw e; if(_state.value.campus==c) _state.update { it.copy(cardError=message(e)) } }
         }
-        if(c.buildingId.isNotBlank() && due("power")) action("power") {
+        if(c.buildingId.isNotBlank() && balanceRefresh.due(powerKey,force)) action("power") {
             try {
                 val value=campusApi.electricity(c); if(_state.value.campus!=c) return@action
                 val next=_state.value.cache.copy(power=value,powerAt=System.currentTimeMillis()); write("campus.balance-cache",next.json())
                 _state.update { it.copy(cache=next,powerError=null) }
+                balanceRefresh.succeeded(powerKey)
             } catch(e:Exception) { if(e is CancellationException) throw e; if(_state.value.campus==c) _state.update { it.copy(powerError=message(e)) } }
         }
     }
@@ -160,7 +161,7 @@ class CampusViewModel @JvmOverloads constructor(application:Application,
                 val card=if(it.cache.cardOwner!=next.cardOwner) it.cache.copy(card=null,cardAt=0,cardOwner=next.cardOwner) else it.cache
                 if(moved) card.copy(power=null,powerAt=0) else card
             },cardError=null,powerError=null,webSession=null,dormSetup=DormSetup(),message="学校账号已保存") }
-        attempts.clear()
+        attempts.clear();balanceRefresh.clear()
         matchPowerAutomatically()
         try {ensureWaterAccess(next)}catch(e:Exception){if(e is CancellationException)throw e;notice("学校账号已保存；热水自动连接暂未完成，请在宿舍页面重试")}
         onSaved(); refresh(true)
@@ -433,6 +434,13 @@ class CampusViewModel @JvmOverloads constructor(application:Application,
             notice(if(finish) "服务器已确认结算，请同时确认现场已停水" else "水控已确认授权，请按水控上的出水键")
         } finally { _state.update { it.copy(waterSession=waterController.session) } }
     }
+    fun reviewWater() = action("water") {
+        transactionAllowed();check("verify" !in _state.value.busy){"正在核对设备，请稍候"}
+        val water=_state.value.water;require(water.configured && water.access==null){"请先完成本人宿舍配置"}
+        val active=waterController.review(water.profile())
+        notice(if(active)"水控当前返回使用中；本次只读取状态，未发送关水或结算" else "水控未返回使用中状态，请核对现场及官方用水记录")
+    }
+    fun waterDiagnosticReport()=WaterDiagnosticStore.report(getApplication<Application>(),waterController.session)
     fun sendCode(phone:String) = action("sms") { laundryApi.sendCode(phone); notice("验证码已发送，请查看本人短信") }
     fun loginLaundry(phone:String,code:String) = action("laundryLogin") {
         transactionAllowed(); val s=_state.value; check(!s.transactionBusy && !s.unresolvedLaundry) { "请先完成或核对当前洗衣订单" }

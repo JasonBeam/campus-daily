@@ -40,6 +40,7 @@ struct VerifiedWaterDevice {
     private func wait(_ name: String, seconds: Double = 15, begin: () -> Void) async throws {
         try Task.checkCancellation()
         guard waiter == nil else { throw WaterError.busy }
+        WaterDiagnosticReport.trace.record(.bluetoothStep, step: WaterDiagnostics.Step(rawValue: name))
         try await withTaskCancellationHandler(operation: {
             try await withCheckedThrowingContinuation { continuation in
                 step = name
@@ -197,12 +198,16 @@ struct VerifiedWaterDevice {
         guard let peripheral, peripheral.state == .connected, let write,
               !decoder.hasPartialFrame, pendingFrame == nil else { throw WaterError.bluetooth }
         writeAcknowledged = false
+        let command: WaterDiagnostics.Command = data == Data([0xAA]) ? .identity : data.count == 15 ? .authorization : data.count == 5 && data.first == 0xAC ? .close : .other
+        WaterDiagnosticReport.trace.record(.bluetoothWrite, command: command)
         try await wait("exchange", seconds: 8) { peripheral.writeValue(data, for: write, type: .withResponse) }
         guard let frame = pendingFrame else { throw WaterError.malformedFrame }
+        WaterDiagnosticReport.trace.record(.bluetoothReply, frame: frame)
         pendingFrame = nil
         return frame
     }
     func disconnect() {
+        WaterDiagnosticReport.trace.record(.disconnected)
         manager?.stopScan()
         complete(.failure(WaterError.interrupted))
         if let peripheral {
@@ -235,7 +240,10 @@ struct VerifiedWaterDevice {
     }
     func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
         if peripheral === retiring, step == "disconnect" { complete(.success(())) }
-        else if peripheral === self.peripheral { complete(.failure(WaterError.bluetooth)) }
+        else if peripheral === self.peripheral {
+            WaterDiagnosticReport.trace.record(.connectionLost, step: step.flatMap(WaterDiagnostics.Step.init(rawValue:)), error: .bluetooth)
+            complete(.failure(WaterError.bluetooth))
+        }
     }
     func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
         if step == "service" { complete(error == nil ? .success(()) : .failure(WaterError.bluetooth)) }

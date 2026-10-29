@@ -4,11 +4,11 @@
 
 登录学校官方账号后，可以查看校园卡和学校登记的宿舍信息，匹配宿舍电表、核对热水水控。iPhone 还可以通过桌面小组件查看校园卡余额与宿舍电费。
 
-📦 [选择设备下载](https://jasonbeam.github.io/campus-daily/) · [查看 Beta 2 版本](https://github.com/JasonBeam/campus-daily/releases/tag/v0.8.0-beta.2)
+📦 [选择设备下载](https://jasonbeam.github.io/campus-daily/) · [查看 0.8.0 版本](https://github.com/JasonBeam/campus-daily/releases/tag/v0.8.0)
 
 📖 [安装与签名教程](docs/download.md) · 🔗 [连接与使用教程](docs/configuration.md)
 
-✨ [界面预览](docs/previews/README.md) · [AI 使用教程](docs/ai-guide.md) · [版本说明](docs/release-0.8.0-beta.2.md)
+✨ [界面预览](docs/previews/README.md) · [AI 使用教程](docs/ai-guide.md) · [版本说明](docs/release-0.8.0.md)
 
 ## 功能介绍
 
@@ -21,9 +21,9 @@
 ## 注意事项
 
 - 校日常由个人开发，不代表学校或相关服务平台，当前围绕广东工商职业技术大学环境制作。
-- Beta 2 是测试版。Android 支持目标为 6.0 及以上，APK 下载后按系统提示安装；iPhone 支持 iOS 17 及以上，IPA 需要用自己的 Apple 账号签名后安装。
-- Android 已在一台设备上由用户确认可用。其他机型、iPhone 全新用户流程、第三方签名小组件，以及完整热水授权、出水和结算仍待验收。热水操作可能产生费用，请在现场核对设备和官方结果。
+- Android 安装包为 alpha23 测试包。Android 支持目标为 6.0 及以上，APK 下载后按系统提示安装；iPhone 支持 iOS 17 及以上，IPA 需要用自己的 Apple 账号签名后安装。
+- Android 已由用户实机测试；鸿蒙 6.0 至 7.0 可通过卓易通安装使用，但用户反馈鸿蒙设备无法跳转支付宝。其他机型、iPhone 全新用户流程、第三方签名小组件，以及完整热水授权、出水和结算仍待验收。热水操作可能产生费用，请在现场核对设备和官方结果。
 - 请使用本人账号，不要公开密码、验证码、校园令牌、学号、宿舍信息、设备二维码或交易链接。安装包含可被提取的通用热水平台参数，不含作者的个人账号、宿舍、设备或交易记录。
 - 图片预览来自较早的 Android 版本，页面细节可能与当前版本不同。
 
-更多说明请查看[版本说明](docs/release-0.8.0-beta.2.md)和[配置教程](docs/configuration.md)。源码采用 [MIT License](LICENSE)，第三方组件保留各自许可证。
+更多说明请查看[版本说明](docs/release-0.8.0.md)和[配置教程](docs/configuration.md)。源码采用 [MIT License](LICENSE)，第三方组件保留各自许可证。

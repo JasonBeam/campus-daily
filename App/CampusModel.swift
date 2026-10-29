@@ -43,7 +43,8 @@ private enum CampusConfigStore {
     private var powerLookup: Task<Void,Never>?
     private var powerScope: CampusPowerMatchScope?
     private var config: CampusConfig?
-    private var lastAttempt: Date?
+    private var lastSuccessfulRefresh: Date?
+    private let refreshCoordinator = CampusRefreshCoordinator()
     private let provider = CampusProvider()
     private let cacheURL: URL
     init() {
@@ -119,7 +120,7 @@ private enum CampusConfigStore {
         cancelAutomaticPower()
         try CampusConfigStore.save(value)
         if config?.cacheIdentity != value.cacheIdentity { snapshot = nil; CampusSharedCache.clear(); WidgetCenter.shared.reloadTimelines(ofKind:"CampusDailyBalances") }
-        config = value; configured = true; issue = nil; lastAttempt = nil
+        config = value; configured = true; issue = nil; lastSuccessfulRefresh = nil
     }
     var onboardingLogin: CampusConfig? { config }
     private func protectWaterBinding(beforeSaving value: CampusConfig) {
@@ -146,7 +147,7 @@ private enum CampusConfigStore {
         if next.dormRoom.isEmpty, let address = PortalDormAddress.parse(next.portalDormAddress) {next.dormRoom = address.shortRoom}
         try next.validate(); protectWaterBinding(beforeSaving:next); try CampusConfigStore.save(next)
         if config?.cacheIdentity != next.cacheIdentity { snapshot = nil; CampusSharedCache.clear(); WidgetCenter.shared.reloadTimelines(ofKind:"CampusDailyBalances") }
-        config = next; configured = true; issue = nil; lastAttempt = nil
+        config = next; configured = true; issue = nil; lastSuccessfulRefresh = nil
         matchPowerAutomatically()
     }
     func saveDormName(_ room: String, power: CampusPowerSuggestion? = nil, selection: [String] = []) throws {
@@ -180,7 +181,7 @@ private enum CampusConfigStore {
            let building = binding["buildingID"], let meter = binding["meterID"] {
             var next = config; next.buildingID = building; next.meterID = meter
             if (try? CampusConfigStore.save(next)) != nil {
-                self.config = next; snapshot = nil; lastAttempt = nil; CampusSharedCache.clear()
+                self.config = next; snapshot = nil; lastSuccessfulRefresh = nil; CampusSharedCache.clear()
                 try? FileManager.default.removeItem(at:powerFile)
             }
         }
@@ -195,17 +196,20 @@ private enum CampusConfigStore {
         }
     }
     func refresh(force: Bool = false) async {
+        if !force, let lastSuccessfulRefresh, Date().timeIntervalSince(lastSuccessfulRefresh) < 300 { return }
+        let owner = config?.cacheIdentity
+        await refreshCoordinator.perform { [weak self] in await self?.refreshBalances() }
+        if config != nil, config?.cacheIdentity != owner { await refresh(force: true) }
+    }
+    private func refreshBalances() async {
         guard let config, !loading else { return }
-        if !force, let lastAttempt, Date().timeIntervalSince(lastAttempt) < 300 { return }
-        loading = true; lastAttempt = Date(); issue = nil
-        defer {
-            loading = false
-            if self.config?.cacheIdentity != config.cacheIdentity {Task {await refresh(force:true)}}
-        }
+        loading = true; lastSuccessfulRefresh = nil; issue = nil
+        defer { loading = false }
         if let shared = CampusSharedCache.read(CampusSnapshot.self), shared.owner == config.cacheIdentity,
            (shared.balanceFetchedAt ?? .distantPast) > (snapshot?.balanceFetchedAt ?? .distantPast) { snapshot = shared }
         var next = snapshot?.owner == config.cacheIdentity ? snapshot! : CampusSnapshot(owner:config.cacheIdentity)
         do { next.recordBalance(.success(try await provider.balance(config:config))) }
+        catch is CancellationError { return }
         catch { next.recordBalance(.failure((error as? CampusError) ?? .network)) }
         if !config.buildingID.isEmpty {
             // The selected meter already returns its room and remaining energy.
@@ -213,16 +217,19 @@ private enum CampusConfigStore {
             do {
                 let meter = try await provider.electricity(config:config)
                 next.recordPower(.success(meter));next.recordRoom(.success(meter.room))
-            } catch {
+            } catch is CancellationError { return }
+            catch {
                 let issue = (error as? CampusError) ?? .network
                 next.recordPower(.failure(issue));next.recordRoom(.failure(issue))
             }
         } else {
             do { next.recordRoom(.success(try await provider.room(config:config))) }
+            catch is CancellationError { return }
             catch { next.recordRoom(.failure((error as? CampusError) ?? .network)) }
         }
         guard self.config?.cacheIdentity == config.cacheIdentity else {return}
         snapshot = next
+        if next.cardError == nil, next.powerError == nil, next.roomError == nil { lastSuccessfulRefresh = Date() }
         issue = next.cardError?.rawValue
         if issue == nil, next.room == nil, config.dormRoom.isEmpty { issue = next.roomError?.rawValue }
         saveSnapshot()
@@ -275,7 +282,7 @@ private enum CampusConfigStore {
         guard var next = config, scope.accepts(next) else {return}
         next.buildingID = power.building; next.meterID = power.meter.id
         try next.validate(); try CampusConfigStore.save(next)
-        config = next; lastAttempt = nil
+        config = next; lastSuccessfulRefresh = nil
         if snapshot == nil {snapshot = CampusSnapshot(owner:next.cacheIdentity)}
         snapshot?.owner = next.cacheIdentity; snapshot?.recordPower(.success(power.meter))
         powerChoices = []; powerScope = nil; powerMatchIssue = nil

@@ -326,7 +326,13 @@ struct SettingsView: View {
     @EnvironmentObject private var laundry: LaundryModel
     @State private var importing = false
     @State private var importKind = ConfigImport.campus
-    private var version: String { (Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? "—") + " · 内测" }
+    @State private var diagnosticURL: URL?
+    @State private var sharingDiagnostics = false
+    @State private var diagnosticFailed = false
+    private var version: String {
+        (Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? "—") + " (" +
+        (Bundle.main.object(forInfoDictionaryKey:"CFBundleVersion") as? String ?? "—") + ") · 内测"
+    }
     var body: some View {
         NavigationStack {
             Form {
@@ -355,6 +361,16 @@ struct SettingsView: View {
                 }
                 Section {
                     DisclosureGroup("高级设置与故障排查") {
+                        Button("只读检查本次水控状态") { Task { await water.reviewCurrentSession() } }
+                            .disabled(!water.mayFinish)
+                        Text("仅查询已保存会话的设备，不开水、不关水、不结算。")
+                            .font(.footnote).foregroundStyle(.secondary)
+                        Button("导出热水诊断") {
+                            do { diagnosticURL = try water.exportDiagnostics(); sharingDiagnostics = true }
+                            catch { diagnosticFailed = true }
+                        }
+                        Text("包含版本、操作时间和设备回复类型，不含账号、密钥或设备编号。仅记录更新后的操作。")
+                            .font(.footnote).foregroundStyle(.secondary)
                         Text("通常无需导入文件。请优先使用上方账号与设备设置。")
                             .font(.footnote).foregroundStyle(.secondary)
                         Button("导入校园卡配置") { importKind = .campus; importing = true }.disabled(campus.loading)
@@ -368,6 +384,10 @@ struct SettingsView: View {
             }.scrollContentBackground(.hidden).background(NativeTheme.background).tint(NativeTheme.tint)
                 .navigationTitle(showsDone ? "设置" : "设备与设置").navigationBarTitleDisplayMode(.inline)
                 .toolbar { if showsDone { ToolbarItem(placement:.confirmationAction) { Button("完成") { dismiss() } } } }
+                .sheet(isPresented: $sharingDiagnostics) {
+                    if let diagnosticURL { WaterDiagnosticShare(url: diagnosticURL) }
+                }
+                .alert("诊断文件暂未生成", isPresented: $diagnosticFailed) { Button("知道了", role: .cancel) {} }
                 .fileImporter(isPresented:$importing,allowedContentTypes:[.json,.data]) { result in
                     do {
                         let url = try result.get()

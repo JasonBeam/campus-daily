@@ -128,7 +128,7 @@ private fun ServiceFeature(modifier:Modifier,title:String,detail:String,status:S
     }
 }
 
-fun waterLabel(s:CampusUiState):String = when(s.waterSession?.stage) {
+fun waterLabel(s:CampusUiState):String = if(s.waterSession?.stateReviewRequired==true)"本次待核对" else when(s.waterSession?.stage) {
     null -> if(s.water.configured) "已就绪" else "先选择宿舍与水控"
     ShowerStage.ACTIVE -> "已授权 · 可用水"
     ShowerStage.SETTLED -> "结算完成"
@@ -137,7 +137,7 @@ fun waterLabel(s:CampusUiState):String = when(s.waterSession?.stage) {
 }
 
 @Composable
-fun WaterScreen(s:CampusUiState,padding:PaddingValues,navigate:(String)->Unit,inspect:()->Unit={},operate:(Boolean)->Unit) {
+fun WaterScreen(s:CampusUiState,padding:PaddingValues,navigate:(String)->Unit,inspect:()->Unit={},review:()->Unit={},operate:(Boolean)->Unit) {
     val stage=s.waterSession?.stage
     val finish=stage in setOf(ShowerStage.ACTIVE,ShowerStage.AUTHORIZATION_WRITE_PENDING)
     val start=stage==null || stage==ShowerStage.SETTLED
@@ -151,7 +151,7 @@ fun WaterScreen(s:CampusUiState,padding:PaddingValues,navigate:(String)->Unit,in
                     else Box(Modifier.size(7.dp).background(MaterialTheme.colorScheme.primary,RoundedCornerShape(50)))
                     NativeText(if("water" in s.busy)"正在连接水控…" else waterLabel(s),style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)
                 }
-                NativeText(when{finish->"水控已确认授权。结束后请确认现场停水。";stage==ShowerStage.SETTLED->"服务器已确认结算";start->"靠近水控并打开蓝牙，即可开始本次用水。";else->"操作结果待核对，请查看现场和学校记录，暂不可再次开始。"},style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                NativeText(when{s.waterSession?.stateReviewRequired==true->"水控未返回使用中状态，未发送结束指令；请核对现场及官方记录。";finish->"水控已确认授权。结束后请确认现场停水。";stage==ShowerStage.SETTLED->"服务器已确认结算";start->"靠近水控并打开蓝牙，即可开始本次用水。";else->"操作结果待核对，请查看现场和学校记录，暂不可再次开始。"},style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Group {Row(verticalAlignment=Alignment.CenterVertically) {
                 NativeText("本次费用",Modifier.weight(1f),color=MaterialTheme.colorScheme.onSurfaceVariant)
@@ -168,6 +168,10 @@ fun WaterScreen(s:CampusUiState,padding:PaddingValues,navigate:(String)->Unit,in
             else Group {
                 Row(Modifier.fillMaxWidth().heightIn(min=26.dp).clickable {expanded=!expanded},verticalAlignment=Alignment.CenterVertically) {NativeText("连接检查与设备信息",Modifier.weight(1f),style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.primary);Icon(if(expanded)Icons.Default.ExpandMore else CampusSymbols.ChevronForward,null,Modifier.size(16.dp),tint=MaterialTheme.colorScheme.onSurface)}
                 if(expanded) {
+                    if(finish) {
+                        OutlinedButton(review,enabled=!s.storageIssue && !s.transactionBusy,modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)) {NativeText("只读检查本次水控状态")}
+                        Hint("仅查询当前会话的设备，不开水、不关水、不结算。")
+                    }
                     val canInspect=!s.storageIssue && !s.transactionBusy && !s.unresolvedWater
                     OutlinedButton(inspect,enabled=canInspect,modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)) {
                         NativeText(if("verify" in s.busy)"正在核对…" else "扫描并核对本宿舍水控",
@@ -191,16 +195,16 @@ fun WaterScreen(s:CampusUiState,padding:PaddingValues,navigate:(String)->Unit,in
 private fun FormLabel(text:String) {Box(Modifier.fillMaxWidth().height(40.dp).padding(horizontal=20.dp),contentAlignment=Alignment.CenterStart){NativeText(text,style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)}}
 
 @Composable
-private fun FormRow(title:String,value:String?=null,action:(()->Unit)?=null,blue:Boolean=false) {
-    Row(Modifier.fillMaxWidth().heightIn(min=52.dp).then(if(action!=null)Modifier.clickable(onClick=action)else Modifier).padding(horizontal=20.dp,vertical=14.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)) {
-        NativeText(title,Modifier.weight(1f),style=MaterialTheme.typography.bodyLarge,color=if(blue)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
+private fun FormRow(title:String,value:String?=null,action:(()->Unit)?=null,blue:Boolean=false,enabled:Boolean=true) {
+    Row(Modifier.fillMaxWidth().heightIn(min=52.dp).then(if(action!=null)Modifier.clickable(enabled=enabled,onClick=action)else Modifier).padding(horizontal=20.dp,vertical=14.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)) {
+        NativeText(title,Modifier.weight(1f),style=MaterialTheme.typography.bodyLarge,color=if(!enabled)MaterialTheme.colorScheme.onSurfaceVariant else if(blue)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
         if(value!=null)NativeText(value,style=MaterialTheme.typography.bodyLarge,color=MaterialTheme.colorScheme.onSurfaceVariant)
         if(action!=null && !blue)Icon(CampusSymbols.ChevronForward,null,Modifier.size(12.dp),tint=MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
 @Composable
-fun DevicesScreen(s:CampusUiState,padding:PaddingValues,navigate:(String)->Unit,glassEnabled:Boolean=true,onGlassChange:(Boolean)->Unit={},refresh:()->Unit={}) = Page(padding,spacing=0.dp,top=35.dp) {
+fun DevicesScreen(s:CampusUiState,padding:PaddingValues,navigate:(String)->Unit,glassEnabled:Boolean=true,onGlassChange:(Boolean)->Unit={},refresh:()->Unit={},exportDiagnostics:()->Unit={},review:()->Unit={}) = Page(padding,spacing=0.dp,top=35.dp) {
     var advanced by rememberSaveable {mutableStateOf(false)}
     Surface(onClick={navigate("setup")},shape=RoundedCornerShape(26.dp),color=MaterialTheme.colorScheme.surface){
         Row(Modifier.fillMaxWidth().padding(horizontal=20.dp,vertical=24.dp),verticalAlignment=Alignment.CenterVertically) {
@@ -220,6 +224,9 @@ fun DevicesScreen(s:CampusUiState,padding:PaddingValues,navigate:(String)->Unit,
     Surface(shape=RoundedCornerShape(26.dp),color=MaterialTheme.colorScheme.surface){Column {
         FormRow("高级设置与故障排查",action={advanced=!advanced})
         if(advanced){
+            FormRow("只读检查本次水控状态",action=review,blue=true,enabled=!s.storageIssue && !s.transactionBusy && s.waterSession?.stage in setOf(ShowerStage.ACTIVE,ShowerStage.AUTHORIZATION_WRITE_PENDING))
+            FormRow("导出热水诊断",action=exportDiagnostics,blue=true)
+            Hint("仅含版本、时间、操作阶段及设备回复类型，不含账号、密钥或设备编号。")
             Hint("通常优先使用上方账号与设备设置。")
             FormRow("重新登录学校账号",action={navigate("login")},blue=true)
             FormRow("导入内测热水配置",action={navigate("import")},blue=true)
@@ -227,7 +234,7 @@ fun DevicesScreen(s:CampusUiState,padding:PaddingValues,navigate:(String)->Unit,
             Row(Modifier.padding(horizontal=20.dp),verticalAlignment=Alignment.CenterVertically){NativeText("液态玻璃",Modifier.weight(1f));Switch(glassEnabled,onGlassChange)}
             NativeText("省电模式或低内存设备自动简化效果。个人配置通过 Android Keystore 加密保存在本机。",Modifier.padding(20.dp),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        HorizontalDivider(Modifier.padding(horizontal=20.dp));Row(Modifier.fillMaxWidth().heightIn(min=52.dp).padding(horizontal=20.dp),verticalAlignment=Alignment.CenterVertically){Hint("版本");Spacer(Modifier.weight(1f));Hint(com.beamjason.xiaorichang.BuildConfig.VERSION_NAME)}
+        HorizontalDivider(Modifier.padding(horizontal=20.dp));Row(Modifier.fillMaxWidth().heightIn(min=52.dp).padding(horizontal=20.dp),verticalAlignment=Alignment.CenterVertically){Hint("版本");Spacer(Modifier.weight(1f));Hint("${com.beamjason.xiaorichang.BuildConfig.VERSION_NAME} (${com.beamjason.xiaorichang.BuildConfig.VERSION_CODE})")}
     }}
 }
 

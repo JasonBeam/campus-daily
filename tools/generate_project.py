@@ -69,7 +69,7 @@ for mode in ('Debug','Release'):
     INFOPLIST_KEY_UILaunchScreen_Generation = YES; INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
     INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
     INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
-    TARGETED_DEVICE_FAMILY = 1; MARKETING_VERSION = 0.8.0; CURRENT_PROJECT_VERSION = 36;
+    TARGETED_DEVICE_FAMILY = 1; MARKETING_VERSION = 0.8.0; CURRENT_PROJECT_VERSION = 38;
     ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
     SWIFT_EMIT_LOC_STRINGS = YES; ENABLE_PREVIEWS = YES;
     LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
@@ -98,7 +98,7 @@ for mode in ['Debug','Release']:
     INFOPLIST_KEY_CFBundleDisplayName = \"校园双余额\";
     IPHONEOS_DEPLOYMENT_TARGET = 17.0; SDKROOT = iphoneos; SWIFT_VERSION = 5.0;
     TARGETED_DEVICE_FAMILY = 1; APPLICATION_EXTENSION_API_ONLY = YES; SKIP_INSTALL = YES;
-    MARKETING_VERSION = 0.8.0; CURRENT_PROJECT_VERSION = 36;
+    MARKETING_VERSION = 0.8.0; CURRENT_PROJECT_VERSION = 38;
     LD_RUNPATH_SEARCH_PATHS = (\"$(inherited)\",\"@executable_path/Frameworks\",\"@executable_path/../../Frameworks\");
     SWIFT_OPTIMIZATION_LEVEL = \"{'-Onone' if mode == 'Debug' else '-O'}\";
     """

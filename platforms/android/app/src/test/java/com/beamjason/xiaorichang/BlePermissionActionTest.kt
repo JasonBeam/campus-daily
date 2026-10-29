@@ -6,7 +6,7 @@ import org.junit.Test
 
 class BlePermissionActionTest {
     @Test fun transactionAndInspectionResumeOnlyOnTheWaterPage() {
-        for(action in listOf("start","finish","inspect")) {
+        for(action in listOf("start","finish","inspect","review")) {
             assertTrue(mayResumeBleAction(action,"water"))
             for(page in listOf("dorm","setup","","login"))assertFalse(mayResumeBleAction(action,page))
         }
