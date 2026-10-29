@@ -4,11 +4,11 @@ import WaterCore
 
 enum CampusSharedCache {
     private static func query(_ service: String,_ account: String) -> [String:Any] {
-        var query: [String:Any] = [kSecClass as String:kSecClassGenericPassword,kSecAttrService as String:service,kSecAttrAccount as String:account]
-        if let group = Bundle.main.object(forInfoDictionaryKey:"CampusKeychainGroup") as? String, !group.isEmpty {
-            query[kSecAttrAccessGroup as String] = group
-        }
-        return query
+        // The app and extension declare the same default keychain access group.
+        // Let Security use the group granted by their actual signatures. An
+        // unsigned build cannot freeze AppIdentifierPrefix into Info.plist:
+        // another student's signing team will have a different prefix.
+        [kSecClass as String:kSecClassGenericPassword,kSecAttrService as String:service,kSecAttrAccount as String:account]
     }
     static func read<T: Decodable>(_ type: T.Type, service: String = "CampusDaily.widget-cache.v1", account: String = "snapshot") -> T? {
         var request = query(service,account)

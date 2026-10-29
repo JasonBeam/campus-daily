@@ -40,3 +40,6 @@ Android/Harmony 构建需由各自 SDK 编译、签名和真机运行。没有�
 - [HarmonyOS BLE 官方 Codelab](https://developer.huawei.com/consumer/en/codelab/HarmonyOS-BLE/)
 - [HarmonyOS WebView/ArkWeb Codelab](https://developer.huawei.com/consumer/en/codelab/HarmonyOS-WebView/)
 - [DevEco 真机运行和调试签名步骤](https://developer.huawei.com/consumer/cn/doc/HarmonyOS-Guides/ide-hmos-run-device)
+
+
+2026-10-29 本地候选选择直接分发共用平台配置，换取无需自建云服务和首次手动导入；这并未消除提取风险。构建仅从本地文件注入通用字段，不复制个人身份。现场验收和发布状态见 [Beta 2 候选](release-0.8.0-beta.2.md)。

@@ -7,12 +7,13 @@ import java.util.Locale
 data class WaterProfile(
     val secret: String, val sid: String, val studentId: String, val schoolId: String,
     val machineId: String, val bleName: String, val typeId: Int, val version: Int,
-    val baseUrl: String = "https://isv.lxt6.cn"
+    val baseUrl: String = "https://isv.lxt6.cn",
+    val access: com.beamjason.xiaorichang.net.WaterAccessSession? = null
 ) {
     fun validate() {
         require(baseUrl == "https://isv.lxt6.cn")
-        require(secret.isNotBlank() && secret.toByteArray().size <= 256)
-        require(sid.isNotBlank() && sid.length <= 128)
+        if(access!=null){access.validate();require(access.studentId==studentId && access.schoolId==schoolId)}
+        else {require(secret.isNotBlank() && secret.toByteArray().size <= 256);require(sid.isNotBlank() && sid.length <= 128)}
         require(studentId.matches(Regex("[A-Za-z0-9.-]{1,64}")))
         require(schoolId.matches(Regex("[A-Za-z0-9.-]{1,64}")))
         require(machineId.hexBytes()?.size == 4)

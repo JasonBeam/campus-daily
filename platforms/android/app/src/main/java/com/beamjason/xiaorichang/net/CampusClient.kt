@@ -13,10 +13,15 @@ data class CampusConfig(val syscustid:String = "", val token:String = "", val ar
                         val buildingId:String = "", val meterId:String = "", val campusVersion:String = "v1.1.55",val portalDormAddress:String="") {
     val configured get() = listOf(syscustid,token,areaCode).all { it.isNotBlank() }
     val owner get() = java.security.MessageDigest.getInstance("SHA-256").digest("$syscustid|$areaCode".toByteArray()).joinToString("") { "%02x".format(it) }
+    val cardOwner get() = java.security.MessageDigest.getInstance("SHA-256").digest("$syscustid|$areaCode|$custid".toByteArray()).joinToString("") { "%02x".format(it) }
+    fun sameCardSession(other:CampusConfig) = syscustid==other.syscustid && areaCode==other.areaCode && custid==other.custid && token==other.token
+    // A meter selection is independent from the in-flight hot-water setup.
+    fun sameDormSession(other:CampusConfig) = sameCardSession(other) && timestamp==other.timestamp && userAgent==other.userAgent &&
+        campusVersion==other.campusVersion && portalDormAddress==other.portalDormAddress && dorm==other.dorm
 }
 data class Option(val id:String,val name:String)
 data class DormWater(val machineId:String,val name:String,val bleName:String)
-data class HotWaterProfile(val secret:String,val sid:String,val bleName:String,val typeId:Int,val version:Int)
+data class HotWaterProfile(val secret:String,val sid:String,val bleName:String,val typeId:Int,val version:Int,val access:WaterAccessSession?=null)
 data class DormIdentity(val studentId:String,val schoolId:String)
 data class PowerMeter(val id:String,val room:String,val remaining:String,val balance:String,val yesterday:String?,val meterAt:String) {
     fun json() = JSONObject().put("id",id).put("room",room).put("remaining",remaining).put("balance",balance).put("yesterday",yesterday).put("meterAt",meterAt)
@@ -30,7 +35,7 @@ data class CampusWebSession(val state:JSONObject,val cardId:String,val ownerId:S
         else "https://ecykt.gdbtu.edu.cn/ykt-view/recharge?isbind=1"
 }
 
-class CampusClient {
+open class CampusClient {
     suspend fun webSession(c:CampusConfig):CampusWebSession = withContext(Dispatchers.IO) {
         val login=call("/ykt-mini/api/customer/loginBySysId",c,JSONObject().put("areacode",c.areaCode)
             .put("version",c.campusVersion).put("appid","wx7077a0b57d156efe").put("redirect","/recharge?isbind=1")) as? JSONObject ?: error("学校身份格式异常")
@@ -89,7 +94,8 @@ class CampusClient {
         text
     }
 
-    suspend fun readDormIdentity(c: CampusConfig, profile: HotWaterProfile): DormIdentity = withContext(Dispatchers.IO) {
+    open suspend fun readDormIdentity(c: CampusConfig, profile: HotWaterProfile): DormIdentity = withContext(Dispatchers.IO) {
+        profile.access?.let{it.validate();require(it.campusOwner==c.waterAccessOwner());return@withContext DormIdentity(it.studentId,it.schoolId)}
         validate(c); validate(profile)
         val body = JSONObject().put("syscustid",c.syscustid).put("custid",c.custid)
             .put("acc_token",c.token).put("timestamp",c.timestamp)
@@ -107,7 +113,11 @@ class CampusClient {
         require(student.isNotBlank() && school.isNotBlank()); DormIdentity(student,school)
     }
 
-    suspend fun dormOptions(parent:String, rooms:Boolean, profile:HotWaterProfile):List<Option> = withContext(Dispatchers.IO) {
+    open suspend fun dormOptions(parent:String, rooms:Boolean, profile:HotWaterProfile):List<Option> = withContext(Dispatchers.IO) {
+        profile.access?.let{a->
+            val rows=WaterAccessClient.call("options",a,JSONObject().put("parent",parent)).getJSONArray("options");require(rows.length()<=1000)
+            return@withContext (0 until rows.length()).map{val r=rows.getJSONObject(it);Option(r.getString("id"),r.getString("name")).also{o->require(o.id.length<=1024 && o.name.length<=128)}}
+        }
         validate(profile)
         val path=if(rooms) "/zk_areainfo_api/areaInfo/getAreaForRoomApplests" else "/zk_areainfo_api/areaInfo/getAreaInfoForApplests"
         val list=signed(path,linkedMapOf("id" to parent),profile).optJSONArray("data") ?: error("宿舍列表为空")
@@ -120,7 +130,12 @@ class CampusClient {
         require(out.map{it.id}.toSet().size==out.size); out
     }
 
-    suspend fun waterMachines(room:String,school:String,profile:HotWaterProfile):List<DormWater> = withContext(Dispatchers.IO) {
+    open suspend fun waterMachines(room:String,school:String,profile:HotWaterProfile):List<DormWater> = withContext(Dispatchers.IO) {
+        profile.access?.let{a->
+            require(a.schoolId==school)
+            val rows=WaterAccessClient.call("machines",a,JSONObject().put("room",room)).getJSONArray("machines");require(rows.length()<=100)
+            return@withContext (0 until rows.length()).map{val r=rows.getJSONObject(it);val id=r.getString("id");require(WaterProtocol.decodeHex(id)?.size==4);DormWater(id,r.getString("name"),r.getString("mac"))}
+        }
         val data=signed("/ZK_BSRS/bathe/getMachineMacAddress",linkedMapOf("typeId" to profile.typeId.toString(),"schoolId" to school,"roomId" to room),profile)
             .optJSONObject("data")?.optJSONArray("objList") ?: error("寝室水控列表为空")
         require(data.length() <= 100)

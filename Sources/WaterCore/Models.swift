@@ -31,24 +31,26 @@ public struct WaterConfig: Codable, Equatable, Sendable {
     public let bleName: String
     public let typeID: Int
     public let version: Int
+    public let access: WaterAccessSession?
     enum CodingKeys: String, CodingKey {
         case baseURL = "base_url", secret, sid, studentID = "student_id"
         case schoolID = "school_id", machineID = "machine_id", bleName = "ble_name"
-        case typeID = "type_id", version
+        case typeID = "type_id", version, access
     }
     public init(baseURL: String = "https://isv.lxt6.cn", secret: String, sid: String,
                 studentID: String, schoolID: String, machineID: String, bleName: String,
-                typeID: Int, version: Int) {
+                typeID: Int, version: Int, access: WaterAccessSession? = nil) {
         self.baseURL = baseURL; self.secret = secret; self.sid = sid
         self.studentID = studentID; self.schoolID = schoolID
         self.machineID = machineID; self.bleName = bleName
         self.typeID = typeID; self.version = version
+        self.access = access
     }
     public func validate() throws {
         let identifier = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-.")
         let ids = [studentID, schoolID]
-        guard baseURL == "https://isv.lxt6.cn", !secret.isEmpty, secret.utf8.count <= 256,
-              !sid.isEmpty, sid.utf8.count <= 128,
+        if let access {try access.validate();guard access.studentID == studentID, access.schoolID == schoolID else {throw WaterError.invalidConfig}}
+        guard baseURL == "https://isv.lxt6.cn", access != nil || (!secret.isEmpty && secret.utf8.count <= 256 && !sid.isEmpty && sid.utf8.count <= 128),
               ids.allSatisfy({ !$0.isEmpty && $0.utf8.count <= 64 && $0.unicodeScalars.allSatisfy(identifier.contains) }),
               let machine = Data(strictHex: machineID), machine.count == 4,
               !bleName.isEmpty, bleName.utf8.count <= 64,

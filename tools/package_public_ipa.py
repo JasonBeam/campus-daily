@@ -8,15 +8,32 @@ import subprocess
 import tempfile
 import zipfile
 from pathlib import Path
+from stage_platform_profile import validate_profile
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--app', required=True, type=Path)
 parser.add_argument('--output', required=True, type=Path)
+parser.add_argument('--platform-profile', required=True, type=Path,
+    help='Explicit local shared-platform profile approved for this no-cloud build')
 args = parser.parse_args()
 app = args.app.resolve()
 if app.parent.name != 'Release-iphoneos' or not app.is_dir():
     parser.error('--app must be an existing Release-iphoneos/*.app')
 info = plistlib.loads((app / 'Info.plist').read_bytes())
+try:
+    expected = validate_profile(args.platform_profile.read_bytes())
+    actual = validate_profile((app / 'CampusWaterPlatform.json').read_bytes())
+    if actual != expected:
+        parser.error('Bundled platform differs from the explicitly supplied local profile')
+except (ValueError, OSError):
+    parser.error('A validated platform-only resource is required; personal data remains forbidden')
+widget = app / 'PlugIns' / 'CampusDailyWidget.appex'
+if not widget.is_dir():
+    parser.error('CampusDailyWidget extension missing from public app')
+for bundle in [app, widget]:
+    metadata = plistlib.loads((bundle / 'Info.plist').read_bytes())
+    if 'CampusKeychainGroup' in metadata:
+        parser.error('Build-time keychain group must not be frozen into an unsigned IPA')
 version, build = info['CFBundleShortVersionString'], info['CFBundleVersion']
 name = f'CampusDaily-{version}-build{build}-unsigned.ipa'
 output = args.output.resolve()
@@ -29,7 +46,7 @@ for path in app.rglob('*'):
     if path.is_symlink():
         parser.error('unexpected symlink in app bundle')
     lower = path.name.lower()
-    if lower in {'waterplatformprofile.json', '_codesignature', 'embedded.mobileprovision'} or path.suffix.lower() in {'.p12', '.waterconfig', '.campusconfig', '.campuscache', '.laundryconfig', '.har', '.pcap', '.pklg'} or lower.startswith('bootstrap.'):
+    if lower in {'waterplatformprofile.json', '_codesignature', 'embedded.mobileprovision'} or lower.endswith('water-access.json') or path.suffix.lower() in {'.p12', '.waterconfig', '.campusconfig', '.campuscache', '.laundryconfig', '.har', '.pcap', '.pklg'} or lower.startswith('bootstrap.'):
         parser.error('private configuration or signing material found; refusing package')
     if path.is_file() and path.read_bytes()[:4] in {b'\xcf\xfa\xed\xfe', b'\xfe\xed\xfa\xcf', b'\xca\xfe\xba\xbe'}:
         signature = subprocess.run(['codesign', '-d', str(path)], capture_output=True)

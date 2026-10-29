@@ -21,15 +21,31 @@ data class WaterReceipt(val payFen:Long?) {
     }
 }
 
-class WaterProvider {
-    suspend fun authorize(profile:WaterProfile,frame:ByteArray):WaterAuthorization = withContext(Dispatchers.IO) {
+interface WaterService {
+    suspend fun authorize(profile:WaterProfile,frame:ByteArray):WaterAuthorization
+    suspend fun settle(profile:WaterProfile,frame:ByteArray):WaterReceipt
+}
+class WaterProvider:WaterService {
+    override suspend fun authorize(profile:WaterProfile,frame:ByteArray):WaterAuthorization = withContext(Dispatchers.IO) {
+        profile.access?.let{a->
+            profile.validate();require(WaterProtocol.identity(frame)==profile.machineId.uppercase())
+            val r=WaterAccessClient.call("authorize",a,JSONObject().put("frame",frame.joinToString(""){"%02X".format(it.toInt() and 255)}).put("operationID",java.util.UUID.randomUUID().toString()))
+            val payload=WaterProtocol.decodeHex(r.getString("payload")) ?: error("水控授权数据格式异常")
+            require(payload.size==15)
+            return@withContext WaterAuthorization(r.getString("machineID"),payload,r.getString("studentID"))
+        }
         val data=request(profile,"/ZK_BSRS/GDBusinessSchool/bathingConsumptionAuthorization",frame)
         val machine=data.optString("machineid"); val id=data.optString("studentId")
         val payload=WaterProtocol.decodeHex(data.optString("systemData")) ?: error("水控授权数据格式异常")
         require(payload.size==15 && id.isNotBlank())
         WaterAuthorization(machine,payload,id)
     }
-    suspend fun settle(profile:WaterProfile,frame:ByteArray):WaterReceipt = withContext(Dispatchers.IO) {
+    override suspend fun settle(profile:WaterProfile,frame:ByteArray):WaterReceipt = withContext(Dispatchers.IO) {
+        profile.access?.let{a->
+            profile.validate();require(WaterProtocol.identity(frame)==profile.machineId.uppercase())
+            val r=WaterAccessClient.call("settle",a,JSONObject().put("frame",frame.joinToString(""){"%02X".format(it.toInt() and 255)}))
+            require(r.optBoolean("settled"));return@withContext WaterReceipt.parse(JSONObject().put("pay",r.opt("payFen")))
+        }
         val data=request(profile,"/ZK_BSRS/GDBusinessSchool/analysisOfBathingConsumptionData",frame)
         WaterReceipt.parse(data)
     }

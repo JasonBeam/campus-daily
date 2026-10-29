@@ -38,6 +38,13 @@ final class NoRedirect: NSObject, URLSessionTaskDelegate {
         return body
     }
     public func authorize(config: WaterConfig, frame: Data) async throws -> Authorization {
+        if let access = config.access {
+            guard try WaterProtocol.identity(frame) == config.machineID.uppercased() else {throw WaterError.wrongDevice}
+            let body = try await WaterAccessClient().call("authorize",access:access,fields:["frame":frame.upperHex,"operationID":UUID().uuidString])
+            guard let machine = body["machineID"] as? String, let id = body["studentID"] as? String,
+                  let text = body["payload"] as? String, let payload = Data(strictHex:text) else {throw WaterError.provider}
+            return Authorization(machineID:machine,payload:payload,studentID:id)
+        }
         let body = try await post(config: config, path: "/ZK_BSRS/GDBusinessSchool/bathingConsumptionAuthorization", frame: frame)
         guard let machine = body["machineid"] as? String,
               let student = body["studentId"] as? String,
@@ -45,6 +52,12 @@ final class NoRedirect: NSObject, URLSessionTaskDelegate {
         return Authorization(machineID: machine, payload: payload, studentID: student)
     }
     public func settle(config: WaterConfig, frame: Data) async throws -> SettlementReceipt {
+        if let access = config.access {
+            guard try WaterProtocol.identity(frame) == config.machineID.uppercased() else {throw WaterError.wrongDevice}
+            let body = try await WaterAccessClient().call("settle",access:access,fields:["frame":frame.upperHex])
+            guard body["settled"] as? Bool == true else {throw WaterError.provider}
+            return SettlementReceipt.parse(["pay":body["payFen"] ?? NSNull()])
+        }
         let body = try await post(config: config, path: "/ZK_BSRS/GDBusinessSchool/analysisOfBathingConsumptionData", frame: frame)
         return SettlementReceipt.parse(body)
     }

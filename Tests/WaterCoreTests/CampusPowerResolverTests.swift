@@ -37,4 +37,61 @@ import XCTest
         },readMeters:{_ in XCTFail("No known leaf was reached");return []})
         XCTAssertNil(result)
     }
+
+    private func duplicateTree() -> [String:[CampusPowerBuilding]] {
+        var tree: [String:[CampusPowerBuilding]] = ["root":[building("campus","示例校区")],
+            "campus":[building("a","半山公寓"),building("b","兰香公寓")]]
+        for group in ["a","b"] {
+            tree[group] = [building(group+"-building","2栋")]
+            tree[group+"-building"] = [building(group+"-floor","5楼")]
+            tree[group+"-floor"] = [building(group+"-room","504")]
+            tree[group+"-room"] = []
+        }
+        return tree
+    }
+    func testDuplicateFullPathsReturnApartmentChoicesWithoutReadingAnyBalances() async throws {
+        let tree = duplicateTree()
+        let result = try await CampusPowerResolver.resolve(address:address(),readBuildings:{tree[$0 ?? "root"] ?? []},
+            readMeters:{_ in XCTFail("Ambiguous apartment must be chosen before reading meters"); return []})
+        XCTAssertNil(result.suggestion)
+        XCTAssertEqual(result.choices.map(\.label),["半山公寓 · 2栋 · 5楼 · 504","兰香公寓 · 2栋 · 5楼 · 504"])
+        var calls: [String] = []
+        let selected = try await CampusPowerResolver.select(try XCTUnwrap(result.choices.first),address:address(),readMeters:{parent in
+            calls.append(parent)
+            return [CampusElectricity(id:"own-meter",room:"504",remainingKWh:10,balanceYuan:5,yesterdayKWh:nil,meterUpdatedAt:"")]
+        })
+        XCTAssertEqual(calls,["a-room"]);XCTAssertEqual(selected?.meter.id,"own-meter")
+    }
+    func testFloorCanDisambiguateDuplicateBuildingNumbers() async throws {
+        var tree = duplicateTree()
+        tree["b-building"] = [building("b-wrong-floor","4楼")]
+        let result = try await CampusPowerResolver.resolve(address:address(),readBuildings:{tree[$0 ?? "root"] ?? []},
+            readMeters:{parent in XCTAssertEqual(parent,"a-room");return [self.meter("own-meter")]})
+        XCTAssertEqual(result.suggestion?.meter.id,"own-meter");XCTAssertTrue(result.choices.isEmpty)
+    }
+    func testIncompleteOrCyclicCatalogueDoesNotClaimUniqueness() async throws {
+        var tree = duplicateTree(); tree["b-room"] = [building("b","返回上层")]
+        let result = try await CampusPowerResolver.resolve(address:address(),readBuildings:{tree[$0 ?? "root"] ?? []},
+            readMeters:{_ in XCTFail("Partial discovery must not read a meter");return []})
+        XCTAssertNil(result.suggestion);XCTAssertTrue(result.choices.isEmpty)
+    }
+    func testBareRoomMeterRequiresExactRoomPathAndMultipleMetersStayUnselected() async throws {
+        var tree = duplicateTree();tree["campus"] = [building("a","公寓甲")]
+        tree["a-floor"] = []
+        let bare = CampusElectricity(id:"bare",room:"504",remainingKWh:10,balanceYuan:5,yesterdayKWh:nil,meterUpdatedAt:"")
+        let unknown = try await CampusPowerResolver.resolve(address:address(),readBuildings:{tree[$0 ?? "root"] ?? []},readMeters:{_ in [bare]})
+        XCTAssertNil(unknown.suggestion)
+        tree["a-floor"] = [building("a-room","504")]
+        let multiple = try await CampusPowerResolver.resolve(address:address(),readBuildings:{tree[$0 ?? "root"] ?? []},readMeters:{_ in [bare,self.meter("second")]})
+        XCTAssertNil(multiple.suggestion)
+    }
+    func testFailedBranchCannotHideAnotherPossibleApartment() async throws {
+        let tree = duplicateTree()
+        do {
+            _ = try await CampusPowerResolver.resolve(address:address(),readBuildings:{parent in
+                if parent == "b" {throw CampusError.network};return tree[parent ?? "root"] ?? []
+            },readMeters:{_ in XCTFail("Discovery failed");return []})
+            XCTFail("Network failure must be visible and retryable")
+        } catch {XCTAssertEqual(error as? CampusError,.network)}
+    }
 }

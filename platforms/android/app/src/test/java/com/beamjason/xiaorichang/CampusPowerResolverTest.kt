@@ -26,4 +26,48 @@ class CampusPowerResolverTest {
         val result=resolveCampusPower(address,{parent->if(parent==null)listOf(Option("campus","示例校区"))else listOf(Option("$parent/next","分组"))},{fail("Not a leaf");emptyList()})
         assertNull(result)
     }
+
+    private fun duplicateTree():MutableMap<String,List<Option>> {
+        val tree=mutableMapOf("root" to listOf(Option("campus","示例校区")),"campus" to listOf(Option("a","半山公寓"),Option("b","兰香公寓")))
+        for(group in listOf("a","b")) {
+            tree[group]=listOf(Option("$group-building","2栋"));tree["$group-building"]=listOf(Option("$group-floor","5楼"))
+            tree["$group-floor"]=listOf(Option("$group-room","504"));tree["$group-room"]=emptyList()
+        }
+        return tree
+    }
+    @Test fun duplicateCompletePathsAskApartmentBeforeAnyMeterRead()=runBlocking {
+        val tree=duplicateTree()
+        val result=discoverCampusPower(address,{tree[it ?: "root"] ?: emptyList()},{fail("No balances before apartment choice");emptyList()})
+        assertNull(result.suggestion)
+        assertEquals(listOf("半山公寓 · 2栋 · 5楼 · 504","兰香公寓 · 2栋 · 5楼 · 504"),result.choices.map{it.label})
+        val calls=mutableListOf<String>()
+        val selected=selectCampusPower(result.choices.first(),address){calls+=it;listOf(PowerMeter("own","504","10","5",null,""))}
+        assertEquals(listOf("a-room"),calls);assertEquals("own",selected?.meter?.id)
+    }
+    @Test fun floorDisambiguatesSameBuildingNumbers()=runBlocking {
+        val tree=duplicateTree();tree["b-building"]=listOf(Option("other-floor","4楼"))
+        val result=discoverCampusPower(address,{tree[it ?: "root"] ?: emptyList()},{assertEquals("a-room",it);listOf(meter("own"))})
+        assertEquals("own",result.suggestion?.meter?.id);assertTrue(result.choices.isEmpty())
+    }
+    @Test fun cyclesDiscardPartialResults()=runBlocking {
+        val tree=duplicateTree();tree["b-room"]=listOf(Option("b","返回上层"))
+        val result=discoverCampusPower(address,{tree[it ?: "root"] ?: emptyList()},{fail("No partial search balance");emptyList()})
+        assertNull(result.suggestion);assertTrue(result.choices.isEmpty())
+    }
+    @Test fun bareRoomNeedsCompletePathAndMultipleMetersNeedConfirmation()=runBlocking {
+        val tree=duplicateTree();tree["campus"]=listOf(Option("a","公寓甲"));tree["a-floor"]=emptyList()
+        val bare=PowerMeter("own","504","10","5",null,"")
+        val unknown=discoverCampusPower(address,{tree[it ?: "root"] ?: emptyList()},{listOf(bare)})
+        assertNull(unknown.suggestion)
+        tree["a-floor"]=listOf(Option("a-room","504"))
+        val multiple=discoverCampusPower(address,{tree[it ?: "root"] ?: emptyList()},{listOf(bare,meter("second"))})
+        assertNull(multiple.suggestion)
+    }
+    @Test fun failedDirectoryCannotProduceFalseUniqueMatch()=runBlocking {
+        val tree=duplicateTree()
+        try {
+            discoverCampusPower(address,{if(it=="b")throw IllegalStateException("offline");tree[it ?: "root"] ?: emptyList()},{fail("No partial search balance");emptyList()})
+            fail("Must report failure")
+        } catch(e:IllegalStateException){assertEquals("offline",e.message)}
+    }
 }

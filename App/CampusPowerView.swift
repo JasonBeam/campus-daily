@@ -13,6 +13,7 @@ struct CampusPowerSetupView: View {
     private let provider = CampusProvider()
     var body: some View {
         List {
+            AutomaticPowerSection()
             Section {
                 Text(path.isEmpty ? "选择校区、楼栋和寝室" : path.map(\.name).joined(separator:" · "))
                     .font(.headline)
@@ -65,5 +66,29 @@ struct CampusPowerSetupView: View {
                 if meters.isEmpty { issue = "此位置没有返回电表，请重新选择" }
             }
         } catch { issue = (error as? LocalizedError)?.errorDescription ?? "电表读取失败，请重试" }
+    }
+}
+
+/// Same compact one-choice fallback in onboarding and the meter settings page.
+struct AutomaticPowerSection: View {
+    @EnvironmentObject private var campus: CampusModel
+    var body: some View {
+        if campus.matchingPower || !campus.powerChoices.isEmpty || campus.powerMatchIssue != nil || campus.powerConfigured {
+            Section("宿舍电表") {
+                if campus.matchingPower {Label("正在匹配电表，可以先保存热水宿舍",systemImage:"bolt")}
+                else if !campus.powerChoices.isEmpty {
+                    Text("学校目录里有同名楼栋，只需确认一次公寓。")
+                        .font(.footnote).foregroundStyle(.secondary)
+                    ForEach(campus.powerChoices) {candidate in
+                        Button(candidate.label) {campus.choosePowerApartment(candidate)}
+                            .accessibilityIdentifier("powerApartment-" + candidate.id)
+                    }
+                } else if campus.powerConfigured {Label("电表已保存",systemImage:"checkmark.circle").foregroundStyle(.green)}
+                if let issue = campus.powerMatchIssue {
+                    Text(issue).font(.footnote).foregroundStyle(.secondary)
+                    Button("重试匹配电表") {campus.matchPowerAutomatically()}
+                }
+            }
+        }
     }
 }

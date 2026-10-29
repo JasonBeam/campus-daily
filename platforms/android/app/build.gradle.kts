@@ -1,3 +1,5 @@
+import java.io.File
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -10,6 +12,19 @@ val syncCampusAutomation=tasks.register<Copy>("syncCampusAutomation") {
     from(sharedAutomationRoot){include("CampusLoginAutomation.js")}
     into(layout.buildDirectory.dir("generated/campusAutomationAssets"))
 }
+val waterProfilePath=providers.gradleProperty("campusWaterProfile")
+    .orElse(providers.environmentVariable("CAMPUS_WATER_PROFILE_PATH"))
+val waterAssets=layout.buildDirectory.dir("generated/waterPlatformAssets")
+val stageWaterPlatform=tasks.register<Exec>("stageWaterPlatform") {
+    inputs.file(waterProfilePath)
+    inputs.file(sharedAutomationRoot.map{File(it).parentFile.resolve("tools/stage_platform_profile.py")})
+    outputs.file(waterAssets.map{it.file("CampusWaterPlatform.json")})
+    doFirst {
+        require(waterProfilePath.isPresent){"Set campusWaterProfile to your local platform-only JSON file"}
+        commandLine("python3",File(sharedAutomationRoot.get()).parentFile.resolve("tools/stage_platform_profile.py").absolutePath,
+            "--profile",waterProfilePath.get(),"--output",waterAssets.get().file("CampusWaterPlatform.json").asFile.absolutePath)
+    }
+}
 
 android {
     namespace = "com.beamjason.xiaorichang"
@@ -20,12 +35,13 @@ android {
         // support API 23+, so Android 6.0 is the broadest supported baseline.
         minSdk = 23
         targetSdk = 35
-        versionCode = 14
-        versionName = "0.2.0-alpha12"
+        versionCode = 24
+        versionName = "0.2.0-alpha22"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildFeatures { compose = true; buildConfig = true }
     sourceSets["main"].assets.srcDir(syncCampusAutomation.map{it.destinationDir})
+    sourceSets["main"].assets.srcDir(waterAssets)
     buildTypes {
         debug { applicationIdSuffix = ".debug"; versionNameSuffix = "-debug" }
         release { isMinifyEnabled = true; proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro") }
@@ -33,7 +49,7 @@ android {
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
 }
-tasks.named("preBuild").configure {dependsOn(syncCampusAutomation)}
+tasks.named("preBuild").configure {dependsOn(syncCampusAutomation,stageWaterPlatform)}
 
 dependencies {
     implementation(platform("androidx.compose:compose-bom:2025.11.00"))

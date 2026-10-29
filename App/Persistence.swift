@@ -2,7 +2,38 @@ import Foundation
 import Security
 import WaterCore
 
+enum WaterPlatformStore {
+    private static var query: [String:Any] {
+        [kSecClass as String:kSecClassGenericPassword,
+         kSecAttrService as String:"CampusHotWater.platform-profile.v1",kSecAttrAccount as String:"water-platform"]
+    }
+    static func load() throws -> WaterPlatformProfile? {
+        var request = query
+        request[kSecReturnData as String] = true; request[kSecMatchLimit as String] = kSecMatchLimitOne
+        var result: CFTypeRef?
+        let status = SecItemCopyMatching(request as CFDictionary,&result)
+        if status == errSecItemNotFound {return nil}
+        guard status == errSecSuccess, let bytes = result as? Data else {throw WaterError.storage}
+        let value = try JSONDecoder().decode(WaterPlatformProfile.self,from:bytes)
+        try value.validate(); return value
+    }
+    static func save(_ value: WaterPlatformProfile) throws {
+        try value.validate()
+        let changes: [String:Any] = [kSecValueData as String:try JSONEncoder().encode(value),
+            kSecAttrAccessible as String:kSecAttrAccessibleWhenUnlockedThisDeviceOnly]
+        let status = SecItemUpdate(query as CFDictionary,changes as CFDictionary)
+        if status == errSecItemNotFound {
+            var item = query; changes.forEach {item[$0.key] = $0.value}
+            guard SecItemAdd(item as CFDictionary,nil) == errSecSuccess else {throw WaterError.storage}
+        } else if status != errSecSuccess {throw WaterError.storage}
+    }
+}
+
 enum PrivateConfigStore {
+    static func clear() throws {
+        let status = SecItemDelete(query as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound else {throw WaterError.storage}
+    }
     private static let service = "CampusHotWater.personal-config.v1"
     private static var query: [String: Any] {
         [kSecClass as String: kSecClassGenericPassword,

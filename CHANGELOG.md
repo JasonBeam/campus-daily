@@ -1,6 +1,27 @@
 # Changelog
 
-版本记录采用 Keep a Changelog 格式。仓库只包含源码、教程和脱敏素材，不包含个人开发签名安装包。
+版本记录采用 Keep a Changelog 格式。源码仓库不保存个人签名证书或个人配置；测试安装包通过 GitHub Release 单独分发。
+
+## [0.8.0-beta.2] - 2026-10-29
+
+### Added
+
+- Add Android 0.2.0-alpha22 (versionCode 24) and unsigned iPhone build 36 test packages.
+- Automatically match the school-registered residence to the campus electricity-meter directory, asking the user to confirm when duplicate apartments remain.
+- Bundle only the shared water-platform fields into locally built test packages so a first-time user does not need to inspect traffic or import a personal configuration.
+- Add Android read-only water-controller inspection and device-identity checks for nearby controllers with the same broadcast name.
+
+### Changed
+
+- Reorganize the README around a short product introduction, device downloads, setup guides, AI help and interface previews.
+- Separate the normal school-login setup from legacy configuration import and developer migration notes.
+- Keep campus-card, electricity and hot-water cache updates scoped to the active account and residence.
+
+### Security
+
+- Keep personal school sessions, student details, residence, controller identity, transaction records and signing certificates out of the public source and installation packages.
+- Document that shared water-platform parameters embedded in the test packages can be extracted.
+- Record that real hot-water authorization, dispensing and settlement have not been accepted in this release cycle.
 
 ## [0.8.0-beta.1] - 2026-10-28
 
@@ -62,3 +83,4 @@
 [0.4.6]: https://github.com/JasonBeam/campus-daily/releases/tag/v0.4.6
 [0.7.0]: https://github.com/JasonBeam/campus-daily/releases/tag/v0.7.0
 [0.8.0-beta.1]: https://github.com/JasonBeam/campus-daily/releases/tag/v0.8.0-beta.1
+[0.8.0-beta.2]: https://github.com/JasonBeam/campus-daily/releases/tag/v0.8.0-beta.2

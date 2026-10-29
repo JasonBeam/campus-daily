@@ -137,7 +137,7 @@ fun waterLabel(s:CampusUiState):String = when(s.waterSession?.stage) {
 }
 
 @Composable
-fun WaterScreen(s:CampusUiState,padding:PaddingValues,navigate:(String)->Unit,operate:(Boolean)->Unit) {
+fun WaterScreen(s:CampusUiState,padding:PaddingValues,navigate:(String)->Unit,inspect:()->Unit={},operate:(Boolean)->Unit) {
     val stage=s.waterSession?.stage
     val finish=stage in setOf(ShowerStage.ACTIVE,ShowerStage.AUTHORIZATION_WRITE_PENDING)
     val start=stage==null || stage==ShowerStage.SETTLED
@@ -168,14 +168,20 @@ fun WaterScreen(s:CampusUiState,padding:PaddingValues,navigate:(String)->Unit,op
             else Group {
                 Row(Modifier.fillMaxWidth().heightIn(min=26.dp).clickable {expanded=!expanded},verticalAlignment=Alignment.CenterVertically) {NativeText("连接检查与设备信息",Modifier.weight(1f),style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.primary);Icon(if(expanded)Icons.Default.ExpandMore else CampusSymbols.ChevronForward,null,Modifier.size(16.dp),tint=MaterialTheme.colorScheme.onSurface)}
                 if(expanded) {
-                    NavRow("扫描并核对本宿舍水控",if(s.water.address!=null)"设备编号已通过蓝牙核对" else "只读取设备编号，不会出水",Icons.Default.Bluetooth){navigate("dorm")}
+                    val canInspect=!s.storageIssue && !s.transactionBusy && !s.unresolvedWater
+                    OutlinedButton(inspect,enabled=canInspect,modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)) {
+                        NativeText(if("verify" in s.busy)"正在核对…" else "扫描并核对本宿舍水控",
+                            color=if(canInspect)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    s.waterInspection?.let{Hint(it)}
+                    Hint("只读取设备编号，不会出水。")
                     Hint("水控编号 ${s.water.machineId}")
                     Hint(if(s.water.address!=null)"已保存核对结果；开始洗澡时会再次连接。" else "已保存宿舍配置，连接时仍需核对设备编号。")
                 }
             }
         }
         Column(Modifier.widthIn(max=560.dp).fillMaxWidth().align(Alignment.CenterHorizontally).padding(horizontal=20.dp,vertical=12.dp),verticalArrangement=Arrangement.spacedBy(10.dp),horizontalAlignment=Alignment.CenterHorizontally) {
-            ActionButton(if(!s.water.configured)"配置宿舍与水控" else if(finish)"结束并结算" else if(stage==ShowerStage.SETTLED)"再次开始洗澡" else if(start)"开始洗澡" else "等待核对",enabled=!s.storageIssue && !s.transactionBusy && (start || finish),busy="water" in s.busy,aligned=true) {if(!s.water.configured)navigate("dorm") else operate(finish)}
+            ActionButton(if(!s.water.configured)"配置宿舍与水控" else if(finish)"结束并结算" else if(start)"开始洗澡" else "等待核对",enabled=!s.storageIssue && !s.transactionBusy && (start || finish),busy="water" in s.busy,aligned=true) {if(!s.water.configured)navigate("dorm") else operate(finish)}
             Hint(if(finish)"结算完成前，请留在水控附近。" else "授权后，按水控上的出水键。")
         }
     }
@@ -255,32 +261,35 @@ fun SetupScreen(s:CampusUiState,padding:PaddingValues,navigate:(String)->Unit) =
 data class DormActions(val reload:()->Unit={},val choose:(Option,Int)->Unit={_,_->},val select:(DormWater)->Unit={},val verify:(com.beamjason.xiaorichang.ble.BleCandidate)->Unit={},val save:()->Unit={},val provision:()->Unit={})
 
 @Composable
-fun DormScreen(s:CampusUiState,padding:PaddingValues,vm:CampusViewModel,requestScan:()->Unit,import:()->Unit,navigate:(String)->Unit) {
-    DormSetupContent(s,padding,DormActions(vm::loadDorm,vm::chooseDorm,vm::selectMachine,vm::verifyWater,vm::saveDorm,vm::resume),requestScan,import,navigate)
+fun DormScreen(s:CampusUiState,padding:PaddingValues,vm:CampusViewModel,requestScan:()->Unit,import:()->Unit,navigate:(String)->Unit,onSaved:()->Unit={}) {
+    DormSetupContent(s,padding,DormActions(vm::loadDorm,vm::chooseDorm,vm::selectMachine,vm::verifyWater,{vm.saveDorm(onSaved)},vm::resume),requestScan,import,navigate,powerChoice=vm::choosePowerApartment,powerRetry={vm.matchPowerAutomatically(true)})
 }
 
 @Composable
-fun DormSetupContent(s:CampusUiState,padding:PaddingValues,actions:DormActions,requestScan:()->Unit={},import:()->Unit={},navigate:(String)->Unit={}) = Page(padding) {
+fun DormSetupContent(s:CampusUiState,padding:PaddingValues,actions:DormActions,requestScan:()->Unit={},import:()->Unit={},navigate:(String)->Unit={},powerChoice:(CampusPowerCandidate)->Unit={},powerRetry:()->Unit={}) = Page(padding) {
     var expandedLevel by rememberSaveable { mutableIntStateOf(-1) }
     var showManualDorm by rememberSaveable {mutableStateOf(false)}
     var showOtherRadios by rememberSaveable { mutableStateOf(false) }
     if(s.campus.portalDormAddress.isNotBlank()) Group {
         NativeText("学校登记宿舍",style=MaterialTheme.typography.titleMedium)
         Hint(s.campus.portalDormAddress)
-        if(s.dormSetup.autoMatched)Hint(if(s.dormSetup.suggestedPower!=null)"已匹配热水和电表，核对后一起保存。" else "已匹配热水宿舍。电表未唯一匹配时保留原设置。")
+        if(s.dormSetup.autoMatched)Hint("已匹配热水宿舍，请核对后保存。")
     }
+    AutomaticPowerContent(s,powerChoice,powerRetry)
     var search by rememberSaveable { mutableStateOf("") }
-    var advancedImport by rememberSaveable { mutableStateOf(false) }
+    var backupAccess by rememberSaveable {mutableStateOf(false)}
     val d=s.dormSetup; val busy="dorm" in s.busy || "verify" in s.busy || "saveDorm" in s.busy
     if(!d.autoMatched)Hint("登录学校账号后匹配本人宿舍；信息缺失时可手动选择。")
+    if(d.serviceEnabled==false)Hint("在线身份和宿舍可配置；开始用水仍在验收，暂未开放。",true)
+    if(!s.water.hasPlatform) Group {
+        NativeText("自动连接热水",style=MaterialTheme.typography.titleMedium)
+        Hint("完成学校登录后直接读取本人宿舍与水控，无需导入配置文件。")
+        if(s.campus.configured)ActionButton("重试自动连接",enabled=!busy && !s.unresolvedWater,onClick=actions.reload)
+        TextButton({backupAccess=!backupAccess}){NativeText("备用接入方式")}
+        if(backupAccess){Hint("仅用于旧版迁移和开发排查，正常使用无需导入文件。");OutlinedButton(import){NativeText("导入热水接入文件")}}
+    }
     if(!s.campus.configured) ActionButton("先登录学校账号") { navigate("login") }
-    else if(!s.water.hasPlatform) Group {
-        NativeText("热水接入尚未准备好",style=MaterialTheme.typography.titleMedium)
-        Hint("请联系内测提供者完成初始化。准备好后，可直接选择自己的宿舍和水控。")
-        ActionButton("重新检查接入",onClick=actions.provision)
-        TextButton({advancedImport=!advancedImport}){NativeText("高级选项")}
-        if(advancedImport)OutlinedButton(import){NativeText("导入本人已有配置")}
-    } else {
+    else if(s.water.hasPlatform) {
         OutlinedButton(actions.reload,enabled=!busy && !s.unresolvedWater,modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)) { NativeText(if(d.levels.isEmpty()) "读取我的宿舍信息" else "重新选择宿舍") }
         if(s.unresolvedWater) Hint("请先结束或核对当前热水会话，再更换水控。",true)
         if(d.autoMatched)Group(padding=PaddingValues(horizontal=16.dp),spacing=0.dp) {
@@ -314,8 +323,9 @@ fun DormSetupContent(s:CampusUiState,padding:PaddingValues,actions:DormActions,r
         if(d.selected!=null) Group {
             NativeText("蓝牙核对",style=MaterialTheme.typography.titleMedium)
             Hint("靠近水控后自动读取编号，匹配本宿舍设备。")
-            OutlinedButton(requestScan,enabled=!busy && !s.unresolvedWater,modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)) { NativeText(if(busy)"正在查找本宿舍水控…" else if(d.verifiedAddress!=null)"重新查找" else "查找本宿舍水控") }
-            if(d.checkingAddress!=null)Hint("发现 ${d.candidates.size} 台附近设备，正在核对宿舍编号…")
+            ActionButton(if(d.verifiedAddress!=null)"重新查找水控" else "查找本宿舍水控",
+                enabled=!busy && !s.unresolvedWater,busy="verify" in s.busy,onClick=requestScan)
+            if(d.checkingAddress!=null)Hint("正在核对附近设备 ${d.checkingIndex}/${d.candidates.size.coerceAtMost(16)}，请保持靠近水控…")
             val own=d.candidates.firstOrNull{it.address==d.verifiedAddress}
             if(own!=null) {
                 NavRow("本宿舍水控","${d.selected.name} · 编号已核对",Icons.Default.Bluetooth,true){}
@@ -326,17 +336,35 @@ fun DormSetupContent(s:CampusUiState,padding:PaddingValues,actions:DormActions,r
                 if(d.readIdentities[c.address]?.equals(d.selected.machineId,true)==false)Hint("其他宿舍水控 · 编号不匹配")
                 else NavRow("待确认的水控","信号 ${c.rssi} dBm · 点按重新核对",Icons.Default.Bluetooth){if(!busy)actions.verify(c)}
             }
-            if(d.verifiedAddress==null && !busy) Hint("尚未找到本宿舍水控。也可以先保存宿舍，稍后靠近设备再核对。")
-            ActionButton(if(d.suggestedPower!=null) "保存热水和电表" else if(d.verifiedAddress!=null) "保存宿舍与已核对水控" else "保存宿舍，稍后核对",enabled=!busy && !s.unresolvedWater, onClick=actions.save)
+            val previous = if(d.path.size==4 && d.identity!=null) previouslyVerifiedAddress(s.water,d.identity.studentId,d.identity.schoolId,d.selected.machineId,d.path[1].name+d.path[3].name) else null
+            if(d.verifiedAddress==null && !busy) Hint(if(previous!=null) "已保留上次核对记录；连接时会再次核对编号。" else "尚未找到本宿舍水控。也可以先保存宿舍，稍后靠近设备再核对。")
+            ActionButton(if(d.verifiedAddress!=null) "保存宿舍与已核对水控" else if(previous!=null) "保存并保留上次核对" else "保存宿舍，稍后核对",enabled=!busy && !s.unresolvedWater, onClick=actions.save)
         }
     }
     if(busy) LinearProgressIndicator(Modifier.fillMaxWidth())
 }
 
 @Composable
+private fun AutomaticPowerContent(s:CampusUiState,choose:(CampusPowerCandidate)->Unit,retry:()->Unit) {
+    if(s.matchingPower || s.powerChoices.isNotEmpty() || s.powerMatchIssue!=null || s.campus.buildingId.isNotBlank())Group {
+        NativeText("宿舍电表",style=MaterialTheme.typography.titleMedium)
+        when {
+            s.matchingPower-> {LinearProgressIndicator(Modifier.fillMaxWidth());Hint("正在匹配电表，可以先保存热水宿舍。")}
+            s.powerChoices.isNotEmpty()-> {
+                Hint("学校目录里有同名楼栋，只需确认一次公寓。")
+                s.powerChoices.forEach{candidate->OutlinedButton({choose(candidate)},modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)){NativeText(candidate.label)}}
+            }
+            s.campus.buildingId.isNotBlank()->Hint("电表已保存")
+        }
+        s.powerMatchIssue?.let{Hint(it);TextButton(retry){NativeText("重试匹配电表")}}
+    }
+}
+
+@Composable
 fun PowerSetupScreen(s:CampusUiState,padding:PaddingValues,vm:CampusViewModel,navigate:(String)->Unit) = Page(padding) {
     var search by rememberSaveable { mutableStateOf("") }
     val p=s.powerSetup; val busy="powerSetup" in s.busy || "saveMeter" in s.busy
+    AutomaticPowerContent(s,vm::choosePowerApartment){vm.matchPowerAutomatically(true)}
     Hint("电表与热水水控分别绑定，请核对房间后保存。")
     if(!s.campus.configured) ActionButton("先登录学校账号") { navigate("login") }
     else {

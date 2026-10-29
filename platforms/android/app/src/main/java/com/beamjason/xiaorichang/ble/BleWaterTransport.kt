@@ -34,7 +34,14 @@ import kotlin.coroutines.resumeWithException
 
 /** One foreground BLE session. The caller must request SCAN and CONNECT permissions first. */
 data class BleCandidate(val address:String,val name:String,val rssi:Int)
-class BleWaterTransport(private val context:Context) {
+interface WaterTransport {
+    suspend fun connect(deviceName:String,expectedAddress:String?):String
+    suspend fun connectVerified(deviceName:String,machineId:String,preferredAddress:String?=null,onProbe:(String)->Unit = {}):VerifiedWaterTarget
+    suspend fun scanCandidates(name:String):List<BleCandidate>
+    suspend fun exchange(bytes:ByteArray):ByteArray
+    fun disconnect()
+}
+class BleWaterTransport(private val context:Context):WaterTransport {
     private val support=BleSupport(context)
     private val adapter get() = (context.getSystemService(Context.BLUETOOTH_SERVICE) as? android.bluetooth.BluetoothManager)?.adapter ?: error("此设备不支持蓝牙")
     @Volatile private var generation=0L
@@ -53,7 +60,7 @@ class BleWaterTransport(private val context:Context) {
     // Entry and callbacks check permissions; synchronous revocations propagate or
     // complete the pending request exceptionally instead of escaping a callback.
     @SuppressLint("MissingPermission")
-    suspend fun connect(deviceName:String,expectedAddress:String?):String {
+    override suspend fun connect(deviceName:String,expectedAddress:String?):String {
         support.event("connect-start")
         permissions(scan=expectedAddress==null)
         check(gatt==null) { "GATT already open" }
@@ -133,8 +140,15 @@ class BleWaterTransport(private val context:Context) {
         return try { withTimeout(20_000) { ready.await() }; support.event("gatt-ready"); chosen.address } catch(t:Throwable) { support.event("connect-failed");disconnect();throw t }
     }
 
+    /** Returns with the verified GATT connection open. Sends only the 0xAA identity query. */
+    override suspend fun connectVerified(deviceName:String,machineId:String,preferredAddress:String?,onProbe:(String)->Unit):VerifiedWaterTarget =
+        resolveWaterIdentity(machineId,preferredAddress,
+            scan={scanCandidates(deviceName).map{it.address}},
+            probe={address->connect(deviceName,address);exchange(byteArrayOf(0xAA.toByte()))},
+            disconnect=::disconnect,onProbe=onProbe)
+
     @SuppressLint("MissingPermission")
-    suspend fun exchange(bytes:ByteArray):ByteArray {
+    override suspend fun exchange(bytes:ByteArray):ByteArray {
         permissions()
         val current=Exchange()
         val (g,c)=synchronized(this) {
@@ -166,7 +180,7 @@ class BleWaterTransport(private val context:Context) {
     }
 
     @SuppressLint("MissingPermission")
-    suspend fun scanCandidates(name:String):List<BleCandidate> = withContext(Dispatchers.Main) {
+    override suspend fun scanCandidates(name:String):List<BleCandidate> = withContext(Dispatchers.Main) {
         permissions(scan=true)
         check(adapter.isEnabled) { "请先打开蓝牙" }
         if(Build.VERSION.SDK_INT<31) {
@@ -194,7 +208,7 @@ class BleWaterTransport(private val context:Context) {
         finally {runCatching{scanner.stopScan(cb)};support.event("scan-end",mapOf("packets" to received,"matches" to found.size))}
     }
 
-    @Synchronized fun disconnect() {
+    @Synchronized override fun disconnect() {
         generation++
         val g=gatt; gatt=null; writeCharacteristic=null
         exchange?.let { val error=IllegalStateException("BLE disconnected"); it.ack.completeExceptionally(error); it.frame.completeExceptionally(error) }
@@ -206,6 +220,8 @@ class BleWaterTransport(private val context:Context) {
     private fun permissions(scan:Boolean=false) {
         val needed=if(Build.VERSION.SDK_INT>=31) listOfNotNull(Manifest.permission.BLUETOOTH_CONNECT,if(scan) Manifest.permission.BLUETOOTH_SCAN else null)
             else if(scan) listOf(Manifest.permission.ACCESS_FINE_LOCATION) else emptyList()
-        check(needed.all {ContextCompat.checkSelfPermission(context,it)==PackageManager.PERMISSION_GRANTED}) { "蓝牙权限已关闭，请重新允许附近设备权限" }
+        check(needed.all {ContextCompat.checkSelfPermission(context,it)==PackageManager.PERMISSION_GRANTED}) {
+            if(Build.VERSION.SDK_INT>=31) "蓝牙权限已关闭，请重新允许附近设备权限" else "此安卓版本需要定位权限来查找蓝牙水控"
+        }
     }
 }

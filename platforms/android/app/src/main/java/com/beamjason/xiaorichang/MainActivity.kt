@@ -26,6 +26,7 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.beamjason.xiaorichang.data.*
+import com.beamjason.xiaorichang.ble.mayResumeBleAction
 import com.beamjason.xiaorichang.ui.*
 import kotlinx.coroutines.*
 
@@ -51,22 +52,25 @@ private fun CampusApp(activity:ComponentActivity,vm:CampusViewModel=viewModel())
     val scope=rememberCoroutineScope();val snackbar=remember { SnackbarHostState() }
     fun navigate(target:String) { if(target=="orders") {tab=1;page=""} else page=target }
     val permissions=remember { if(Build.VERSION.SDK_INT>=31) arrayOf(Manifest.permission.BLUETOOTH_SCAN,Manifest.permission.BLUETOOTH_CONNECT) else arrayOf(Manifest.permission.ACCESS_FINE_LOCATION) }
-    var pendingBle by rememberSaveable { mutableStateOf("") }
+    // A recreated Activity must not replay a previously requested transaction.
+    var pendingBle by remember { mutableStateOf("") }
     val bleLauncher=rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         val allowed=permissions.all { p -> ContextCompat.checkSelfPermission(activity,p)==PackageManager.PERMISSION_GRANTED }
         val operation=pendingBle;pendingBle=""
-        if(allowed) when(operation) {"scan"->vm.scanWater();"start"->vm.operateWater(false);"finish"->vm.operateWater(true)}
-        else vm.notice("需要附近设备权限才能连接热水水控，可在系统设置中允许")
+        if(allowed && mayResumeBleAction(operation,page)) when(operation) {"scan"->vm.scanWater();"inspect"->vm.inspectConfiguredWater();"start"->vm.operateWater(false);"finish"->vm.operateWater(true)}
+        else if(allowed) vm.notice("权限已更新，请回到原页面重新操作")
+        else vm.notice(if(Build.VERSION.SDK_INT>=31) "需要附近设备权限才能连接热水水控，可在系统设置中允许" else "此安卓版本需要定位权限来查找蓝牙水控，可在系统设置中允许")
     }
     fun withBle(action:String) {
         if(permissions.any { ContextCompat.checkSelfPermission(activity,it)!=PackageManager.PERMISSION_GRANTED }) { pendingBle=action;bleLauncher.launch(permissions) }
-        else when(action) {"scan"->vm.scanWater();"start"->vm.operateWater(false);"finish"->vm.operateWater(true)}
+        else when(action) {"scan"->vm.scanWater();"inspect"->vm.inspectConfiguredWater();"start"->vm.operateWater(false);"finish"->vm.operateWater(true)}
     }
     val cameraLauncher=rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { if(it)page="scanner" else vm.notice("需要相机权限才能扫描机身二维码，也可以粘贴二维码链接") }
     fun scan() {
         if(state.account==null) {page="laundryLogin";return}
         if(ContextCompat.checkSelfPermission(activity,Manifest.permission.CAMERA)==PackageManager.PERMISSION_GRANTED)page="scanner" else cameraLauncher.launch(Manifest.permission.CAMERA)
     }
+    var platformOnlyImport by rememberSaveable {mutableStateOf(false)}
     val importer=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if(uri!=null)scope.launch {
             try {
@@ -74,12 +78,13 @@ private fun CampusApp(activity:ComponentActivity,vm:CampusViewModel=viewModel())
                     val out=java.io.ByteArrayOutputStream();val buf=ByteArray(4096)
                     while(true) {val n=input.read(buf);if(n<0)break;require(out.size()+n<=65536){"配置文件超过大小限制"};out.write(buf,0,n)}
                     out.toString("UTF-8") } ?: error("无法读取所选文件") }
-                vm.importConfig(text)
+                vm.importConfig(text,platformOnlyImport)
             } catch(e:Exception) {vm.notice(message(e))}
         }
     }
     fun payOrder() {vm.payOrder {destination->scope.launch {try {vm.notice(launchPayment(activity,destination));vm.refreshOrder()}catch(e:Exception){vm.notice(message(e))}}}}
-    fun import()=importer.launch(arrayOf("application/json","application/octet-stream","*/*"))
+    fun import() {platformOnlyImport=false;importer.launch(arrayOf("application/json","application/octet-stream","*/*"))}
+    fun importPlatform() {platformOnlyImport=true;importer.launch(arrayOf("application/json","application/octet-stream","*/*"))}
     LaunchedEffect(Unit) {vm.resume()}
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {vm.resume();mode=glassMode(activity,glassEnabled)}
     LaunchedEffect(page,tab,state.campus.owner,state.water.hasPlatform) {
@@ -104,14 +109,14 @@ private fun CampusApp(activity:ComponentActivity,vm:CampusViewModel=viewModel())
         val contentModifier=Modifier.fillMaxSize().then(if(nativeBrowserPage)Modifier else Modifier.layerBackdrop(backdrop))
         Box(contentModifier.background(MaterialTheme.colorScheme.background)) {
         when(page) {
-            "water"->WaterScreen(state,padding,::navigate){finish->withBle(if(finish)"finish" else "start")}
+            "water"->WaterScreen(state,padding,::navigate,inspect={withBle("inspect")}){finish->withBle(if(finish)"finish" else "start")}
             "setup"->SetupScreen(state,padding,::navigate)
-            "dorm"->DormScreen(state,padding,vm,{withBle("scan")},::import,::navigate)
+            "dorm"->DormScreen(state,padding,vm,{withBle("scan")},::importPlatform,::navigate,onSaved={if(page=="dorm"){tab=0;page=""}})
             "powerSetup"->PowerSetupScreen(state,padding,vm,::navigate)
             "washerSetup"->WasherSetupScreen(state,padding,LaundryActions(vm::selectWasher,vm::scanWasher,{vm.refreshWasher()},vm::createOrder),::navigate,::scan)
             "laundryLogin"->LaundryLoginScreen(state,padding,vm)
             "laundry"->LaundryScreen(state,padding,LaundryActions(vm::selectWasher,vm::scanWasher,{vm.refreshWasher()},vm::createOrder,{vm.refreshOrder()},vm::cancelOrder,::payOrder),::navigate,::scan)
-            "login"->Column(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).padding(horizontal=12.dp)) {OfficialBrowser(onLogin={value->vm.acceptLogin(value){page=if(value.portalDormAddress.isNotBlank() && state.water.hasPlatform)"dorm" else "setup"}},onError=vm::notice)}
+            "login"->Column(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).padding(horizontal=12.dp)) {OfficialBrowser(onLogin={value->vm.acceptLogin(value){page=if(value.portalDormAddress.isNotBlank())"dorm" else "setup"}},onError=vm::notice)}
             "rechargeCard","rechargePower"->Column(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).padding(horizontal=12.dp)) {
                 if("recharge" in state.busy) {LinearProgressIndicator(Modifier.fillMaxWidth());Hint("正在确认学校登录…")}
                 val session=state.webSession

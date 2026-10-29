@@ -17,4 +17,22 @@ class PortalDormAddressTest {
         val d=PortalDormAddress.parse("示例校区2栋5楼504室")!!
         assertTrue(d.matchesMeterRoom("2栋 · 504"));assertFalse(d.matchesMeterRoom("12栋504"));assertFalse(d.matchesMeterRoom("2栋5040"))
     }
+    @Test fun sameResidenceFormattingRetainsMeterWhileOtherCampusDoesNot() {
+        val d=PortalDormAddress.parse("示例校区2栋3号5层504房")!!
+        val own=listOf("示例校区","2栋","五楼","504")
+        assertTrue(d.keepsPowerBinding(own,"示例校区 · 2栋 · 五楼 · 504",null))
+        assertTrue(d.keepsPowerBinding(own,"2栋504",null))
+        assertTrue(d.keepsPowerBinding(own,"旧版标签","2栋 · 504"))
+        assertFalse(d.keepsPowerBinding(listOf("其他校区","2栋","五楼","504"),"2栋504","2栋504"))
+        assertFalse(d.keepsPowerBinding(own,"12栋504","2栋5040"))
+        assertFalse(d.keepsPowerBinding(emptyList(),"2栋504","2栋504"))
+    }
+    @Test fun movedRequiresTwoCompleteAndDifferentResidences() {
+        val original="示例校区2栋3号5层504房"
+        assertFalse(PortalDormAddress.hasMoved(original,"示例校区 2栋3号5层504房"))
+        assertTrue(PortalDormAddress.hasMoved(original,"示例校区2栋3号5层505房"))
+        assertTrue(PortalDormAddress.hasMoved(original,"其他校区2栋3号5层504房"))
+        assertFalse(PortalDormAddress.hasMoved("",original))
+        assertFalse(PortalDormAddress.hasMoved(original,"暂无宿舍"))
+    }
 }

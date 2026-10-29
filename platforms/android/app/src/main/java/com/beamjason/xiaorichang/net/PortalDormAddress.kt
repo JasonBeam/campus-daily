@@ -1,5 +1,7 @@
 package com.beamjason.xiaorichang.net
 
+import kotlinx.coroutines.ensureActive
+
 data class PortalDormAddress(val campus:String,val building:String,val floor:Int,val room:String,val unit:String?=null) {
     val shortRoom get()=building+"栋"+room
     fun matches(label:String,level:Int):Boolean {
@@ -21,7 +23,18 @@ data class PortalDormAddress(val campus:String,val building:String,val floor:Int
         else->labels
     }
     fun matchesMeterRoom(label:String)=label.filterNot{it.isWhitespace()||it=='·'} in listOf(shortRoom,shortRoom+"房",shortRoom+"室")
+    fun keepsPowerBinding(selection:List<String>,savedRoom:String,meterRoom:String?):Boolean {
+        if(selection.size!=4 || !selection.withIndex().all{(level,label)->matches(label,level)})return false
+        if(meterRoom!=null && matchesMeterRoom(meterRoom) || matchesMeterRoom(savedRoom))return true
+        val old=savedRoom.split(" · ")
+        return old.size==4 && old.withIndex().all{(level,label)->matches(label,level)}
+    }
     companion object {
+        fun hasMoved(old:String,new:String):Boolean {
+            val before=parse(old) ?: return false
+            val after=parse(new) ?: return false
+            return before!=after
+        }
         fun parse(raw:String):PortalDormAddress? {
             val text=raw.filterNot(Char::isWhitespace);if(text.length>128)return null
             val m=Regex("^(.{1,32}校区)([A-Za-z]?[0-9]{1,3})(?:栋|幢)(?:([0-9]{1,3})号)?([0-9]{1,2})(?:层|楼)([0-9]{2,6}[A-Za-z]?)(?:房|室)$").matchEntire(text) ?: return null
@@ -32,25 +45,51 @@ data class PortalDormAddress(val campus:String,val building:String,val floor:Int
 }
 data class CampusPowerSuggestion(val building:String,val meter:PowerMeter)
 
-suspend fun resolveCampusPower(address:PortalDormAddress,readBuildings:suspend (String?)->List<Option>,readMeters:suspend (String)->List<PowerMeter>):CampusPowerSuggestion? {
-    val campus=readBuildings(null).filter{address.matches(it.name,0)}.singleOrNull() ?: return null
-    val queue=java.util.ArrayDeque<Pair<String,Int>>();queue.add(campus.id to 0)
-    var visits=0;val matches=mutableListOf<CampusPowerSuggestion>()
-    while(queue.isNotEmpty() && visits++<32) {
-        val (parent,depth)=queue.removeFirst();val children=readBuildings(parent)
+data class CampusPowerCandidate(val path:List<Option>) {
+    val id get()=path.last().id
+    val label get()=path.drop(1).joinToString(" · "){it.name}
+}
+data class CampusPowerResolution(val suggestion:CampusPowerSuggestion?=null,val choices:List<CampusPowerCandidate> = emptyList())
+
+suspend fun discoverCampusPower(address:PortalDormAddress,readBuildings:suspend (String?)->List<Option>,readMeters:suspend (String)->List<PowerMeter>):CampusPowerResolution {
+    val campus=readBuildings(null).filter{address.matches(it.name,0)}.singleOrNull() ?: return CampusPowerResolution()
+    val queue=java.util.ArrayDeque<List<Option>>();queue.add(listOf(campus))
+    val visited=mutableSetOf<String>();val leaves=mutableListOf<CampusPowerCandidate>()
+    while(queue.isNotEmpty()) {
+        kotlinx.coroutines.currentCoroutineContext().ensureActive()
+        val path=queue.removeFirst();val parent=path.last().id
+        if(visited.size>=64 || !visited.add(parent))return CampusPowerResolution()
+        val children=readBuildings(parent)
         if(children.isEmpty()) {
-            matches+=readMeters(parent).filter{address.matchesMeterRoom(it.room)}.map{CampusPowerSuggestion(parent,it)}
-            if(matches.size>1)return null
+            if(path.any{address.matches(it.name,1)} && path.any{address.matches(it.name,2)||address.matches(it.name,3)})leaves+=CampusPowerCandidate(path)
             continue
         }
-        if(depth>=5)return null
+        if(path.size>=7)return CampusPowerResolution()
         val names=address.powerBranchCandidates(children.map{it.name}).toSet()
         val next=children.filter{it.name in names}
-        if(next.size>12)return null
-        next.forEach{queue.add(it.id to depth+1)}
+        if(next.size>24)return CampusPowerResolution()
+        next.forEach{queue.add(path+it)}
     }
-    return if(queue.isEmpty())matches.singleOrNull() else null
+    val only=leaves.singleOrNull() ?: return CampusPowerResolution(choices=leaves)
+    return CampusPowerResolution(suggestion=selectCampusPower(only,address,readMeters))
 }
+suspend fun selectCampusPower(candidate:CampusPowerCandidate,address:PortalDormAddress,readMeters:suspend (String)->List<PowerMeter>):CampusPowerSuggestion? {
+    val path=candidate.path
+    if(!address.matches(path.first().name,0) || path.none{address.matches(it.name,1)})return null
+    val exactRoomPath=path.any{address.matches(it.name,2)} && path.any{address.matches(it.name,3)}
+    return readMeters(candidate.id).filter{address.matchesMeterRoom(it.room) || exactRoomPath && address.matches(it.room,3)}.singleOrNull()?.let{CampusPowerSuggestion(candidate.id,it)}
+}
+suspend fun resolveCampusPower(address:PortalDormAddress,readBuildings:suspend (String?)->List<Option>,readMeters:suspend (String)->List<PowerMeter>):CampusPowerSuggestion? =
+    discoverCampusPower(address,readBuildings,readMeters).suggestion
+suspend fun CampusClient.resolvePower(c:CampusConfig,address:PortalDormAddress):CampusPowerResolution =
+    discoverCampusPower(address,{powerBuildings(c,it)},{powerMeters(c,it)})
+suspend fun CampusClient.suggestPower(c:CampusConfig,address:PortalDormAddress):CampusPowerSuggestion? = resolvePower(c,address).suggestion
 
-suspend fun CampusClient.suggestPower(c:CampusConfig,address:PortalDormAddress):CampusPowerSuggestion? =
-    resolveCampusPower(address,{powerBuildings(c,it)},{powerMeters(c,it)})
+class CampusPowerMatchScope(private val config:CampusConfig) {
+    fun accepts(current:CampusConfig):Boolean {
+        val address=PortalDormAddress.parse(config.portalDormAddress) ?: return false
+        return config.syscustid==current.syscustid && config.custid==current.custid && config.areaCode==current.areaCode && config.token==current.token &&
+            config.portalDormAddress==current.portalDormAddress && config.buildingId==current.buildingId && config.meterId==current.meterId &&
+            (current.dorm==config.dorm || address.matchesMeterRoom(current.dorm))
+    }
+}

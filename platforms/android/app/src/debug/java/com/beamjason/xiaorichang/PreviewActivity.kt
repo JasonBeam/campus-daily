@@ -53,7 +53,7 @@ fun PreviewLayout(initial:String,mode:GlassMode=GlassMode.LIQUID,refined:Boolean
         Box(Modifier.fillMaxSize().layerBackdrop(backdrop).background(MaterialTheme.colorScheme.background)) {
                 when(page){
                     "dorm-matched"->DormSetupContent(matchedDormFixture(),padding,DormActions())
-                    "water"->WaterScreen(s,padding,{page=it},{})
+                    "water"->WaterScreen(s,padding,{page=it},operate={})
                     "laundry","laundry-running"->LaundryScreen(s,padding,LaundryActions(),{page=it},{})
                     "setup"->SetupScreen(CampusUiState(),padding,{page=it})
                     "setup-complete"->SetupScreen(s,padding,{page=it})

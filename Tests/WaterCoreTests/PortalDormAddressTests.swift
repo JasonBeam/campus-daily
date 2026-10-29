@@ -25,4 +25,34 @@ final class PortalDormAddressTests: XCTestCase {
         XCTAssertEqual(d.powerBranchCandidates(["1号","3号"]),["3号"])
         XCTAssertEqual(d.powerBranchCandidates(["半山公寓","日月湖公寓"]),["半山公寓","日月湖公寓"])
     }
+    func testSameResidenceLabelMigrationRetainsMeterButOtherResidenceDoesNot() throws {
+        let d = try XCTUnwrap(PortalDormAddress.parse("示例校区2栋3号5层504房"))
+        let own = ["示例校区","2栋","五楼","504"]
+        XCTAssertTrue(d.keepsPowerBinding(selection:own,savedRoom:"示例校区 · 2栋 · 五楼 · 504",meterRoom:nil))
+        XCTAssertTrue(d.keepsPowerBinding(selection:own,savedRoom:"2栋504",meterRoom:nil))
+        XCTAssertTrue(d.keepsPowerBinding(selection:own,savedRoom:"旧版标签",meterRoom:"2栋 · 504"))
+        XCTAssertFalse(d.keepsPowerBinding(selection:["其他校区","2栋","五楼","504"],savedRoom:"2栋504",meterRoom:"2栋504"))
+        XCTAssertFalse(d.keepsPowerBinding(selection:own,savedRoom:"12栋504",meterRoom:"2栋5040"))
+        XCTAssertFalse(d.keepsPowerBinding(selection:[],savedRoom:"2栋504",meterRoom:"2栋504"))
+    }
+    func testResidenceChangeRequiresTwoCompleteAndDifferentAddresses() {
+        let original = "示例校区2栋3号5层504房"
+        XCTAssertFalse(PortalDormAddress.hasMoved(from:original,to:"示例校区 2栋3号5层504房"))
+        XCTAssertTrue(PortalDormAddress.hasMoved(from:original,to:"示例校区2栋3号5层505房"))
+        XCTAssertTrue(PortalDormAddress.hasMoved(from:original,to:"其他校区2栋3号5层504房"))
+        XCTAssertFalse(PortalDormAddress.hasMoved(from:"",to:original))
+        XCTAssertFalse(PortalDormAddress.hasMoved(from:original,to:"暂无宿舍"))
+    }
+    func testExistingWaterBindingRequiresReviewForChangedOrUnknownOwner() {
+        let room = "示例校区2栋3号5层504房"
+        func review(_ binding:Bool,_ old:String?,_ new:String,_ from:String,_ to:String)->Bool {
+            PortalDormAddress.needsWaterReview(hasBinding:binding,previousOwner:old,currentOwner:new,oldAddress:from,newAddress:to)
+        }
+        XCTAssertFalse(review(false,nil,"new","",room))
+        XCTAssertTrue(review(true,"old","new",room,room))
+        XCTAssertTrue(review(true,"old","new",room,""))
+        XCTAssertTrue(review(true,nil,"new","",room))
+        XCTAssertFalse(review(true,"same","same",room,""))
+        XCTAssertTrue(review(true,"same","same",room,"示例校区2栋3号5层505房"))
+    }
 }

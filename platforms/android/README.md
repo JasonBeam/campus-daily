@@ -42,24 +42,33 @@ release.
 
 ## Current feature scope
 
-Version 0.2.0-alpha3 includes the Native Clear interface, three tabs, light/dark
+The 0.2.0-alpha22 candidate (versionCode 24) includes the Native Clear interface, three tabs, light/dark
 themes, school WebView login, card/electricity balance and official recharge,
 room/controller selection and BLE identity verification, water authorization and
 settlement, U净 login, saved washers, reservation, Alipay SDK/checkout handoff,
-server order refresh/countdown and unpaid cancellation. First-time water setup
-still needs a private platform profile import. Android launcher widgets are not
-included. Physical-device acceptance on all three pilot phones remains required.
+server order refresh/countdown and unpaid cancellation. First-time water setup uses the bundled platform-only profile and the user's own school login. No self-hosted access service or manual import is required. Shared platform parameters in the APK are extractable; no personal identity or controller is bundled. Android launcher widgets are not
+included. alpha22 is confirmed on one vivo device; Huawei nova 10, Samsung Galaxy S24 Ultra and full hot-water transactions remain unverified.
 
 See [migration design, sources and acceptance notes](../../docs/android-migration.md).
-Build from the repository root with `bash tools/build-android.sh` using JDK 21.
+Build from the repository root using JDK 21:
+
+```sh
+bash tools/build-android.sh -PcampusWaterProfile="$PWD/private/distribution/WaterPlatformProfile.json"
+```
+
+The supplied local JSON must contain only secret, sid, bleName, typeID and version. The build validates and stages it into generated assets; it must not contain personal account or controller fields.
 
 Do not put personal tokens, water-platform secrets, device identifiers, signing
 keys, or real student data in the repository or an APK source file.
 
 
-The alpha3 UI aligns the home information order, water detail, program cards and
+The UI aligns the home information order, water detail, program cards and
 setup with the current iPhone implementation. Backdrop 1.0.0 provides optional
 navigation glass: refraction on API 33+, blur-only on 31–32, simple capsule on
 older/low-RAM/power-save devices. Devices includes a glass toggle. System fonts,
 icons and official web/payment screens remain platform-specific. Local acceptance
 is documented in `docs/android-migration.md`; it is not physical-device sign-off.
+
+### Beta 2 Android 候选
+
+校园登录后按官方校区、公寓、栋、楼层和房间目录匹配电表。同名位置只需补选一次公寓；未确认前不查询多个候选的余额。已有电表保留，延迟结果不会覆盖变更后的账号、宿舍或手选电表。热水连接会按设备编号核对水控。alpha22 已在一台 Android 设备上完成用户确认；其他机型和完整热水交易尚未验收。

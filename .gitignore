@@ -8,6 +8,8 @@ output/
 build/
 CampusHotWater.xcodeproj/
 .DS_Store
+__pycache__/
+*.pyc
 xcuserdata/
 *.xcuserstate
 *.waterconfig

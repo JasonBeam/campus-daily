@@ -25,8 +25,8 @@ class MatchedDormPreviewTest {
                 compose.onNodeWithText("已匹配宿舍").assertExists()
                 compose.onNodeWithText("1栋301").assertExists()
                 compose.onNodeWithText("校区",substring=false).assertDoesNotExist()
-                compose.onNodeWithText("保存热水和电表").performScrollTo().assertIsDisplayed()
-                val save=compose.onNodeWithText("保存热水和电表").fetchSemanticsNode().boundsInRoot
+                compose.onNodeWithText("保存宿舍，稍后核对").performScrollTo().assertIsDisplayed()
+                val save=compose.onNodeWithText("保存宿舍，稍后核对").fetchSemanticsNode().boundsInRoot
                 val tabs=compose.onNodeWithTag("campus-tab-bar",useUnmergedTree=true).fetchSemanticsNode().boundsInRoot
                 org.junit.Assert.assertTrue("The entire save button must stay above the floating tab bar",save.bottom<=tabs.top)
                 compose.waitForIdle();instrumentation.uiAutomation.waitForIdle(200,2000)
