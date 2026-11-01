@@ -373,7 +373,7 @@ struct AdvancedSettingsView: View {
     var body: some View {
         List {
             Section {
-                importRow("导入热水配置").disabled(preview == nil && !shower.mayImport)
+                importRow("导入热水配置").disabled(preview == nil && !shower.mayImportProfile)
             } header: { Text("导入配置") } footer: {
                 VStack(alignment:.leading, spacing:6) {
                     if let importIssue {

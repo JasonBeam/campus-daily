@@ -121,15 +121,23 @@ public struct LaundryCheckout: Sendable, Equatable, Codable {
     public var pollAttempt: Int
     public var lastOutcome: LaundryOutcome?
     public var notice: LaundryNotice?
+    /// The U净 account (`UjingAccount.id`) the order was placed with. Nil in records written before it was kept.
+    public var accountID: String?
+    /// First read that showed the order paid.
+    public var paidAt: Date?
+    /// Paid but not washing with a known end since this read (`LaundryFollowUp`); nil once a washing read gives the end.
+    public var waitingSince: Date?
 
     public init(phase: LaundryPhase = .none, draft: LaundryDraft? = nil, createdAt: Date? = nil, orderID: String? = nil,
                 order: LaundryOrder? = nil, orderReadAt: Date? = nil, candidateOrderID: String? = nil,
                 paymentRequestedAt: Date? = nil, repayArmed: Bool = false, cancelSent: Bool = false, pollAttempt: Int = 0,
-                lastOutcome: LaundryOutcome? = nil, notice: LaundryNotice? = nil) {
+                lastOutcome: LaundryOutcome? = nil, notice: LaundryNotice? = nil, accountID: String? = nil,
+                paidAt: Date? = nil, waitingSince: Date? = nil) {
         self.phase = phase; self.draft = draft; self.createdAt = createdAt; self.orderID = orderID; self.order = order
         self.orderReadAt = orderReadAt; self.candidateOrderID = candidateOrderID; self.paymentRequestedAt = paymentRequestedAt
         self.repayArmed = repayArmed; self.cancelSent = cancelSent; self.pollAttempt = pollAttempt
-        self.lastOutcome = lastOutcome; self.notice = notice
+        self.lastOutcome = lastOutcome; self.notice = notice; self.accountID = accountID
+        self.paidAt = paidAt; self.waitingSince = waitingSince
     }
 
     public static let empty = LaundryCheckout()
@@ -170,8 +178,19 @@ public struct LaundryCheckout: Sendable, Equatable, Codable {
     /// Cancel only an unpaid 10/17 order.
     public var canCancel: Bool { phase == .created && order?.isUnpaid == true }
 
-    /// `reconcile` can be cleared by the user after checking the U净 app.
-    public var canResolveManually: Bool { phase == .reconcile }
+    /// `reconcile` can be cleared by the user after checking the U净 app, only once the last
+    /// lookup found no order on the machine. The notice isn't stored, so after a relaunch a
+    /// fresh lookup comes first.
+    public var canResolveManually: Bool { phase == .reconcile && notice == .orderNotFound }
+
+    /// Whether signing in to U净 as `id` may replace the stored login (`stored`, the account id
+    /// saved on this phone). With an order open only the account that placed it may sign in again
+    /// (an expired login is renewed, the order stays readable); another account is refused.
+    public func allowsLogin(as id: String, stored: String?) -> Bool {
+        guard phase != .none else { return true }
+        guard let owner = accountID ?? stored else { return false }
+        return owner == id
+    }
 
     /// What goes to the Keychain (no one-shot notice / arming).
     public var persistable: LaundryCheckout {
@@ -187,8 +206,8 @@ public struct LaundryCheckout: Sendable, Equatable, Codable {
 }
 
 public enum LaundryEvent: Sendable, Equatable {
-    /// The user confirmed machine, program and price.
-    case confirm(LaundryDraft, at: Date)
+    /// The user confirmed machine, program and price, signed in as `account` (`UjingAccount.id`).
+    case confirm(LaundryDraft, at: Date, account: String? = nil)
     case created(orderID: String)
     case createFailed(ServiceError)
     /// `scanWasherCode` during reconcile: the account's unfinished order on the machine.
@@ -255,8 +274,8 @@ public enum LaundryReducer {
         switch (state.phase, event) {
 
         // MARK: create
-        case (.none, .confirm(let draft, let at)):
-            let n = LaundryCheckout(phase: .creating, draft: draft, createdAt: at, lastOutcome: state.lastOutcome)
+        case (.none, .confirm(let draft, let at, let account)):
+            let n = LaundryCheckout(phase: .creating, draft: draft, createdAt: at, lastOutcome: state.lastOutcome, accountID: account)
             return (n, [.create(draft.request)])
 
         case (.creating, .created(let id)):
@@ -308,7 +327,7 @@ public enum LaundryReducer {
             s.phase = .created
             return apply(order, at: at, to: s)
 
-        case (.reconcile, .resolveManually):
+        case (.reconcile, .resolveManually) where state.canResolveManually:
             return (state.cleared(outcome: nil), [.diagnostic("laundry.resolvedManually")])
 
         // MARK: reads in order phases
@@ -492,11 +511,22 @@ public enum LaundryReducer {
         return true
     }
 
+    /// `createAt`: ISO 8601 with an offset (all the captured replies), or a time without one,
+    /// `yyyy-MM-dd HH:mm:ss` or `yyyy-MM-ddTHH:mm:ss`, read as Beijing time (U净's servers are in
+    /// China); a format we can't read never matches.
     static func parseDate(_ text: String) -> Date? {
         let f = ISO8601DateFormatter()
         if let d = f.date(from: text) { return d }
         f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return f.date(from: text)
+        if let d = f.date(from: text) { return d }
+        guard text.range(of: #"^[0-9]{4}-[0-9]{2}-[0-9]{2}[ T][0-9]{2}:[0-9]{2}:[0-9]{2}$"#, options: .regularExpression) != nil else { return nil }
+        let plain = DateFormatter()
+        plain.calendar = Calendar(identifier: .gregorian)
+        plain.locale = Locale(identifier: "en_US_POSIX")
+        plain.timeZone = TimeZone(identifier: "Asia/Shanghai")
+        plain.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        plain.isLenient = false
+        return plain.date(from: text.replacingOccurrences(of: "T", with: " "))
     }
 
     static func verify(_ state: LaundryCheckout) -> (LaundryCheckout, [LaundryEffect]) {
@@ -542,6 +572,9 @@ public enum LaundryReducer {
             s.phase = .active
             s.cancelSent = false
             if wasCancelling { s.notice = .cancelNotAllowed }
+            if s.paidAt == nil { s.paidAt = at }
+            if order.status.isWashing, let left = order.remainSeconds, left > 0 { s.waitingSince = nil }
+            else if s.waitingSince == nil { s.waitingSince = at }
             guard order.status.isWashing, let d = s.draft else { return (s, []) }
             let ends = order.remainSeconds.flatMap { $0 > 0 ? at.addingTimeInterval(TimeInterval($0)) : nil }
             return (s, [.updateActivity(LaundryActivityPlan(orderID: id, machineName: d.machineName,

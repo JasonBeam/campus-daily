@@ -69,6 +69,20 @@ struct HomeView: View {
         path = []; pathAfterSettings = routes; settings = false
     }
 
+    /// Pages may be closed for a link or a notification tap: never a top-up page, nor the laundry
+    /// page while an order is between creation and the end of the payment check
+    /// (`WidgetLink.mayClosePages`). Returning from the payment must find that page still there.
+    var mayClosePages: Bool {
+        WidgetLink.mayClosePages(rechargeOpen:path.contains(.card) || path.contains(.power),
+                                 laundryOpen:path.contains(.laundry), laundry:laundry.checkout?.phase)
+    }
+
+    /// A notification tap: the same guard as the widget's links, then `open(_:)`.
+    func follow(_ routes: [HomeRoute]) {
+        guard mayClosePages else { return }
+        open(routes)
+    }
+
     /// Reset finished: back to the first-run guide as on a fresh install, no toast.
     func afterReset() {
         settings = false; path = []; pathAfterSettings = nil; panel = nil
@@ -110,7 +124,8 @@ struct HomeView: View {
 
     /// Home is what the user sees: nothing pushed, no sheet, cover or panel on top, app in front.
     var homeClear: Bool {
-        var clear = phase == .active && path.isEmpty && !settings && onboarding == nil && panel == nil && !shower.page.presented
+        var clear = phase == .active && path.isEmpty && !settings && !relogin && onboarding == nil && panel == nil
+            && !shower.page.presented
         #if DEBUG
         clear = clear && activityPreview == nil && widgetPreview == nil
         #endif
@@ -242,15 +257,13 @@ struct HomeView: View {
         .onChange(of:data.laundryDone, initial:true) { _, done in presentLaundryDone(done) }
         // A done panel that arrived while another panel was up is shown once that one closes.
         .onChange(of:panel == nil) { _, clear in if clear { presentLaundryDone(data.laundryDone) } }
-        .modifier(ReminderHooks(open:open, homeClear:homeClear))
+        .modifier(ReminderHooks(open:follow, homeClear:homeClear))
         .onOpenURL { url in
             // Widget tap: campusdaily://home back to the home screen; campusdaily://login (login
             // expired, never signed in) straight to the login step; campusdaily://settings/account
             // (automatic login held off) to Settings › 学校账号. Any app can open these, so they
             // never close a top-up page or a laundry order being paid.
-            if url.scheme == "campusdaily", ["home", "login", "settings"].contains(url.host ?? ""),
-               !WidgetLink.mayClosePages(rechargeOpen:path.contains(.card) || path.contains(.power),
-                                         laundryOpen:path.contains(.laundry), laundry:laundry.checkout?.phase) {
+            if url.scheme == "campusdaily", ["home", "login", "settings"].contains(url.host ?? ""), !mayClosePages {
                 return
             }
             // Newer than pages still waiting for the settings sheet to close: those are dropped.

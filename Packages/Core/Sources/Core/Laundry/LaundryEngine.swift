@@ -35,6 +35,7 @@ public actor LaundryEngine {
     let vault: LaundryVault
     let launcher: PaymentLauncher
     let hooks: LaundryHooks?
+    let accountID: String?
     let now: @Sendable () -> Date
     let sleep: @Sendable (TimeInterval) async throws -> Void
 
@@ -46,12 +47,14 @@ public actor LaundryEngine {
 
     /// Restores the persisted record (relaunch rules in `LaundryReducer.restore`).
     /// `resetMarker`: while a reset runs, no order is created (`AppReset.InProgress`).
+    /// `accountID`: the signed-in U净 account `api` sends as; a new order records it.
     public init(api: LaundryOrdering, vault: LaundryVault, launcher: PaymentLauncher, hooks: LaundryHooks? = nil,
-                resetMarker: ResetMarker? = nil, now: @escaping @Sendable () -> Date = Date.init,
+                accountID: String? = nil, resetMarker: ResetMarker? = nil, now: @escaping @Sendable () -> Date = Date.init,
                 sleep: @escaping @Sendable (TimeInterval) async throws -> Void = { s in
                     try await Task.sleep(nanoseconds: UInt64(max(0, s) * 1_000_000_000))
                 }) throws {
-        self.api = api; self.vault = vault; self.launcher = launcher; self.hooks = hooks; self.now = now; self.sleep = sleep
+        self.api = api; self.vault = vault; self.launcher = launcher; self.hooks = hooks; self.accountID = accountID
+        self.now = now; self.sleep = sleep
         self.resetMarker = resetMarker
         let persisted: LaundryCheckout?
         do { persisted = try vault.checkout() } catch { throw LaundryEngineError.storage }
@@ -87,7 +90,7 @@ public actor LaundryEngine {
         try resetMarker?.checkStart(at: now())
         guard state.canCreate else { throw LaundryEngineError.notAllowed }
         guard let draft = LaundryDraft.make(snapshot, program: program, now: now()) else { throw LaundryEngineError.washerChanged }
-        return try await run(.confirm(draft, at: now()))
+        return try await run(.confirm(draft, at: now(), account: accountID))
     }
 
     /// 付款: channel lookup, then payment arguments (once), then open Alipay.

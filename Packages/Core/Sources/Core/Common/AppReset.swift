@@ -63,7 +63,7 @@ public enum AppReset {
         public let leavesLaundry = true
 
         public init(shower: ShowerState, now: Date) {
-            showerReminderStart = shower.mayBeFlowing ? shower.startedAt : nil
+            showerReminderStart = shower.reminderStart
             showerActivity = ShowerActivityAction(shower, now: now)
         }
     }

@@ -55,12 +55,18 @@ public struct PortalClient: Sendable {
         return url
     }
 
+    /// Envelope `{code, message, data}`: `code -1001/-1` → `sessionExpired`. HTTP 401/403 →
+    /// `rejected("HTTP 40x")`, not expiry: the portal reports a dead token as HTTP 200 with that
+    /// code; a bare 401/403 comes from a gateway or rate limit and says nothing about the login.
     private func get(_ path: String, token: PortalToken, name: String) async throws -> JSONValue {
         guard let url = URL(string: "https://" + SchoolEndpoints.portalHost + path) else { throw ServiceError.badRequest(.portal) }
         let req = HTTPRequest(service: .portal, method: .get, url: url, headers: [
             "X-Id-Token": token.value, "X-Device-Info": "PC", "X-Terminal-Info": "PC", "Accept": "application/json",
         ], logName: name)
         let response = try await http.send(req)
+        if response.status == 401 || response.status == 403 {
+            throw ServiceError.rejected(.portal, code: "HTTP \(response.status)", message: "")
+        }
         guard let root = try ResponseDecoding.json(response, service: .portal) else {
             throw ServiceError.malformed(.portal, "$")
         }

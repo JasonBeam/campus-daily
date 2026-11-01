@@ -36,4 +36,4 @@ The repo is public. Real student ids, phone numbers, rooms, device ids, keys and
 
 ## Before committing
 
-Run `mise run check`: Debug and Release builds, all tests, the App.xctestplan on a simulator, and `mise scan`. The test count may only grow; explain any drop. To build or test on another machine, set `BUILD_CMD` / `TEST_CMD` / `TEST_APP_CMD`. Each commit does one thing; keep pure moves separate from logic changes. Docs are this file, `README.md`, `docs/architecture.md`, `docs/privacy.md` and `CHANGELOG.md`. Do not add process notes.
+Run `mise run check`: Debug and Release builds, all tests, the App.xctestplan on a simulator, and `mise scan`. Deleting a test needs a stated reason in the PR. To build or test on another machine, set `BUILD_CMD` / `TEST_CMD` / `TEST_APP_CMD`. Each commit does one thing; keep pure moves separate from logic changes. Docs are this file, `README.md`, `docs/architecture.md`, `docs/privacy.md` and `CHANGELOG.md`. Do not add process notes.

@@ -6,6 +6,18 @@ final class LaundryReducerTests: XCTestCase {
     typealias R = LaundryReducer
     let t0 = L.t0
 
+    private var savedZone: TimeZone!
+    // Away from UTC+8, so a parser that used the device zone instead of Beijing time fails here.
+    override func setUp() {
+        super.setUp()
+        savedZone = NSTimeZone.default
+        NSTimeZone.default = TimeZone(identifier: "America/New_York")!
+    }
+    override func tearDown() {
+        NSTimeZone.default = savedZone
+        super.tearDown()
+    }
+
     func reduce(_ s: LaundryCheckout, _ e: LaundryEvent) -> (LaundryCheckout, [LaundryEffect]) { R.reduce(s, e) }
 
     var creating: LaundryCheckout { reduce(.empty, .confirm(L.draft, at: t0)).0 }
@@ -100,6 +112,55 @@ final class LaundryReducerTests: XCTestCase {
         let (cleared, fx) = reduce(none, .resolveManually)
         XCTAssertEqual(cleared.phase, .none)
         XCTAssertEqual(fx, [.diagnostic("laundry.resolvedManually")])
+    }
+
+    /// Clearing the record on the user's word needs a lookup that found no order on the machine.
+    func testManualClearOnlyAfterNothingWasFound() {
+        let reconcile = reduce(creating, .createFailed(.timedOut)).0
+        let found = reduce(reconcile, .activeOrderFound(L.orderID)).0
+        let mismatch = reduce(found, .orderRead(L.order("10", device: "other"), at: t0)).0
+        XCTAssertEqual(mismatch.notice, .orderMismatch)
+        let lookupFailed = reduce(reconcile, .activeOrderLookupFailed(.offline)).0
+        XCTAssertEqual(lookupFailed.notice, .readFailed(.offline))
+        let expired = reduce(reconcile, .activeOrderLookupFailed(.sessionExpired(.ujing))).0
+        XCTAssertEqual(expired.notice, .sessionExpired)
+        let nothing = reduce(reconcile, .activeOrderFound(nil)).0
+        let restored = R.restore(nothing.persistable)
+        for s in [reconcile, found, mismatch, lookupFailed, expired, restored] {
+            XCTAssertEqual(s.phase, .reconcile)
+            XCTAssertFalse(s.canResolveManually, "\(String(describing: s.notice))")
+            let (after, fx) = reduce(s, .resolveManually)
+            XCTAssertEqual(after.phase, .reconcile)
+            XCTAssertEqual(fx, [])
+        }
+        XCTAssertTrue(nothing.canResolveManually)
+        XCTAssertEqual(reduce(nothing, .resolveManually).0.phase, .none)
+    }
+
+    /// U净's `createAt` has only been seen in ISO 8601; a plain Beijing time must not make
+    /// reconcile reject our own order.
+    func testCreateTimeFormats() {
+        func seconds(_ text: String) -> TimeInterval? { R.parseDate(text)?.timeIntervalSince(t0) }
+        XCTAssertEqual(seconds("2026-10-30T12:00:05+08:00"), 5)
+        XCTAssertEqual(seconds("2026-10-30T04:00:05Z"), 5)
+        XCTAssertEqual(try XCTUnwrap(seconds("2026-10-30T04:00:05.250Z")), 5.25, accuracy: 0.001)
+        XCTAssertEqual(seconds("2026-10-30 12:00:05"), 5, "plain text is Beijing time")
+        XCTAssertEqual(seconds("2026-10-30T12:00:05"), 5, "ISO without an offset is Beijing time")
+        for bad in ["2026-10-30 12:00", "2026-10-30T12:00", "2026-10-30T25:00:05", "2026-10-30", "30/10/2026 12:00:05", "2026-13-30 12:00:05", ""] {
+            XCTAssertNil(R.parseDate(bad), bad)
+        }
+    }
+
+    func testReconcileAdoptsOrderWithPlainCreateTime() {
+        let found = reduce(reduce(creating, .createFailed(.timedOut)).0, .activeOrderFound(L.orderID)).0
+        let (adopted, _) = reduce(found, .orderRead(L.order("10", createdAt: "2026-10-30 12:00:05"), at: t0.addingTimeInterval(30)))
+        XCTAssertEqual(adopted.phase, .created)
+        XCTAssertEqual(adopted.orderID, L.orderID)
+        let (iso, _) = reduce(found, .orderRead(L.order("10", createdAt: "2026-10-30T12:00:05"), at: t0.addingTimeInterval(30)))
+        XCTAssertEqual(iso.phase, .created)
+        let (stale, _) = reduce(found, .orderRead(L.order("10", createdAt: "2026-10-30 11:50:00"), at: t0.addingTimeInterval(30)))
+        XCTAssertEqual(stale.phase, .reconcile)
+        XCTAssertEqual(stale.notice, .orderMismatch)
     }
 
     // MARK: price and pay
@@ -313,6 +374,47 @@ final class LaundryReducerTests: XCTestCase {
         XCTAssertEqual(u.phase, .cancelling)
         XCTAssertEqual(ufx, [.readOrder(id: L.orderID, after: 2)])
         XCTAssertEqual(reduce(sent, .cancelledBeforeSend).0.phase, .created)
+    }
+
+    // MARK: signing in again
+
+    func testRecordKeepsTheAccountThatPlacedIt() {
+        let (s, _) = reduce(.empty, .confirm(L.draft, at: t0, account: "acct-1"))
+        XCTAssertEqual(s.accountID, "acct-1")
+        let paid = reduce(reduce(s, .created(orderID: L.orderID)).0, .orderRead(L.order("20"), at: t0)).0
+        XCTAssertEqual(paid.accountID, "acct-1")
+        XCTAssertEqual(R.restore(paid.persistable).accountID, "acct-1")
+        XCTAssertNil(reduce(paid, .orderRead(L.order("50"), at: t0)).0.accountID, "cleared with the record")
+    }
+
+    /// The U净 login expires while an order is open: the same account may sign in again, another may not.
+    func testOnlyTheOrderAccountSignsInWhileAnOrderIsOpen() {
+        XCTAssertTrue(LaundryCheckout.empty.allowsLogin(as: "acct-2", stored: "acct-1"), "no order: any account")
+        let open = reduce(.empty, .confirm(L.draft, at: t0, account: "acct-1")).0
+        let expired = reduce(reduce(reduce(open, .created(orderID: L.orderID)).0, .orderRead(L.order("20"), at: t0)).0,
+                             .orderReadFailed(.sessionExpired(.ujing))).0
+        XCTAssertEqual(expired.notice, .sessionExpired)
+        for record in [open, expired] {
+            XCTAssertTrue(record.allowsLogin(as: "acct-1", stored: "acct-1"))
+            XCTAssertTrue(record.allowsLogin(as: "acct-1", stored: nil))
+            XCTAssertFalse(record.allowsLogin(as: "acct-2", stored: "acct-1"))
+            XCTAssertFalse(record.allowsLogin(as: "acct-2", stored: "acct-2"), "the order's account wins over the stored one")
+        }
+        // A record written before the account was kept: the stored (expired) login decides.
+        var legacy = expired
+        legacy.accountID = nil
+        XCTAssertTrue(legacy.allowsLogin(as: "acct-1", stored: "acct-1"))
+        XCTAssertFalse(legacy.allowsLogin(as: "acct-2", stored: "acct-1"))
+        XCTAssertFalse(legacy.allowsLogin(as: "acct-1", stored: nil), "nobody to compare with: refused")
+    }
+
+    func testRecordWithoutAccountStillDecodes() throws {
+        let data = try JSONEncoder().encode(created().persistable)
+        var object = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        object["accountID"] = nil
+        let decoded = try JSONDecoder().decode(LaundryCheckout.self, from: JSONSerialization.data(withJSONObject: object))
+        XCTAssertEqual(decoded.phase, .created)
+        XCTAssertNil(decoded.accountID)
     }
 
     // MARK: relaunch

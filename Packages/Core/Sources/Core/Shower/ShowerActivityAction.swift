@@ -41,6 +41,13 @@ public enum ShowerActivityAction: Sendable, Equatable {
         }
     }
 
+    /// A result still lingering on the lock screen (「不确定」) ends now: the session is back on
+    /// the timer, and a second activity beside the new 洗澡中 would contradict it.
+    public var endsEarlierResult: Bool {
+        if case .show = self { return true }
+        return false
+    }
+
     /// The activity stays on the lock screen for now.
     public var keepsActivity: Bool {
         switch self {

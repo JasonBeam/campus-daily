@@ -9,6 +9,8 @@ import Core
     /// Short dorm label shown on the activity; set by the app from CampusModel.room.
     var dorm = ""
     private var activity: Activity<ShowerActivityAttributes>?
+    /// A 「不确定」 result left on the lock screen for a while (`end(_:after:)`).
+    private var lingering: String?
     private init() {
         // Reuse an activity left over from a previous launch; drop any duplicates.
         let existing = Activity<ShowerActivityAttributes>.activities.filter { $0.activityState == .active }
@@ -34,6 +36,10 @@ import Core
 
     /// Carries out what Core decided for the record (`ShowerActivityAction`).
     func apply(_ action: ShowerActivityAction) {
+        if action.endsEarlierResult, let old = lingering {
+            lingering = nil
+            Task { await Self.endActivity(old, nil, .immediate) }
+        }
         switch action {
         case .end:
             // Dismissed, or closed by hand after checking the official record: nothing to show.
@@ -54,6 +60,7 @@ import Core
             end(.init(startedAt:started, phase:.settled, durationMinutes:minutes, amountYuan:amount),
                 after:Date().addingTimeInterval(after))
         case .unconfirmed(let started, let after):
+            lingering = activity?.id ?? lingering
             end(.init(startedAt:started, phase:.unconfirmed), after:Date().addingTimeInterval(after))
         }
     }

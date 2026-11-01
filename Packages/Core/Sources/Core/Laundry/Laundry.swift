@@ -185,7 +185,7 @@ public struct LaundryOrder: Sendable, Equatable, Codable {
     /// Seconds left while washing.
     public var remainSeconds: Int?
     public var programID: Int?
-    /// ISO 8601 text as sent (`createAt`).
+    /// `createAt` text as sent (ISO 8601 in every captured reply; see `LaundryReducer.parseDate`).
     public var createdAt: String?
     /// `payPrice` (yuan in the reply), the amount payment must match.
     public var price: Money?

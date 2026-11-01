@@ -169,7 +169,7 @@ public struct EcyktClient: Sendable {
         let req = HTTPRequest(service: .ecykt, method: .get, url: Self.powerEntryURL(s, custid: custid),
                               headers: baseHeaders(userAgent: s.userAgent, referer: .recharge, token: s.token), logName: "getPowerUrl")
         let response = try await http.send(req)
-        if response.status == 401 || response.status == 403 { throw ServiceError.sessionExpired(.ecykt) }
+        if response.status == 401 || response.status == 403 { throw ServiceError.rejected(.ecykt, code: "HTTP \(response.status)", message: "") }
         guard (300..<400).contains(response.status) else {
             if response.status == 200, response.isBodyEmpty { throw ServiceError.badRequest(.ecykt) }
             throw ServiceError.malformed(.ecykt, "status")
@@ -231,7 +231,13 @@ public struct EcyktClient: Sendable {
     /// - empty body (HTTP 200) → `badRequest` (missing/undecryptable params), never expiry
     /// - `code -1` → `sessionExpired` only for validating endpoints, else `rejected`
     /// - `code 500 "缺少参数"` → `badRequest`
+    /// - HTTP 401/403 → `rejected("HTTP 40x")`, not expiry: ecykt reports a dead token as HTTP
+    ///   200 `code -1`; a bare 401/403 comes from a gateway or rate limit and says nothing
+    ///   about the login
     func decode(_ response: HTTPResponse, validating: Bool) async throws -> JSONValue {
+        if response.status == 401 || response.status == 403 {
+            throw ServiceError.rejected(.ecykt, code: "HTTP \(response.status)", message: "")
+        }
         guard let root = try ResponseDecoding.json(response, service: .ecykt) else { throw ServiceError.badRequest(.ecykt) }
         guard root.object != nil, let code = ResponseDecoding.code(root) else { throw ServiceError.malformed(.ecykt, "code") }
         let message = ResponseDecoding.message(root)

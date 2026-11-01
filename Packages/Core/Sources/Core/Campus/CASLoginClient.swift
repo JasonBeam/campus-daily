@@ -26,12 +26,15 @@ public enum SchoolLoginFailure: Error, Sendable, Equatable {
     /// can't be told who is signed in, so nothing was sent or saved. Signing out and in again
     /// fixes it.
     case unreadableAccount
+    /// The phone could not store the login's device id (the Keychain refused the write):
+    /// nothing was sent.
+    case cannotSave
 
     /// The password the user typed stays in the field: nothing said it was wrong (it was not
     /// sent, or no answer came back), so it can be tried again as it is.
     public var keepsTypedPassword: Bool {
         switch self {
-        case .busy, .offline, .noAnswer: return true
+        case .busy, .offline, .noAnswer, .cannotSave: return true
         case .wrongCredentials, .cannotLoginDirectly, .differentAccount, .unreadableAccount: return false
         }
     }
@@ -51,7 +54,7 @@ public enum SchoolLoginFailure: Error, Sendable, Equatable {
             return SavePasswordRefusal(title: "这不是现在登录的账号，没保存。", message: "要换账号，先退出登录。")
         case .unreadableAccount:
             return SavePasswordRefusal(title: "认不出现在登录的是哪个账号，没保存。", message: "先退出登录，再重新登录一次。")
-        case .wrongCredentials, .cannotLoginDirectly, .offline, .noAnswer, .busy:
+        case .wrongCredentials, .cannotLoginDirectly, .offline, .noAnswer, .busy, .cannotSave:
             return nil
         }
     }

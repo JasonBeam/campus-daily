@@ -246,10 +246,9 @@ public actor SchoolSession {
     /// page never tells us the account).
     public func account() -> SchoolAccount? { (try? vault.account()) ?? nil }
 
-    /// False only when the card session was read and is not there.
-    public func hasCardSession() -> Bool {
-        do { return try vault.ecyktSession() != nil } catch { return true }
-    }
+    /// False only when the card session was read and is not there. Async like the
+    /// `SchoolReader` requirement, so this is what the refresher calls (not the protocol's default).
+    public func hasCardSession() async -> Bool { vault.cardSessionStored() ?? true }
 
     /// The person signed in when `stored` was read, or nil when nobody was. A card session or
     /// account that is stored but no longer decodes still means someone was: a person nobody can
@@ -275,26 +274,35 @@ public actor SchoolSession {
         try vault.saveProfile(nil)
     }
 
-    /// One login from the form or Settings. The lease lost before a new device id could be
-    /// stored: nothing is sent (`busy`).
+    /// One login from the form or Settings. Nothing is sent when the lease was lost before a
+    /// new device id could be stored (`busy`) or the id could not be stored (`cannotSave`).
     private func passwordLoginOnce(account: String, password: String, owning: LeaseOwnership) async throws -> PortalToken {
         guard let passwordLogin else { throw SchoolLoginFailure.cannotLoginDirectly }
-        guard let visitorID = loginDeviceID(owning: owning) else { throw SchoolLoginFailure.busy }
+        let visitorID: String
+        switch loginDeviceID(owning: owning) {
+        case .id(let id): visitorID = id
+        case .notSaved: throw SchoolLoginFailure.cannotSave
+        case .lostLease: throw SchoolLoginFailure.busy
+        }
         return try await passwordLogin.login(account: account, password: password, visitorID: visitorID)
     }
 
+    private enum LoginDeviceID { case id(String), notSaved, lostLease }
+
     /// A random 32-hex id, kept for this install so the school sees the same browser each time.
     /// A new one is stored in one locked step under `owning`, only while none is stored (one
-    /// the other process stored meanwhile is used instead). nil = the lease is lost.
-    private func loginDeviceID(owning: LeaseOwnership) -> String? {
-        if let id = (try? vault.loginDeviceID()) ?? nil, !id.isEmpty { return id }
+    /// the other process stored meanwhile is used instead). A new id that could not be stored
+    /// (`notSaved`) is not sent: the school would see a new browser on every login.
+    private func loginDeviceID(owning: LeaseOwnership) -> LoginDeviceID {
+        if let id = (try? vault.loginDeviceID()) ?? nil, !id.isEmpty { return .id(id) }
         let fresh = (0..<16).map { _ in String(format: "%02x", UInt8.random(in: 0...255)) }.joined()
         let vault = vault
-        return (try? owning.write { () -> String in
-            if let id = (try? vault.loginDeviceID()) ?? nil, !id.isEmpty { return id }
-            try? vault.saveLoginDeviceID(fresh)
-            return fresh
+        let step = (try? owning.write { () -> LoginDeviceID in
+            if let id = (try? vault.loginDeviceID()) ?? nil, !id.isEmpty { return .id(id) }
+            guard (try? vault.saveLoginDeviceID(fresh)) != nil else { return .notSaved }
+            return .id(fresh)
         }) ?? nil
+        return step ?? .lostLease
     }
 
     /// What a login compares again just before its writes: the stored card session, portal
@@ -482,10 +490,11 @@ public actor SchoolSession {
 
     // MARK: Refresh
 
-    /// Liveness (`getSysBindCustInfo`); when the card session is dead, at most one way back in,
-    /// the same in the app (foreground or background) and in the widget: the portal token
-    /// (unless it is known to have expired), else the saved password (one login, never retried;
-    /// any refusal pauses it until the user signs in again). Then balance + meter in parallel.
+    /// Liveness (`getSysBindCustInfo`); when the card session is dead, the same in the app
+    /// (foreground or background) and in the widget: the portal token (unless it is known to
+    /// have expired), else the saved password (one login, never retried; any refusal pauses it
+    /// until the user signs in again). A portal exchange that times out or gets a school server
+    /// error also goes on to the saved password; one with no network stops there. Then balance + meter in parallel.
     /// Never calls `loginBySysId`.
     ///
     /// Two processes share the stored session. `mayMint` is asked before each step that mints a
@@ -503,9 +512,12 @@ public actor SchoolSession {
     /// where no lease exists).
     public func refresh(inBackground: Bool, mayMint: @Sendable () async -> Bool = { true }, owning: LeaseOwnership,
                         numbers: @Sendable (SchoolReading) async -> Void = { _ in }) async -> SchoolReading {
-        guard let stored = (try? vault.ecyktSession()) ?? nil else {
-            return SchoolReading(outcome: .notSignedIn, checkedAt: now())
-        }
+        // A read the Keychain refuses (before the first unlock) says nothing about the login:
+        // only a read that finds nothing is "not signed in". A session that no longer decodes
+        // won't on the next try either: the user signs in again.
+        let found: EcyktSession?
+        do { found = try vault.ecyktSession() } catch { return unreadableSession(error) }
+        guard let stored = found else { return SchoolReading(outcome: .notSignedIn, checkedAt: now()) }
         let started = signOutGeneration
 
         var reexchanged = false
@@ -517,20 +529,41 @@ public actor SchoolSession {
             logExpired(.card, obtainedAt: stored.obtainedAt, lastAliveAt: stored.lastAliveAt)
             guard await mayMint() else { return SchoolReading(outcome: .leaseLost, checkedAt: now()) }
             let current: EcyktSession?
-            do { current = try vault.ecyktSession() } catch { return SchoolReading(outcome: .failed(.offline), checkedAt: now()) }
+            do { current = try vault.ecyktSession() } catch { return unreadableSession(error) }
             guard let current else { return SchoolReading(outcome: .notSignedIn, checkedAt: now()) }
-            if current.token != stored.token, let found = try? await liveCard(current) {
-                // The other process renewed it while this one was reading: no second mint.
-                base = current
+            // What is stored now is what a renewed session is written over (`base`), so a
+            // session the other process stored meanwhile doesn't make this read discard its
+            // fresh one. A new one from the other process is checked first: alive, nothing is minted.
+            base = current
+            var firstError = e
+            var found: (BoundCard, EcyktSession)?
+            if current.token != stored.token {
+                do {
+                    found = try await liveCard(current)
+                } catch let e2 as ServiceError where e2.isSessionExpired {
+                    firstError = e2
+                } catch let e2 as ServiceError {
+                    return SchoolReading(outcome: .failed(e2), checkedAt: now())
+                } catch is CancellationError {
+                    // Cancelled (the widget at its deadline): nothing is known.
+                    return SchoolReading(outcome: .interrupted, checkedAt: now())
+                } catch {
+                    return SchoolReading(outcome: .failed(.offline), checkedAt: now())
+                }
+            }
+            if let found {
                 live = found
             } else {
-                switch await renew(stored, firstError: e, since: started, mayMint: mayMint, owning: owning) {
-                case .renewed(let found): reexchanged = true; live = found
+                switch await renew(current, firstError: firstError, since: started, mayMint: mayMint, owning: owning) {
+                case .renewed(let renewed): reexchanged = true; live = renewed
                 case .stopped(let reading): return reading
                 }
             }
         } catch let e as ServiceError {
             return SchoolReading(outcome: .failed(e), checkedAt: now())
+        } catch is CancellationError {
+            // Cancelled (the widget at its deadline): nothing is known.
+            return SchoolReading(outcome: .interrupted, checkedAt: now())
         } catch {
             return SchoolReading(outcome: .failed(.offline), checkedAt: now())
         }
@@ -578,6 +611,13 @@ public actor SchoolSession {
         return reading
     }
 
+    /// The stored card session could not be read: a session that no longer decodes needs a
+    /// sign-in; any other read failure is an interruption.
+    private func unreadableSession(_ error: Error) -> SchoolReading {
+        let undecodable = (error as? StorageError)?.isUndecodable == true
+        return SchoolReading(outcome: undecodable ? .needsLogin(.sessionExpired(.ecykt)) : .interrupted, checkedAt: now())
+    }
+
     private enum Renewal { case renewed((BoundCard, EcyktSession)), stopped(SchoolReading) }
 
     /// The card session is dead: the portal token, else the saved password, once each.
@@ -585,30 +625,67 @@ public actor SchoolSession {
                        mayMint: @Sendable () async -> Bool, owning: LeaseOwnership) async -> Renewal {
         var lastError = e
         var triedPortal = false
+        // The portal exchange got no answer about the login; reported if the password can't go.
+        var portalNoAnswer: ServiceError?
         let seenPortalToken = (try? vault.portalToken()) ?? nil
         if let portalToken = seenPortalToken, portalToken.expiresAt.map({ $0 > now() }) ?? true {
             triedPortal = true
+            var exchanged = false
             do {
                 let fresh = try await exchangeSession(portalToken: portalToken, userAgent: stored.userAgent, previous: stored)
+                exchanged = true
                 return .renewed(try await liveCard(fresh))
             } catch let e2 as ServiceError where e2.isSessionExpired {
                 if e2 == .sessionExpired(.portal) {
                     logExpired(.portal, obtainedAt: portalToken.obtainedAt, lastAliveAt: nil)
                 }
                 lastError = e2
-            } catch {
-                // Re-exchange failed for another reason: the ecykt login is still known dead.
+            } catch let e2 as ServiceError where Self.isDefiniteRefusal(e2) {
+                // The school turned the re-exchange down: the ecykt login is still known dead.
                 return .stopped(SchoolReading(outcome: .needsLogin(e), checkedAt: now(), reexchanged: true))
+            } catch let e2 as ServiceError where e2 == .offline || exchanged {
+                // No network: the password would not get through either, a failed read. Or the
+                // exchange worked and only the check of the new session got no answer: the next
+                // refresh exchanges the same portal token again.
+                return .stopped(SchoolReading(outcome: .failed(e2), checkedAt: now(), reexchanged: true))
+            } catch let e2 as ServiceError {
+                // A timeout, a school server error or a bare 401/403: the portal (or the exchange
+                // behind it) may be down while CAS works, and its token would keep failing until
+                // it expires. The saved password goes once. Its hold stays on when that login got
+                // no answer, and goes back on when the login was accepted but the steps after it
+                // failed again, so the password does not go on every refresh.
+                portalNoAnswer = e2
+            } catch {
+                // Cancelled (the widget at its deadline): nothing is known.
+                return .stopped(SchoolReading(outcome: .interrupted, checkedAt: now(), reexchanged: true))
             }
         }
         switch await signInWithSavedPassword(previous: stored, seenPortalToken: seenPortalToken?.value,
                                              since: started, mayMint: mayMint, owning: owning) {
         case .signedIn(let found): return .renewed(found)
-        case .offline: return .stopped(SchoolReading(outcome: .failed(.offline), checkedAt: now(), reexchanged: triedPortal))
+        case .offline: return .stopped(SchoolReading(outcome: .failed(portalNoAnswer ?? .offline), checkedAt: now(), reexchanged: triedPortal))
+        case .failed(let e2): return .stopped(SchoolReading(outcome: .failed(e2), checkedAt: now(), reexchanged: triedPortal))
         case .retryLater: return .stopped(SchoolReading(outcome: .interrupted, checkedAt: now(), reexchanged: triedPortal))
+        case .notTried:
+            // No password to send (none saved, paused, or held): after a portal exchange that got
+            // no answer, its token is still the way in, so that is a failed read.
+            let outcome: SchoolReading.Outcome = portalNoAnswer.map { .failed($0) } ?? .needsLogin(lastError)
+            return .stopped(SchoolReading(outcome: outcome, checkedAt: now(), reexchanged: triedPortal))
         case .unavailable: return .stopped(SchoolReading(outcome: .needsLogin(lastError), checkedAt: now(), reexchanged: triedPortal))
         case .lostLease: return .stopped(SchoolReading(outcome: .leaseLost, checkedAt: now(), reexchanged: triedPortal))
         case .signedOut: return .stopped(SchoolReading(outcome: .notSignedIn, checkedAt: now()))
+        }
+    }
+
+    /// A definite answer from the school about a login: the credential is dead, the request
+    /// was turned down with the service's own code, or our parameters are wrong. No network, a
+    /// timeout, TLS, an unreadable reply or a bare HTTP status (a gateway's 5xx, say) is no
+    /// answer: trying again later may work.
+    static func isDefiniteRefusal(_ e: ServiceError) -> Bool {
+        switch e {
+        case .sessionExpired, .badRequest: return true
+        case .rejected(_, let code, _): return !code.hasPrefix("HTTP ")
+        case .offline, .timedOut, .tls, .malformed, .uncertain: return false
         }
     }
 
@@ -680,11 +757,14 @@ public actor SchoolSession {
         return portal?.value == seenPortalToken
     }
 
-    private enum PasswordStep { case signedIn((BoundCard, EcyktSession)), offline, unavailable, retryLater, lostLease, signedOut }
+    /// `notTried`: no password to send (none saved, paused, held, or no direct login), nothing sent.
+    private enum PasswordStep { case signedIn((BoundCard, EcyktSession)), offline, failed(ServiceError), notTried, unavailable, retryLater, lostLease, signedOut }
 
     /// The last step of the refresh: one login with the saved password. Anything but success
-    /// or no network pauses the password, so a wrong or blocked login is never repeated. A login
-    /// that was sent but got no answer holds automatic logins off for a few hours instead.
+    /// or no network pauses the password, so a wrong or blocked login is never repeated. After
+    /// the school accepted it, only a definite refusal of the card login pauses it. A login
+    /// that was sent but got no answer holds automatic logins off for a few hours instead, and so
+    /// does an accepted one whose card session then could not be made.
     ///
     /// The widget can be suspended or killed at any await, so each fact is stored as soon as it
     /// is known: the hold is written before the password goes out and lifted once an answer (or
@@ -700,7 +780,7 @@ public actor SchoolSession {
     /// again right away; the other process, which holds the lease now, carries on.
     private func signInWithSavedPassword(previous: EcyktSession, seenPortalToken: String?, since started: Int,
                                          mayMint: @Sendable () async -> Bool, owning: LeaseOwnership) async -> PasswordStep {
-        guard let saved = (try? vault.account()) ?? nil, let password = saved.automaticPassword(at: now()) else { return .unavailable }
+        guard let saved = (try? vault.account()) ?? nil, let password = saved.automaticPassword(at: now()) else { return .notTried }
         // Not moved to the shared group yet: like no network, nothing is paused or held.
         if !createsLoginDeviceID, ((try? vault.loginDeviceID()) ?? nil)?.isEmpty ?? true {
             diagnostic("school.passwordLogin deferred reason=noLoginDeviceID")
@@ -712,8 +792,17 @@ public actor SchoolSession {
             diagnostic("school.passwordLogin skipped reason=credentialsChanged")
             return .retryLater
         }
-        guard let passwordLogin else { return .unavailable }
-        guard let visitorID = loginDeviceID(owning: owning) else { return .lostLease }
+        guard let passwordLogin else { return .notTried }
+        let visitorID: String
+        switch loginDeviceID(owning: owning) {
+        case .id(let id): visitorID = id
+        case .lostLease: return .lostLease
+        case .notSaved:
+            // The Keychain refused the new id: an interruption, so several in a row show on home
+            // as not saving.
+            diagnostic("school.passwordLogin skipped reason=deviceIDNotSaved")
+            return .retryLater
+        }
         let sentAt = now()
         // Not written: signed out only when the account is really gone. Changed meanwhile (保存密码,
         // 重新输入密码) or a write that failed leave the user signed in, with nothing to report;
@@ -794,15 +883,21 @@ public actor SchoolSession {
             let found = try await liveCard(fresh)
             guard started == signOutGeneration else { return .unavailable }
             return .signedIn(found)
-        } catch let e as ServiceError where e == .offline || e == .timedOut {
-            // The password was accepted; only the steps after it lost the network.
-            return .offline
-        } catch is CancellationError {
-            return .unavailable
-        } catch {
-            // The password worked but the card login after it did not: paused as before, so the
-            // next refresh does not log in again (the saved portal token is still tried first).
+        } catch let e as ServiceError where Self.isDefiniteRefusal(e) {
+            // The password worked but the school turned the card login after it down: paused as
+            // before, so the next refresh does not log in again (the saved portal token is still
+            // tried first).
             _ = updateSavedAccount(saved, since: started, owning: owning) { $0.paused = true }
+            return .unavailable
+        } catch let e as ServiceError {
+            // The password was accepted; the steps after it got no answer (no network, a timeout,
+            // a school server error, a bare 401/403). Nothing is paused: the next refresh
+            // exchanges the portal token this login stored. The hold goes back on, in the shared
+            // account item: while the portal keeps failing, neither process falls through to
+            // the password again on every refresh.
+            _ = updateSavedAccount(saved, since: started, owning: owning) { if $0.unansweredAt == nil { $0.unansweredAt = sentAt } }
+            return .failed(e)
+        } catch {
             return .unavailable
         }
     }

@@ -5,6 +5,7 @@ struct ShowerDetail: View {
     @EnvironmentObject private var shower: ShowerModel
     @EnvironmentObject private var campus: CampusModel
     @State private var confirmResolve = false
+    @State private var confirmClear = false
     var body: some View {
         ScrollView {
             VStack(alignment:.leading,spacing:24) {
@@ -59,6 +60,18 @@ struct ShowerDetail: View {
                             Button("取消", role:.cancel) {}
                         } message: {
                             Text(ShowerPageText.resolveConfirmNote)
+                        }
+                }
+                if shower.recordUnreadable {
+                    // The record can't be read by this build: cleared only after the user checked the official record.
+                    Button(ShowerPageText.unreadableClear) { confirmClear = true }
+                        .font(.subheadline).frame(minHeight:44).accessibilityIdentifier("clearUnreadableShowerRecord")
+                        .disabled(shower.busy)
+                        .confirmationDialog(ShowerPageText.unreadableClearConfirm, isPresented:$confirmClear, titleVisibility:.visible) {
+                            Button(ShowerPageText.unreadableClearButton, role:.destructive) { shower.clearUnreadableRecord() }
+                            Button(ShowerPageText.unreadableKeep, role:.cancel) {}
+                        } message: {
+                            Text(ShowerPageText.unreadableClearNote)
                         }
                 }
                 if !shower.configured {

@@ -13,8 +13,15 @@ public protocol ShowerDirectory: Sendable {
 /// The two money calls. Errors: `rejected`/`badRequest`/`sessionExpired` are definite refusals;
 /// everything else is `uncertain` (the request may have taken effect).
 public protocol ShowerGateway: Sendable {
+    /// False when the calls can't be sent at all (no platform profile): nothing that ends in a
+    /// settlement starts then.
+    var isAvailable: Bool { get }
     func authorize(_ binding: ShowerBinding, frame: Data) async throws -> ShowerAuthorization
     func settle(_ binding: ShowerBinding, frame: Data) async throws -> ShowerReceipt
+}
+
+public extension ShowerGateway {
+    var isAvailable: Bool { true }
 }
 
 public enum LxtEndpoints {

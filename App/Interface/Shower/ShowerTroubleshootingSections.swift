@@ -13,7 +13,7 @@ struct ShowerTroubleshootingSections: View {
     /// Same source as the main page's 「热水」 row: a dorm controller is bound (HomeData.shower != .unconfigured).
     private var waterConfigured: Bool { preview.map { $0.shower != .unconfigured } ?? water.configured }
     /// 检查水控状态 only means something while a session may be running.
-    private var mayReview: Bool { preview.map { $0.shower.showering != nil } ?? water.mayFinish }
+    private var mayReview: Bool { preview.map { $0.shower.showering != nil } ?? water.mayReview }
     @Binding var export: ShowerDiagnosticsExport
     var body: some View {
         Group {

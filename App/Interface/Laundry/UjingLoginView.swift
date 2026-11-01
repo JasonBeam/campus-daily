@@ -1,21 +1,26 @@
 import SwiftUI
-import CryptoKit
 import Core
 
 @MainActor private final class UjingLoginModel: ObservableObject {
     @Published var busy = false
     @Published var issue: String?
     @Published var sent = false
-    private func cooldownKey(_ mobile: String) -> String {
-        PreferenceKey.prefix + "ujing.smsCooldown." + SHA256.hash(data:Data(mobile.utf8)).map { String(format:"%02x",$0) }.joined()
+    /// One U净 account at a time: one cooldown, under a fixed key (the phone number is not in it).
+    private let cooldownKey = PreferenceKey.ujingSMSCooldown
+    init() {
+        // Builds before keyed the cooldown by a hash of the phone number.
+        let defaults = UserDefaults.standard
+        for key in defaults.dictionaryRepresentation().keys where key.hasPrefix(PreferenceKey.ujingSMSCooldown + ".") {
+            defaults.removeObject(forKey:key)
+        }
     }
     func remaining(_ mobile: String, at date: Date = Date()) -> Int {
-        max(0,Int(ceil(UserDefaults.standard.double(forKey:cooldownKey(mobile)) - date.timeIntervalSince1970)))
+        max(0,Int(ceil(UserDefaults.standard.double(forKey:cooldownKey) - date.timeIntervalSince1970)))
     }
     func send(_ mobile: String, laundry: LaundryModel) async {
         guard !busy, UjingInput.isMobile(mobile), remaining(mobile) == 0 else { return }
         // Reserve the cooldown before sending, including uncertain network outcomes. No automatic retry.
-        UserDefaults.standard.set(Date().addingTimeInterval(60).timeIntervalSince1970,forKey:cooldownKey(mobile))
+        UserDefaults.standard.set(Date().addingTimeInterval(60).timeIntervalSince1970,forKey:cooldownKey)
         busy = true; issue = nil; sent = false; defer { busy = false }
         do { try await laundry.requestSMS(mobile:mobile); sent = true }
         catch { issue = (error as? ServiceError)?.userMessage ?? "验证码可能没发出去，过一会儿再试。" }
@@ -26,7 +31,7 @@ import Core
         do {
             try await laundry.login(mobile:mobile, code:code)
             return true
-        } catch { issue = (error as? ServiceError)?.userMessage ?? "登录没完成，核对手机号和验证码再试。"; return false }
+        } catch { issue = LaundryModel.loginText(error); return false }
     }
 }
 
@@ -64,7 +69,7 @@ struct UjingLoginView: View {
                 Button {
                     Task { if await login.login(mobile,code:code,laundry:laundry) { code = ""; dismiss() } }
                 } label: { HStack { if login.busy { ProgressView() }; Text("登录 U净") }.frame(maxWidth:.infinity) }
-                    .disabled(login.busy || !consent || !UjingInput.isMobile(mobile) || code.count < 4 || !laundry.mayImport)
+                    .disabled(login.busy || !consent || !UjingInput.isMobile(mobile) || code.count < 4 || !laundry.mayLogin)
                     .accessibilityIdentifier("confirmUjingLogin")
             }.navigationTitle("登录 U净").navigationBarTitleDisplayMode(.inline)
                 .toolbar { ToolbarItem(placement:.cancellationAction) { Button("取消") { dismiss() }.disabled(login.busy) } }

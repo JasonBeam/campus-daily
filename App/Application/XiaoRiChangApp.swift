@@ -29,6 +29,9 @@ import Core
         .onChange(of:phase) { _, value in
             if value == .background { BackgroundRefresh.scheduleRefresh() }
             if value == .active {
+                // Launched before the first unlock (pre-warmed), the Keychain could not be read:
+                // read it again now, before the home's foreground refresh runs.
+                campus.reload()
                 Task { await Reminders.shared.refreshAuthorization() }
                 // Back from Alipay without a callback URL (checkout links): read the order.
                 Task { await laundry.refreshOrder() }

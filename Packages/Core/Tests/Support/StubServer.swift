@@ -173,12 +173,13 @@ public final class StubURLProtocol: URLProtocol, @unchecked Sendable {
 
     static func register(_ s: StubServer) { lock.withLock { servers[s.id] = WeakServer(server: s); latest = s.id } }
     static func unregister(_ id: String) { _ = lock.withLock { servers.removeValue(forKey: id) } }
-    /// By routing header when URLSession passes it through, else the most recent server
-    /// (XCTest runs tests serially).
+    /// By routing header. Only a request without one (URLSession didn't pass it through) goes
+    /// to the most recent server (XCTest runs tests serially); one for a server that is gone (a
+    /// task left running by a test that ended) gets none, so it can't use up a later test's routes.
     static func server(_ id: String?) -> StubServer? {
         lock.withLock {
-            if let id, let s = servers[id]?.server { return s }
-            return latest.flatMap { servers[$0]?.server }
+            guard let id else { return latest.flatMap { servers[$0]?.server } }
+            return servers[id]?.server
         }
     }
 
@@ -189,7 +190,8 @@ public final class StubURLProtocol: URLProtocol, @unchecked Sendable {
     public override func startLoading() {
         let id = request.value(forHTTPHeaderField: Self.routingHeader)
         guard let server = Self.server(id), let url = request.url else {
-            client?.urlProtocol(self, didFailWithError: URLError(.resourceUnavailable))
+            // The test that sent it has ended: fail it as cancelled.
+            client?.urlProtocol(self, didFailWithError: URLError(id == nil ? .resourceUnavailable : .cancelled))
             return
         }
         var headers = request.allHTTPHeaderFields ?? [:]

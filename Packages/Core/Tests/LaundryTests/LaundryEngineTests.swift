@@ -151,6 +151,17 @@ final class LaundryEngineTests: XCTestCase {
         XCTAssertEqual(api.count("create"), 1)
     }
 
+    func testOrderRecordsTheSignedInAccount() async throws {
+        api.creates = [.ok(L.orderID)]
+        api.orders = [.ok(L.order("10"))]
+        let sleeps = self.sleeps!
+        let t = L.t0.addingTimeInterval(10)
+        let e = try LaundryEngine(api: api, vault: vault, launcher: launcher, hooks: hooks, accountID: "acct-1",
+                                  now: { t }, sleep: { sleeps.record($0) })
+        _ = try await e.confirmOrder(L.snapshot(at: L.t0.addingTimeInterval(5)), program: L.standard)
+        XCTAssertEqual(try vault.checkout()?.accountID, "acct-1")
+    }
+
     func testStaleOrChangedWasherNeverCreates() async throws {
         let e = try engine(at: 100)
         do { _ = try await e.confirmOrder(L.snapshot(), program: L.standard); XCTFail() }
@@ -303,6 +314,27 @@ final class LaundryEngineTests: XCTestCase {
         let cleared = try await e.resolveManually()
         XCTAssertEqual(cleared.phase, .none)
         XCTAssertNil(try vault.checkout())
+        XCTAssertEqual(api.count("create"), 0)
+    }
+
+    func testManualClearRefusedUntilALookupFindsNothing() async throws {
+        let creating = LaundryReducer.reduce(.empty, .confirm(L.draft, at: L.t0)).0
+        try vault.saveCheckout(creating)
+        let e = try engine()
+        // Fresh restore: no lookup yet.
+        do { _ = try await e.resolveManually(); XCTFail() } catch { XCTAssertEqual(error as? LaundryEngineError, .notAllowed) }
+        // The lookup failed.
+        api.scans = [.fail(.offline)]
+        let failed = try await e.refresh()
+        XCTAssertEqual(failed.notice, .readFailed(.offline))
+        do { _ = try await e.resolveManually(); XCTFail() } catch { XCTAssertEqual(error as? LaundryEngineError, .notAllowed) }
+        // U净 reported an order on the machine that did not match ours.
+        api.scans = [.ok(WasherScan(deviceID: L.device, moduleType: 7, status: 1, createOrderEnabled: false, activeOrderID: L.orderID))]
+        api.orders = [.ok(L.order("10", createdAt: "2026-10-30T11:50:00+08:00"))]
+        let mismatch = try await e.refresh()
+        XCTAssertEqual(mismatch.notice, .orderMismatch)
+        do { _ = try await e.resolveManually(); XCTFail() } catch { XCTAssertEqual(error as? LaundryEngineError, .notAllowed) }
+        XCTAssertEqual(try vault.checkout()?.phase, .reconcile)
         XCTAssertEqual(api.count("create"), 0)
     }
 

@@ -10,6 +10,7 @@ final class ShowerGatewayBox: ShowerGateway, @unchecked Sendable {
         get { lock.withLock { gateway } }
         set { lock.withLock { gateway = newValue } }
     }
+    var isAvailable: Bool { current != nil }
     func authorize(_ binding: ShowerBinding, frame: Data) async throws -> ShowerAuthorization {
         guard let current else { throw ServiceError.badRequest(.lxt6) }
         return try await current.authorize(binding, frame:frame)
@@ -64,10 +65,20 @@ enum ShowerProfileFiles {
     var startTask: Task<Void, Never>?
     @Published private(set) var binding: ShowerBinding?
     @Published private(set) var profile: ShowerPlatformProfile?
-    @Published private(set) var busy = false
+    /// The launch's profile load has finished: before it, `profile` is nil without being missing.
+    @Published private(set) var profileLoaded = false
+    @Published private(set) var busy = false {
+        didSet { if oldValue, !busy, rebuildPending { rebuildPending = false; rebuildEngine() } }
+    }
+    /// A rebuild (after a profile import, say) came while something was in flight: it runs once
+    /// that is done, so 结束 isn't left without the new profile's gateway.
+    private var rebuildPending = false
     /// Last action's message (nil = nothing to say).
     @Published private(set) var message: String?
     @Published private(set) var storageBlocked = false
+    /// The saved shower record is there but can't be decoded (another build wrote it): a
+    /// relaunch doesn't help, the school's record says what happened.
+    @Published private(set) var recordUnreadable = false
     @Published private(set) var residenceReviewRequired = UserDefaults.standard.bool(forKey:PreferenceKey.showerNeedsResidenceReview)
     @Published private(set) var verifiedDevice: VerifiedShowerDevice?
     @Published private(set) var inspectionStatus: String?
@@ -86,6 +97,8 @@ enum ShowerProfileFiles {
     private let gateway = ShowerGatewayBox()
     private let bluetooth = BluetoothTransport()
     private var syncGate = ShowerSyncGate()
+    /// What the 「还在计时」 reminder counts from (`ShowerReminderStart`).
+    private var reminderStart: Date?
 
     init() {
         binding = (try? AppEnvironment.showerVault.binding()) ?? nil
@@ -104,12 +117,18 @@ enum ShowerProfileFiles {
         ShowerLinkRule.mayStart(state, ready:configured && !platformMissing && !residenceReviewRequired && engine != nil && !storageBlocked,
                                 busy:busy, inspecting:inspecting)
     }
-    var mayFinish: Bool { configured && engine != nil && !busy && !storageBlocked && state.canFinish }
+    /// Not without a platform profile: the water would close with no way to settle it.
+    var mayFinish: Bool { configured && !platformMissing && engine != nil && !busy && !storageBlocked && state.canFinish }
+    /// 检查水控状态: while water may run, and after a close that may not have taken.
+    var mayReview: Bool { configured && engine != nil && !busy && !storageBlocked && state.canReview }
     var mayResolveManually: Bool { engine != nil && !busy && state.canResolveManually }
-    var mayRetrySettle: Bool { engine != nil && !busy && state.canRetrySettle }
+    var mayRetrySettle: Bool { !platformMissing && engine != nil && !busy && state.canRetrySettle }
     /// Binding / profile may change only with no session that could still be open or charged.
-    var mayImport: Bool {
-        !busy && !storageBlocked && (state.phase == .idle || state.phase == .done || (state.phase == .failed && state.failure?.needsReview == false))
+    var mayImport: Bool { ShowerImportRule.mayImport(state, busy:busy, storageBlocked:storageBlocked) }
+    /// 导入热水配置: also while a shower waits on a missing profile (nothing to replace; it is
+    /// what 结束 and 再结算一次 need).
+    var mayImportProfile: Bool {
+        ShowerImportRule.mayImportProfile(state, profileLoaded:profileLoaded, profileMissing:platformMissing, busy:busy, storageBlocked:storageBlocked)
     }
     /// Why the controller check can't run now (a shower open, or one waiting for its check);
     /// nil when it can.
@@ -130,6 +149,7 @@ enum ShowerProfileFiles {
     var lastCost: Decimal? { (state.phase == .done ? state.receipt : state.lastReceipt)?.amount?.yuan }
     /// Line under the headline on the hot-water page.
     var status: String {
+        if recordUnreadable { return Self.recordUnreadableText }
         if storageBlocked { return "这台手机暂时存不了热水记录，重启 App 后再试。" }
         if let message { return message }
         if state.stateReviewRequired { return "水控没显示在用水，校日常就没发结束。去学校的热水记录里核对一下这次洗澡。" }
@@ -143,19 +163,22 @@ enum ShowerProfileFiles {
         return ""
     }
     nonisolated static let platformMissingText = "这个版本没带热水配置，热水暂时用不了。"
+    static let recordUnreadableText = "读不到热水记录。去学校的热水记录里看看这次扣了没有。"
 
     // MARK: Setup
 
     func reloadProfile() async {
         profile = await ShowerProfileFiles.localProfile()
+        profileLoaded = true
         rebuildEngine()
     }
 
     /// (Re)creates the engine for the current binding. Only while nothing is in flight.
     private func rebuildEngine() {
-        guard !busy else { return }
+        guard !busy else { rebuildPending = true; return }
         observer?.cancel(); observer = nil; engine = nil
         syncGate.reset()
+        recordUnreadable = false
         guard binding != nil else {
             // No engine to report it: the restored state is this run's first, and the lock
             // screen and the reminder follow it like an engine's first report.
@@ -187,15 +210,23 @@ enum ShowerProfileFiles {
             }
         } catch {
             storageBlocked = true
+            recordUnreadable = (error as? ShowerEngineError) == .unreadableRecord
+            if recordUnreadable {
+                // No session to follow: a 洗澡中 left on the lock screen (its 结束 would only be
+                // refused) and the 「还在计时」 reminder go.
+                ShowerActivityController.shared.sync(state:.idle)
+                Reminders.shared.syncShower(started:nil)
+            }
         }
     }
 
     private func apply(_ next: ShowerState) {
         let old = state
         state = next
+        reminderStart = ShowerReminderStart.next(next, after:old, current:reminderStart, now:Date())
         if syncGate.shouldSync(next, after:old) {
             ShowerActivityController.shared.sync(state:next)
-            Reminders.shared.syncShower(started:next.mayBeFlowing ? next.startedAt : nil)
+            Reminders.shared.syncShower(started:reminderStart)
         }
     }
 
@@ -248,7 +279,7 @@ enum ShowerProfileFiles {
 
     /// `.waterconfig` import (Settings › 高级). The profile is the shared platform part only.
     func importConfig(_ url: URL) throws {
-        guard mayImport else { throw ShowerEngineError.blocked }
+        guard mayImportProfile else { throw ShowerEngineError.blocked }
         let access = url.startAccessingSecurityScopedResource()
         defer { if access { url.stopAccessingSecurityScopedResource() } }
         let data = try Data(contentsOf:url)
@@ -269,6 +300,7 @@ enum ShowerProfileFiles {
             guard mayStart else { throw ShowerEngineError.blocked }
         } else {
             guard state.canFinish else { throw ShowerEngineError.notAllowed }
+            guard !platformMissing else { message = Self.platformMissingText; throw ShowerEngineError.platformMissing }
             ShowerActivityController.shared.settling()
         }
         busy = true; message = nil
@@ -294,7 +326,7 @@ enum ShowerProfileFiles {
 
     /// Read-only state probe of the session's controller (Settings › 高级 › 检查水控状态).
     func reviewCurrentSession() async {
-        guard let engine, let binding, !busy, state.canFinish else { return }
+        guard let engine, let binding, !busy, state.canReview else { return }
         busy = true; defer { busy = false }
         if let result = try? await engine.review(binding) {
             apply(result)
@@ -302,10 +334,11 @@ enum ShowerProfileFiles {
         }
     }
 
-    /// 再查一次水控 on the needs-check face: the same read-only probe; still running goes back to
-    /// the timer (the record says so, nil), otherwise what it found or why it could not look.
+    /// 再查一次水控 on the needs-check face and on an unconfirmed close's unsure face: the same
+    /// read-only probe; still running goes back to the timer (the record says so, nil),
+    /// otherwise what it found or why it could not look.
     func recheckSession() async -> ShowerRecheckResult? {
-        guard let engine, let binding, state.canFinish else { return .unavailable }
+        guard let engine, let binding, state.canReview else { return .unavailable }
         guard !busy else { return .busy }
         busy = true; defer { busy = false }
         do {
@@ -317,6 +350,20 @@ enum ShowerProfileFiles {
         }
     }
 
+    /// 清除这条记录 on an unreadable record, after its confirmation (the user checked the school's
+    /// record). Removed only while it still can't be read; then the engine starts over.
+    func clearUnreadableRecord() {
+        guard recordUnreadable, !busy else { return }
+        let removed = try? AppEnvironment.showerVault.clearUnreadableRecord()
+        if removed == true {
+            rebuildEngine()
+        } else if removed == false {
+            // Kept: it reads again (another build rewrote it), so the engine can follow it now.
+            rebuildEngine()
+        }
+        // nil: the Keychain refused; the record and the clear button stay.
+    }
+
     func resolveManually() async {
         guard let engine, !busy else { return }
         busy = true; defer { busy = false }
@@ -325,6 +372,7 @@ enum ShowerProfileFiles {
 
     func requestSettleRetry() async {
         guard let engine, !busy else { return }
+        busy = true; defer { busy = false }
         if let result = try? await engine.requestSettleRetry() { apply(result) }
     }
 
@@ -332,6 +380,11 @@ enum ShowerProfileFiles {
         guard let engine, let binding, !busy else { return }
         busy = true; defer { busy = false }
         if let result = try? await engine.confirmSettleRetry(binding) { apply(result) }
+    }
+
+    func disarmSettleRetry() async {
+        guard let engine else { return }
+        if let result = try? await engine.disarmSettleRetry() { apply(result) }
     }
 
     func dismiss(only record: ShowerState? = nil) async {
@@ -373,7 +426,7 @@ enum ShowerProfileFiles {
             inspectionOutcome = .verified
         } catch {
             await bluetooth.disconnect()
-            let device = (error as? ShowerDeviceError) ?? .disconnected
+            let device = ShowerEngine.deviceError(error)
             inspectionStatus = Self.deviceText(device)
             switch device {
             case .bluetoothOff: inspectionOutcome = .bluetoothOff
@@ -420,6 +473,7 @@ enum ShowerProfileFiles {
         case .notActive?: return "水控没显示在用水，校日常就没发结束。去学校的热水记录里核对一下这次洗澡。"
         case .wrongDevice?: return "附近的水控不是你宿舍的那台。"
         case .writeUnconfirmed?: return ShowerDisplay.writeUnconfirmedHint
+        case .inUseByOther?: return ShowerPageText.endInUseByOther
         }
     }
 

@@ -12,6 +12,13 @@ final class FakeGateway: ShowerGateway, @unchecked Sendable {
     private var settleResults: [Outcome<ShowerReceipt>] = []
     private var _authorizeFrames: [Data] = []
     private var _settleFrames: [Data] = []
+    private var _available = true
+
+    /// False: like the app's gateway without a platform profile.
+    var isAvailable: Bool {
+        get { lock.withLock { _available } }
+        set { lock.withLock { _available = newValue } }
+    }
 
     func scriptAuthorize(_ o: Outcome<ShowerAuthorization>...) { lock.withLock { authorizeResults += o } }
     func scriptSettle(_ o: Outcome<ShowerReceipt>...) { lock.withLock { settleResults += o } }
@@ -39,7 +46,7 @@ final class FakeGateway: ShowerGateway, @unchecked Sendable {
         case .ok(let v): return v
         case .fail(let e): throw e
         case .hang:
-            while !Task.isCancelled { try? await Task.sleep(nanoseconds: 5_000_000) }
+            await eventually(seconds: 10) { Task.isCancelled }
             throw CancellationError()
         }
     }
@@ -180,10 +187,6 @@ final class ShowerEngineTests: XCTestCase {
 
     // MARK: Cancel while connecting
 
-    func waitUntil(_ condition: @escaping () async -> Bool) async {
-        for _ in 0..<400 where !(await condition()) { try? await Task.sleep(nanoseconds: 5_000_000) }
-    }
-
     /// 取消 during the Bluetooth connect: the task is cut short, nothing reaches the platform and
     /// no record is left.
     func testACancelDuringTheConnectSendsNothing() async throws {
@@ -191,7 +194,7 @@ final class ShowerEngineTests: XCTestCase {
         transport.script(.hang)
         let b = binding
         let task = Task { try? await e.start(b) }
-        await waitUntil { [transport] in transport!.writes.count == 1 }
+        await eventually { [transport] in transport!.writes.count == 1 }
         let accepted = await e.cancelStart()
         XCTAssertTrue(accepted)
         task.cancel()
@@ -212,7 +215,7 @@ final class ShowerEngineTests: XCTestCase {
         transport.script(.after(gate, identity))
         let b = binding
         let task = Task { try? await e.start(b) }
-        await waitUntil { [transport] in transport!.writes.count == 1 }
+        await eventually { [transport] in transport!.writes.count == 1 }
         let accepted = await e.cancelStart()
         XCTAssertTrue(accepted)
         open.yield(); open.finish()
@@ -231,7 +234,7 @@ final class ShowerEngineTests: XCTestCase {
         gateway.scriptAuthorize(.hang)
         let b = binding
         let task = Task { try? await e.start(b) }
-        await waitUntil { [gateway] in gateway!.authorizeFrames.count == 1 }
+        await eventually { [gateway] in gateway!.authorizeFrames.count == 1 }
         let accepted = await e.cancelStart()
         XCTAssertFalse(accepted)
         task.cancel()
@@ -326,7 +329,9 @@ final class ShowerEngineTests: XCTestCase {
         XCTAssertEqual(transport.writes.last, close)
     }
 
-    func testFinishFromWritePendingWhenAuthorizationNeverAppliedDoesNotSettle() async throws {
+    /// The write was answered with something else: it may have been applied, so a controller
+    /// that reads idle at 结束 leaves the record for a check, never settled and never dropped.
+    func testFinishFromWritePendingWithAnUnexpectedReplyNeedsACheck() async throws {
         let e = try engine()
         transport.script(.frame(identity), .frame(Data([0xAA, 0])))
         gateway.scriptAuthorize(.ok(auth))
@@ -334,10 +339,11 @@ final class ShowerEngineTests: XCTestCase {
         XCTAssertEqual(started.notice, .writeUnconfirmed)
         transport.script(.frame(identity))
         let s = try await e.finish(binding)
-        XCTAssertEqual(s.phase, .idle)
+        XCTAssertEqual(s.phase, .writePending)
+        XCTAssertTrue(s.stateReviewRequired)
         XCTAssertTrue(gateway.settleFrames.isEmpty)
         XCTAssertFalse(transport.writes.contains(close))
-        XCTAssertTrue(hooks.events.contains("finish.writeNeverApplied"))
+        XCTAssertFalse(hooks.events.contains("finish.writeNeverApplied"))
     }
 
     func testFinishWithControllerUnreachableKeepsSession() async throws {
@@ -381,7 +387,7 @@ final class ShowerEngineTests: XCTestCase {
         gateway.scriptSettle(.hang)
         let b = binding
         let task = Task { try await e.finish(b) }
-        while gateway.settleFrames.isEmpty { try await Task.sleep(nanoseconds: 2_000_000) }
+        await eventually { [gateway] in !gateway!.settleFrames.isEmpty }
         await expect(.busy) { try await e.dismiss() }
         task.cancel()
         let s = try await task.value
@@ -505,7 +511,7 @@ final class ShowerEngineTests: XCTestCase {
         gateway.scriptAuthorize(.hang)
         let b = binding
         let task = Task { try await e.start(b) }
-        while gateway.authorizeFrames.isEmpty { try await Task.sleep(nanoseconds: 2_000_000) }
+        await eventually { [gateway] in !gateway!.authorizeFrames.isEmpty }
         task.cancel()
         let s = try await task.value
         XCTAssertEqual(s.failure?.reason, .authorizeUncertain)
@@ -517,7 +523,7 @@ final class ShowerEngineTests: XCTestCase {
         transport.script(.hang)
         let b = binding
         let task = Task { try await e.start(b) }
-        while transport.writes.isEmpty { try await Task.sleep(nanoseconds: 2_000_000) }
+        await eventually { [transport] in !transport!.writes.isEmpty }
         task.cancel()
         let s = try await task.value
         XCTAssertEqual(s.failure?.reason, .deviceUnavailable)
@@ -537,6 +543,15 @@ final class ShowerEngineTests: XCTestCase {
         let resolved = try await e.resolveManually()
         XCTAssertEqual(resolved.phase, .idle)
         XCTAssertTrue(hooks.events.contains("cancel"))
+    }
+
+    /// A probe that never went out because the task was cancelled stops the search like any
+    /// other interruption, instead of reading as "not this controller".
+    func testAnUnsentProbeCancelledMidSearchStopsIt() async {
+        do {
+            _ = try await ShowerTargetSelection.identify(["A", "B"], machineID: machine) { _ in throw ShowerCommandNotSent(.interrupted) }
+            XCTFail("expected interrupted")
+        } catch { XCTAssertEqual(error as? ShowerDeviceError, .interrupted) }
     }
 
     func testTargetSelectionNeverGuesses() async throws {

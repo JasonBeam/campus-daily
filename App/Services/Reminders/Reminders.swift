@@ -183,31 +183,33 @@ enum ReminderKey {
 
     /// Called whenever the order or machine reading changes (LaundryModel.syncActivity).
     func syncLaundry(facts: LaundryFacts, now: Date = Date()) {
-        let phase = facts.phase(now:now)
-        switch phase {
-        case .running(let end):
-            guard let id = facts.record?.orderId else { return }
-            // First successful payment: the moment to explain reminders.
-            requestAppPrompt()
-            let plan = LaundryPlan(orderId:id, end:end, machine:facts.machine.map(LaundryFormat.machine) ?? "洗衣机")
+        switch facts.phase(now:now) {
+        // Paid: the moment to explain reminders.
+        case .running, .starting: requestAppPrompt()
+        default: break
+        }
+        switch LaundryDoneReminder.step(facts.configured ? facts.record : nil, scheduled:scheduledLaundry, now:now) {
+        case .schedule(let reminder):
+            let plan = LaundryPlan(orderId:reminder.orderID, end:reminder.end, machine:facts.machine.map(LaundryFormat.machine) ?? "洗衣机")
             laundryPlan = plan
             applyLaundry(plan)
-        case .starting:
-            requestAppPrompt()   // paid, end time not known yet: keep any existing request
-        case .check:
-            break                     // unconfirmed: keep what is scheduled
-        default:
-            // Done (the app shows it), cancelled, failed, or another machine: nothing to remind.
+        case .keep:
+            break
+        case .cancel:
             laundryPlan = nil
             cancelLaundry()
         }
     }
+    /// The laundry-done request set now.
+    private var scheduledLaundry: LaundryDoneReminder.Plan? {
+        guard let id = defaults.string(forKey:ReminderKey.laundryOrder),
+              let end = defaults.object(forKey:ReminderKey.laundryEnd) as? Date else { return nil }
+        return LaundryDoneReminder.Plan(orderID:id, end:end)
+    }
     private func applyLaundry(_ plan: LaundryPlan) {
         guard defaults.bool(forKey:ReminderKey.laundryDone) else { cancelLaundry(); return }
-        let scheduledEnd = defaults.object(forKey:ReminderKey.laundryEnd) as? Date
         // Reschedule only when the order changed or the end moved (the order re-read refines it).
-        if defaults.string(forKey:ReminderKey.laundryOrder) == plan.orderId, let scheduledEnd,
-           abs(scheduledEnd.timeIntervalSince(plan.end)) < 30 { return }
+        if LaundryDoneReminder.isScheduled(LaundryDoneReminder.Plan(orderID:plan.orderId, end:plan.end), as:scheduledLaundry) { return }
         cancelLaundry()
         let delay = plan.end.timeIntervalSinceNow
         guard delay > 1 else { return }
@@ -379,7 +381,8 @@ struct ReminderPermissionSheet: View {
 /// Home-root hooks: the pre-permission sheet after the first paid laundry order or the first home read
 /// (the settings triggers show it inside settings), and notification taps (laundry → laundry page, the rest → home).
 struct ReminderHooks: ViewModifier {
-    /// Home's `open(_:)`: closes the settings sheet, then shows these pages over home.
+    /// Home's `follow(_:)`: unless a payment may be under way, closes the settings sheet, then
+    /// shows these pages over home.
     let open: ([HomeRoute]) -> Void
     /// Home is visible with nothing on top (no onboarding, sheet, cover, panel or pushed page).
     var homeClear: Bool
@@ -396,7 +399,8 @@ struct ReminderHooks: ViewModifier {
                 guard !Task.isCancelled else { return }
                 await reminders.presentPendingPrompt()
             }
-            .onChange(of:reminders.route) { _, route in
+            // initial: a tap that launched the app may set the route before this view is attached.
+            .onChange(of:reminders.route, initial:true) { _, route in
                 guard let route else { return }
                 reminders.route = nil
                 open(route == .laundry ? [.laundry] : [])

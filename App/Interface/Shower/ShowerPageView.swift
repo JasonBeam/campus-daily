@@ -29,6 +29,32 @@ enum ShowerPageText {
     /// The needs-check face's read-only probe, under the body.
     static let recheck = "再查一次水控"
     static let rechecking = "正在查水控…"
+    /// The unsure face of a settlement that failed: settle once more, after a second tap.
+    /// 我在学校记录里核对过了 is behind that face's 去核对.
+    static let settleRetryBody = "结算发出去了，但没等到学校回话。先去学校的热水记录里看这次扣了没有：扣了，点「我在学校记录里核对过了」；没扣，再结算一次。"
+    /// The school answered the settlement with a no.
+    static let settleRefusedBody = "学校拒绝了这次结算。先去学校的热水记录里看这次扣了没有：扣了，点「我在学校记录里核对过了」；没扣，再结算一次。"
+    /// The settlement never left.
+    static let settleNotSentBody = "结算没发出去，学校那边应该还没扣钱。再结算一次就行。"
+    /// Held back after a close that may not have taken: the water read since may be someone else's.
+    static let settleHeldBody = "中间有人用过这台水控，这次读到的用水可能不是你的。先去学校的热水记录里看你这次洗澡扣了没有：扣了，点「我在学校记录里核对过了」；没扣、又确定刚才是你在用，再结算一次。"
+    static func settleRetryBody(_ cause: ShowerSettleRetryCause) -> String {
+        switch cause {
+        case .refused: return settleRefusedBody
+        case .notSent: return settleNotSentBody
+        case .noAnswer: return settleRetryBody
+        case .held: return settleHeldBody
+        }
+    }
+    static let settleRetry = "再结算一次"
+    static let settleRetryConfirm = "确认再结算一次"
+    static let settleRetryNote = "没扣才点。"
+    static let settleHeldRetryNote = "确定是你用的才点。"
+    /// The line under 再结算一次 before its first tap.
+    static func settleRetryNote(_ cause: ShowerSettleRetryCause?) -> String {
+        cause == .held ? settleHeldRetryNote : settleRetryNote
+    }
+    static let settleRetryArmedNote = "再点一下就发出去。扣过了别点，会扣两次。"
     static let bluetoothOff = "蓝牙关着，打开后再核对。"
     static func recheckResult(_ result: ShowerRecheckResult) -> String {
         switch result {
@@ -42,15 +68,24 @@ enum ShowerPageText {
         }
     }
     static let resolveConfirm = "这次洗澡核对过了吗？"
+    /// The way out of a saved record that can't be read, and its confirmation.
+    static let unreadableClear = "清除这条记录"
+    static let unreadableClearConfirm = "清除这条记录？"
+    static let unreadableClearNote = "先去学校的热水记录里看看这次扣了没有。清除以后，校日常不会再结算这一次。"
+    static let unreadableClearButton = "看过了，清除"
+    static let unreadableKeep = "留着"
     static let resolveConfirmButton = "核对过了"
     static let resolveConfirmNote = "标记以后，校日常不会再结算这一次。先在学校的热水记录里找到这次洗澡，再点核对过了。"
 
     /// Above 结束并结算 when the last end came back to the timer.
+    /// 结束 found the controller running someone else's session: no close was sent.
+    static let endInUseByOther = "水控有人在用，没发结束，免得关掉别人的水。"
     static func endFailed(_ failure: ShowerEndFailure) -> String {
         switch failure {
         case .noConnection: return "没连上水控，还没结束。靠近一点再点一次。"
         case .wrongController: return "连到的不是这间的水控，还没结束。再点一次。"
         case .notSent: return "还没发出去，没结束。再点一次。"
+        case .inUseByOther: return endInUseByOther
         case .other: return "没结束，水可能还在出。再点一次。"
         }
     }
@@ -223,7 +258,10 @@ struct ShowerPageView: View {
             case .unsure:
                 icon("questionmark.circle", Theme.accentText)
                 title(ShowerPageText.unsure)
-                bodyText(ShowerPageText.unsureBody)
+                bodyText(flow.settleRetryCause.map(ShowerPageText.settleRetryBody) ?? ShowerPageText.unsureBody)
+                // A close that may not have taken: water still running goes back to the timer.
+                if flow.showsRecheck { ShowerRecheckRow().padding(.top,18) }
+                if flow.mayRetrySettle { ShowerSettleRetryRow().padding(.top,18) }
             case .needsCheck:
                 icon("questionmark.circle", Theme.accentText)
                 title(ShowerPageText.check)
@@ -289,10 +327,11 @@ struct ShowerPageView: View {
             case .connecting:
                 capsule("取消", background:Theme.fill, ink:Theme.ink, enabled:flow.mayCancel) { shower.pageEvent(.cancelTapped) }
             case .running:
-                if let failure = flow.endFailed {
+                // No platform profile: 结束 would close the water with no way to settle it.
+                if let line = shower.platformMissing ? ShowerModel.platformMissingText : flow.endFailed.map(ShowerPageText.endFailed) {
                     HStack(alignment:.firstTextBaseline, spacing:6) {
                         Image(systemName:"exclamationmark.circle.fill").scaledFont(17, relativeTo:.body).accessibilityHidden(true)
-                        Text(ShowerPageText.endFailed(failure)).scaledFont(15, relativeTo:.subheadline)
+                        Text(line).scaledFont(15, relativeTo:.subheadline)
                             .multilineTextAlignment(.leading)
                             .fixedSize(horizontal:false, vertical:true)
                     }
@@ -303,9 +342,9 @@ struct ShowerPageView: View {
                     .accessibilityElement(children:.combine)
                 }
                 capsule("结束并结算", background:Theme.accent, ink:scheme == .dark ? Color(white:0.07) : .white,
-                        enabled:flow.mayEnd) { shower.pageEvent(.endTapped) }
+                        enabled:flow.mayEnd && !shower.platformMissing) { shower.pageEvent(.endTapped) }
                 // The end-failed line takes its place while shown.
-                if flow.endFailed == nil {
+                if flow.endFailed == nil && !shower.platformMissing {
                     Text(ShowerPageText.runningNote).scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
                         .multilineTextAlignment(.center).padding(.top,6)
                 }
@@ -325,7 +364,9 @@ struct ShowerPageView: View {
                 capsule("再试一次", background:Theme.pill, ink:Theme.pillInk, enabled:!flow.starting) { shower.pageEvent(.retryTapped) }
                 textButton("取消") { shower.pageEvent(.closeTapped) }
             case .unsure:
-                capsule(ShowerPageText.review, background:Theme.pill, ink:Theme.pillInk) { shower.pageEvent(.reviewTapped) }
+                capsule(ShowerPageText.review, background:Theme.pill, ink:Theme.pillInk, enabled:!flow.rechecking) {
+                    shower.pageEvent(.reviewTapped)
+                }
                 textButton("先回首页") { shower.pageEvent(.homeTapped) }
             case .needsCheck:
                 capsule(ShowerPageText.review, background:Theme.pill, ink:Theme.pillInk, enabled:!flow.rechecking) {

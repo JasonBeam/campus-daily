@@ -20,7 +20,7 @@ struct WasherSetupView: View {
                 Text(laundry.accountConnected ? "机器名称会自动填写，核对后点保存即可。" : "收到验证码后登录，再扫一次二维码，以后就能直接找到机器。")
                     .font(.footnote).foregroundStyle(.secondary)
                 Button(laundry.accountConnected ? "更新 U净 登录" : "登录 U净") { login = true }
-                    .disabled(!laundry.mayImport).accessibilityIdentifier("ujingLoginEntry")
+                    .disabled(!laundry.mayLogin).accessibilityIdentifier("ujingLoginEntry")
             }
             Section("常用洗衣机") {
                 ForEach(laundry.savedMachines) { item in

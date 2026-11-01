@@ -160,15 +160,6 @@ final class GatedSchoolReader: PlainSchoolReader, @unchecked Sendable {
     }
 }
 
-/// Polls `condition` until it holds (2 s cap).
-func eventually(_ condition: @Sendable () async -> Bool, file: StaticString = #filePath, line: UInt = #line) async {
-    for _ in 0..<400 {
-        if await condition() { return }
-        try? await Task.sleep(nanoseconds: 5_000_000)
-    }
-    XCTFail("condition never held", file: file, line: line)
-}
-
 final class SnapshotRefresherSingleFlightTests: XCTestCase {
     let t1 = Date(timeIntervalSince1970: 2_000)
 

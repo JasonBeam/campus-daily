@@ -10,6 +10,8 @@ enum SchoolLoginText {
     static let saveNote = "密码只存在这台 iPhone 的钥匙串里，不会上传。不保存的话，过几个小时小组件就要打开 App 才能更新。"
     /// The widget is refreshing (and may be logging in itself): nothing was sent.
     static let busy = "正在更新，等一下再试。"
+    /// The Keychain refused to store the login's device id: nothing was sent.
+    static let cannotSave = "登录信息没存上，再试一次。"
 
     /// Anything other than the two login answers (network, storage, the card steps after login).
     static func text(_ error: Error) -> String {
@@ -19,6 +21,7 @@ enum SchoolLoginText {
         case .offline?, .noAnswer?: return ServiceError.offline.userMessage
         case .differentAccount?, .unreadableAccount?: return (error as? SchoolLoginFailure)?.savePasswordRefusal?.text ?? ""
         case .busy?: return busy
+        case .cannotSave?: return cannotSave
         case nil: return AppErrorText.text(error)
         }
     }

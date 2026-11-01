@@ -14,6 +14,14 @@ public protocol ShowerTransport: Sendable {
     func disconnect() async
 }
 
+/// Thrown by `ShowerTransport.exchange` when the command never reached the controller: the
+/// task was cancelled or the link was unusable before the write, or the controller refused the
+/// write itself with an ATT error response (`ShowerWriteDelivery`). `cause` is what the user is told.
+public struct ShowerCommandNotSent: Error, Sendable, Equatable {
+    public var cause: ShowerDeviceError
+    public init(_ cause: ShowerDeviceError) { self.cause = cause }
+}
+
 /// Peripheral choice without guessing (ported from the existing app).
 public enum ShowerTargetSelection {
     public static func select(_ candidates: [String], required: String?, preferred: String?) throws -> String {
@@ -47,6 +55,8 @@ public enum ShowerTargetSelection {
                 throw ShowerDeviceError.interrupted
             } catch ShowerDeviceError.interrupted {
                 throw ShowerDeviceError.interrupted
+            } catch let e as ShowerCommandNotSent where e.cause == .interrupted {
+                throw ShowerDeviceError.interrupted
             } catch {
                 // Busy, malformed and unreachable devices are not verified targets.
             }
@@ -77,6 +87,12 @@ public enum ShowerEngineError: Error, Equatable, Sendable {
     case wrongBinding
     /// A session write failed: nothing more is sent until relaunch (fail closed).
     case storage
+    /// The saved session record is there but can't be decoded: nothing is sent, and a relaunch
+    /// doesn't help.
+    case unreadableRecord
+    /// No hot-water platform profile: the settlement couldn't be sent, so 结束 (close, then
+    /// settle) and a settle retry are refused before anything goes out.
+    case platformMissing
 }
 
 /// Drives `ShowerReducer`: persists every state before running its effects, talks to the
@@ -115,7 +131,9 @@ public actor ShowerEngine {
         self.transport = transport; self.gateway = gateway; self.vault = vault; self.hooks = hooks
         self.configuration = configuration; self.now = now; self.resetMarker = resetMarker
         let persisted: ShowerState?
-        do { persisted = try vault.showerState() } catch { throw ShowerEngineError.storage }
+        do { persisted = try vault.showerState() }
+        catch ShowerEngineError.unreadableRecord { throw ShowerEngineError.unreadableRecord }
+        catch { throw ShowerEngineError.storage }
         let restored = ShowerReducer.restore(persisted)
         var blocked = false
         if let persisted, restored.persistable != persisted {
@@ -168,14 +186,16 @@ public actor ShowerEngine {
         try guardIdle()
         guard state.canFinish else { throw ShowerEngineError.notAllowed }
         guard state.machineID == b.machineId.uppercased() else { throw ShowerEngineError.wrongBinding }
+        // Closing the water without a way to settle would leave a charge nobody can send.
+        guard gateway.isAvailable else { throw ShowerEngineError.platformMissing }
         return try await run(b, .finish)
     }
 
-    /// Read-only state probe of the session's controller.
+    /// Read-only state probe of the session's controller (also from an unconfirmed close).
     @discardableResult
     public func review(_ b: ShowerBinding) async throws -> ShowerState {
         try guardIdle()
-        guard state.canFinish else { throw ShowerEngineError.notAllowed }
+        guard state.canReview else { throw ShowerEngineError.notAllowed }
         guard state.machineID == b.machineId.uppercased() else { throw ShowerEngineError.wrongBinding }
         return try await run(b, .review)
     }
@@ -194,7 +214,16 @@ public actor ShowerEngine {
         try guardIdle()
         guard state.canRetrySettle, state.settleRetryArmed else { throw ShowerEngineError.notAllowed }
         guard state.machineID == b.machineId.uppercased() else { throw ShowerEngineError.wrongBinding }
+        guard gateway.isAvailable else { throw ShowerEngineError.platformMissing }
         return try await run(b, .confirmSettleRetry)
+    }
+
+    /// The page was left with the retry armed: its first tap no longer counts.
+    @discardableResult
+    public func disarmSettleRetry() async throws -> ShowerState {
+        try guardIdle()
+        guard state.settleRetryArmed else { return state }
+        return try await run(nil, .disarmSettleRetry)
     }
 
     /// After the user checked the official hot-water record.
@@ -228,7 +257,10 @@ public actor ShowerEngine {
         var queue = [first]
         while !queue.isEmpty {
             let event = queue.removeFirst()
-            let (next, effects) = ShowerReducer.reduce(state, event)
+            var (next, effects) = ShowerReducer.reduce(state, event)
+            // Back on the timer from the unsure face: the reminder counts from now (saved, so a
+            // relaunch counts from the same moment).
+            if state.phase == .failed, next.mayBeFlowing { next.timerResumedAt = now() }
             try await commit(next)
             for effect in effects {
                 if let follow = await perform(effect) { queue.append(follow) }
@@ -289,7 +321,9 @@ public actor ShowerEngine {
             catch { return .authorizeFailed(.uncertain(.lxt6)) }
 
         case .writeAuthorization(let payload):
+            guard !Task.isCancelled else { return .cancelledBeforeSend }
             do { return .writeReplied(try await transport.exchange(payload)) }
+            catch is ShowerCommandNotSent { return .cancelledBeforeSend }
             catch { return .writeFailed(Self.deviceError(error)) }
 
         case .probe(let peripheral):
@@ -304,6 +338,7 @@ public actor ShowerEngine {
         case .sendClose(let command):
             guard !Task.isCancelled else { return .cancelledBeforeSend }
             do { return .closeReplied(try await transport.exchange(command)) }
+            catch is ShowerCommandNotSent { return .cancelledBeforeSend }
             catch { return .closeFailed(Self.deviceError(error)) }
 
         case .settle(let frame):
@@ -337,8 +372,9 @@ public actor ShowerEngine {
         }
     }
 
-    static func deviceError(_ error: Error) -> ShowerDeviceError {
+    public static func deviceError(_ error: Error) -> ShowerDeviceError {
         if let e = error as? ShowerDeviceError { return e }
+        if let e = error as? ShowerCommandNotSent { return e.cause }
         if error is CancellationError { return .interrupted }
         return .disconnected
     }

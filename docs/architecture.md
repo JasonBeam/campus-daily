@@ -7,7 +7,8 @@ school-login script and, later, the fixtures.
 Ground rules: the BLE frame format and the `wxcode`/MD5 signing are kept byte for byte; any
 change to signing, BLE commands or school/U净 response parsing goes in its own commit with its
 reason. Money paths stop rather than guess. The repo never contains real names, ids, rooms,
-tokens or the hot-water platform `secret`/`sid`.
+tokens or the hot-water platform `secret`/`sid`. The hot-water `secret` and `sid` are, however,
+built into every public build in plain text (see 2.2).
 
 ---
 
@@ -215,11 +216,21 @@ foreground, the BG task and the widget):**
    stored session is read again: one the other process stored meanwhile is used instead.
    Silent re-exchange: if a portal token exists and its `exp` (known after a password login) has
    not passed, `eCardTicketURL` → `exchange` → retry step 1 once. Portal `-1001`/`-1` →
-   `sessionExpired(.portal)` → go to step 5.
+   `sessionExpired(.portal)` → go to step 5. A re-exchange with no network is a failed read, not
+   「重新登录」, and nothing more is sent. Any other answer that says nothing about the login (a
+   timeout, TLS, an unreadable reply, a bare HTTP status such as a 5xx or a 403) also goes to
+   step 5: the portal may be down while CAS works, and its token would keep failing until it
+   expires. The saved password's hold stops that from repeating; with no password to send, it is
+   a failed read. Only a check of the newly exchanged session that gets no answer stops there.
 5. Saved password (foreground or background, only if the user chose to save it and it is not
-   paused): one CAS login (`CASLoginClient`), then `eCardTicketURL` → `exchange` → step 1. Any
-   failure except no network pauses the saved password (`SchoolAccount.paused`) and the UI asks
-   the user to sign in again; it is tried again only after the user signs in or saves a password.
+   paused): one CAS login (`CASLoginClient`), then `eCardTicketURL` → `exchange` → step 1. A
+   refused login pauses the saved password (`SchoolAccount.paused`) and the UI asks the user to
+   sign in again; it is tried again only after the user signs in or saves a password. Once CAS
+   accepted it, only a definite refusal of the card login (`sessionExpired`, `rejected` with the
+   service's own code, `badRequest`) pauses it; no network, a timeout, a school server error or a
+   bare 401/403 is a failed read, and the next refresh exchanges the portal token that login
+   stored. That failure also puts the no-answer hold back (`unansweredAt`, in the shared account
+   item), so while the portal keeps failing neither process falls through to the password again.
    No loops, no retries beyond one.
 6. The live session (latest ciphertexts, `lastAliveAt`) is written back only while the stored one
    is still the session this read started from: a sign-out or a newer session from the other
@@ -367,14 +378,27 @@ node only (1 row).
 | ecykt other non-zero `code` | `rejected(.ecykt, code, msg)` |
 | ecykt `data:"[]"` for meters | `.success([])` → "没找到电表" in UI, not an error |
 | portal `{code:-1001,"无效 token"}`, `{code:-1,"没有访问权限"}` | `sessionExpired(.portal)` |
-| HTTP 401/403 from any school host | `sessionExpired(service)` |
+| HTTP 401/403 from CAS | `sessionExpired(service)` |
+| HTTP 401/403 from the portal or ecykt (a gateway or rate limit: both say a dead token with HTTP 200 and a code) | `rejected(service, "HTTP 40x", "")`, not expiry |
 | missing `data`/fields, wrong JSON types | `malformed(service, path)` |
 
 ### 2.2 Hot water: isv.lxt6.cn + BLE controller
 
 **Platform profile.** `secret`, `sid`, `bleName`, `typeId`, `version` are shared platform
 parameters staged into the app bundle at build time from a git-ignored file (`Scripts/stage-water-profile.py stage`, run by the
-App build phase). They are never in the repo, logs or fixtures.
+App build phase). They are not in the repo or fixtures, and the app does not log them, but they are
+not secret: every public build carries them in plain text (`CampusWaterPlatform.json` in the
+bundle), and `Scripts/stage-water-profile.py fetch` itself takes them from a public IPA. They are
+the same for every user, and they alone sign every lxt6 call: authorize and settle sign only
+`studentId`, `schoolId`, `machineid`, `machinedata`… (`LxtSigning.operationFields`) with no user
+credential. Anyone who extracts them from a build can sign platform calls for any student number;
+what such a call charges lands on that student's own hot-water balance. An authorize still needs
+`machinedata`, a frame the controller produced in a real BLE session, so the values alone don't
+open the water. The read endpoints (areas, rooms, machines) are signable the same way;
+`getUserMsg` also needs the `appdata` of the school's ecykt hand-off (`LxtClient.userInfo`), so
+it is harder to misuse. This is a platform risk the client cannot fix, accepted as such. The redacted `description`, the
+exact-key check on `.waterconfig` files and iOS file protection on the imported copy keep the
+values out of logs and stray files; they do not protect them.
 
 **Identity hand-off.** `EcyktClient.signData` → `appdata` (`vsuppid, appid, userId, deptId,
 username, phone, sign, nonce, timestamp`) → `getUserMsg` (signed, `requestType=1`) → water
@@ -497,10 +521,20 @@ Rules:
 - Any state but `idle`/`done` blocks `start`. Authorize: explicit refusal → `failed(needsReview:
   false)` (nothing issued); anything else → `failed(needsReview: true)`; never re-authorize.
 - `writePending` shows as running on purpose (the controller may have accepted without acking).
-  `finish` from it: probe shows the device idle with our identity → `idle`, no charge; else close.
+  `finish` from it: probe shows the device idle with our identity → the check face
+  (`stateReviewRequired`, as from `running`: the write may have been applied with only its ack
+  lost); `idle` with no charge only when the write provably never reached the controller
+  (cancelled before it, or the write refused); `0xA5` → close.
 - Close is sent only after the probe returns `0xA5`; otherwise keep the session, flag review.
+  A close that never reached the controller (cancelled before the write, the link unusable, or
+  the write refused) goes back to the timer, so 结束 sends it again. Only a close lost after the
+  write was taken is `failed(closeUnconfirmed)`; from there a read-only review probe is
+  allowed (the unsure face's 「再查一次水控」, Settings' 检查水控状态): `0xA5` returns to
+  `running` (the close can be sent again), anything else keeps the check.
 - `settling` is never auto-retried; repeat-settle idempotency is unknown, so a manual retry
-  needs a second confirmation and is recorded in diagnostics.
+  needs a second confirmation and is recorded in diagnostics. It is 「再结算一次」 on the unsure
+  face of a settlement that failed with its consumption frame kept: the first tap arms it, the
+  second sends it.
 - A probe that finds the controller stopped under a running record sets `stateReviewRequired`:
   the shower page shows a check face (去核对 / 「我在学校记录里核对过了」) and the home card's
   button reads 去核对. 「再查一次水控」 on that face runs the same read-only probe again: water
@@ -548,7 +582,16 @@ Rules:
 - `creating` uncertain (or a success without a usable id) → `reconcile`: `scanWasherCode` of the
   same QR gives the account's unfinished `orderId`; adopt it only if `order(id)` matches machine +
   program, was created within 2 min of the local confirmation and is not above the confirmed
-  price. Never create a second one; if nothing matches the user checks the U净 app and clears.
+  price. Never create a second one. Only when the last lookup found no unfinished order on the
+  machine may the user, after checking the U净 app, clear the record (a confirmed 「没有订单，清除」
+  on the laundry page); not after a failed lookup, an order that didn't match, or a relaunch
+  before a fresh lookup. `createAt` is read as ISO 8601 with an offset, or without one
+  (`yyyy-MM-dd HH:mm:ss`, `yyyy-MM-ddTHH:mm:ss`) as Beijing time (the captures only show ISO
+  8601 with an offset; the real format is still to be checked on a device).
+- The record keeps the U净 account id it was created with. While it is open only that account
+  may sign in again (records from before the id was kept compare with the stored login); the
+  check runs on the login reply, another account is refused and nothing is saved. The engine is
+  rebuilt with the new token and the order read.
 - Payment: `payment/methods`, prefer `alipay`, then `alipayF2F` (`alipayF2FNoAds=true`); no
   WeChat and no automatic-debit channel. `paying` (with `paymentRequestedAt`) is persisted before
   `payment/arguments` is sent. The reply is launched only if `PaymentLaunchPolicy` accepts it:
@@ -567,9 +610,13 @@ Rules:
 - Cancel only from an unpaid `10/17`: fresh read first, then at most one POST (persisted
   `cancelSent` first), then the same polling until `53` or another terminal status. Paid in
   between → no POST.
+- Paid but not washing with a known end (`20`, `21`, or `40` with no remaining time): while the
+  app is in front it reads the order every 45 s for up to 5 min from that first read
+  (`LaundryFollowUp`), and the laundry-done notification is set for the first paid read + the
+  program's minutes until a washing read gives the end.
 - `40` → Live Activity (machine, program, endsAt) + laundry-done notification at `endsAt`;
-  `50`/`53`/`51`/`52` end the activity and clear the record (`52` keeps a warning card until
-  acknowledged).
+  `50`/`53`/`51`/`52` end the activity and the laundry-done notification and clear the record
+  (`52` keeps a warning card until acknowledged). `LaundryDoneReminder` decides the notification.
 
 ### 3.3 Recharge (card and electricity)
 
@@ -848,7 +895,7 @@ Headers as in A.1. Envelope `{code, message, data}`, HTTP 200.
 ### A.4 Hot water: isv.lxt6.cn
 
 Signed GET: `?wxcode=<k=v*_k=v…>&sign=md5(secret + formEncode(wxcode))&sid=<sid>[&requestType=1]`.
-`secret`/`sid` come from the private water profile (never in the repo). Envelope casing differs
+`secret`/`sid` come from the platform profile (see 2.2: not in the repo, but in every public build). Envelope casing differs
 per backend: `Code/Data/Message` (AECC) vs `code/data/message|msg` (zk_*); some error bodies are
 a JSON string containing JSON.
 

@@ -18,3 +18,11 @@ public protocol SchoolVault: Sendable {
     /// can't be read, never because an item no longer decodes.
     func credentialBytes() throws -> [Data?]
 }
+
+public extension SchoolVault {
+    /// Whether a card session is stored: nil when that can't be told (the Keychain refused the
+    /// read, before the first unlock say, or the item no longer decodes). Only false is "signed out".
+    func cardSessionStored() -> Bool? {
+        do { return try ecyktSession() != nil } catch { return nil }
+    }
+}

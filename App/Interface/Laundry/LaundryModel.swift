@@ -20,6 +20,9 @@ private struct LaundryEngineHooks: LaundryHooks {
 
 /// UI state over `UjingClient` (login, machine reads) and `LaundryEngine` (order + payment).
 /// No ordering or payment rules here: the engine decides what may be sent.
+/// Another U净 account tried to sign in while an order placed with the stored one is open.
+enum LaundryLoginRefusal: Error { case otherAccount }
+
 @MainActor final class LaundryModel: ObservableObject {
     @Published private(set) var configured = false
     @Published private(set) var accountConnected = false
@@ -47,6 +50,7 @@ private struct LaundryEngineHooks: LaundryHooks {
     private var lastAttempt: Date?
     private var activitySync: AnyCancellable?
     private var endCheck: (end: Date, task: Task<Void, Never>)?
+    private var startWatch: (since: Date, task: Task<Void, Never>)?
     private static let machinesKey = PreferenceKey.prefix + "laundry.machines"
     private static let selectedKey = PreferenceKey.prefix + "laundry.selected"
     nonisolated static let lastOrderKey = PreferenceKey.prefix + "laundry.lastOrder"
@@ -113,7 +117,8 @@ private struct LaundryEngineHooks: LaundryHooks {
         observer?.cancel(); observer = nil; engine = nil
         do {
             let engine = try LaundryEngine(api:client, vault:AppEnvironment.laundryVault, launcher:AlipayPaymentLauncher(),
-                                           hooks:LaundryEngineHooks(), resetMarker:AppResetter.marker)
+                                           hooks:LaundryEngineHooks(), accountID:account?.account?.id,
+                                           resetMarker:AppResetter.marker)
             self.engine = engine
             observer = Task { [weak self] in
                 let blocked = await engine.storageBlocked
@@ -148,10 +153,21 @@ private struct LaundryEngineHooks: LaundryHooks {
         try await client.requestSMS(mobile:mobile)
     }
 
+    /// With an order open (its login expired), only the account that placed it may sign in again:
+    /// the new login is checked before anything is saved (`LaundryCheckout.allowsLogin`).
+    /// The order record can't be read (`storageBlocked`): the account that placed an open order
+    /// is unknown, so no login is accepted (fail closed).
     func login(mobile: String, code: String) async throws {
-        guard mayImport else { throw LaundryEngineError.busy }
+        guard mayLogin else { throw LaundryEngineError.busy }
+        guard !storageBlocked else { throw LaundryEngineError.storage }
         let device = device
         let signedIn = try await UjingClient(http:AppEnvironment.laundryHTTP, device:device).login(mobile:mobile, code:code)
+        guard !loading, !checkoutBusy else { throw LaundryEngineError.busy }
+        guard !storageBlocked else { throw LaundryEngineError.storage }
+        if let record = checkout, !record.allowsLogin(as:signedIn.id, stored:account?.account?.id) {
+            throw LaundryLoginRefusal.otherAccount
+        }
+        let reread = checkout.map { $0.phase != .none } ?? false
         let item = UjingAccountItem(mobileID:device.mobileID, account:signedIn)
         try AppEnvironment.laundryVault.saveAccountItem(item)
         account = item
@@ -159,6 +175,17 @@ private struct LaundryEngineHooks: LaundryHooks {
         configured = selectedMachine != nil
         issue = nil; lastAttempt = nil
         rebuildEngine()
+        // The open order is readable again (read only).
+        if reread { Task { await refreshOrder() } }
+    }
+
+    /// The U净 login entry. With an order open, `login` accepts only the account that placed it.
+    var mayLogin: Bool { !loading && !checkoutBusy }
+
+    static func loginText(_ error: Error) -> String {
+        if error is LaundryLoginRefusal { return "还有一笔洗衣订单没结束，要用下单的那个 U净 账号登录。" }
+        if error is LaundryEngineError { return engineText(error) }
+        return (error as? ServiceError)?.userMessage ?? "登录没完成，核对手机号和验证码再试。"
     }
 
     func signOut() {
@@ -172,6 +199,7 @@ private struct LaundryEngineHooks: LaundryHooks {
     /// After a reset cleared the stores: no U净 login, machines or order; the switch back on.
     func reloadAfterReset() {
         endCheck?.task.cancel(); endCheck = nil
+        startWatch?.task.cancel(); startWatch = nil
         schoolEnabled = SchoolLaundryPreference(storage:UserDefaults.standard).isOn
         lastOrder = nil; snapshot = nil; candidate = nil; checkout = nil
         issue = nil; checkoutIssue = nil; checkoutProgress = nil; lastAttempt = nil
@@ -299,7 +327,11 @@ private struct LaundryEngineHooks: LaundryHooks {
 
     /// Reconcile found nothing and the user checked U净.
     func resolveManually() async {
-        guard let engine, checkout?.canResolveManually == true else { return }
+        guard let engine, checkout?.canResolveManually == true else {
+            // The last lookup no longer says there is no order: say so instead of doing nothing.
+            checkoutIssue = Self.engineText(LaundryEngineError.notAllowed)
+            return
+        }
         await perform(progress:nil) { try await engine.resolveManually() }
     }
 
@@ -330,6 +362,7 @@ private struct LaundryEngineHooks: LaundryHooks {
         if !schoolEnabled { LaundryActivityController.shared.endAll() }
         LaundryActivityController.shared.sync(facts:facts)
         Reminders.shared.syncLaundry(facts:facts)
+        syncStartWatch()
         var end: Date?
         if case .running(let value) = facts.phase() { end = value }
         guard end != endCheck?.end else { return }
@@ -338,6 +371,26 @@ private struct LaundryEngineHooks: LaundryHooks {
         endCheck = (end, Task { [weak self] in
             do { try await Task.sleep(for:.seconds(max(0, end.timeIntervalSinceNow) + 60)) } catch { return }
             await self?.refreshOrder()
+        })
+    }
+
+    /// Paid but not washing with a known end: re-read every `LaundryFollowUp.interval` for a few
+    /// minutes, only while the app is in front (read only). Coming back to the app reads it anyway.
+    private func syncStartWatch() {
+        let since = schoolEnabled ? checkout?.waitingSince : nil
+        guard since != startWatch?.since else { return }
+        startWatch?.task.cancel(); startWatch = nil
+        guard let since else { return }
+        startWatch = (since, Task { [weak self] in
+            var attempt: Date?
+            while true {
+                guard let record = self?.checkout,
+                      let delay = LaundryFollowUp.nextRead(record, lastAttempt:attempt, now:Date()) else { return }
+                do { try await Task.sleep(for:.seconds(delay)) } catch { return }
+                attempt = Date()
+                guard let self else { return }
+                if UIApplication.shared.applicationState == .active { await self.refreshOrder() }
+            }
         })
     }
 

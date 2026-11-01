@@ -68,7 +68,7 @@ public extension SecureStore {
     func readJSON<T: Decodable>(_ type: T.Type, _ key: StoreKey) throws -> T? {
         guard let data = try read(key) else { return nil }
         do { return try JSONDecoder().decode(T.self, from: data) }
-        catch { throw StorageError(operation: "decode \(key.rawValue)", status: -1) }
+        catch { throw StorageError.undecodable(key.rawValue) }
     }
 
     func writeJSON<T: Encodable>(_ value: T?, _ key: StoreKey) throws {
@@ -88,4 +88,6 @@ public enum PreferenceKey {
     public static let showerNeedsResidenceReview = prefix + "water.needsResidenceReview"
     /// Bool, absent = on (school laundry shown).
     public static let schoolLaundry = prefix + "laundry.school"
+    /// When the next U净 SMS code may be asked for (a time only; one account at a time).
+    public static let ujingSMSCooldown = prefix + "ujing.smsCooldown"
 }

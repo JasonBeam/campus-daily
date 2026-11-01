@@ -2,13 +2,16 @@ import Foundation
 import Core
 
 /// Scripted BLE transport. Replies are consumed in order per `exchange`; a reply can be a
-/// frame, a device error, or a hang (until cancelled). Records connects and writes.
+/// frame, a device error, or a hang (until cancelled; the test fails after 10 s). Records
+/// connects and writes.
 public final class FakeShowerTransport: ShowerTransport, @unchecked Sendable {
     // @unchecked: state guarded by `lock`.
     public enum Reply: Sendable {
         case frame(Data)
         case fail(ShowerDeviceError)
-        /// Suspends until the calling task is cancelled.
+        /// The command never reached the controller (`ShowerCommandNotSent`).
+        case notSent(ShowerDeviceError)
+        /// Suspends until the calling task is cancelled (the test fails after 10 s).
         case hang
         /// The frame, once `gate` yields (or finishes).
         case after(AsyncStream<Void>, Data)
@@ -59,8 +62,9 @@ public final class FakeShowerTransport: ShowerTransport, @unchecked Sendable {
         switch reply {
         case .frame(let f): return f
         case .fail(let e): throw e
+        case .notSent(let e): throw ShowerCommandNotSent(e)
         case .hang:
-            while !Task.isCancelled { try? await Task.sleep(nanoseconds: 5_000_000) }
+            await eventually(seconds: 10) { Task.isCancelled }
             throw ShowerDeviceError.interrupted
         case .after(let gate, let f):
             for await _ in gate { break }

@@ -193,14 +193,16 @@ final class ShowerReducerTests: XCTestCase {
         XCTAssertTrue(idle.canResolveManually)
     }
 
-    func testFinishFromWritePendingWithIdleControllerEndsWithoutCharge() {
+    func testFinishFromWritePendingWithIdleControllerNeedsACheckWithoutCharge() {
         let (w, _) = reduce(reduce(authorizing(), .authorized(auth, at: t0)).0, .writeFailed(.timedOut))
         let (c, _) = reduce(w, .finish)
         XCTAssertEqual(c.closingFrom, .writePending)
         let (i, fx) = reduce(c, .probeReplied(identity))
-        XCTAssertEqual(i.phase, .idle)
+        XCTAssertEqual(i.phase, .writePending)
         XCTAssertEqual(i.machineID, machine)
-        XCTAssertTrue(fx.contains(.cancelReminder))
+        XCTAssertTrue(i.stateReviewRequired)
+        XCTAssertEqual(i.notice, .notActive)
+        XCTAssertEqual(fx, [.releaseDevice])
         XCTAssertFalse(fx.contains { if case .settle = $0 { return true }; return false })
     }
 
