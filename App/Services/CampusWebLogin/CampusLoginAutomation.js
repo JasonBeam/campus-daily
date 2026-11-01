@@ -37,7 +37,11 @@ JSON.stringify((() => {
       `;
       document.head.appendChild(style);
     }
-    return {stage:'login'};
+    // Presence only (never values): the sign-in form or the school's own verification step is on
+    // screen, so the app can stop hiding the page. Redirect/landing pages before it have neither.
+    const shown = element => !!element && element.getClientRects().length > 0;
+    const form = Array.from(document.querySelectorAll('input[type="password"], #passwordLogin, #smsCodeLogin, .mfa-m')).some(shown);
+    return {stage:'login', form};
   }
   if (location.origin === 'https://portal.gdbtu.edu.cn') {
     // Read just the residence line of the authenticated personal-information

@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
-const script = fs.readFileSync(path.join(__dirname, '../Shared/CampusLoginAutomation.js'), 'utf8');
+const script = fs.readFileSync(path.join(__dirname, '../../App/Services/CampusWebLogin/CampusLoginAutomation.js'), 'utf8');
 
 function run({origin = 'https://portal.gdbtu.edu.cn', pathname = '/main.html', title = '一卡通信息', destination, state = {}, window = {}, residence = ''} = {}) {
   const navigated = [];
@@ -37,3 +37,16 @@ assert.deepEqual(profile.result, {stage:'portal-profile',dormAddress:residence})
 assert.equal(profile.navigated.length,0, 'Portal must wait for native residence capture before redirecting');
 assert.deepEqual(run({residence,destination:wallet,window:{__campusDormAcknowledged:residence}}).navigated,[wallet]);
 console.log('PASS: official entry, hostile URL rejection, no duplicate navigation, complete wallet identity, stage-only output');
+
+function runSignIn(elements) {
+  const context = {URL, JSON, window: {},
+    location: {origin: 'https://cas.gdbtu.edu.cn', pathname: '/cas/login', hash: '', href: 'https://cas.gdbtu.edu.cn/cas/login'},
+    document: {querySelector: () => null, querySelectorAll: () => elements},
+    localStorage: {getItem: () => null}};
+  return JSON.parse(vm.runInNewContext(script, context));
+}
+const visible = {getClientRects: () => [{}]}, hidden = {getClientRects: () => []};
+assert.deepEqual(runSignIn([]), {stage: 'login', form: false}, 'landing page before the form stays hidden');
+assert.deepEqual(runSignIn([hidden]), {stage: 'login', form: false});
+assert.deepEqual(runSignIn([hidden, visible]), {stage: 'login', form: true});
+console.log('PASS: sign-in form probe reports presence only');
