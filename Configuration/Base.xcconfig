@@ -1,0 +1,15 @@
+#include "Version.xcconfig"
+
+// App identity. The widget's bundle identifier is $(APP_BUNDLE_IDENTIFIER).balances.
+// To sign with your own team, put overrides in Developer.xcconfig (untracked), e.g.
+//   APP_BUNDLE_IDENTIFIER = com.example.xiaorichang
+//   DEVELOPMENT_TEAM = ABCDE12345
+APP_DISPLAY_NAME = 校日常
+APP_BUNDLE_IDENTIFIER = com.beamjason.xiaorichang
+DEVELOPMENT_TEAM =
+
+// iPhone only, iOS 17 and later.
+TARGETED_DEVICE_FAMILY = 1
+IPHONEOS_DEPLOYMENT_TARGET = 17.0
+
+CODE_SIGN_STYLE = Automatic

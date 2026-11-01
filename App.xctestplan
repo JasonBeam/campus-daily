@@ -1,0 +1,64 @@
+{
+  "configurations": [
+    {
+      "id": "6C1E2D3F-4A5B-4C6D-8E7F-9A0B1C2D3E4F",
+      "name": "Default",
+      "options": {}
+    }
+  ],
+  "defaultOptions": {
+    "testTimeoutsEnabled": true
+  },
+  "testTargets": [
+    {
+      "target": {
+        "containerPath": "container:Packages/Core",
+        "identifier": "CampusTests",
+        "name": "CampusTests"
+      }
+    },
+    {
+      "target": {
+        "containerPath": "container:Packages/Core",
+        "identifier": "ShowerTests",
+        "name": "ShowerTests"
+      }
+    },
+    {
+      "target": {
+        "containerPath": "container:Packages/Core",
+        "identifier": "LaundryTests",
+        "name": "LaundryTests"
+      }
+    },
+    {
+      "target": {
+        "containerPath": "container:Packages/Core",
+        "identifier": "SnapshotTests",
+        "name": "SnapshotTests"
+      }
+    },
+    {
+      "target": {
+        "containerPath": "container:Packages/Core",
+        "identifier": "NetworkingTests",
+        "name": "NetworkingTests"
+      }
+    },
+    {
+      "target": {
+        "containerPath": "container:Packages/Core",
+        "identifier": "StorageTests",
+        "name": "StorageTests"
+      }
+    },
+    {
+      "target": {
+        "containerPath": "container:Packages/Core",
+        "identifier": "CommonTests",
+        "name": "CommonTests"
+      }
+    }
+  ],
+  "version": 1
+}

@@ -2,7 +2,7 @@ import SwiftUI
 import WidgetKit
 import ActivityKit
 
-/// Laundry countdown (design-r2 §3). Views live in Shared/LaundryActivityViews.swift.
+/// Laundry countdown. Views live in Shared/LaundryActivityViews.swift.
 struct LaundryLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for:LaundryActivityAttributes.self) { context in

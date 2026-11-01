@@ -1,0 +1,29 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "https://portal.gdbtu.edu.cn/portalData/v2/personalData/getMyInfo",
+    "headers": {
+      "X-Id-Token": "REDACTED_TOKEN_32",
+      "X-Device-Info": "PC",
+      "X-Terminal-Info": "PC",
+      "Accept": "application/json"
+    },
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Server": "nginx/1.28.0",
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "code": -1001,
+      "message": "无效 token",
+      "data": null
+    }
+  },
+  "_fixture": {
+    "capturedAt": "2026-10-30",
+    "redacted": true
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "request": {
+    "method": "POST",
+    "url": "https://ecykt.gdbtu.edu.cn/ykt-mini/api/customer/getSignData",
+    "headers": {
+      "Content-Type": "application/json",
+      "acc_token": "REDACTED_TOKEN_2"
+    },
+    "body": {
+      "syscustid": "TESTsyscus%3Ntid00000000000000000000000000%1H00%7J",
+      "custid": "TESTcustid000000000000000000000000000%1A00000%3G",
+      "acc_token": "REDACTED_TOKEN_2",
+      "timestamp": ""
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Server": "nginx/1.18.0",
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "msg": "获取成功",
+      "code": 0,
+      "data": {
+        "userLoginData": {
+          "custId": 90001
+        },
+        "appdata": {
+          "vsuppid": "9000001",
+          "phone": "13800000000",
+          "appid": "test00appid0000001",
+          "sign": "REDACTED_TOKEN_6",
+          "deptId": "0099",
+          "userId": "90001",
+          "nonce": "REDACTED_TOKEN_7",
+          "username": "测试员",
+          "timestamp": "1793321323"
+        }
+      }
+    }
+  },
+  "_fixture": {
+    "capturedAt": "2026-10-30",
+    "redacted": true
+  }
+}

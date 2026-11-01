@@ -1,0 +1,38 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "https://isv.lxt6.cn/AECC/GDBusinessSchool/getUserMsg?wxcode=schoolid=20021*_vsuppid=9000001*_appid=test00appid0000001*_userId=90001*_deptId=0099*_username=%E6%B5%8B%E8%AF%95%E5%91%98*_phone=13800000000*_random=abc123&sign=REDACTED_TOKEN_29&sid=REDACTED_TOKEN_19&requestType=1",
+    "headers": {
+      "Content-Type": "application/x-www-form-urlencoded"
+    },
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Server": "nginx",
+      "Content-Type": "text/html;charset=UTF-8",
+      "Access-Control-Allow-Origin": "*"
+    },
+    "body": {
+      "Code": 0,
+      "Data": {
+        "j1": "{\"GDBusinessSchool\":{\"appid\":\"test00appid0000001\",\"deptId\":99,\"vsuppid\":\"9000001\"}}",
+        "joinuserid": "90001",
+        "joinuseridtype": 6,
+        "mobile": "13800000000",
+        "schoolid": 20021,
+        "studentid": "991000000000000001",
+        "studentid_hex": "REDACTED_TOKEN_30",
+        "studentname": "测试员",
+        "sysflag": 1
+      },
+      "Message": "访问成功！",
+      "Serial": 1793321415816
+    }
+  },
+  "_fixture": {
+    "capturedAt": "2026-10-30",
+    "redacted": true
+  }
+}

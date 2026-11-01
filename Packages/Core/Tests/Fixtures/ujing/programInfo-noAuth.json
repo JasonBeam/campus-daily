@@ -1,0 +1,29 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "https://phoenix.ujing.online/api/v1/app/washer/devices/program/info?deviceId=0",
+    "headers": {
+      "x-app-code": "ZI",
+      "x-app-version": "2.4.18",
+      "Content-Type": "application/json"
+    },
+    "body": null
+  },
+  "response": {
+    "status": 401,
+    "headers": {
+      "Content-Type": "application/json",
+      "Set-Cookie": "REDACTED_TOKEN_35"
+    },
+    "body": {
+      "code": 401,
+      "reason": "UNAUTHORIZED",
+      "message": "JWT token is missing",
+      "metadata": {}
+    }
+  },
+  "_fixture": {
+    "capturedAt": "2026-10-30",
+    "redacted": true
+  }
+}

@@ -1,0 +1,76 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "https://phoenix.ujing.online/api/v1/app/washer/devices/program/info?deviceId=test-device-0001",
+    "headers": {
+      "Authorization": "Bearer REDACTED_TOKEN_SYNTHETIC",
+      "x-app-code": "BI",
+      "x-app-version": "2.4.18",
+      "x-mobile-id": "00000000-0000-4000-8000-000000000001",
+      "x-mobile-brand": "apple",
+      "User-Agent": "XiaoRiChang/test"
+    },
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "code": 0,
+      "message": "success",
+      "data": {
+        "deviceId": "test-device-0001",
+        "deviceNo": "测试洗衣机01",
+        "deviceTypeName": "滚筒洗衣机",
+        "storeName": "示例洗衣房",
+        "storeId": "test-store-01",
+        "deviceTypeId": 1,
+        "moduleType": 7,
+        "deviceWashModel": [
+          {
+            "workModelId": 1,
+            "workModelName": "标准洗",
+            "time": 45,
+            "basePrice": 400,
+            "hide": 0,
+            "isPromotion": 0,
+            "promotionPrice": 0
+          },
+          {
+            "workModelId": 2,
+            "workModelName": "快速洗",
+            "time": 25,
+            "basePrice": 300,
+            "hide": 0,
+            "isPromotion": 1,
+            "promotionPrice": 250
+          },
+          {
+            "workModelId": 50,
+            "workModelName": "单脱水",
+            "time": 8,
+            "basePrice": 100,
+            "hide": 0,
+            "isPromotion": 0,
+            "promotionPrice": 0
+          },
+          {
+            "workModelId": 9,
+            "workModelName": "隐藏程序",
+            "time": 60,
+            "basePrice": 800,
+            "hide": 1,
+            "isPromotion": 0,
+            "promotionPrice": 0
+          }
+        ]
+      }
+    }
+  },
+  "_fixture": {
+    "synthetic": true,
+    "note": "Synthetic reply shaped like the existing iOS/Android U净 code expects (no capture of it yet; to be checked on a device). All ids/phone/tokens are fake."
+  }
+}

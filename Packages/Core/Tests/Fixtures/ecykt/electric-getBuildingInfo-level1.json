@@ -1,0 +1,38 @@
+{
+  "request": {
+    "method": "POST",
+    "url": "https://ecykt.gdbtu.edu.cn/ykt-mini/api/electricnew/service",
+    "headers": {
+      "Content-Type": "application/json",
+      "Accept": "application/json",
+      "Origin": "https://ecykt.gdbtu.edu.cn",
+      "acc_token": "REDACTED_TOKEN_2",
+      "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
+      "Referer": "https://ecykt.gdbtu.edu.cn/ykt-view/powernew?interfaceName=powernew_450010&isbind=1"
+    },
+    "body": {
+      "syscustid": "TESTsyscus%3Ntid00000000000000000000000000%1H00%7J",
+      "acc_token": "REDACTED_TOKEN_2",
+      "server": "/api/getBuildingInfo",
+      "areacode": "450010",
+      "buildingID": "991001"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Server": "nginx/1.18.0",
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin": "https://ecykt.gdbtu.edu.cn"
+    },
+    "body": {
+      "msg": "获取成功",
+      "code": 0,
+      "data": "[{\"buildingName\":\"半山公寓\",\"buildingID\":\"991001001\"},{\"buildingName\":\"樱花公寓\",\"buildingID\":\"991001002\"},{\"buildingName\":\"日月湖公寓\",\"buildingID\":\"991001003\"},{\"buildingName\":\"紫荆公寓\",\"buildingID\":\"991001004\"},{\"buildingName\":\"明湖公寓\",\"buildingID\":\"991001005\"},{\"buildingName\":\"葫芦湖公寓\",\"buildingID\":\"991001006\"},{\"buildingName\":\"兰香公寓\",\"buildingID\":\"991001007\"},{\"buildingName\":\"教师公寓\",\"buildingID\":\"991001008\"},{\"buildingName\":\"学生公寓\",\"buildingID\":\"991001009\"}]"
+    }
+  },
+  "_fixture": {
+    "capturedAt": "2026-10-30",
+    "redacted": true
+  }
+}
