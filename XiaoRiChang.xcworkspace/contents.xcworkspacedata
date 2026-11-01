@@ -5,6 +5,9 @@
       location = "group:App.xcodeproj">
    </FileRef>
    <FileRef
+      location = "group:Packages/Core">
+   </FileRef>
+   <FileRef
       location = "group:App.xctestplan">
    </FileRef>
 </Workspace>

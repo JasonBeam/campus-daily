@@ -45,6 +45,7 @@
 - Let 取消 tapped while a shower starts wait for the start, and show a refusal instead of closing the page.
 - Treat a stored school login that no longer reads as someone signed in: a new sign-in drops their dorm, meter and (web sign-in) portal token and says it could not tell who it was, and 保存密码 is refused until the user signs in again.
 - Start the shower timer, its Live Activity, the 「还在计时」 reminder and the shower's minutes when the water starts, not when 开始洗澡 is tapped, so the time spent connecting is not counted.
+- Run the Core package tests from the App scheme's App.xctestplan on an iOS Simulator; the workspace now lists Packages/Core, so the plan's test targets resolve instead of failing with no test bundles. `mise run check` runs this plan too.
 
 ### Removed
 
