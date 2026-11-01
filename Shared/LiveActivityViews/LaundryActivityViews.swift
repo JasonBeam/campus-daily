@@ -2,7 +2,7 @@ import SwiftUI
 #if canImport(ActivityKit)
 import ActivityKit
 
-/// Laundry Live Activity views (design-r2 §3): same visual system as the shower activity, no button.
+/// Laundry Live Activity views: same visual system as the shower activity, no button.
 /// Compiled into the widget (the real activity) and the app (DEBUG preview only).
 enum LaundryActivityStyle {
     static let accent = Color(red:1, green:138 / 255, blue:69 / 255) // #FF8A45

@@ -2,7 +2,7 @@ import SwiftUI
 import PhotosUI
 import Vision
 import VisionKit
-import WaterCore
+import Core
 
 struct WasherSetupView: View {
     @EnvironmentObject private var laundry: LaundryModel
@@ -26,7 +26,7 @@ struct WasherSetupView: View {
                 ForEach(laundry.savedMachines) { item in
                     Button {
                         do { try laundry.selectMachine(item); Task { await laundry.refresh(force:true) } }
-                        catch { issue = (error as? LocalizedError)?.errorDescription }
+                        catch { issue = "机器名称最多 40 个字。" }
                     } label: {
                         HStack {
                             Label(item.name,systemImage:"washer")
@@ -53,7 +53,7 @@ struct WasherSetupView: View {
                     TextField("机器名称（已自动填写，可修改）",text:$alias).accessibilityIdentifier("washerAlias")
                     Button("保存为常用机器") {
                         do { try laundry.savePreparedMachine(name:alias); issue = nil }
-                        catch { issue = (error as? LocalizedError)?.errorDescription }
+                        catch { issue = "机器名称最多 40 个字。" }
                     }.disabled(!laundry.mayImport || alias.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty)
                         .accessibilityIdentifier("saveScannedWasher")
                 }
@@ -75,7 +75,7 @@ struct WasherSetupView: View {
                 Task {
                     defer { photoBusy = false; photo = nil }
                     do {
-                        guard let data = try await item.loadTransferable(type:Data.self), data.count <= 20_000_000 else { throw LaundryError.configuration }
+                        guard let data = try await item.loadTransferable(type:Data.self), data.count <= 20_000_000 else { throw CocoaError(.fileReadCorruptFile) }
                         let request = VNDetectBarcodesRequest(); request.symbologies = [.qr]
                         try VNImageRequestHandler(data:data).perform([request])
                         let codes = Set((request.results ?? []).compactMap(\.payloadStringValue))
@@ -86,13 +86,12 @@ struct WasherSetupView: View {
             }
     }
     private func resolve(_ text: String) {
-        do { try WasherQRCode.validate(text) }
-        catch { issue = "扫洗衣机机身上的码。"; return }
+        guard UjingInput.isWasherQR(text) else { issue = "扫洗衣机机身上的码。"; return }
         issue = nil
         Task {
             await laundry.prepareMachine(qrCode:text)
             if let value = laundry.candidate {
-                alias = laundry.savedMachines.first(where:{ $0.id == value.deviceId })?.name ?? "\(value.deviceNo)号洗衣机"
+                alias = laundry.savedMachines.first(where:{ $0.id == value.deviceID })?.name ?? "\(value.deviceNo)号洗衣机"
             }
         }
     }
@@ -109,7 +108,7 @@ private struct WasherCamera: UIViewControllerRepresentable {
         scanner.delegate = context.coordinator
         DispatchQueue.main.async {
             do { try scanner.startScanning() }
-            catch { failed("相机暂不可用，请允许相机访问，或从照片识别") }
+            catch { failed("相机用不了。去设置里允许校日常用相机，或者从照片识别。") }
         }
         return scanner
     }
@@ -129,7 +128,7 @@ private struct WasherCamera: UIViewControllerRepresentable {
             }
         }
         func dataScanner(_ dataScanner: DataScannerViewController, becameUnavailableWithError error: DataScannerViewController.ScanningUnavailable) {
-            guard !completed else { return }; completed = true; failed("相机暂不可用，请从照片识别")
+            guard !completed else { return }; completed = true; failed("相机用不了，从照片识别吧。")
         }
     }
 }

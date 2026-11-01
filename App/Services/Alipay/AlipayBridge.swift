@@ -1,23 +1,24 @@
 import Foundation
 import AlipaySDK
-import WaterCore
+import UIKit
+import Core
 
 @MainActor final class AlipayBridge {
     static let shared = AlipayBridge()
     /// Alipay returns to `<this build's bundle id>.alipay` (Info.plist: `$(PRODUCT_BUNDLE_IDENTIFIER).alipay`),
     /// so two builds with different bundle ids installed side by side each get their own result.
-    /// For the default bundle id this is still `com.beamjason.campushotwater.alipay`.
+    /// For the default bundle id this is `com.beamjason.xiaorichang.alipay`.
     static let scheme: String = {
         let types = Bundle.main.object(forInfoDictionaryKey:"CFBundleURLTypes") as? [[String:Any]] ?? []
         let declared = types.flatMap { ($0["CFBundleURLSchemes"] as? [String]) ?? [] }
-        let expected = (Bundle.main.bundleIdentifier ?? "com.beamjason.campushotwater") + ".alipay"
+        let expected = (Bundle.main.bundleIdentifier ?? "com.beamjason.xiaorichang") + ".alipay"
         // Prefer the exact expected value; otherwise whatever .alipay scheme Info.plist declares.
         return declared.first { $0.caseInsensitiveCompare(expected) == .orderedSame }
             ?? declared.first { $0.hasSuffix(".alipay") } ?? expected
     }()
     private var completion: ((String, String) -> Void)?
     func openCheckout(_ url: URL, completion: @escaping (Bool) -> Void) {
-        guard LaundryPayment.isAllowedCheckoutURL(url) else { completion(false); return }
+        guard PaymentLaunchPolicy.isAllowedCheckoutURL(url) else { completion(false); return }
         UIApplication.shared.open(url,options:[:]) { opened in
             Task { @MainActor in
                 self.record(status:opened ? "checkout_opened" : "checkout_open_failed",memo:"")
@@ -55,5 +56,25 @@ import WaterCore
             try? data.write(to:folder.appendingPathComponent("last-payment-launch.json"),options:[.atomic,.completeFileProtectionUntilFirstUserAuthentication])
         }
         #endif
+    }
+}
+
+/// `LaundryEngine`'s launcher: only the two checked launch kinds, through AlipayBridge.
+struct AlipayPaymentLauncher: PaymentLauncher {
+    func open(_ launch: PayLaunch) async -> Bool {
+        switch launch {
+        case .query:
+            return true
+        case .checkout(let url):
+            guard PaymentLaunchPolicy.isAllowedCheckoutURL(url) else { return false }
+            return await withCheckedContinuation { done in
+                Task { @MainActor in AlipayBridge.shared.openCheckout(url) { done.resume(returning:$0) } }
+            }
+        case .sdk(let order):
+            // The SDK switches to Alipay (or its own web page); the result comes back through
+            // `handle(_:)`, and the engine reads the order when the app is active again.
+            await MainActor.run { AlipayBridge.shared.pay(order) { _, _ in } }
+            return true
+        }
     }
 }
