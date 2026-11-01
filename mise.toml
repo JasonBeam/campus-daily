@@ -4,9 +4,10 @@
 #
 # Override defaults with environment variables, for example
 # `SIMULATOR="iPhone 17" mise test-app`. `mise run check` runs every check a
-# commit must pass (build, test, scan). BUILD_CMD and TEST_CMD replace the
-# xcodebuild and swift test commands (to run them on another machine);
-# BUILD_CMD gets the configuration as its last argument.
+# commit must pass (build, test, test-app, scan). BUILD_CMD, TEST_CMD and
+# TEST_APP_CMD replace the xcodebuild build, swift test and xcodebuild test
+# commands (to run them on another machine); BUILD_CMD gets the configuration
+# as its last argument.
 
 [task_config]
 dir = "{{config_root}}"
@@ -61,9 +62,8 @@ description = "Run the App.xctestplan on an iOS Simulator"
 run = '''
 #!/usr/bin/env bash
 set -euo pipefail
-xcodebuild test -workspace XiaoRiChang.xcworkspace -scheme App \
-  -destination "platform=iOS Simulator,name=${SIMULATOR:-iPhone 17}" \
-  -derivedDataPath .DerivedData
+cmd=${TEST_APP_CMD:-"xcodebuild test -workspace XiaoRiChang.xcworkspace -scheme App -destination 'platform=iOS Simulator,name=${SIMULATOR:-iPhone 17}' -derivedDataPath .DerivedData"}
+eval "$cmd"
 '''
 
 [tasks.test-scripts]
@@ -78,8 +78,8 @@ description = "Privacy checks on staged files: patterns, values in $LEAKCHECK_FI
 run = "sh Scripts/privacy-check.sh"
 
 [tasks.check]
-description = "Every check before a commit: Debug and Release builds, all tests, privacy scans"
-depends = ["build", "test", "scan"]
+description = "Every check before a commit: Debug and Release builds, all tests, the App.xctestplan on a simulator, privacy scans"
+depends = ["build", "test", "test-app", "scan"]
 run = "echo 'all checks passed'"
 
 [tasks.check-widget-signature]
