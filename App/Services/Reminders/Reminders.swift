@@ -1,29 +1,28 @@
 import Foundation
 import SwiftUI
 import UserNotifications
-import BackgroundTasks
 import WidgetKit
-import WaterCore
+import Core
 
 /// Settings › 提醒 values (app UserDefaults). The two lines are mirrored to the widget via `ReminderLines`.
 enum ReminderKey {
-    static let powerLow = "reminder.powerLow"
-    static let cardLow = "reminder.cardLow"
-    static let unsettledMinutes = "reminder.unsettledMinutes"
-    static let laundryDone = "reminder.laundryDone"
-    static let powerLine = "reminder.powerLine"
-    static let cardLine = "reminder.cardLine"
+    static let powerLow = PreferenceKey.reminder("powerLow")
+    static let cardLow = PreferenceKey.reminder("cardLow")
+    static let unsettledMinutes = PreferenceKey.reminder("unsettledMinutes")
+    static let laundryDone = PreferenceKey.reminder("laundryDone")
+    static let powerLine = PreferenceKey.reminder("powerLine")
+    static let cardLine = PreferenceKey.reminder("cardLine")
     /// The pre-permission sheet has been shown (by any automatic trigger: first toggle on, first paid
     /// laundry order, first home read). Once set, it only shows again from Settings' 「打开提醒」 row.
-    static let prompted = "reminder.prompted"
+    static let prompted = PreferenceKey.reminder("prompted")
     // De-dupe for low power / card: armed again once the value is back above the line.
-    static let powerArmed = "reminder.powerArmed"
-    static let cardArmed = "reminder.cardArmed"
-    static let powerSentDay = "reminder.powerSentDay"
-    static let cardSentDay = "reminder.cardSentDay"
+    static let powerArmed = PreferenceKey.reminder("powerArmed")
+    static let cardArmed = PreferenceKey.reminder("cardArmed")
+    static let powerSentDay = PreferenceKey.reminder("powerSentDay")
+    static let cardSentDay = PreferenceKey.reminder("cardSentDay")
     // The laundry-done request currently scheduled.
-    static let laundryOrder = "reminder.laundryOrder"
-    static let laundryEnd = "reminder.laundryEnd"
+    static let laundryOrder = PreferenceKey.reminder("laundryOrder")
+    static let laundryEnd = PreferenceKey.reminder("laundryEnd")
 
     static func registerDefaults() {
         UserDefaults.standard.register(defaults:[powerLow:true, cardLow:true, unsettledMinutes:30, laundryDone:true,
@@ -35,11 +34,10 @@ enum ReminderKey {
     }
 }
 
-/// Local notifications (design-r2 §5) and the pre-permission sheet (§7). Never touches orders or payments:
+/// Local notifications and the pre-permission sheet. Never touches orders or payments:
 /// it only reads facts the models already have.
 @MainActor final class Reminders: NSObject, ObservableObject, UNUserNotificationCenterDelegate {
     static let shared = Reminders()
-    nonisolated static let refreshTask = "com.beamjason.campushotwater.refresh"
 
     enum PromptOrigin: String, Identifiable { case settings, app; var id: String { rawValue } }
     enum Route: Equatable { case home, laundry }
@@ -71,6 +69,14 @@ enum ReminderKey {
         Task { await refreshAuthorization() }
     }
 
+    /// After a reset: nothing scheduled or shown is about this install's old data any more.
+    func clearAfterReset() {
+        center.removeAllPendingNotificationRequests()
+        center.removeAllDeliveredNotifications()
+        laundryPlan = nil; showerStart = nil
+        appPromptPending = false; prompt = nil; route = nil
+    }
+
     var effectiveStatus: UNAuthorizationStatus {
         #if DEBUG
         if let demoStatus { return demoStatus }
@@ -97,7 +103,7 @@ enum ReminderKey {
         }
     }
 
-    // MARK: Permission (§7)
+    // MARK: Permission
 
     /// Three automatic triggers share one persisted flag: whichever comes first shows the sheet, once ever
     /// (「以后再说」 included). Only while the system hasn't been asked.
@@ -117,9 +123,9 @@ enum ReminderKey {
         appPromptPending = true
     }
     /// Trigger 3: home read both the power and the card balance successfully, so the user has seen the numbers.
-    func campusRead(_ snapshot: CampusSnapshot) {
-        guard snapshot.cardError == nil, snapshot.balance != nil,
-              snapshot.powerError == nil, snapshot.electricity != nil else { return }
+    func campusRead(_ snapshot: HomeSnapshot) {
+        guard snapshot.card.error == nil, snapshot.card.value != nil,
+              snapshot.power.error == nil, snapshot.power.value?.remainingKWh != nil else { return }
         requestAppPrompt()
     }
     /// Home is visible and clear: show the queued sheet (re-checks the real status first).
@@ -163,7 +169,7 @@ enum ReminderKey {
     }
     /// A line or a low-balance switch changed: judge the last reading again (re-arms when it is back above).
     func reevaluateCampus() {
-        if let snapshot = CampusModel.shared.snapshot { evaluateCampus(snapshot) }
+        evaluateCampus(CampusModel.shared.snapshot)
     }
     /// Re-apply scheduled reminders after a setting or the authorization changed.
     func resync() {
@@ -181,7 +187,7 @@ enum ReminderKey {
         switch phase {
         case .running(let end):
             guard let id = facts.record?.orderId else { return }
-            // First successful payment: the moment to explain reminders (§7).
+            // First successful payment: the moment to explain reminders.
             requestAppPrompt()
             let plan = LaundryPlan(orderId:id, end:end, machine:facts.machine.map(LaundryFormat.machine) ?? "洗衣机")
             laundryPlan = plan
@@ -219,7 +225,7 @@ enum ReminderKey {
 
     // MARK: Shower still running
 
-    /// Called on every session change (WaterModel). `started` = start of a session that can still be closed.
+    /// Called on every session change (ShowerModel). `started` = start of a session that can still be closed.
     func syncShower(started: Date?) {
         showerStart = started
         let minutes = defaults.integer(forKey:ReminderKey.unsettledMinutes)
@@ -247,15 +253,15 @@ enum ReminderKey {
     // MARK: Low power / low card
 
     /// After each campus read (foreground, pull to refresh, background refresh). Only fresh, successful values count.
-    func evaluateCampus(_ snapshot: CampusSnapshot, now: Date = Date()) {
+    func evaluateCampus(_ snapshot: HomeSnapshot, now: Date = Date()) {
         let lines = ReminderKey.lines
-        if snapshot.powerError == nil, let meter = snapshot.electricity {
-            evaluate(kind:"power", low:meter.remainingKWh < lines.power, enabled:ReminderKey.powerLow,
+        if snapshot.power.error == nil, let meter = snapshot.power.value, let left = meter.remainingKWh {
+            evaluate(kind:"power", low:left < lines.power, enabled:ReminderKey.powerLow,
                      armed:ReminderKey.powerArmed, sentDay:ReminderKey.powerSentDay, now:now) {
                 self.make(title:"宿舍快没电了", body:Self.powerBody(meter, now:now), thread:"power", route:.home, sound:false)
             }
         }
-        if snapshot.cardError == nil, let balance = snapshot.balance {
+        if snapshot.card.error == nil, let balance = snapshot.card.value?.yuan {
             evaluate(kind:"card", low:balance < lines.card, enabled:ReminderKey.cardLow,
                      armed:ReminderKey.cardArmed, sentDay:ReminderKey.cardSentDay, now:now) {
                 self.make(title:"校园卡余额不多了", body:"只剩 \(Theme.yuan(balance))，记得充值。", thread:"card", route:.home, sound:false)
@@ -282,10 +288,11 @@ enum ReminderKey {
         return "\(parts.year ?? 0)-\(parts.month ?? 0)-\(parts.day ?? 0)"
     }
     /// 「只剩 8.6 度，大约能用到明晚。记得充电费。」 when yesterday's use gives 今晚/明晚, else the short form.
-    static func powerBody(_ meter: CampusElectricity, now: Date = Date(), calendar: Calendar = .current) -> String {
-        let left = Theme.kwh(meter.remainingKWh)
-        if let used = meter.yesterdayKWh, used > 0 {
-            let hours = NSDecimalNumber(decimal:meter.remainingKWh / used).doubleValue * 24
+    static func powerBody(_ meter: Meter, now: Date = Date(), calendar: Calendar = .current) -> String {
+        let remaining = meter.remainingKWh ?? 0
+        let left = Theme.kwh(remaining)
+        if let used = meter.dailyUseKWh, used > 0 {
+            let hours = NSDecimalNumber(decimal:remaining / used).doubleValue * 24
             let end = now.addingTimeInterval(hours * 3600)
             let word: String? = calendar.isDate(end, inSameDayAs:now) ? "今晚"
                 : calendar.date(byAdding:.day, value:1, to:now).map { calendar.isDate(end, inSameDayAs:$0) } == true ? "明晚" : nil
@@ -314,15 +321,6 @@ enum ReminderKey {
         await MainActor.run { self.route = target == "laundry" ? .laundry : .home }
     }
 
-    // MARK: Background refresh
-
-    /// Asks for a campus read in the background (~hourly, the system decides).
-    nonisolated static func scheduleRefresh() {
-        let request = BGAppRefreshTaskRequest(identifier:refreshTask)
-        request.earliestBeginDate = Date().addingTimeInterval(3600)
-        try? BGTaskScheduler.shared.submit(request)
-    }
-
     #if DEBUG
     /// campusdaily://demo/permission-home: behave as if the first home read just succeeded.
     func demoHomeRead() {
@@ -346,7 +344,7 @@ enum ReminderKey {
     #endif
 }
 
-/// Pre-permission sheet (§7): group bg, ~300pt detent, padding 24, no mascot.
+/// Pre-permission sheet: group bg, ~300pt detent, padding 24, no mascot.
 struct ReminderPermissionSheet: View {
     @ObservedObject private var reminders = Reminders.shared
     @Environment(\.dynamicTypeSize) private var typeSize
@@ -379,10 +377,10 @@ struct ReminderPermissionSheet: View {
 }
 
 /// Home-root hooks: the pre-permission sheet after the first paid laundry order or the first home read
-/// (§7; the settings triggers show it inside settings), and notification taps (laundry → laundry page, the rest → home).
+/// (the settings triggers show it inside settings), and notification taps (laundry → laundry page, the rest → home).
 struct ReminderHooks: ViewModifier {
-    @Binding var settings: Bool
-    @Binding var path: [HomeRoute]
+    /// Home's `open(_:)`: closes the settings sheet, then shows these pages over home.
+    let open: ([HomeRoute]) -> Void
     /// Home is visible with nothing on top (no onboarding, sheet, cover, panel or pushed page).
     var homeClear: Bool
     @ObservedObject private var reminders = Reminders.shared
@@ -401,8 +399,7 @@ struct ReminderHooks: ViewModifier {
             .onChange(of:reminders.route) { _, route in
                 guard let route else { return }
                 reminders.route = nil
-                settings = false
-                path = route == .laundry ? [.laundry] : []
+                open(route == .laundry ? [.laundry] : [])
             }
     }
 }

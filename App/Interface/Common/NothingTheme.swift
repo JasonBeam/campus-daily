@@ -4,7 +4,7 @@ import SwiftUI
 enum NativeTheme {
     static let background = Color(uiColor:.systemGroupedBackground)
     static let surface = Color(uiColor:.secondarySystemGroupedBackground)
-    // One accent app-wide (design r1 §1); primary buttons use the black/white pill colors.
+    // One accent app-wide; primary buttons use the black/white pill colors.
     static let tint = Theme.accentText
     static let action = Theme.pill
     static let radius: CGFloat = 16

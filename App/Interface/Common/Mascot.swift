@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// The orange droplet mascot (design §8) with its one-time hop; the shape lives in Shared/MascotShape.swift.
+/// The orange droplet mascot with its one-time hop; the shape lives in Shared/MascotShape.swift.
 struct Mascot: View {
     var size: CGFloat = 52
     /// Play the hop once on appear (disabled under Reduce Motion).

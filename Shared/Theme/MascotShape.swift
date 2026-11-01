@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// The orange droplet mascot (design §8), drawn in a 64×64 box and scaled to the frame.
+/// The orange droplet mascot, drawn in a 64×64 box and scaled to the frame.
 struct MascotPart: Shape {
     enum Part { case body, eyes, smile }
     let part: Part

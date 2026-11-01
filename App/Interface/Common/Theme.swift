@@ -1,4 +1,5 @@
 import SwiftUI
+import Core
 
 /// Round-1 design tokens (Assets.xcassets/Theme, Any/Dark).
 enum Theme {
@@ -35,27 +36,13 @@ enum Theme {
     }
     static func yuan(_ value: Decimal) -> String { CampusFormat.yuan(value) }
     static func kwh(_ value: Decimal) -> String { CampusFormat.kwh(value) }
-    static func weekday(_ date: Date, calendar: Calendar = .current) -> String {
-        "周" + ["日","一","二","三","四","五","六"][calendar.component(.weekday, from:date) - 1]
-    }
-    private static func clock(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier:"en_US_POSIX"); formatter.dateFormat = "HH:mm"
-        return formatter.string(from:date)
-    }
     /// 「10:32 更新」/「昨天 22:10 更新」/「10月26日更新」 (shared with the widget).
     static func updated(_ date: Date, now: Date = Date(), calendar: Calendar = .current) -> String {
         CampusFormat.updated(date, now:now, calendar:calendar)
     }
     /// Recent-row time: 「刚刚」/「今天 09:12」/「昨天 22:14」/「周一 19:02」/「10月20日 19:02」
-    static func when(_ date: Date, now: Date = Date(), calendar: Calendar = .current) -> String {
-        let age = now.timeIntervalSince(date)
-        if age >= 0, age < 300 { return "刚刚" }
-        if calendar.isDate(date, inSameDayAs:now) { return "今天 " + clock(date) }
-        if calendar.isDateInYesterday(date) { return "昨天 " + clock(date) }
-        if age > 0, age < 6 * 86400 { return weekday(date, calendar:calendar) + " " + clock(date) }
-        let parts = calendar.dateComponents([.month,.day], from:date)
-        return "\(parts.month ?? 0)月\(parts.day ?? 0)日 " + clock(date)
+    static func when(_ date: Date, now: Date = Date()) -> String {
+        UpdateTimeText.recent(date, now:now)
     }
 }
 
