@@ -1,0 +1,38 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "https://isv.lxt6.cn/ZK_BSRS/bathe/getMachineMacAddress?wxcode=typeId=1*_schoolId=20021*_roomId=991000000000000002&sign=REDACTED_TOKEN_26&sid=REDACTED_TOKEN_19",
+    "headers": {
+      "Content-Type": "application/x-www-form-urlencoded"
+    },
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Server": "nginx",
+      "Content-Type": "application/json;charset=UTF-8",
+      "Access-Control-Allow-Origin": "*"
+    },
+    "body": {
+      "notNormal": false,
+      "code": 0,
+      "serial": 1793321431,
+      "data": {
+        "objList": [
+          {
+            "machineId": "1A2B3C4D",
+            "ID": 997000000000000001,
+            "Mac": "02:00:00:00:00:01",
+            "machineName": "9-901"
+          }
+        ]
+      },
+      "message": ""
+    }
+  },
+  "_fixture": {
+    "capturedAt": "2026-10-30",
+    "redacted": true
+  }
+}

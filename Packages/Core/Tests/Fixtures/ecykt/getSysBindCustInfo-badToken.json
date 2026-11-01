@@ -1,0 +1,37 @@
+{
+  "request": {
+    "method": "POST",
+    "url": "https://ecykt.gdbtu.edu.cn/ykt-mini/api/customer/getSysBindCustInfo",
+    "headers": {
+      "Content-Type": "application/json",
+      "Accept": "application/json",
+      "Origin": "https://ecykt.gdbtu.edu.cn",
+      "acc_token": "REDACTED_TOKEN_3",
+      "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
+      "Referer": "https://ecykt.gdbtu.edu.cn/ykt-view/recharge?isbind=1"
+    },
+    "body": {
+      "syscustid": "TESTsyscus%3Ntid00000000000000000000000000%1H00%7J",
+      "acc_token": "REDACTED_TOKEN_3",
+      "areacode": "450010",
+      "version": "v1.1.55",
+      "appid": "wx7077a0b57d156efe"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Server": "nginx/1.18.0",
+      "Content-Type": "application/json;charset=utf-8",
+      "Access-Control-Allow-Origin": "https://ecykt.gdbtu.edu.cn"
+    },
+    "body": {
+      "msg": "登录状态已过期，请重新登录！",
+      "code": -1
+    }
+  },
+  "_fixture": {
+    "capturedAt": "2026-10-30",
+    "redacted": true
+  }
+}

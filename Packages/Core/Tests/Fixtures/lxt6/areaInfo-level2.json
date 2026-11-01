@@ -1,0 +1,60 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "https://isv.lxt6.cn/zk_areainfo_api/areaInfo/getAreaInfoForApplests?wxcode=id=997000000000090009&sign=REDACTED_TOKEN_22&sid=REDACTED_TOKEN_19",
+    "headers": {
+      "Content-Type": "application/x-www-form-urlencoded"
+    },
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Server": "nginx",
+      "Content-Type": "application/json;charset=UTF-8"
+    },
+    "body": {
+      "code": 0,
+      "validMessage": null,
+      "serial": 1793321430999,
+      "data": [
+        {
+          "id": "997000000000090101",
+          "name": "一楼"
+        },
+        {
+          "id": "997000000000090102",
+          "name": "二楼"
+        },
+        {
+          "id": "997000000000090103",
+          "name": "三楼"
+        },
+        {
+          "id": "997000000000090104",
+          "name": "四楼"
+        },
+        {
+          "id": "997000000000090105",
+          "name": "五楼"
+        },
+        {
+          "id": "997000000000090106",
+          "name": "六楼"
+        },
+        {
+          "id": "997000000000090107",
+          "name": "七楼"
+        }
+      ],
+      "message": "OK"
+    }
+  },
+  "_fixture": {
+    "capturedAt": "2026-10-30",
+    "redacted": true,
+    "synthetic": {
+      "$.data": "Synthetic floor ids under the synthetic 99栋 (997000000000090009). Names match the real 一楼…七楼 pattern."
+    }
+  }
+}

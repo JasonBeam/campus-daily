@@ -1,0 +1,31 @@
+{
+  "request": {
+    "method": "POST",
+    "url": "https://ecykt.gdbtu.edu.cn/ykt-mini/api/customer/getSignData",
+    "headers": {
+      "Content-Type": "application/json",
+      "acc_token": "REDACTED_TOKEN_3"
+    },
+    "body": {
+      "syscustid": "TESTsyscus%3Ntid00000000000000000000000000%1H00%7J",
+      "custid": "TESTcustid000000000000000000000000000%1A00000%3G",
+      "acc_token": "REDACTED_TOKEN_3",
+      "timestamp": ""
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Server": "nginx/1.18.0",
+      "Content-Type": "application/json;charset=utf-8"
+    },
+    "body": {
+      "msg": "登录状态已过期，请重新登录！",
+      "code": -1
+    }
+  },
+  "_fixture": {
+    "capturedAt": "2026-10-30",
+    "redacted": true
+  }
+}

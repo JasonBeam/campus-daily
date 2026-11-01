@@ -1,0 +1,22 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "https://ecykt.gdbtu.edu.cn/ykt-mini/api/electricnew/getPowerUrl?custid=TESTcustid000000000000000000000000000%251A00000%253G&syscustid=TESTsyscus%253Ntid00000000000000000000000000%251H00%257J",
+    "headers": {
+      "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36"
+    },
+    "body": null
+  },
+  "response": {
+    "status": 302,
+    "headers": {
+      "Server": "nginx/1.18.0",
+      "Location": "https://ecykt.gdbtu.edu.cn/ykt-view/powersel?interfaceName=powernew_450010&isbind=1"
+    },
+    "body": ""
+  },
+  "_fixture": {
+    "capturedAt": "2026-10-30",
+    "redacted": true
+  }
+}
