@@ -2,6 +2,66 @@
 
 版本记录采用 Keep a Changelog 格式。源码仓库不保存个人签名证书或个人配置；测试安装包通过 GitHub Release 单独分发。
 
+## [Unreleased]
+
+### Added
+
+- Show 最近 on the home screen: the card's records from the last three school days merged with the app's own showers and laundry orders, newest first, as many whole rows as fit the screen, so home does not scroll.
+- Show the full location 「校区 · 公寓 · 楼栋 · 房间」 of the dorm and the electricity meter in Settings.
+- Add a 扫洗衣机 button to the laundry page's navigation bar.
+- Ask 「2 个公寓都有 3 栋 108，你住哪个？」 under the dorm in the first-run guide's 「你住哪间」 step when the meter lookup found the dorm's room in several apartments; tapping an apartment binds its meter at once, another tap rebinds. The 电表 page at that stop heads its list with the same question and binds the tapped room. The step also shows 「正在找电表…」 while the lookup runs and, when the school is too slow, 「再找一次电表」 with 「电表先跳过，之后在设置 › 电表里选。」; 「就是这间」 is never held up.
+- Check the dorm's hot-water controller in the first-run guide (登录 → 学校洗衣机 → 宿舍 → 核对宿舍的水控 → 好了); the check is read-only and can be left for Settings.
+- Show a check face on the shower page when the controller reads stopped under a running shower, with 去核对, 「我在学校记录里核对过了」 and 「再查一次水控」; the home card's button reads 去核对 then.
+
+### Changed
+
+- Draw the row icons on home, 校园卡记录, the laundry page, Settings and the home-screen widget (small and medium) as one set of grey line symbols instead of emoji; they stay grey when a number turns red.
+- Look for the dorm's electricity meter one level at a time (campus, apartment, building, floor, room) with small reads instead of one read of every meter on the campus; each read is retried twice on a timeout or a lost connection.
+- When a level does not match the dorm exactly once, open the meter page at that level: the matched levels with 「重选」, the level's list headed 「选校区」「选公寓」「选楼栋」「选楼层」「选房间」, and the dorm's likely rows first with 「可能是这个」.
+- Bind meters to their room only; a meter bound to the whole campus by an earlier build is removed at launch, keeping the dorm, and looked up again.
+- The first-run guide no longer says 「没自动找到电表，去「电表」里选一下。」 under the dorm when the lookup stops; home still says the meter is not found.
+- Look for the meter at launch, after a sign-in and on 「再找一次电表」 only, no longer on return to the app or after a refresh.
+- When several apartments (or campuses) hold a building of the dorm's name, walk each down to the rooms: the one with the dorm's room is bound without asking; when several have it, the lookup stops with those rooms to choose from, each with its full location.
+- When one of those apartments could not be read (the school too slow, no connection), do not take it for one without the room: the lookup ends with 「有个公寓没读完，还分不出是哪间。」 and 「再找一次电表」 (plus 「电表先跳过，之后在设置 › 电表里选。」 in the first-run guide), binding nothing; the 电表 page shows no list then.
+- Do not take an apartment whose walk stopped before its rooms (floors not matched, two buildings of the dorm's name, more rooms of its name than are read) for one without the room: nothing is bound, and the lookup stops at the apartments asking 「3 栋 108 在哪个公寓？」 (「校区」 at the campuses), the found rooms binding at a tap and each stopped apartment as a row 「这边没对上，点进去自己选」 with a chevron (no check circle in the first-run guide) that opens the 电表 page where it stopped. A room read without a meter still counts as without the room.
+
+### Fixed
+
+- Show a canteen meal paid with WeChat once, as a canteen expense tagged 「微信支付」, in 校园卡记录 and 最近, and count it once in the day's 花了 and in 昨天花了. The school sends it as two records with one voucher (WeChat's money in and the canteen's payment); they showed as 「−¥」 and an unsigned 「¥」 and hid the day's total. The money-in half is not shown or counted while its partner may still be on a page not read yet; once its day is read through, a lone one shows as money in with 「+¥」. Two alike meals with their own vouchers stay two.
+- Do not let pages waiting for the settings sheet to close replace a page opened after them directly.
+- Do not let a page asked for while the settings sheet was up (a tapped 「衣服洗好了」) come up after a later widget link (home, 学校账号, login), an account-switch alert or a reset.
+- Offer same-named electricity meters (one building name in two apartments) with their full location instead of identical names, and bind the chosen one at room level.
+- Do not count refunds, reversals and grants as money spent yesterday.
+- Do not send a password login when the other process (app or widget) stored new school credentials meanwhile.
+- Do not write a sign-in, a saved password or a password login's token over newer school credentials the widget stored while the app was suspended; the sign-in says 「正在更新，等一下再试。」 instead.
+- Keep the school's answer to an automatic password sign-in when the app was suspended past its turn and nothing else signed in meanwhile, instead of showing 登录过期 for hours.
+- Let a second sign-in started while one is still running wait for it, so the first one ending does not let the widget read in the middle of the second.
+- Count 最近's today and yesterday in the school's time zone, as 昨天花了 does.
+- Bind the campus instead of a room when more same-named rooms exist than are read, or when one meter is found in two of them.
+- Keep a running shower's Live Activity and reminder after a reset that stopped behind the school sign-out.
+- Wait for the widget's refresh before the school web sign-in, and keep a typed password that was not sent.
+- Keep the saved password when the same person signs in with the school's web page, so the widget still signs in by itself; a different person still clears it.
+- Fill in the saved account in the first-run login, and tick 保存密码 by default only while the account typed is the saved one, so another person's password is not kept unless they tick it.
+- Let 取消 tapped while a shower starts wait for the start, and show a refusal instead of closing the page.
+- Treat a stored school login that no longer reads as someone signed in: a new sign-in drops their dorm, meter and (web sign-in) portal token and says it could not tell who it was, and 保存密码 is refused until the user signs in again.
+- Start the shower timer, its Live Activity, the 「还在计时」 reminder and the shower's minutes when the water starts, not when 开始洗澡 is tapped, so the time spent connecting is not counted.
+
+### Removed
+
+- Remove the self-hosted hot-water access service (`services/access`), its client in the iOS app and its preparation script. The Android app in `Android/` still contains its client and is unchanged. Hot-water platform parameters now come only from the bundled `CampusWaterPlatform.json` or a user import. Users who were connected only through the access service see the "platform missing" message and need a build with the bundled parameters or an import.
+- Remove the process documents, promotional images and the old project generator; their history stays in Git.
+
+### Changed
+
+- Title same-named dorm and meter rows by the location level that tells them apart (校区, 公寓, 楼栋 or 房间).
+- List 电表 first in Settings › 设备.
+- Redesign the first-run guide: one layout on every step, four page dots, and 不用 on the laundry question continues to the dorm.
+- Redesign the home screen: the date, the card balance and electricity as two numbers (昨天花了 / 够用约 N 天 underneath, red when running low), an update line, one shower button, the 洗衣 row and 最近. The hero sentence and the bottom dock are gone.
+- Read the balance and electricity without waiting for the card records; the records get 6 seconds and arrive in a second write.
+- Reorganize the repository by feature: `App/` (Application, Interface, Services, Resources), `Shared/`, `Widget/`, one `Packages/Core` package, `Android/`, `Configuration/`, `Scripts/`. The Xcode project is committed (`XiaoRiChang.xcworkspace`), and routine commands run through `mise`.
+- Name the hot-water feature "Shower" throughout the code. User-facing text is unchanged.
+- Fold the release notes from `docs/release-*.md` into this file.
+
 ## [0.8.0] - 2026-10-29
 
 ### Fixed
@@ -21,6 +81,26 @@
 - Port the iOS fixes to Android 0.2.0-alpha23 (versionCode 25): persist controller mismatches, retain and reuse an authorized BLE connection, add session inspection and diagnostic sharing, and allow immediate retries after failed or cancelled campus refreshes.
 
 The reported brief dispensing followed by stopping is not yet diagnosed. Physical hot-water behavior still requires on-site verification. The Android package remains an alpha23 debug build; users have reported an Alipay launch issue on HarmonyOS.
+
+### Release notes
+
+校日常是面向广东工商职业技术大学的非官方校园生活 App，可以查看校园卡余额、宿舍电费，并使用热水和 U 净洗衣功能。
+
+📦 [选择设备下载](https://jasonbeam.github.io/campus-daily/) · [下载与校验](https://github.com/JasonBeam/campus-daily/releases/tag/v0.8.0)
+
+#### 本次更新
+
+- 改进校园卡与电费刷新，失败或取消后可重试并保留已有数据。
+- 调整热水蓝牙连接和异常状态处理，增加只读检查与诊断导出。
+- iPhone 包含校园余额小组件；Android 包同步相关修复。
+
+#### 注意事项
+
+- iPhone 提供 build 38 无签名 IPA，安装前需使用自己的 Apple 账号签名。该版本已安装到作者手机，现场业务仍需验证。
+- Android 提供 0.2.0-alpha23 debug 测试包。用户已反馈 Android 实机测试通过；本版本也通过单元测试与模拟器测试。
+- 用户反馈鸿蒙 6.0 至 7.0 可通过卓易通安装使用，但鸿蒙设备目前无法跳转支付宝。不同设备的兼容性可能不同。
+- 短暂出水后停水的原因尚未确认；热水完整授权、出水和结算仍需现场核验。
+- 本项目不代表学校或相关服务方。请勿公开账号、验证码、令牌、宿舍或交易信息。安装包包含可被提取的通用热水平台参数。
 
 ## [0.8.0-beta.2] - 2026-10-29
 
@@ -43,6 +123,36 @@ The reported brief dispensing followed by stopping is not yet diagnosed. Physica
 - Document that shared water-platform parameters embedded in the test packages can be extracted.
 - Record that real hot-water authorization, dispensing and settlement have not been accepted in this release cycle.
 
+### Release notes
+
+Beta 2 支持通过学校官方登录连接校园卡，读取登记宿舍并匹配电表。热水配置可核对本人身份和宿舍水控，正常首次设置无需抓包或导入个人配置。
+
+Android 测试包为 0.2.0-alpha22；iPhone 测试包为 0.8.0 build 36，包含校园双余额小组件。
+
+📦 [选择设备下载](https://jasonbeam.github.io/campus-daily/) · [下载及校验文件](https://github.com/JasonBeam/campus-daily/releases/tag/v0.8.0-beta.2)
+
+📖 [安装与签名教程](https://github.com/JasonBeam/campus-daily/blob/v0.7.0/docs/download.md) · 🔗 [连接与使用教程](https://github.com/JasonBeam/campus-daily/blob/v0.7.0/docs/configuration.md)
+
+✨ [界面预览](https://github.com/JasonBeam/campus-daily/blob/v0.7.0/docs/previews/README.md) · [AI 使用教程](https://github.com/JasonBeam/campus-daily/blob/v0.7.0/docs/ai-guide.md)
+
+#### 本版更新
+
+- 学校登录后读取校园卡和登记宿舍；电表唯一匹配时自动保存，同名公寓需本人确认。
+- 热水配置支持核对宿舍和水控编号，Android 可在热水页面进行只读连接检查。
+- 校园账号、宿舍或设备变更时保护原有记录，避免旧查询结果覆盖新的选择。
+- 使用本人 U 净账号管理常用洗衣机，查询状态、程序和价格。
+
+#### 注意事项
+
+- 这是测试版。Android APK 可按手机提示安装；iPhone IPA 未签名，需要用自己的 Apple 账号签名。Safari 下载 IPA 后不会直接完成安装；免费个人签名通常约 7 天需要续签。
+- Android alpha22 已在一台用户设备上确认安装和配置后可用。其他 Android 机型、iPhone 全新用户流程、第三方签名小组件，以及完整热水授权、出水和结算尚未完成验收。
+- iPhone build 36 曾在用户设备上覆盖安装并保留余额、宿舍与结算记录；本次发布的重新构建 IPA 未再次实机安装。热水操作可能产生费用，请本人现场核对设备和官方结果。
+- 本轮 iOS 核心测试 151 项、Android 单元测试 65 项通过；Android lint 有 43 条提示、无错误。构建与测试结果不能代替真实设备和交易验收。
+- 安装包包含可被提取的通用热水平台参数，不含作者的个人账号、宿舍、水控编号、交易记录或 Apple 签名证书。请勿公开自己的密码、验证码、校园令牌、宿舍信息、设备二维码或交易链接。
+- 界面预览使用示例数据，展示的是较早 Android 版本，页面细节可能与当前版本不同。
+
+详细情况见[首次使用审查](https://github.com/JasonBeam/campus-daily/blob/v0.7.0/docs/first-use-review-2026-10-29.md)和[配置教程](https://github.com/JasonBeam/campus-daily/blob/v0.7.0/docs/configuration.md)。
+
 ## [0.8.0-beta.1] - 2026-10-28
 
 ### Added
@@ -61,6 +171,61 @@ The reported brief dispensing followed by stopping is not yet diagnosed. Physica
 ### Security
 
 - Keep personal accounts, campus sessions, water-platform parameters and signing keys out of public packages.
+
+### Release notes
+
+面向广东工商职业技术大学的 iPhone 与 Android 测试版。此次更新完善校园网页登录、校园卡同步、宿舍信息读取和安卓蓝牙流程，并统一两端的日常、热水、洗衣与设备页面。
+
+#### 下载
+
+Beta 1 的旧安装包已停止公开下载。请前往 [Beta 2 下载页](https://jasonbeam.github.io/campus-daily/)或 [Beta 2 版本说明](https://github.com/JasonBeam/campus-daily/releases/tag/v0.8.0-beta.2)。下面的内容作为 Beta 1 的历史记录保留。
+
+#### 更新内容
+
+- 使用学校官方网页登录后，校日常可同步校园卡信息和门户中的宿舍地址。
+- 安卓版改善学校登录、宿舍匹配、蓝牙扫描和同名水控编号确认。
+- 两端统一首页余额、热水、洗衣、订单和设备页面的布局。
+- 更换账号或宿舍时清理不匹配的旧绑定，避免沿用其他账户的结果。
+
+#### 已知限制
+
+- **宿舍电表暂时不能自动匹配，请手动选择电表。**校园卡余额同步不是本版已知故障。
+- 公开安装包不含作者的热水平台私有参数。首次配置热水时，需要本人合法取得对应参数。
+- 本版只面向广东工商职业技术大学环境，不代表学校或相关服务方，也不保证其他学校可用。
+
+#### 检查记录
+
+- iOS：83 项 XCTest 与 41 项 Swift Testing 通过。
+- Android：35 项单元测试、5 项流程与界面测试、23 组布局场景及 lint 通过。
+- Android alpha12 已在 vivo 上覆盖安装并保留原有数据。安装成功不代表所有现场流程均已验证。
+- 本轮没有执行真实热水授权、出水、结算、洗衣下单或付款。涉及实际设备和交易的结果，请以现场设备及官方页面为准。
+
+#### 隐私
+
+请只使用本人账号。不要在 Issue、评论或 AI 对话中公开密码、验证码、Cookie、校园令牌、手机号、学号、宿舍信息、设备二维码或付款链接。
+
+## [Android 0.2.0-alpha3] - 2026-10-27
+
+### Release notes
+
+此次更新对照 iPhone 实图调整日常、热水、洗衣、订单和设备页面，保留浅色/深色主题及按系统能力降级的导航玻璃效果。
+
+#### 下载与安装
+
+下载 `campus-daily-android-0.2.0-alpha3.apk`，在 Android 手机按提示允许安装即可。APK 使用开发测试签名，测试者无需个人开发者证书。后续更新需保持相同签名。
+
+- 支持 Android 6.0 / API 23 及以上；HarmonyOS 4.2 为兼容目标，不支持 HarmonyOS NEXT。
+- 三款目标手机（华为 nova 10、vivo X200 Pro、三星 S24 Ultra）尚待实机验收。
+- 首次使用需本人账号和配置；公开包没有热水平台密钥，热水需导入个人私有配置。
+- Android 桌面小组件暂未包含。iPhone IPA 仍需自行签名。
+
+#### 验证范围
+
+20 项单元测试、23 个模拟器截图场景及导航切换通过；Lint 零错误，APK v1/v2 签名验证通过。模拟器验证不代表真实校园登录、蓝牙开关水、结算、洗衣支付已经在安卓实机通过。
+
+[配置教程](https://github.com/JasonBeam/campus-daily/blob/v0.7.0/docs/configuration.md) · [AI 上手教程](https://github.com/JasonBeam/campus-daily/blob/v0.7.0/docs/ai-guide.md) · [Android 说明](https://github.com/JasonBeam/campus-daily/blob/main/Android/README.md)
+
+请保护自己的账号和配置，不要公开上传令牌、设备二维码或个人数据。
 
 ## [0.7.0] - 2026-10-23
 
@@ -84,6 +249,83 @@ The reported brief dispensing followed by stopping is not yet diagnosed. Physica
 - Keep private platform resources out of the public source and Release assets.
 - State clearly that the local signed Debug package must not be redistributed.
 
+### Release notes
+
+校日常是面向广东工商职业技术大学的非官方 iPhone 工具。
+
+我做它的原因很直接：每天都要用的校园卡、宿舍热水和 U净洗衣分散在不同入口里，小程序跳转和无关页面太多。这个版本把常用数据与操作集中起来，也让宿舍热水和洗衣机可以少走几次重复步骤。
+
+#### 这个版本有什么
+
+- 首页查看校园卡余额、宿舍、热水结算记录和常用洗衣机。
+- 在学校官方网页内登录，并选择校区、楼栋、楼层和寝室绑定热水。
+- iPhone 直接通过蓝牙连接水控，提供「开始洗澡」「结束结算」快捷指令动作。
+- 使用本人 U净手机号与验证码登录，扫码或从照片识别洗衣机二维码。
+- 保存多台常用洗衣机，查看空闲状态、程序和实时价格。
+- 核对订单后跳转支付宝；支持取消符合条件的未付款预约。
+- 交易结果未知时保留本机状态，避免自动重复授权、付款或结算。
+
+#### 界面流程演示
+
+仓库内有三组 GIF 和 MP4：热水、洗衣、首次配置。它们是脱敏界面流程模拟，不代表真实出水、扣费或机器启动录像。
+
+#### 下载与安装
+
+Release 资产包含：
+
+- `CampusDaily-0.7.0-build22-unsigned.ipa`：无签名开发包，下载后必须用自己的 Apple 身份签名才能安装。
+- `CampusDaily-0.7.0-build22-unsigned.ipa.sha256`：下载完整性校验。
+- GitHub 自动提供的源码 zip/tar 压缩包。
+
+这个 IPA 不包含作者的开发签名、设备 UDID、描述文件或共享平台签名参数。使用自己的 Mac/Xcode 或可信的 SideStore/AltStore 流程重签后，才能装到自己的设备。
+
+#### 配置教程与 AI 上手
+
+优先使用 App 内流程：
+
+1. 学校官方网页登录。
+2. 选择校区、楼栋、楼层和寝室。
+3. U净手机号 + 验证码登录。
+4. 扫描洗衣机机身二维码并保存常用机器。
+
+完整教程：
+
+- [配置与使用边界](https://github.com/JasonBeam/campus-daily/blob/v0.7.0/docs/configuration.md)
+- [构建与签名](https://github.com/JasonBeam/campus-daily/blob/v0.7.0/docs/build-and-signing.md)
+- [AI 辅助上手](https://github.com/JasonBeam/campus-daily/blob/v0.7.0/docs/ai-guide.md)
+- [故障排查](https://github.com/JasonBeam/campus-daily/blob/v0.7.0/docs/troubleshooting.md)
+
+#### 当前门槛
+
+- 目前没有 TestFlight；公开 IPA 是无签名开发包，必须自行签名。
+- 免费 Apple Personal Team 通常每 7 天要重新签名。
+- 需要 macOS、完整 Xcode、可签名 Apple 账号和本人合法取得的学校/U净登录条件。
+- 当前重点验证的是我实际使用的一种水控和本校流程，不代表其他学校或所有设备通用。
+- 首次热水宿舍读取仍依赖共享平台签名参数。源码不包含该参数；Debug 私测包不能公开分发。稳定公开前还需要服务端签名代理或移除这项客户端依赖。
+
+#### 验证记录
+
+- 0.7.0 build 22：
+  - 54 项 XCTest + 37 项 Swift Testing，共 91 项离线测试通过。
+  - Debug iPhoneOS 签名构建、Release 不签名构建、Xcode 静态分析均通过。
+  - 本地设备包严格代码签名校验通过，未上传 GitHub。
+- 本人 0.7.0 实机已完成校园登录、宿舍保存、U净短信登录、常用机器查询和重启持久化检查。
+- 未把构建、单元测试或支付跳转等同于真实扣费、水流出水和洗衣机启动。
+
+#### 自行构建
+
+```sh
+python3 tools/fetch_alipay_sdk.py
+python3 tools/generate_project.py
+open CampusHotWater.xcodeproj
+```
+
+在 Xcode 中用你自己的 Team 和 Bundle Identifier 签名。不要使用作者的设备、描述文件或本机配置。
+
+遇到问题请先读 [配置与使用边界](https://github.com/JasonBeam/campus-daily/blob/v0.7.0/docs/configuration.md)、[构建与签名](https://github.com/JasonBeam/campus-daily/blob/v0.7.0/docs/build-and-signing.md)、[AI 辅助上手](https://github.com/JasonBeam/campus-daily/blob/v0.7.0/docs/ai-guide.md)和[故障排查](https://github.com/JasonBeam/campus-daily/blob/v0.7.0/docs/troubleshooting.md)。
+
+不要在 Issue 中上传配置、HAR、Cookie、token、手机号、学号、精确宿舍、设备二维码、付款链接或签名文件。
+
 ## [0.4.6] - 2026-10-22
 
 ### Added
@@ -104,3 +346,4 @@ The reported brief dispensing followed by stopping is not yet diagnosed. Physica
 [0.7.0]: https://github.com/JasonBeam/campus-daily/tree/v0.7.0
 [0.8.0-beta.1]: https://github.com/JasonBeam/campus-daily/tree/v0.8.0-beta.1
 [0.8.0-beta.2]: https://github.com/JasonBeam/campus-daily/releases/tag/v0.8.0-beta.2
+[0.8.0]: https://github.com/JasonBeam/campus-daily/releases/tag/v0.8.0
