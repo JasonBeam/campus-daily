@@ -13,6 +13,7 @@ let package = Package(
         .target(name: "Core"),
         .target(name: "CoreTestSupport", dependencies: ["Core"], path: "Tests/Support"),
         .testTarget(name: "CampusTests", dependencies: ["Core", "CoreTestSupport"]),
+        .testTarget(name: "ShowerTests", dependencies: ["Core", "CoreTestSupport"]),
         .testTarget(name: "NetworkingTests", dependencies: ["Core", "CoreTestSupport"]),
         .testTarget(name: "CommonTests", dependencies: ["Core", "CoreTestSupport"]),
     ],

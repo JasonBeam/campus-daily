@@ -91,7 +91,7 @@ private struct ShowerLockScreen: View {
         switch state.phase {
         case .active, .settling: return ShowerStyle.clock(state.startedAt) + " 开始 · 结算后显示费用"
         case .settled: return state.durationMinutes.map { "\($0) 分钟" } ?? ShowerStyle.clock(state.startedAt) + " 开始"
-        case .unconfirmed: return "请打开校日常查看当前记录"
+        case .unconfirmed: return "打开校日常看看这次记录"
         }
     }
     var body: some View {

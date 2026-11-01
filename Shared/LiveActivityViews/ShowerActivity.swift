@@ -1,6 +1,6 @@
 import Foundation
 import AppIntents
-import WaterCore
+import Core
 #if canImport(ActivityKit)
 import ActivityKit
 
@@ -38,16 +38,16 @@ enum ShowerActivityBridge {
 }
 
 struct FinishShowerLiveIntent: LiveActivityIntent {
-    static var title: LocalizedStringResource = "结束并结算"
-    static var description = IntentDescription("结束正在进行的热水会话并提交结算。")
-    static var isDiscoverable = false
+    static let title: LocalizedStringResource = "结束并结算"
+    static let description = IntentDescription("结束正在进行的热水会话并提交结算。")
+    static let isDiscoverable = false
     // Same as FinishShowerIntent: the keychain is WhenUnlocked and Bluetooth has no background mode,
     // so finishing from the lock screen must unlock and bring the app forward.
-    static var openAppWhenRun = true
-    static var authenticationPolicy: IntentAuthenticationPolicy = .requiresLocalDeviceAuthentication
+    static let openAppWhenRun = true
+    static let authenticationPolicy: IntentAuthenticationPolicy = .requiresLocalDeviceAuthentication
     init() {}
     @MainActor func perform() async throws -> some IntentResult {
-        guard let finish = ShowerActivityBridge.finish else { throw WaterError.interrupted }
+        guard let finish = ShowerActivityBridge.finish else { throw ShowerDeviceError.interrupted }
         try await finish()
         return .result()
     }

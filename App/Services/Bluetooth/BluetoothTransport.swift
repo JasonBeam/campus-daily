@@ -1,14 +1,8 @@
 import Foundation
 @preconcurrency import CoreBluetooth
-import WaterCore
+import Core
 
-struct WaterDeviceCandidate: Identifiable {
-    let id: String
-    let name: String
-    let rssi: Int?
-}
-
-struct VerifiedWaterDevice {
+struct VerifiedShowerDevice {
     let id: String
     let name: String
     let machineID: String
@@ -17,43 +11,64 @@ struct VerifiedWaterDevice {
     let verifiedAt: Date
 }
 
+/// One pending transport step at a time. Each wait reserves a token; late timers and cancel handlers
+/// pass their token and can only finish the wait they were created for, never the next step.
+@MainActor final class WaitSlot {
+    private var continuation: CheckedContinuation<Void, Error>?
+    private var generation = 0
+    var isWaiting: Bool { continuation != nil }
+    func reserve() -> Int { generation &+= 1; return generation }
+    func attach(_ continuation: CheckedContinuation<Void, Error>, token: Int) {
+        guard token == generation, self.continuation == nil else {
+            continuation.resume(throwing: ShowerDeviceError.interrupted); return
+        }
+        self.continuation = continuation
+    }
+    func accepts(_ token: Int?) -> Bool { token == nil || token == generation }
+    @discardableResult func complete(_ result: Result<Void, Error>, token: Int? = nil) -> Bool {
+        guard accepts(token), let continuation else { return false }
+        self.continuation = nil
+        continuation.resume(with: result)
+        return true
+    }
+}
+
 // CoreBluetooth delegates are delivered on the explicit main queue below.
-@MainActor final class BluetoothTransport: NSObject, WaterTransport, @preconcurrency CBCentralManagerDelegate, @preconcurrency CBPeripheralDelegate {
+@MainActor final class BluetoothTransport: NSObject, ShowerTransport, @preconcurrency CBCentralManagerDelegate, @preconcurrency CBPeripheralDelegate {
     private var manager: CBCentralManager!
     private var peripheral: CBPeripheral?
     private var retiring: CBPeripheral?
     private var targets: [UUID: CBPeripheral] = [:]
-    var targetPicker: (([WaterDeviceCandidate]) async throws -> String)?
     private var signalLevels: [UUID: Int] = [:]
     private var targetName = ""
     private var observedIDs = Set<UUID>()
     private var notify: CBCharacteristic?
     private var write: CBCharacteristic?
-    private var decoder = FrameDecoder()
+    private var decoder = ShowerFrameAssembler()
     private var pendingFrame: Data?
-    private var channelError: WaterError?
+    private var channelError: ShowerDeviceError?
     private var writeAcknowledged = false
     private var step: String?
-    private let waiter = WaterWaitSlot()
+    private let waiter = WaitSlot()
     private var timer: Task<Void, Never>?
 
     private func wait(_ name: String, seconds: Double = 15, begin: () -> Void) async throws {
         try Task.checkCancellation()
-        guard !waiter.isWaiting else { throw WaterError.busy }
+        guard !waiter.isWaiting else { throw ShowerDeviceError.busy }
         // The timer and cancel handler only ever finish this wait (token), never a later step.
         let token = waiter.reserve()
-        WaterDiagnosticReport.trace.record(.bluetoothStep, step: WaterDiagnostics.Step(rawValue: name))
+        ShowerDiagnosticReport.record("ble." + name)
         try await withTaskCancellationHandler(operation: {
             try await withCheckedThrowingContinuation { continuation in
                 step = name
                 waiter.attach(continuation, token: token)
                 timer = Task { [weak self] in
                     do { try await Task.sleep(for: .seconds(seconds)) } catch { return }
-                    self?.complete(.failure(WaterError.timedOut), token: token)
+                    self?.complete(.failure(ShowerDeviceError.timedOut), token: token)
                 }
                 begin()
             }
-        }, onCancel: { Task { @MainActor [weak self] in self?.complete(.failure(WaterError.interrupted), token: token) } })
+        }, onCancel: { Task { @MainActor [weak self] in self?.complete(.failure(ShowerDeviceError.interrupted), token: token) } })
     }
     /// `token` nil: a device callback for the current step.
     private func complete(_ result: Result<Void, Error>, token: Int? = nil) {
@@ -62,29 +77,25 @@ struct VerifiedWaterDevice {
         timer?.cancel(); timer = nil
         waiter.complete(result)
     }
-    private func prepare(config: WaterConfig) async throws {
+    private func prepare(bleName: String) async throws {
         if manager == nil { manager = CBCentralManager(delegate: self, queue: .main) }
         if manager.state == .unknown || manager.state == .resetting {
             try await wait("power") {}
         }
-        guard manager.state == .poweredOn else { throw WaterError.bluetoothOff }
+        guard manager.state == .poweredOn else { throw ShowerDeviceError.bluetoothOff }
         if let old = retiring, old.state != .disconnected {
             try await wait("disconnect") { manager.cancelPeripheralConnection(old) }
         }
         retiring = nil
-        targetName = config.bleName
+        targetName = bleName
     }
     private func scanTargets() async throws {
         targets.removeAll(); observedIDs.removeAll(); signalLevels.removeAll()
         // Some water controllers omit FFE0 from advertising, so inspect names first.
         manager.scanForPeripherals(withServices: nil, options: [CBCentralManagerScanOptionAllowDuplicatesKey: false])
         do { try await Task.sleep(for: .seconds(12)) }
-        catch { manager.stopScan(); throw WaterError.interrupted }
+        catch { manager.stopScan(); throw ShowerDeviceError.interrupted }
         manager.stopScan()
-    }
-    private func scan(config: WaterConfig) async throws {
-        try await prepare(config:config)
-        try await scanTargets()
     }
     private func recordScan(remembered: String?, scanSeconds: Int = 12, cachedPeripheral: Bool = false) {
         let object: [String:Any] = ["observedAt":ISO8601DateFormatter().string(from:Date()),"scanSeconds":scanSeconds,
@@ -100,19 +111,19 @@ struct VerifiedWaterDevice {
         peripheral = chosen
         chosen.delegate = self
         if chosen.state != .connected { try await wait("connect") { manager.connect(chosen) } }
-        try await wait("service") { chosen.discoverServices([CBUUID(string: WaterProtocol.service)]) }
-        guard let service = chosen.services?.first(where: { $0.uuid == CBUUID(string: WaterProtocol.service) }) else {
-            throw WaterError.bluetooth
+        try await wait("service") { chosen.discoverServices([CBUUID(string: ShowerFrames.serviceUUID)]) }
+        guard let service = chosen.services?.first(where: { $0.uuid == CBUUID(string: ShowerFrames.serviceUUID) }) else {
+            throw ShowerDeviceError.disconnected
         }
         try await wait("characteristics") {
-            chosen.discoverCharacteristics([CBUUID(string: WaterProtocol.notify), CBUUID(string: WaterProtocol.write)], for: service)
+            chosen.discoverCharacteristics([CBUUID(string: ShowerFrames.notifyUUID), CBUUID(string: ShowerFrames.writeUUID)], for: service)
         }
-        notify = service.characteristics?.first { $0.uuid == CBUUID(string: WaterProtocol.notify) }
-        write = service.characteristics?.first { $0.uuid == CBUUID(string: WaterProtocol.write) }
+        notify = service.characteristics?.first { $0.uuid == CBUUID(string: ShowerFrames.notifyUUID) }
+        write = service.characteristics?.first { $0.uuid == CBUUID(string: ShowerFrames.writeUUID) }
         guard let notify, let write, notify.properties.contains(.notify), write.properties.contains(.write) else {
-            throw WaterError.bluetooth
+            throw ShowerDeviceError.disconnected
         }
-        decoder = FrameDecoder(); pendingFrame = nil; channelError = nil
+        decoder = ShowerFrameAssembler(); pendingFrame = nil; channelError = nil
         try await wait("subscribe") { chosen.setNotifyValue(true, for: notify) }
         return chosen.identifier.uuidString
     }
@@ -128,21 +139,25 @@ struct VerifiedWaterDevice {
         chosen.delegate = nil
         write = nil; notify = nil
     }
-    func verifiedInformation(id: String, machineID: String) -> VerifiedWaterDevice {
-        VerifiedWaterDevice(id:id,name:targetName,machineID:machineID.uppercased(),rssi:UUID(uuidString:id).flatMap { signalLevels[$0] },nearbyCount:targets.count,verifiedAt:Date())
+    func verifiedInformation(id: String, machineID: String) -> VerifiedShowerDevice {
+        VerifiedShowerDevice(id:id,name:targetName,machineID:machineID.uppercased(),rssi:UUID(uuidString:id).flatMap { signalLevels[$0] },nearbyCount:targets.count,verifiedAt:Date())
     }
-    func inspect(config: WaterConfig, remembered: String?) async throws -> String {
-        try await scan(config:config)
+    /// Read-only scan for the 连接检查 screen: how many controllers carry this name nearby.
+    func inspect(bleName: String, remembered: String?) async throws -> Int {
+        try await prepare(bleName:bleName)
+        try await scanTargets()
         recordScan(remembered:remembered)
-        if targets.isEmpty { return WaterError.targetMissing.message }
-        if let remembered, targets.keys.contains(where: { $0.uuidString == remembered }) {
-            return "发现 \(targets.count) 个同名水控，已识别上次使用的设备"
-        }
-        return targets.count == 1 ? "发现 1 个目标候选，开始时会核对水控编号" : WaterError.targetAmbiguous.message
+        return targets.count
     }
-    func connect(config: WaterConfig, expectedPeripheral: String?, preferredPeripheral: String?) async throws -> String {
-        try await prepare(config:config)
-        let remembered = expectedPeripheral ?? preferredPeripheral
+    func connect(bleName: String, machineID: String, required: String?, preferred: String?) async throws -> String {
+        try await prepare(bleName:bleName)
+        // Reuse the live link (the official client keeps it after authorization).
+        if let current = peripheral, current.state == .connected, write != nil, notify != nil,
+           required == nil || current.identifier.uuidString == required {
+            return current.identifier.uuidString
+        }
+        if let current = peripheral { await abandon(current) }
+        let remembered = required ?? preferred
         if let remembered, let uuid = UUID(uuidString:remembered),
            let cached = manager.retrievePeripherals(withIdentifiers:[uuid]).first {
             targets.removeAll(); observedIDs.removeAll()
@@ -153,79 +168,67 @@ struct VerifiedWaterDevice {
             } catch {
                 await abandon(cached)
                 // Connecting by remembered CoreBluetooth ID is only a fast path. If it fails,
-                // rescan and keep the existing exact/preferred-device selection rules.
+                // rescan and keep the exact/preferred-device selection rules.
             }
         }
         try await scanTargets()
         recordScan(remembered:remembered)
         let id: String
         do {
-            id = try WaterTargetSelection.select(targets.keys.map(\.uuidString),required:expectedPeripheral,preferred:preferredPeripheral)
-        } catch WaterError.targetAmbiguous {
-            guard expectedPeripheral == nil else { throw WaterError.targetAmbiguous }
-            let candidates = targets.values.map {
-                WaterDeviceCandidate(id:$0.identifier.uuidString,name:targetName,rssi:signalLevels[$0.identifier])
-            }.sorted {
-                if $0.rssi != $1.rssi { return ($0.rssi ?? -127) > ($1.rssi ?? -127) }
-                return $0.id < $1.id
-            }
-            // Resolve the configured hardware ID, not the shared BT19-S radio name.
-            // This sends only 0xAA, never an authorization, valve or settlement command.
-            do {
-                let matched = try await WaterIdentitySelection.match(candidates.map(\.id),machineID:config.machineID) { [self] candidate in
-                    guard let uuid = UUID(uuidString:candidate), let device = targets[uuid] else { throw WaterError.targetMissing }
-                    do {
-                        _ = try await establish(device)
-                        let frame = try await exchange(Data([0xAA]))
-                        if (try? WaterProtocol.identity(frame)) != config.machineID.uppercased() { await abandon(device) }
-                        return frame
-                    } catch {
-                        await abandon(device)
-                        throw error
-                    }
+            id = try ShowerTargetSelection.select(targets.keys.map(\.uuidString),required:required,preferred:preferred)
+        } catch ShowerDeviceError.ambiguous {
+            guard required == nil else { throw ShowerDeviceError.ambiguous }
+            // Same radio name on several controllers: resolve the bound machine id by the read-only
+            // identity command (0xAA only, never an authorization, valve or settlement command).
+            let ordered = targets.values.sorted {
+                let a = signalLevels[$0.identifier] ?? -127, b = signalLevels[$1.identifier] ?? -127
+                return a != b ? a > b : $0.identifier.uuidString < $1.identifier.uuidString
+            }.map(\.identifier.uuidString)
+            return try await ShowerTargetSelection.identify(ordered, machineID:machineID) { [self] candidate in
+                guard let uuid = UUID(uuidString:candidate), let device = targets[uuid] else { throw ShowerDeviceError.notFound }
+                do {
+                    _ = try await establish(device)
+                    let frame = try await exchange(ShowerFrames.probeCommand)
+                    if ShowerFrames.identity(frame) != machineID.uppercased() { await abandon(device) }
+                    return frame
+                } catch {
+                    await abandon(device)
+                    throw error
                 }
-                return matched
-            } catch WaterError.targetMissing {
-                // Keep manual selection only when read-only identification could not resolve a target.
             }
-            guard let targetPicker else { throw WaterError.targetMissing }
-            let selected = try await targetPicker(candidates)
-            try Task.checkCancellation()
-            id = try WaterTargetSelection.select(targets.keys.map(\.uuidString),required:selected,preferred:nil)
         }
-        guard let uuid = UUID(uuidString:id), let chosen = targets[uuid] else { throw WaterError.targetMissing }
+        guard let uuid = UUID(uuidString:id), let chosen = targets[uuid] else { throw ShowerDeviceError.notFound }
         return try await establish(chosen)
     }
     func exchange(_ data: Data) async throws -> Data {
         if let channelError { throw channelError }
         guard let peripheral, peripheral.state == .connected, let write,
-              !decoder.hasPartialFrame, pendingFrame == nil else { throw WaterError.bluetooth }
+              !decoder.hasPartialFrame, pendingFrame == nil else { throw ShowerDeviceError.disconnected }
         writeAcknowledged = false
-        let command: WaterDiagnostics.Command = data == Data([0xAA]) ? .identity : data.count == 15 ? .authorization : data.count == 5 && data.first == 0xAC ? .close : .other
-        WaterDiagnosticReport.trace.record(.bluetoothWrite, command: command)
+        ShowerDiagnosticReport.record("ble.write." + ShowerFrames.command(data).rawValue)
         try await wait("exchange", seconds: 8) { peripheral.writeValue(data, for: write, type: .withResponse) }
-        guard let frame = pendingFrame else { throw WaterError.malformedFrame }
-        WaterDiagnosticReport.trace.record(.bluetoothReply, frame: frame)
+        guard let frame = pendingFrame else { throw ShowerDeviceError.malformedFrame }
+        ShowerDiagnosticReport.record("ble.reply.\(frame.count)")
         pendingFrame = nil
         return frame
     }
-    func disconnect() {
-        WaterDiagnosticReport.trace.record(.disconnected)
+    func disconnect() async {
+        ShowerDiagnosticReport.record("ble.disconnect")
         manager?.stopScan()
-        complete(.failure(WaterError.interrupted))
+        complete(.failure(ShowerDeviceError.interrupted))
         if let peripheral {
             peripheral.delegate = nil
             retiring = peripheral
             manager.cancelPeripheralConnection(peripheral)
         }
         peripheral = nil; write = nil; notify = nil
-        decoder = FrameDecoder(); pendingFrame = nil
+        decoder = ShowerFrameAssembler(); pendingFrame = nil
     }
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
         if step == "power" {
             if central.state == .poweredOn { complete(.success(())) }
-            else if central.state != .unknown && central.state != .resetting { complete(.failure(WaterError.bluetoothOff)) }
-        } else if central.state != .poweredOn { complete(.failure(WaterError.bluetoothOff)) }
+            else if central.state != .unknown && central.state != .resetting { complete(.failure(ShowerDeviceError.bluetoothOff)) }
+        } else if central.state != .poweredOn { complete(.failure(ShowerDeviceError.bluetoothOff)) }
     }
     func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral,
                         advertisementData: [String: Any], rssi RSSI: NSNumber) {
@@ -239,24 +242,24 @@ struct VerifiedWaterDevice {
         if peripheral === self.peripheral, step == "connect" { complete(.success(())) }
     }
     func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
-        if peripheral === self.peripheral { complete(.failure(WaterError.bluetooth)) }
+        if peripheral === self.peripheral { complete(.failure(ShowerDeviceError.disconnected)) }
     }
     func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
         if peripheral === retiring, step == "disconnect" { complete(.success(())) }
         else if peripheral === self.peripheral {
-            WaterDiagnosticReport.trace.record(.connectionLost, step: step.flatMap(WaterDiagnostics.Step.init(rawValue:)), error: .bluetooth)
-            complete(.failure(WaterError.bluetooth))
+            ShowerDiagnosticReport.record("ble.connectionLost." + (step ?? "idle"))
+            complete(.failure(ShowerDeviceError.disconnected))
         }
     }
     func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
-        if step == "service" { complete(error == nil ? .success(()) : .failure(WaterError.bluetooth)) }
+        if step == "service" { complete(error == nil ? .success(()) : .failure(ShowerDeviceError.disconnected)) }
     }
     func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
-        if step == "characteristics" { complete(error == nil ? .success(()) : .failure(WaterError.bluetooth)) }
+        if step == "characteristics" { complete(error == nil ? .success(()) : .failure(ShowerDeviceError.disconnected)) }
     }
     func peripheral(_ peripheral: CBPeripheral, didUpdateNotificationStateFor characteristic: CBCharacteristic, error: Error?) {
         if step == "subscribe", characteristic === notify {
-            complete(error == nil && characteristic.isNotifying ? .success(()) : .failure(WaterError.bluetooth))
+            complete(error == nil && characteristic.isNotifying ? .success(()) : .failure(ShowerDeviceError.disconnected))
         }
     }
     private func finishExchangeIfReady() {
@@ -264,24 +267,24 @@ struct VerifiedWaterDevice {
     }
     func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: Error?) {
         guard step == "exchange", characteristic === write else { return }
-        if error != nil { complete(.failure(WaterError.bluetooth)); return }
+        if error != nil { complete(.failure(ShowerDeviceError.disconnected)); return }
         writeAcknowledged = true
         finishExchangeIfReady()
     }
     func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
         guard characteristic === notify else { return }
         guard error == nil, let value = characteristic.value else {
-            channelError = .bluetooth
-            complete(.failure(WaterError.bluetooth)); return
+            channelError = .disconnected
+            complete(.failure(ShowerDeviceError.disconnected)); return
         }
         do {
             let frames = try decoder.append(value)
-            guard frames.count <= 1, pendingFrame == nil else { throw WaterError.malformedFrame }
+            guard frames.count <= 1, pendingFrame == nil else { throw ShowerDeviceError.malformedFrame }
             if let frame = frames.first { pendingFrame = frame }
             finishExchangeIfReady()
         } catch {
             channelError = .malformedFrame
-            complete(.failure(WaterError.malformedFrame))
+            complete(.failure(ShowerDeviceError.malformedFrame))
         }
     }
 }
