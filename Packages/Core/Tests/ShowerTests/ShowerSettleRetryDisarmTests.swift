@@ -93,4 +93,75 @@ final class ShowerSettleRetryDisarmTests: XCTestCase {
         XCTAssertTrue(gateway.settleFrames.isEmpty)
         XCTAssertEqual(ShowerPageFlow.reduce(ShowerPageFlow(record: disarmed, presented: true), .settleRetryTapped).1, [.requestSettleRetry])
     }
+
+    // MARK: The pushed page (清爽)
+
+    /// 清爽 pushes the page on 日常's stack: after 去核对, or reopened after a relaunch, it shows
+    /// the unsure face with 再结算一次 while the flow is down. Visible, it holds the first tap like
+    /// a page that is up, so the second tap can send.
+    func testAVisiblePushedPageKeepsTheFirstTap() async throws {
+        let vault = StoredShowerVault(store: InMemorySecureStore())
+        try vault.saveShowerState(unsure)
+        let gateway = FakeGateway()
+        let engine = try ShowerEngine(transport: FakeShowerTransport(), gateway: gateway, vault: vault,
+                                      configuration: .init(bleName: "fixture-ble"), now: { [t0] in t0 })
+        var flow = ShowerPageFlow(record: unsure, presented: false)
+        func send(_ event: ShowerPageEvent) -> [ShowerPageEffect] {
+            let (next, effects) = ShowerPageFlow.reduce(flow, event)
+            flow = next
+            return effects
+        }
+
+        XCTAssertEqual(send(.pushedAppeared), [])
+        XCTAssertFalse(flow.presented, "the face stays the down one (resolve, no 先回首页)")
+        XCTAssertTrue(flow.mayRetrySettle)
+        XCTAssertEqual(send(.settleRetryTapped), [.requestSettleRetry])
+        let armedRecord = try await engine.requestSettleRetry()
+        XCTAssertEqual(send(.record(armedRecord)), [], "visible: the tap stays")
+        XCTAssertTrue(flow.settleRetryArmed)
+        XCTAssertEqual(send(.settleRetryTapped), [.confirmSettleRetry], "the second tap sends")
+    }
+
+    /// Leaving the pushed page (popped, another page or tab over it) takes the tap back; so does
+    /// a tap that lands once it has gone.
+    func testLeavingThePushedPageTakesBackTheFirstTap() {
+        var visible = ShowerPageFlow(record: armed, presented: false)
+        visible = ShowerPageFlow.reduce(visible, .pushedAppeared).0
+        XCTAssertTrue(visible.pushedVisible)
+        let (left, effects) = ShowerPageFlow.reduce(visible, .pushedDisappeared)
+        XCTAssertFalse(left.pushedVisible)
+        XCTAssertEqual(effects, [.disarmSettleRetry])
+
+        var gone = ShowerPageFlow(record: unsure, presented: false)
+        gone = ShowerPageFlow.reduce(gone, .pushedAppeared).0
+        gone = ShowerPageFlow.reduce(gone, .pushedDisappeared).0
+        XCTAssertEqual(ShowerPageFlow.reduce(gone, .record(armed)).1, [.disarmSettleRetry])
+        // Not armed: nothing to take back.
+        XCTAssertEqual(ShowerPageFlow.reduce(ShowerPageFlow.reduce(ShowerPageFlow(record: unsure), .pushedAppeared).0,
+                                             .pushedDisappeared).1, [])
+    }
+
+    /// Two copies on the stack (one under a page that must stay): the page counts as shown while
+    /// any copy is, whatever order SwiftUI reports them in.
+    func testThePushedPageIsShownWhileAnyCopyIs() {
+        var flow = ShowerPageFlow(record: armed, presented: false)
+        var effects: [ShowerPageEffect] = []
+        for event in [ShowerPageEvent.pushedAppeared, .pushedAppeared, .pushedDisappeared] {
+            let step = ShowerPageFlow.reduce(flow, event)
+            flow = step.0; effects += step.1
+        }
+        XCTAssertTrue(flow.pushedVisible)
+        XCTAssertEqual(effects, [])
+        XCTAssertEqual(ShowerPageFlow.reduce(flow, .pushedDisappeared).1, [.disarmSettleRetry])
+        XCTAssertEqual(ShowerPageFlow.reduce(ShowerPageFlow(record: armed), .pushedDisappeared).0.pushedVisible, false,
+                       "never below none")
+    }
+
+    /// 去核对 or 先回首页 from a page that is up still takes the tap back, pushed or not.
+    func testLeavingAnUpPageStillTakesItBackWhenPushed() {
+        for leave in [ShowerPageEvent.homeTapped, .reviewTapped] {
+            let flow = ShowerPageFlow.reduce(ShowerPageFlow(record: armed, presented: true), .pushedAppeared).0
+            XCTAssertTrue(ShowerPageFlow.reduce(flow, leave).1.contains(.disarmSettleRetry), "\(leave)")
+        }
+    }
 }

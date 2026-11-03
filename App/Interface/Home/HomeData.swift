@@ -51,7 +51,7 @@ struct HomeData {
         let detail: String
     }
     /// One run of a sentence with its own colour (the laundry page's hero).
-    struct Segment { let text: String; var color: Color? = nil }
+    struct Segment { let text: String; var color: ThemeColor? = nil }
 
     var signedIn = true
     /// Settings › 学校账号 (nil after a web sign-in by someone not known to be the same person).
@@ -59,6 +59,10 @@ struct HomeData {
     var passwordSaved: Bool { schoolAccount?.password != nil }
     /// DEBUG demo only: why Settings › 高级 › 重置校日常 is locked (the live value comes from the shower).
     var resetLock: AppReset.Lock?
+    /// DEBUG demo only: why the 主题 options are greyed out (the live value comes from the
+    /// shower and laundry models), and whether settings opens on the 主题 page.
+    var themeLock: ThemeLock?
+    var themePageShown = false
     var dorm: String?
     /// Settings: 「校区 · 公寓 · 楼栋 · 房间」 of the dorm and of the bound meter (they can differ).
     var dormLocation: String?

@@ -65,7 +65,7 @@ struct UjingLoginView: View {
                     }.font(.footnote)
                 } footer: { Text("用你自己的 U净 账号。手机号和验证码只发给 U净 官方，登录信息只存在这台手机上。") }
                 if login.sent { Text("验证码已发出，看一下短信。").font(.footnote).foregroundStyle(.secondary) }
-                if let issue = login.issue { Text(issue).font(.footnote).foregroundStyle(.orange) }
+                if let issue = login.issue { Text(issue).font(.footnote).foregroundStyle(NativeTheme.notice) }
                 Button {
                     Task { if await login.login(mobile,code:code,laundry:laundry) { code = ""; dismiss() } }
                 } label: { HStack { if login.busy { ProgressView() }; Text("登录 U净") }.frame(maxWidth:.infinity) }

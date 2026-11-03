@@ -8,6 +8,9 @@ extension HomeView {
     /// the URL is delivered to the cover's hierarchy instead of the home view.
     func handleDemo(_ url: URL) {
             if let kind = notifyDemo(url) { Task { await reminders.demoNotify(kind) }; return }
+            // campusdaily://demo/theme/<warm|clear>: what 主题 would pick, keeping the screen shown.
+            if url.host == "demo", url.pathComponents.dropFirst().first == "theme",
+               let theme = AppTheme(rawValue:url.lastPathComponent) { themeStore.select(theme); return }
             if let page = WidgetPreview.handle(url) { activityPreview = nil; widgetPreview = page; return }
             widgetPreview = nil
             if let kind = LaundryActivityPreview.handle(url) { activityPreview = kind; return }
@@ -137,7 +140,9 @@ extension HomeView {
                                                                   "settings-paused":.authorized, "settings-paused-noanswer":.authorized,
                                                                   "settings-web-login":.authorized,
                                                                   "settings-reset-shower":.authorized, "settings-reset-unsure":.authorized,
-                                                                  "settings-laundry-off":.authorized, "settings-laundry-locked":.authorized]
+                                                                  "settings-laundry-off":.authorized, "settings-laundry-locked":.authorized,
+                                                                  "settings-theme":.authorized, "settings-theme-shower":.authorized,
+                                                                  "settings-theme-laundry":.authorized, "settings-theme-both":.authorized]
             reminders.demoStatus = settingsDemos[url.lastPathComponent]
             guard let result = HomeDemo.handle(url) else { return }
             onboarding = nil; settings = false; path = []; laundryDemo = nil; recordsDemo = nil

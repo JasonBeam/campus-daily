@@ -9,6 +9,15 @@ import Core
     /// Bumped after each completed reset: the home screen closes settings and opens the guide.
     @Published private(set) var completed = 0
     @Published private(set) var running = false
+    /// A reset finished and the first-run setup is still to open: taken (`takeSetup`) once, by the
+    /// root of the theme now shown. A reset from 清爽 brings 暖橙's root up in the middle of it
+    /// (the theme is cleared), so 清爽's root, about to go, leaves it to 暖橙's (`ResetSetupDue`).
+    @Published private(set) var setupDue = ResetSetupDue()
+
+    /// The setup is `root`'s to open; false when none is due or `root` isn't the theme shown.
+    func takeSetup(root: AppTheme, current: AppTheme) -> Bool {
+        setupDue.take(root:root, current:current)
+    }
 
     /// Not while a shower runs or its settlement still needs checking, with an unfinished
     /// laundry order, while a record can't be read, or while a controller check runs.
@@ -49,21 +58,21 @@ import Core
     /// `AppReset.run`: marker, lock, sign out, clear, reload. Returns the lock that stopped it
     /// (nil = reset done).
     @discardableResult
-    func reset(campus: CampusModel, shower: ShowerModel, laundry: LaundryModel) async throws -> AppReset.Stop? {
+    func reset(campus: CampusModel, shower: ShowerModel, laundry: LaundryModel, theme: ThemeStore) async throws -> AppReset.Stop? {
         guard !running else { return nil }
         running = true
         defer { running = false }
         let stopped = try await AppReset.run(marker:Self.marker, now:Date(),
                                              lock:{ Self.anyLock(shower:shower, laundry:laundry) },
                                              signOut:{ await campus.signOutForReset() },
-                                             clear:Self.clear, reload:{ await Self.reload(campus:campus, shower:shower, laundry:laundry) },
+                                             clear:Self.clear, reload:{ await Self.reload(campus:campus, shower:shower, laundry:laundry, theme:theme) },
                                              resync:{ Self.resync(campus:campus, shower:shower) })
-        if stopped == nil { completed += 1 }
+        if stopped == nil { finished() }
         return stopped
     }
 
     /// At launch: finish a reset the app was killed in the middle of (or say why not).
-    func resumeIfInterrupted(campus: CampusModel, shower: ShowerModel, laundry: LaundryModel) async {
+    func resumeIfInterrupted(campus: CampusModel, shower: ShowerModel, laundry: LaundryModel, theme: ThemeStore) async {
         guard !running else { return }
         running = true
         defer { running = false }
@@ -72,27 +81,34 @@ import Core
             resumed = try await AppReset.resume(marker:Self.marker, now:Date(),
                                                 lock:{ Self.anyLock(shower:shower, laundry:laundry) },
                                                 signOut:{ await campus.signOutForReset() },
-                                                clear:Self.clear, reload:{ await Self.reload(campus:campus, shower:shower, laundry:laundry) },
+                                                clear:Self.clear, reload:{ await Self.reload(campus:campus, shower:shower, laundry:laundry, theme:theme) },
                                                 resync:{ Self.resync(campus:campus, shower:shower) })
         } catch {
             resumeFailed = AppErrorText.text(error)
             return
         }
         switch resumed {
-        case .completed?: completed += 1
+        case .completed?: finished()
         case .stopped(let stop)?: resumeStopped = stop
         case .abandoned?: resumeFailed = Self.abandonedText
         case nil: break
         }
     }
 
-    private static func clear() throws {
-        try AppReset.clear(store:AppEnvironment.store, preferences:.standard,
-                           preferencesDomain:Bundle.main.bundleIdentifier ?? "", files:files)
+    private func finished() {
+        completed += 1
+        setupDue.resetFinished()
     }
 
-    private static func reload(campus: CampusModel, shower: ShowerModel, laundry: LaundryModel) async {
+    private static func clear() throws {
+        try AppReset.clear(store:AppEnvironment.store, preferences:.standard,
+                           preferencesDomain:Bundle.main.bundleIdentifier ?? "",
+                           shared:AppEnvironment.sharedPreferences, files:files)
+    }
+
+    private static func reload(campus: CampusModel, shower: ShowerModel, laundry: LaundryModel, theme: ThemeStore) async {
         campus.reload()
+        theme.reload()
         await shower.reloadAfterReset()
         laundry.reloadAfterReset()
         Reminders.shared.clearAfterReset()
@@ -113,6 +129,6 @@ import Core
 
     #if DEBUG
     /// Demo settings: show what follows a reset without clearing anything.
-    func finishDemo() { completed += 1 }
+    func finishDemo() { finished() }
     #endif
 }

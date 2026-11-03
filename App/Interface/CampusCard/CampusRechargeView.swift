@@ -35,7 +35,7 @@ struct CampusRechargeView: View {
                     description:Text(issue?.text ?? "先登录学校账号。"))
             }
             if let issue, !pageBlocked {
-                Text(issue.text).font(.footnote).foregroundStyle(.orange).padding(.horizontal)
+                Text(issue.text).font(.footnote).foregroundStyle(NativeTheme.notice).padding(.horizontal)
                 if issue.offersSignIn {
                     Button("重新登录学校账号") { login = true }.buttonStyle(.borderedProminent).padding()
                 }
@@ -126,6 +126,7 @@ private struct CampusRechargeBrowser: UIViewRepresentable {
 
 /// A web page that can't be shown: centred icon, one sentence, 「再试一次」.
 struct WebPageUnavailable: View {
+    @Environment(\.appTheme) private var appTheme
     let text: String
     let retry: () -> Void
     var body: some View {
@@ -137,7 +138,7 @@ struct WebPageUnavailable: View {
             Button(action:retry) {
                 Text("再试一次").scaledFont(17, .semibold, relativeTo:.headline).foregroundStyle(Theme.pillInk)
                     .padding(.horizontal,32).frame(minHeight:52)
-                    .background(Theme.pill, in:Capsule())
+                    .background(Theme.pill, in:appTheme.buttonShape.shape)
             }
             .buttonStyle(PressScaleStyle())
             .padding(.top,10)

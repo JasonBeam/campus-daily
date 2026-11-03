@@ -2,7 +2,12 @@ import SwiftUI
 import WidgetKit
 import Core
 
-struct CampusEntry: TimelineEntry { let date: Date; let model: CampusWidgetModel }
+struct CampusEntry: TimelineEntry {
+    let date: Date
+    let model: CampusWidgetModel
+    /// The app's theme when the entry was made (the app reloads the timelines when it changes).
+    var theme = ThemePreference.shared()
+}
 struct CampusTimeline: TimelineProvider {
     /// The widget's own school read: the same stack as the app (card session → portal token →
     /// saved password once → needs login), writing the same shared snapshot, one process at a
@@ -95,10 +100,10 @@ struct CampusWidgetEntryView: View {
     let entry: CampusEntry
     @Environment(\.widgetFamily) private var family
     var body: some View {
-        CampusWidgetFace(model:entry.model, medium:family == .systemMedium)
+        CampusWidgetFace(model:entry.model, medium:family == .systemMedium, theme:entry.theme)
             .redacted(reason:entry.model.placeholder ? .placeholder : [])
             .privacySensitive()
-            .containerBackground(CampusWidgetPalette.group, for:.widget)
+            .containerBackground(CampusWidgetPalette.of(entry.theme).group, for:.widget)
             .widgetURL(entry.model.url)
     }
 }

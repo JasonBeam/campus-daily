@@ -6,15 +6,15 @@ The rules for working in this repo, for people and AI agents alike. The full des
 ## Layout
 
 - `App/Application/`: app entry and `AppEnvironment` (creates and wires the services). No feature logic.
-- `App/Interface/<Feature>/`: views and view models for Home, CampusCard, Shower, Laundry, Onboarding, Settings. A type goes in `Interface/Common/` only when two or more features use it.
+- `App/Interface/<Feature>/`: views and view models for Home, CampusCard, Shower, Laundry, Onboarding, Settings. A type goes in `Interface/Common/` only when two or more features use it. These are 暖橙's pages; 清爽's own page tree is in `Interface/Clear/`, and `CampusRootView` picks one by theme.
 - `App/Services/`: platform side effects (Bluetooth, school web login, background refresh, Alipay, Live Activities, App Intents, reminders).
-- `Shared/`: code compiled into both App and Widget (widget views, Live Activity views, and in `Theme/` only the formatting and shapes the widget needs; app colours and fonts stay in `App/Interface/Common/`).
+- `Shared/`: code compiled into both App and Widget (widget views, Live Activity views, and in `Theme/` only the formatting, shapes and colours the widget and Live Activities need, such as the 清爽 palette; the app's tokens and fonts stay in `App/Interface/Common/`).
 - `Packages/Core/`: all logic that can run without UI. It must not import SwiftUI, UIKit, WidgetKit, ActivityKit or CoreBluetooth. `Storage/` holds only generic Keychain and UserDefaults access; each feature keeps its own vault protocol and store in its folder.
 - Xcode uses synchronized folders, so adding a file needs no project edit. Identity and versions live in `Configuration/*.xcconfig`. Local signing goes in the untracked `Configuration/Developer.xcconfig`.
 
 ## Dependencies
 
-`App → Shared → Core`, `Widget → Shared → Core`. Inside Core, Campus, Shower and Laundry depend only on Networking, Storage and Common, never on each other. Snapshot reads Campus and Storage. Only Networking makes network requests. The widget reads the snapshot. It never drives the shower or laundry state machines.
+`App → Shared → Core`, `Widget → Shared → Core`. Inside Core, Campus, Shower and Laundry depend only on Networking, Storage and Common, never on each other. Snapshot reads Campus and Storage. Theme reads the Shower and Laundry states and Storage. Only Networking makes network requests. The widget reads the snapshot. It never drives the shower or laundry state machines.
 
 ## Code
 

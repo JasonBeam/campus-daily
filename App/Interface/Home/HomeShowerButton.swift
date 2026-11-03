@@ -3,6 +3,7 @@ import Core
 
 /// The big capsule under the update line, and its caption.
 struct HomeShowerButton: View {
+    @Environment(\.appTheme) private var appTheme
     enum Kind: Equatable {
         /// 「开始洗澡」; caption 「上次 11 分钟 · ¥1.32」 or the last start's problem.
         case start(caption: String?)
@@ -35,7 +36,7 @@ struct HomeShowerButton: View {
             if let caption {
                 Text(caption.text)
                     .scaledFont(13, relativeTo:.footnote)
-                    .foregroundStyle(caption.accent ? Theme.accentText : Theme.ink2)
+                    .foregroundStyle(caption.notice ? Theme.notice : Theme.ink2)
                     .multilineTextAlignment(.center)
                     // The school's own words can be long: two lines on home, the whole text
                     // on the shower page (and to VoiceOver, below).
@@ -64,7 +65,7 @@ struct HomeShowerButton: View {
                 Image(systemName:"drop.fill").font(.system(size:17))
                 Text("正在洗澡")
                 Text(timerInterval:start...Date.distantFuture, countsDown:false)
-                    .fontDesign(.rounded).monospacedDigit()
+                    .fontDesign(appTheme.numberDesign).monospacedDigit()
                 Image(systemName:"chevron.right").font(.system(size:14, weight:.semibold)).opacity(0.8)
             case .settling:
                 ProgressView().tint(Theme.ink2)
@@ -85,11 +86,11 @@ struct HomeShowerButton: View {
         .foregroundStyle(foreground)
         .padding(.horizontal,16)
         .frame(maxWidth:.infinity).frame(minHeight:64)
-        .background(background, in:Capsule())
-        .contentShape(Capsule())
+        .background(background, in:appTheme.buttonShape.shape)
+        .contentShape(appTheme.buttonShape.shape)
     }
 
-    private var foreground: Color {
+    private var foreground: ThemeColor {
         switch kind {
         case .showering: return Theme.accentInk
         case .starting, .settling: return Theme.ink2
@@ -97,7 +98,7 @@ struct HomeShowerButton: View {
         }
     }
 
-    private var background: Color {
+    private var background: ThemeColor {
         switch kind {
         case .showering: return Theme.accent
         case .starting, .settling: return Theme.fill
@@ -105,7 +106,7 @@ struct HomeShowerButton: View {
         }
     }
 
-    private var caption: (text: String, accent: Bool)? {
+    private var caption: (text: String, notice: Bool)? {
         switch kind {
         case .start(let caption?): return (caption, false)
         case .showering(_, let caption): return (caption, false)

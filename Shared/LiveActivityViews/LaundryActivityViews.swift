@@ -5,7 +5,7 @@ import ActivityKit
 /// Laundry Live Activity views: same visual system as the shower activity, no button.
 /// Compiled into the widget (the real activity) and the app (DEBUG preview only).
 enum LaundryActivityStyle {
-    static let accent = Color(red:1, green:138 / 255, blue:69 / 255) // #FF8A45
+    static var accent: Color { LiveActivityAccent.current }
     static let background = Color(white:0.07).opacity(0.82)
     static let glyph = "washer.fill"
     static func rounded(_ size: CGFloat) -> Font { .system(size:size, weight:.semibold, design:.rounded) }

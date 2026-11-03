@@ -3,6 +3,7 @@ import Core
 
 /// First-run guide, presented as a full-screen cover: 登录 → 学校洗衣机 → 宿舍 → 水控 → 好了.
 struct OnboardingView: View {
+    @Environment(\.appTheme) private var appTheme
     enum Step: Int, CaseIterable { case login, washer, dorm, water, done }
     /// Steps with a page dot (好了 has none).
     static let dotted = 4
@@ -24,7 +25,7 @@ struct OnboardingView: View {
                               ?? preview?.savePassword ?? false)
         _loginState = State(initialValue:preview?.loginState ?? .idle)
         _apartment = State(initialValue:preview?.picked)
-        _meterPick = State(initialValue:preview?.meterPicked)
+        _meterAsked = State(initialValue:DormStepMeterStatus.Asked(pick:preview?.meterPicked))
         _waterChecked = State(initialValue:preview?.waterOutcome != nil)
     }
     #else
@@ -36,7 +37,7 @@ struct OnboardingView: View {
         _savePassword = State(initialValue:false)
         _loginState = State(initialValue:.idle)
         _apartment = State(initialValue:nil)
-        _meterPick = State(initialValue:nil)
+        _meterAsked = State(initialValue:DormStepMeterStatus.Asked())
         _waterChecked = State(initialValue:false)
     }
     #endif
@@ -60,12 +61,8 @@ struct OnboardingView: View {
     @State private var issue: String?
     /// Same-name apartment picked on the dorm step (candidate id); confirmed by 「就是这间」.
     @State private var apartment: String?
-    /// The meter question last asked on the dorm step, kept once a row is bound so another
-    /// pick binds that one instead; its lookup's person stamp.
-    @State private var meterAsked: MeterQuestion?
-    @State private var meterAskedStamp = -1
-    /// The row of `meterAsked` picked (bound at once).
-    @State private var meterPick: String?
+    /// The meter question last asked on the dorm step and the row picked (kept across the step).
+    @State private var meterAsked: DormStepMeterStatus.Asked
     /// An apartment that halted before its rooms, tapped: the meter page opens where it halted.
     @State private var meterHalted: MeterWalkStop?
     @State private var meterPage = false
@@ -194,7 +191,7 @@ struct OnboardingView: View {
                     .padding(.top,10)
             }
             if step == .dorm, !choosingApartment, let dorm {
-                Text(dorm).font(.system(size:40, weight:.semibold, design:.rounded)).foregroundStyle(Theme.ink)
+                Text(dorm).font(.system(size:40, weight:.semibold, design:appTheme.numberDesign)).foregroundStyle(Theme.ink)
                     .minimumScaleFactor(0.6).lineLimit(1)
                     .padding(.top,28)
                 // The full location only when the electricity directory gave one: it is what
@@ -206,10 +203,13 @@ struct OnboardingView: View {
                 }
                 Text(Self.dormSource).scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
                     .padding(.top,6)
-                    .onChange(of:campus.dormStepMeter, initial:true) { _, now in keepQuestion(now) }
-                meterStatus
+                DormStepMeterStatus(asked:$meterAsked, preview:previewMeter, previewing:previewing) { halted in
+                    meterHalted = halted; meterPage = true
+                }
             }
-            if step == .water { waterStatus.padding(.top,28) }
+            if step == .water {
+                ControllerCheckStatus(blocked:waterBlocked, checking:waterChecking, outcome:waterOutcome).padding(.top,28)
+            }
             if step == .login {
                 SchoolLoginForm(account:$account, password:$password, savePassword:$savePassword,
                                 state:loginState, focus:$loginFocus, submit:submitLogin)
@@ -278,43 +278,6 @@ struct OnboardingView: View {
         return lastInspection
     }
 
-    /// 28 pt under the body: nothing before the first check, a spinner while it runs, then
-    /// what it found (errors in the login's error style).
-    @ViewBuilder private var waterStatus: some View {
-        if let waterBlocked, !waterChecking {
-            Label { Text(waterBlocked).scaledFont(15, relativeTo:.subheadline) }
-                icon: { Image(systemName:"info.circle").font(.system(size:17)) }
-                .foregroundStyle(Theme.accentText)
-                .fixedSize(horizontal:false, vertical:true)
-        } else if waterChecking {
-            HStack(spacing:10) {
-                ProgressView().tint(Theme.ink2).frame(width:20, height:20)
-                Text("正在找水控…").scaledFont(17, .medium).foregroundStyle(Theme.ink2)
-            }
-        } else if let outcome = waterOutcome {
-            if outcome == .verified {
-                Label { Text(ShowerModel.inspectionVerifiedText).scaledFont(17, .medium).foregroundStyle(Theme.ink) }
-                    icon: { Image(systemName:"checkmark.circle.fill").font(.system(size:22)).foregroundStyle(Theme.accentText) }
-            } else {
-                Label { Text(Self.waterText(outcome)).scaledFont(15, relativeTo:.subheadline) }
-                    icon: { Image(systemName:"exclamationmark.circle.fill").font(.system(size:17)) }
-                    .foregroundStyle(Theme.accentText)
-                    .fixedSize(horizontal:false, vertical:true)
-            }
-        }
-    }
-
-    static func waterText(_ outcome: ShowerModel.InspectionOutcome) -> String {
-        switch outcome {
-        case .verified: return ShowerModel.inspectionVerifiedText
-        case .notFound: return "没找到水控，走近一点再试。"
-        case .bluetoothOff: return ShowerPageText.bluetoothOff
-        case .inUse: return ShowerModel.inspectionBusyText
-        case .otherMachine: return "附近的水控不是你宿舍的那台。"
-        case .failed(let text): return text
-        }
-    }
-
     /// Upstream 0.8.0-beta.2: the school directory can list two buildings with the same name.
     /// Automatic meter matching then needs the student to pick the right one once, by its
     /// full location (shared single-select list; 「就是这间」 confirms).
@@ -333,83 +296,6 @@ struct OnboardingView: View {
                     .scaledFont(17, .medium).foregroundStyle(Theme.accentText)
                     .frame(minHeight:44).disabled(campus.matchingPower)
             }
-        }
-    }
-
-    // MARK: Meter under the dorm
-
-    /// What the meter lookup shows under the dorm: still looking, the apartment question (kept
-    /// after a pick), or the school too slow. Nothing for a match or a plain stop.
-    private var meterLine: DormStepMeter {
-        if let previewMeter { return previewMeter }
-        let now = campus.dormStepMeter
-        if now == .hidden, campus.powerConfigured, meterPick != nil, let meterAsked { return .ask(meterAsked) }
-        return now
-    }
-
-    private func keepQuestion(_ now: DormStepMeter) {
-        guard !previewing, case .ask(let question) = now else { return }
-        if question != meterAsked { meterPick = nil }
-        meterAsked = question
-        meterAskedStamp = campus.powerQuestionStamp
-    }
-
-    @ViewBuilder private var meterStatus: some View {
-        switch meterLine {
-        case .hidden: EmptyView()
-        case .finding:
-            HStack(spacing:8) {
-                ProgressView().controlSize(.mini).tint(Theme.ink2).frame(width:12, height:12)
-                Text(MeterPageText.finding).scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
-            }
-            .padding(.top,18)
-        case .ask(let question):
-            VStack(alignment:.leading, spacing:0) {
-                Text(question.text).scaledFont(17, .semibold).foregroundStyle(Theme.ink)
-                    .fixedSize(horizontal:false, vertical:true)
-                    .accessibilityAddTraits(.isHeader)
-                LocationChoiceList(choices:question.rows.map { LocationChoice(id:$0.id, title:$0.title, location:$0.location, voice:$0.spoken, opens:$0.picker != nil) },
-                                   selection:Binding(get:{ meterPick }, set:{ id in pickMeter(id, in:question) }), compact:true)
-                    .padding(.top,10)
-                    .sensoryFeedback(.selection, trigger:meterPick)
-                if !previewing, let issue = campus.powerMatchIssue, issue != MeterPageText.stoppedIssue {
-                    Text(MeterPageText.issue(issue)).scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
-                        .fixedSize(horizontal:false, vertical:true).padding(.top,8)
-                }
-            }
-            .padding(.top,28)
-        case .failed(let text):
-            VStack(alignment:.leading, spacing:0) {
-                Text(text).scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.ink2)
-                    .fixedSize(horizontal:false, vertical:true)
-                Button(DormStepMeter.retry) { if !previewing { campus.matchPowerAutomatically() } }
-                    .scaledFont(15, .semibold, relativeTo:.subheadline).foregroundStyle(Theme.accentText)
-                    // 44 pt to tap; the text sits 8 pt under the line above and the note 6 pt under it.
-                    .frame(minHeight:44)
-                    .padding(.vertical,-12).padding(.top,8)
-                Text(DormStepMeter.skipNote).scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink3)
-                    .fixedSize(horizontal:false, vertical:true)
-                    .padding(.top,6)
-            }
-            .padding(.top,18)
-        }
-    }
-
-    /// A row of the question picked: bound at once (another pick binds that one instead).
-    private func pickMeter(_ id: String?, in question: MeterQuestion) {
-        guard let id, let row = question.rows.first(where:{ $0.id == id }) else { return }
-        if let halted = row.picker {
-            // Opens in the demos too: the page shows the stop as given.
-            meterHalted = halted; meterPage = true
-            return
-        }
-        guard let candidate = row.candidate else { return }
-        let before = meterPick
-        meterPick = id
-        guard !previewing else { return }
-        let stamp = meterAskedStamp
-        Task {
-            if !(await campus.choosePower(PowerChoice(candidate:candidate, stamp:stamp))), meterPick == id { meterPick = before }
         }
     }
 
@@ -454,7 +340,7 @@ struct OnboardingView: View {
                     .lineLimit(2).minimumScaleFactor(0.8).multilineTextAlignment(.center)
                     .padding(.horizontal,20).padding(.vertical,8)
                     .frame(maxWidth:.infinity, minHeight:keyboardUp ? 52 : 60)
-                    .background(primaryDimmed ? Theme.fill : Theme.pill, in:Capsule())
+                    .background(primaryDimmed ? Theme.fill : Theme.pill, in:appTheme.buttonShape.shape)
                     .contentTransition(reduceMotion ? .opacity : .interpolate)
             }
             .buttonStyle(PressScaleStyle())
@@ -528,7 +414,7 @@ struct OnboardingView: View {
         return waitingForApartment
     }
 
-    private var primaryInk: Color {
+    private var primaryInk: ThemeColor {
         guard primaryDimmed else { return Theme.pillInk }
         return step == .login && !loggingIn || waitingForApartment ? Theme.ink3 : Theme.ink2
     }

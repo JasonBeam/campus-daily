@@ -40,7 +40,7 @@ extension HomeView {
 
     func dateBlock(_ data: HomeData) -> some View {
         VStack(spacing:2) {
-            Text(dateTitle).scaledFont(24, .semibold, design:.serif, relativeTo:.title2).foregroundStyle(Theme.ink)
+            Text(dateTitle).scaledFont(appTheme.titleFont.size, appTheme.titleFont.weight, design:appTheme.titleFont.design, relativeTo:.title2).foregroundStyle(Theme.ink)
             Text([SchoolCalendar.weekday(Date()), data.dorm].compactMap { $0 }.joined(separator:" · "))
                 .scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
         }
@@ -252,7 +252,7 @@ extension HomeView {
 
     @ViewBuilder var gear: some View {
         let button = Button { settings = true } label: {
-            Image(systemName:"gearshape").font(.system(size:17, weight:.medium)).foregroundStyle(Theme.ink)
+            Image(systemName:"gearshape").font(.system(size:17, weight:.medium)).foregroundStyle(Theme.ink.color(appTheme))
         }.accessibilityLabel("设置")
         if #available(iOS 26, *) {
             button

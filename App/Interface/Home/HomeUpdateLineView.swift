@@ -38,7 +38,7 @@ struct HomeUpdateLineView: View {
             Image(systemName:"exclamationmark.circle.fill").accessibilityHidden(true)
             Text(text).fixedSize(horizontal:false, vertical:true)
         }
-        .scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.accentText)
+        .scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.notice)
         .accessibilityElement(children:.combine)
     }
 }

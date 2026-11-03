@@ -172,19 +172,37 @@ public enum AppReset {
         public var errorDescription: String? { "重置没做完，有些东西没清掉。再试一次。" }
     }
 
+    /// The preferences the app shares with its extensions (the App Group's suite, `domain`), and
+    /// the lock their changes take (`SharedLock`). nil where there is no group: the app's own
+    /// domain holds everything then.
+    public struct SharedPreferences {
+        public var defaults: UserDefaults
+        public var domain: String
+        public var lock: any SharedLock
+
+        public init(defaults: UserDefaults, domain: String, lock: any SharedLock) {
+            self.defaults = defaults; self.domain = domain; self.lock = lock
+        }
+    }
+
     /// Deletes everything; keeps going after a failure and reports what could not be deleted.
     /// The reset marker is deleted last, only when everything else went (`run` removes it after
     /// a failure).
     /// `preferencesDomain` is the app's own preferences domain (its bundle id; a suite name in
     /// tests): the whole domain goes, so a preference added later, `xrc.`-named or not, is
-    /// cleared without being listed.
-    public static func clear(store: SecureStore, preferences: UserDefaults, preferencesDomain: String, files: [URL],
-                             fileManager: FileManager = .default) throws {
+    /// cleared without being listed. `shared`: the App Group's whole domain goes too (the theme),
+    /// inside its lock.
+    public static func clear(store: SecureStore, preferences: UserDefaults, preferencesDomain: String,
+                             shared: SharedPreferences?, files: [URL], fileManager: FileManager = .default) throws {
         var failed: [String] = []
         for key in keychainItems where key != .sharedResetMarker {
             do { try store.delete(key) } catch { failed.append(key.rawValue) }
         }
         preferences.removePersistentDomain(forName: preferencesDomain)
+        if let shared {
+            do { try shared.lock.locked { shared.defaults.removePersistentDomain(forName: shared.domain) } }
+            catch { failed.append("preferences.shared") }
+        }
         for url in files where fileManager.fileExists(atPath: url.path) {
             do { try fileManager.removeItem(at: url) } catch { failed.append(url.lastPathComponent) }
         }

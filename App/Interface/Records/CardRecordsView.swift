@@ -123,7 +123,7 @@ struct CardRecordsView: View {
             Image(systemName:"exclamationmark.circle.fill").accessibilityHidden(true)
             Text("没读到记录，下拉再试。").fixedSize(horizontal:false, vertical:true)
         }
-        .scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.accentText)
+        .scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.notice)
         .accessibilityElement(children:.combine)
         .padding(.horizontal,24).padding(.top,16)
         .accessibilityIdentifier("recordsFailed")

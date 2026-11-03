@@ -5,7 +5,7 @@ import Core
 enum RowValue: Equatable {
     case number(String, unit: String?, low: Bool)
     case word(String)
-    /// Needs attention but isn't "running out": accentText.
+    /// Needs attention but isn't "running out": `notice`.
     case accentWord(String)
     /// Laundry running: 「还剩」 + minutes + 「分钟」, same anatomy as 电量. Ticks each minute.
     case countdown(end: Date)
@@ -24,6 +24,7 @@ enum RowMetrics { static let iconColumn: CGFloat = 28 }
 
 /// Home status row: icon · title/subtitle · value. Min height 66.
 struct StatusRow: View {
+    @Environment(\.appTheme) private var appTheme
     /// SF Symbol name (`RowIcon`).
     let symbol: String
     let title: String
@@ -62,7 +63,7 @@ struct StatusRow: View {
         switch value {
         case .number(let number, let unit, let low)?:
             HStack(alignment:.firstTextBaseline, spacing:3) {
-                Text(number).scaledFont(24, .semibold, design:.rounded, relativeTo:.title2).monospacedDigit().tracking(-0.2)
+                Text(number).scaledFont(24, .semibold, design:appTheme.numberDesign, relativeTo:.title2).monospacedDigit().tracking(-0.2)
                     .foregroundStyle(low ? Theme.redLarge : Theme.ink)
                     .contentTransition(.numericText())
                     .minimumScaleFactor(0.7)
@@ -71,13 +72,13 @@ struct StatusRow: View {
         case .word(let word)?:
             Text(word).scaledFont(17, .medium).foregroundStyle(Theme.ink2)
         case .accentWord(let word)?:
-            Text(word).scaledFont(17, .medium).foregroundStyle(Theme.accentText)
+            Text(word).scaledFont(17, .medium).foregroundStyle(Theme.notice)
         case .countdown(let end)?:
             TimelineView(minuteSchedule(to:end)) { context in
                 HStack(alignment:.firstTextBaseline, spacing:0) {
                     Text("还剩").scaledFont(17, .medium).foregroundStyle(Theme.ink2).padding(.trailing,4)
                     Text("\(LaundryFormat.minutesLeft(until:end, now:context.date))")
-                        .scaledFont(24, .semibold, design:.rounded, relativeTo:.title2).monospacedDigit().tracking(-0.2)
+                        .scaledFont(24, .semibold, design:appTheme.numberDesign, relativeTo:.title2).monospacedDigit().tracking(-0.2)
                         .foregroundStyle(Theme.ink)
                         .contentTransition(.numericText(countsDown:true))
                         .padding(.trailing,3)
@@ -85,7 +86,7 @@ struct StatusRow: View {
                 }.lineLimit(1).minimumScaleFactor(0.7)
             }
         case .amount(let text)?:
-            Text(text).scaledFont(20, .semibold, design:.rounded, relativeTo:.title3).monospacedDigit()
+            Text(text).scaledFont(20, .semibold, design:appTheme.numberDesign, relativeTo:.title3).monospacedDigit()
                 .foregroundStyle(Theme.ink).lineLimit(1).minimumScaleFactor(0.7)
         case .dash?:
             Text("—").scaledFont(17, .medium).foregroundStyle(Theme.ink3)
@@ -98,7 +99,7 @@ struct StatusRow: View {
 /// 「最近」 row: min height 56, icon 20, 16pt text.
 struct RecentRow: View {
     let item: RecentItem
-    /// Replaces the amount with an accentText word (laundry 「待核对」).
+    /// Replaces the amount with a `notice` word (laundry 「待核对」).
     var accentWord: String? = nil
     /// Under a day header (校园卡记录): the time alone, 「12:05 · 示例面馆」.
     var clockOnly = false
@@ -130,7 +131,7 @@ struct RecentRow: View {
     }
     @ViewBuilder private var amountView: some View {
         if let accentWord {
-            Text(accentWord).scaledFont(17, .medium).foregroundStyle(Theme.accentText)
+            Text(accentWord).scaledFont(17, .medium).foregroundStyle(Theme.notice)
         } else if let amount = item.amountText {
             Text(amount).scaledFont(16, .medium, relativeTo:.callout).monospacedDigit().foregroundStyle(Theme.ink)
                 .lineLimit(1).minimumScaleFactor(0.7)
@@ -174,6 +175,7 @@ struct PulseDot: View {
 
 /// Bottom-dock pill label (60pt min height, grows with text; label capped at AX2 so it stays one line).
 struct DockPillLabel: View {
+    @Environment(\.appTheme) private var appTheme
     enum Style { case primary, busy, disabled, destructive }
     let title: String
     var symbol: String? = nil
@@ -189,18 +191,18 @@ struct DockPillLabel: View {
         .foregroundStyle(foreground)
         .padding(.horizontal,16)
         .frame(maxWidth:.infinity).frame(minHeight:60)
-        .background(background, in:Capsule())
-        .contentShape(Capsule())
+        .background(background, in:appTheme.buttonShape.shape)
+        .contentShape(appTheme.buttonShape.shape)
     }
-    private var foreground: Color {
+    private var foreground: ThemeColor {
         switch style {
         case .primary: return Theme.pillInk
         case .busy: return Theme.ink2
         case .disabled: return Theme.ink3
-        case .destructive: return .white
+        case .destructive: return .fixed(.white)
         }
     }
-    private var background: Color {
+    private var background: ThemeColor {
         switch style {
         case .primary: return Theme.pill
         case .busy, .disabled: return Theme.fill

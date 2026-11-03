@@ -6,10 +6,12 @@ enum HomeRoute: Hashable { case power, powerSetup, card, shower, laundry, washer
 
 /// Single home screen: date · the two numbers · update line · shower button · 洗衣 · 最近.
 struct HomeView: View {
+    @Environment(\.appTheme) var appTheme
     @EnvironmentObject var shower: ShowerModel
     @EnvironmentObject var campus: CampusModel
     @EnvironmentObject var laundry: LaundryModel
     @Environment(\.scenePhase) var phase
+    @Environment(ThemeStore.self) var themeStore
     @Environment(\.accessibilityReduceMotion) var reduceMotion
     @Environment(\.dynamicTypeSize) var typeSize
     @State var path: [HomeRoute] = []
@@ -39,7 +41,6 @@ struct HomeView: View {
     @State var successTick = 0
     @State var errorTick = 0
     @ObservedObject var reminders = Reminders.shared
-    @ObservedObject var resetter = AppResetter.shared
     @AppStorage("didSeeQuickSetup") var didSeeQuickSetup = false
     /// Last laundry order whose done panel was shown (once per order).
     @AppStorage("laundryDoneShownOrder") var laundryDoneShown = ""
@@ -220,37 +221,10 @@ struct HomeView: View {
             WidgetPreview(page:page.number).onTapGesture { widgetPreview = nil }.onOpenURL { handleDemo($0) }
         }
         #endif
-        .task {
-            #if DEBUG
-            if demo != nil { return }
-            #endif
-            // A reset the app was killed in: finished now (then the guide opens), or not, and why.
-            await resetter.resumeIfInterrupted(campus:campus, shower:shower, laundry:laundry)
-            if resetter.completed > 0 { return }
-            if !didSeeQuickSetup && !campus.configured && !shower.configured && !laundry.configured { openOnboarding() }
-        }
-        .alert(ResetLockText.blockedTitle(resetter.resumeStopped), isPresented:Binding(get:{ resetter.resumeStopped != nil },
-                                                               set:{ if !$0 { resetter.resumeStopped = nil } })) {
-            Button("好", role:.cancel) {}
-        } message: {
-            Text(resetter.resumeStopped.map(ResetLockText.blockedMessage) ?? "")
-        }
-        .alert(resetter.resumeFailed ?? "", isPresented:Binding(get:{ resetter.resumeFailed != nil },
-                                                                set:{ if !$0 { resetter.resumeFailed = nil } })) {
-            Button("好", role:.cancel) {}
-        }
+        .modifier(CampusRootHooks(demo:isDemo, root:.warm, firstRun:openOnboarding, afterReset:afterReset))
         // 校园卡记录 shows one person's records: it closes when they sign out or someone else signs in.
         .onChange(of:campus.personChanges) { _, _ in
             if let index = path.firstIndex(of:.records) { path.removeSubrange(index...) }
-        }
-        .onChange(of:phase) { _, value in
-            // The order is read by the app scene on the same event (back from Alipay).
-            if value == .active { Task { await campus.refresh(); await laundry.refresh() } }
-        }
-        .onChange(of:shower.state.phase) { old, value in
-            // The result is on the shower page; the balance it was taken from is read again.
-            guard old != .done, value == .done else { return }
-            Task { await campus.refresh(force:true) }
         }
         .onChange(of:shower.page.presented, initial:true) { _, up in followShowerPage(up) }
         .onChange(of:shower.page.page?.phase) { _, _ in followShowerPage(shower.page.presented) }
@@ -260,38 +234,44 @@ struct HomeView: View {
             shower.reviewRequested = false
             open([.shower])
         }
-        .onChange(of:resetter.completed) { _, _ in afterReset() }
         .onChange(of:data.laundryDone, initial:true) { _, done in presentLaundryDone(done) }
         // A done panel that arrived while another panel was up is shown once that one closes.
         .onChange(of:panel == nil) { _, clear in if clear { presentLaundryDone(data.laundryDone) } }
-        .modifier(ReminderHooks(open:follow, homeClear:homeClear))
+        .modifier(ReminderHooks(open:{ follow($0 == .laundry ? [.laundry] : []) }, homeClear:homeClear))
         .onOpenURL { url in
-            // Widget tap: campusdaily://home back to the home screen; campusdaily://login (login
-            // expired, never signed in) straight to the login step; campusdaily://settings/account
-            // (automatic login held off) to Settings › 学校账号. Any app can open these, so they
-            // never close a top-up page or a laundry order being paid.
-            if url.scheme == "campusdaily", ["home", "login", "settings"].contains(url.host ?? ""), !mayClosePages {
-                return
-            }
-            // Newer than pages still waiting for the settings sheet to close: those are dropped.
-            if url.scheme == "campusdaily", ["home", "login", "settings"].contains(url.host ?? "") { pathAfterSettings = nil }
-            if url.scheme == "campusdaily", url.host == "home" { settings = false; path = []; return }
-            // A paused automatic login (widget): Settings › 学校账号, where the pause is explained.
-            if url.scheme == "campusdaily", url.host == "settings", url.path == "/account" {
-                path = []; campus.accountPageRequested = true; settings = true
-                return
-            }
-            if url.scheme == "campusdaily", url.host == "login" {
-                let sheetUp = settings
-                settings = false; path = []
-                // As after a reset: let the settings sheet go first, or the cover is not presented.
-                Task { if sheetUp { try? await Task.sleep(for:.milliseconds(600)) }; openOnboarding() }
-                return
+            if let link = RootLink(url) {
+                // Never closes a top-up page or a laundry order being paid.
+                guard mayClosePages else { return }
+                // Newer than pages still waiting for the settings sheet to close: those are dropped.
+                pathAfterSettings = nil
+                switch link {
+                case .home: settings = false; path = []; return
+                // A paused automatic login (widget): Settings › 学校账号, where the pause is explained.
+                case .settings(account:true):
+                    path = []; campus.accountPageRequested = true; settings = true
+                    return
+                case .login:
+                    let sheetUp = settings
+                    settings = false; path = []
+                    // As after a reset: let the settings sheet go first, or the cover is not presented.
+                    Task { if sheetUp { try? await Task.sleep(for:.milliseconds(600)) }; openOnboarding() }
+                    return
+                case .settings(account:false): break
+                }
             }
             #if DEBUG
             handleDemo(url)
             #endif
         }
+    }
+
+    /// DEBUG demo data is on screen (never in Release).
+    var isDemo: Bool {
+        #if DEBUG
+        demo != nil
+        #else
+        false
+        #endif
     }
 
     // MARK: Actions

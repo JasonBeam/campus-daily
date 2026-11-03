@@ -111,6 +111,7 @@ enum ShowerPageText {
 /// The full-screen shower page: connect → water → settle → result, and the three failures,
 /// in one view that changes in place.
 struct ShowerPageView: View {
+    @Environment(\.appTheme) private var appTheme
     @EnvironmentObject private var shower: ShowerModel
     let room: String
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -237,7 +238,7 @@ struct ShowerPageView: View {
                 Text(ShowerPageText.doneLabel).scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.ink2).padding(.top,10)
                 if let amount = page?.amount {
                     // Only the platform's amount is ever shown.
-                    Text("¥" + amount.yuanText).scaledFont(64, .semibold, design:.rounded, relativeTo:.largeTitle, cap:96)
+                    Text("¥" + amount.yuanText).scaledFont(64, .semibold, design:appTheme.numberDesign, relativeTo:.largeTitle, cap:96)
                         .monospacedDigit().tracking(-2).foregroundStyle(Theme.ink)
                         .lineLimit(1).minimumScaleFactor(0.6).padding(.top,4)
                         .accessibilityLabel("这次 \(amount.yuanText) 元")
@@ -257,7 +258,7 @@ struct ShowerPageView: View {
                     bodyText(ShowerPageText.deniedBody)
                 }
             case .unsure:
-                icon("questionmark.circle", Theme.accentText)
+                icon("questionmark.circle", Theme.notice)
                 if let copy = page?.authorizeUnclear {
                     // Nothing reached the controller: no settlement to talk about.
                     title(copy.title)
@@ -270,7 +271,7 @@ struct ShowerPageView: View {
                 if flow.showsRecheck { ShowerRecheckRow().padding(.top,18) }
                 if flow.mayRetrySettle { ShowerSettleRetryRow().padding(.top,18) }
             case .needsCheck:
-                icon("questionmark.circle", Theme.accentText)
+                icon("questionmark.circle", Theme.notice)
                 title(ShowerPageText.check)
                 bodyText(ShowerPageText.checkBody)
                 ShowerRecheckRow().padding(.top,18)
@@ -295,7 +296,7 @@ struct ShowerPageView: View {
     @ViewBuilder private func timer(_ start: Date?) -> some View {
         let start = start ?? Date()
         Text(timerInterval:start...Date.distantFuture, countsDown:false)
-            .scaledFont(88, .semibold, design:.rounded, relativeTo:.largeTitle, cap:112)
+            .scaledFont(88, .semibold, design:appTheme.numberDesign, relativeTo:.largeTitle, cap:112)
             .monospacedDigit().tracking(-3).foregroundStyle(Theme.ink)
             .lineLimit(1).minimumScaleFactor(0.5)
             .accessibilityHidden(true)
@@ -308,7 +309,7 @@ struct ShowerPageView: View {
             }
     }
 
-    private func icon(_ symbol: String, _ color: Color) -> some View {
+    private func icon(_ symbol: String, _ color: ThemeColor) -> some View {
         Image(systemName:symbol).font(.system(size:30, weight:.regular)).foregroundStyle(color)
             .frame(height:34).padding(.bottom,18).accessibilityHidden(true)
     }
@@ -342,13 +343,15 @@ struct ShowerPageView: View {
                             .multilineTextAlignment(.leading)
                             .fixedSize(horizontal:false, vertical:true)
                     }
-                    .foregroundStyle(Theme.accentText)
+                    .foregroundStyle(Theme.notice)
                     // From the capsule's left edge across its width, 12 pt above it.
                     .frame(maxWidth:.infinity, alignment:.leading)
                     .padding(.bottom,6)
                     .accessibilityElement(children:.combine)
                 }
-                capsule("结束并结算", background:Theme.accent, ink:scheme == .dark ? Color(white:0.07) : .white,
+                // 清爽's accent is the same blue in dark mode: white on it in both.
+                capsule("结束并结算", background:Theme.accent,
+                        ink:appTheme == .clear ? Theme.accentInk : .fixed(scheme == .dark ? Color(white:0.07) : .white),
                         enabled:flow.mayEnd && !shower.platformMissing) { shower.pageEvent(.endTapped) }
                 // The end-failed line takes its place while shown.
                 if flow.endFailed == nil && !shower.platformMissing {
@@ -361,7 +364,7 @@ struct ShowerPageView: View {
                     Text(ShowerPageText.settling).scaledFont(17, .semibold, relativeTo:.headline).foregroundStyle(Theme.ink2)
                 }
                 .frame(maxWidth:.infinity).frame(minHeight:60)
-                .background(Theme.fill, in:Capsule())
+                .background(Theme.fill, in:appTheme.buttonShape.shape)
                 .accessibilityElement(children:.combine)
             case .done:
                 capsule("好", background:Theme.pill, ink:Theme.pillInk) { shower.pageEvent(.closeTapped) }
@@ -386,12 +389,12 @@ struct ShowerPageView: View {
     }
 
     /// Disabled: the app's standard disabled pill (fill + ink3), as on the login button.
-    private func capsule(_ label: String, background: Color, ink: Color, enabled: Bool = true,
+    private func capsule(_ label: String, background: ThemeColor, ink: ThemeColor, enabled: Bool = true,
                          action: @escaping () -> Void) -> some View {
         Button(action:action) {
             Text(label).scaledFont(18, .semibold, relativeTo:.headline).foregroundStyle(enabled ? ink : Theme.ink3)
                 .frame(maxWidth:.infinity).frame(minHeight:60)
-                .background(enabled ? background : Theme.fill, in:Capsule())
+                .background(enabled ? background : Theme.fill, in:appTheme.buttonShape.shape)
         }
         .buttonStyle(PressScaleStyle())
         .disabled(!enabled)
@@ -439,7 +442,7 @@ private struct StepBar: View {
         .accessibilityLabel("第 \(number) 步，共 3 步，\(ShowerPageText.steps[min(max(number - 1, 0), 2)])")
     }
 
-    private func bar(_ mark: ShowerStepMark) -> Color {
+    private func bar(_ mark: ShowerStepMark) -> ThemeColor {
         switch mark {
         case .done: return Theme.ink
         case .current: return Theme.accent
@@ -448,7 +451,7 @@ private struct StepBar: View {
         }
     }
 
-    private func label(_ mark: ShowerStepMark) -> Color {
+    private func label(_ mark: ShowerStepMark) -> ThemeColor {
         switch mark {
         case .done: return Theme.ink2
         case .current, .failed: return Theme.ink

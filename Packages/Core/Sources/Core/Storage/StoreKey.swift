@@ -81,4 +81,6 @@ public enum PreferenceKey {
     public static let schoolLaundry = prefix + "laundry.school"
     /// When the next U净 SMS code may be asked for (a time only; one account at a time).
     public static let ujingSMSCooldown = prefix + "ujing.smsCooldown"
+    /// String, `AppTheme` raw value, in the App Group's preferences (`ThemePreference`).
+    public static let theme = prefix + "theme"
 }

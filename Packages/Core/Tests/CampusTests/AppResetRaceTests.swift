@@ -21,7 +21,7 @@ final class AppResetRaceTests: XCTestCase {
             marker: ResetMarker(store: h.store), now: Date(),
             lock: { nil },
             signOut: { try? await session.signOut(); try? await refresher.clear() },
-            clear: { try AppReset.clear(store: h.store, preferences: defaults, preferencesDomain: suite, files: []) },
+            clear: { try AppReset.clear(store: h.store, preferences: defaults, preferencesDomain: suite, shared: nil, files: []) },
             reload: {})
         XCTAssertNil(stopped)
         hold.release.signal()

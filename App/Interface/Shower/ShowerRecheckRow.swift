@@ -35,7 +35,7 @@ struct ShowerRecheckRow: View {
                         Text(ShowerPageText.recheckResult(result)).scaledFont(15, relativeTo:.subheadline)
                             .fixedSize(horizontal:false, vertical:true)
                     }
-                    .foregroundStyle(Theme.accentText)
+                    .foregroundStyle(Theme.notice)
                     .accessibilityElement(children:.combine)
                 }
             }

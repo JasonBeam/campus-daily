@@ -33,7 +33,7 @@ struct CampusPowerSetupView: View {
                 AutomaticPowerSection(onMeterPage:true)
                 pathCard
                 if busy { Text("正在读取电表信息…").foregroundStyle(.secondary).listRowBackground(Theme.group) }
-                if let issue { Text(issue).foregroundStyle(.orange).font(.footnote).listRowBackground(Theme.group) }
+                if let issue { Text(issue).foregroundStyle(NativeTheme.notice).font(.footnote).listRowBackground(Theme.group) }
                 if meters.isEmpty, atStop, let question = campus.powerQuestion {
                     // Rooms of the dorm's name in several apartments: which one. A tap binds it.
                     Section {

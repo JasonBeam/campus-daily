@@ -101,7 +101,7 @@ struct AccountView: View {
                 if signedIn && paused {
                     // Not red: red only means something is running out.
                     LabeledContent("状态") {
-                        Text(AccountText.paused).scaledFont(16, .medium).foregroundStyle(Theme.accentText)
+                        Text(AccountText.paused).scaledFont(16, .medium).foregroundStyle(Theme.notice)
                     }
                     .accessibilityIdentifier("accountStatusPaused")
                 } else {
@@ -134,7 +134,7 @@ struct AccountView: View {
                 } footer: {
                     VStack(alignment:.leading, spacing:6) {
                         if let saveIssue {
-                            Label(saveIssue, systemImage:"exclamationmark.circle.fill").foregroundStyle(Theme.accentText)
+                            Label(saveIssue, systemImage:"exclamationmark.circle.fill").foregroundStyle(Theme.notice)
                                 .accessibilityIdentifier("savePasswordIssue")
                         }
                         Text(AccountText.footer(autoLogin))

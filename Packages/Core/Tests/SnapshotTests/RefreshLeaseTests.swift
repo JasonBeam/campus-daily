@@ -434,3 +434,31 @@ final class LeaseRenewRaceTests: XCTestCase {
         XCTAssertTrue(widget.acquire())
     }
 }
+
+/// The lease file's lock as the shared-state lock (`SharedLock`): a theme write runs while the
+/// widget's process could not take the file's lock.
+final class RefreshLeaseSharedLockTests: XCTestCase {
+    private final class Preferences: PreferenceStorage {
+        var values: [String: Any] = [:]
+        var widgetCouldTakeTheLock: [Bool] = []
+        let widget: RefreshLease
+        init(widget: RefreshLease) { self.widget = widget }
+        func object(forKey key: String) -> Any? { values[key] }
+        func set(_ value: Any?, forKey key: String) {
+            widgetCouldTakeTheLock.append(widget.tryAcquire())
+            values[key] = value
+        }
+    }
+
+    func testThemeWrittenInsideTheLeaseFilesLock() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("theme-lease-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let app = RefreshLease(file: LeaseFile(url: url), owner: "app-1")
+        let widget = RefreshLease(file: LeaseFile(url: url), owner: "widget-1")
+        let storage = Preferences(widget: widget)
+        try ThemePreference(storage: storage).set(.clear, under: app)
+        XCTAssertEqual(storage.widgetCouldTakeTheLock, [false])
+        XCTAssertEqual(ThemePreference(storage: storage).theme, .clear)
+        XCTAssertTrue(widget.tryAcquire(), "free again after the write, the lease itself untouched")
+    }
+}

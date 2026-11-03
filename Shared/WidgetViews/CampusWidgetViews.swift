@@ -90,30 +90,14 @@ struct CampusWidgetModel: Sendable {
     }
 }
 
-/// Theme tokens for the widget, which has no asset catalog (values from App/Resources/Assets.xcassets/Theme).
-enum CampusWidgetPalette {
-    private static func dynamic(_ light: (CGFloat, CGFloat, CGFloat, CGFloat), _ dark: (CGFloat, CGFloat, CGFloat, CGFloat)) -> Color {
-        Color(UIColor { traits in
-            let c = traits.userInterfaceStyle == .dark ? dark : light
-            return UIColor(red:c.0, green:c.1, blue:c.2, alpha:c.3)
-        })
-    }
-    static let group = dynamic((1, 1, 1, 1), (0.110, 0.110, 0.118, 1))
-    static let ink = dynamic((0.067, 0.067, 0.067, 1), (0.961, 0.961, 0.961, 1))
-    static let ink2 = dynamic((0.431, 0.431, 0.431, 1), (0.549, 0.549, 0.549, 1))
-    static let ink3 = dynamic((0.769, 0.769, 0.769, 1), (0.290, 0.290, 0.290, 1))
-    static let separator = dynamic((0, 0, 0, 0.08), (1, 1, 1, 0.09))
-    static let accent = dynamic((0.949, 0.376, 0.047, 1), (1, 0.478, 0.180, 1))
-    static let accentText = dynamic((0.761, 0.278, 0.039, 1), (1, 0.541, 0.271, 1))
-    static let redLarge = dynamic((0.898, 0.200, 0.165, 1), (1, 0.271, 0.227, 1))
-}
-
 /// Widget content without the container background (the widget adds `.containerBackground`,
 /// the DEBUG preview draws its own rounded tile).
 struct CampusWidgetFace: View {
     let model: CampusWidgetModel
     var medium = false
-    private typealias P = CampusWidgetPalette
+    /// The app's theme when the entry was made.
+    var theme: AppTheme = .standard
+    private var P: CampusWidgetPalette { .of(theme) }
     var body: some View {
         Group {
             if model.state == .never { never }
@@ -237,28 +221,28 @@ struct CampusWidgetFace: View {
 
     // MARK: Shared pieces
 
-    /// The line icons of home (creditcard, bolt): outline, regular, grey in every state; a low
-    /// value turns only the number red.
+    /// The line icons of home (creditcard, bolt): outline, regular, in the theme's icon colour in
+    /// every state; a low value turns only the number red.
     private func icon(_ symbol: String, size: CGFloat) -> some View {
         Image(systemName:symbol).symbolRenderingMode(.monochrome)
-            .font(.system(size:size, weight:.regular)).foregroundStyle(P.ink2)
+            .font(.system(size:size, weight:.regular)).foregroundStyle(P.icon)
             .accessibilityHidden(true)
     }
 
     private func numberText(_ number: String?, size: CGFloat, low: Bool) -> some View {
         Text(number ?? "—")
-            .font(.system(size:size, weight:.semibold, design:.rounded)).monospacedDigit().tracking(-0.4)
+            .font(.system(size:size, weight:.semibold, design:P.numberDesign)).monospacedDigit().tracking(-0.4)
             .foregroundStyle(number == nil ? P.ink2 : expired ? P.ink3 : low ? P.redLarge : P.ink)
             .lineLimit(1).minimumScaleFactor(0.6)
             .widgetAccentable()
     }
 
     /// fresh: 「10:32 更新」 ink2; stale: 「昨天 8:10 · 打开 App 更新」 (small: 「昨天 · 打开 App 更新」) (time ink3, action accentText);
-    /// expired (medium): 「登录过期了 · 打开 App 重新登录」.
+    /// expired (medium): 「登录过期了 · 打开 App 重新登录」 (the lead in notice).
     @ViewBuilder private var footer: some View {
         switch model.state {
         case .expired:
-            let lead = Text("登录过期了").fontWeight(.semibold).foregroundStyle(P.accentText)
+            let lead = Text("登录过期了").fontWeight(.semibold).foregroundStyle(P.notice)
             let tail = Text(" · 打开 App 重新登录").foregroundStyle(P.ink2)
             Text("\(lead)\(tail)").font(.system(size:11)).lineLimit(1).minimumScaleFactor(0.8)
         case .stale:

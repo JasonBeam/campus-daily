@@ -5,6 +5,7 @@ import Core
 /// form in a full-height sheet, account and password first, the school's web page as the
 /// fallback. No mascot, no page dots.
 struct SchoolReloginSheet: View {
+    @Environment(\.appTheme) private var appTheme
     @EnvironmentObject private var campus: CampusModel
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -110,7 +111,7 @@ struct SchoolReloginSheet: View {
                 .lineLimit(2).minimumScaleFactor(0.8).multilineTextAlignment(.center)
                 .padding(.horizontal,20).padding(.vertical,8)
                 .frame(maxWidth:.infinity, minHeight:keyboardUp ? 52 : 60)
-                .background(dimmed ? Theme.fill : Theme.pill, in:Capsule())
+                .background(dimmed ? Theme.fill : Theme.pill, in:appTheme.buttonShape.shape)
             }
             .buttonStyle(PressScaleStyle())
             .disabled(dimmed)

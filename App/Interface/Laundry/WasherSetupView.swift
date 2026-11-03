@@ -60,7 +60,7 @@ struct WasherSetupView: View {
                         .accessibilityIdentifier("saveScannedWasher")
                 }
             }
-            if let text = issue ?? laundry.issue { Section { Text(text).font(.footnote).foregroundStyle(.orange) } }
+            if let text = issue ?? laundry.issue { Section { Text(text).font(.footnote).foregroundStyle(NativeTheme.notice) } }
         }.scrollContentBackground(.hidden).background(NativeTheme.background).tint(NativeTheme.tint)
             .navigationTitle("常用洗衣机").navigationBarTitleDisplayMode(.inline)
             .sheet(isPresented:$login) { UjingLoginView() }

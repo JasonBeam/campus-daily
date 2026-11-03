@@ -23,6 +23,11 @@ enum HomeDemo: String, CaseIterable {
     case settingsResetShower = "settings-reset-shower"
     case settingsResetUnsure = "settings-reset-unsure"
     case settingsResetLaundry = "settings-reset-laundry"
+    /// Settings › 外观 › 主题: open / greyed out by a shower, a laundry order, both.
+    case settingsTheme = "settings-theme"
+    case settingsThemeShower = "settings-theme-shower"
+    case settingsThemeLaundry = "settings-theme-laundry"
+    case settingsThemeBoth = "settings-theme-both"
     case unconfirmedRow = "unconfirmed-row"
     /// Showering while the authorization write is unconfirmed (stage .authorizationWritePending).
     case showerUnconfirmed = "shower-unconfirmed"
@@ -101,6 +106,22 @@ enum HomeDemo: String, CaseIterable {
         case .settingsResetLaundry:
             data.resetLock = .laundry
             return (data, nil)
+        case .settingsTheme:
+            data.themePageShown = true
+            return (data, nil)
+        case .settingsThemeShower:
+            data.themePageShown = true; data.themeLock = .shower
+            data.shower = .showering(now.addingTimeInterval(-(8 * 60 + 42)))
+            return (data, nil)
+        case .settingsThemeLaundry:
+            data.themePageShown = true; data.themeLock = .laundry
+            data.laundry = .running(program:"标准洗", end:now.addingTimeInterval(18 * 60 - 30))
+            return (data, nil)
+        case .settingsThemeBoth:
+            data.themePageShown = true; data.themeLock = .showerAndLaundry
+            data.shower = .showering(now.addingTimeInterval(-(8 * 60 + 42)))
+            data.laundry = .running(program:"标准洗", end:now.addingTimeInterval(18 * 60 - 30))
+            return (data, nil)
         case .settingsPassword:
             data.schoolAccount = SchoolAccount(account:"99100991", password:"demo-password")
             return (data, nil)
@@ -137,7 +158,7 @@ enum HomeDemo: String, CaseIterable {
             data.laundry = .running(program:"标准洗", end:now.addingTimeInterval(18 * 60 - 30))
             return (data, nil)
         case .empty:
-            var empty = HomeData(); empty.signedIn = false; empty.dorm = "3 栋 108"
+            var empty = HomeData(); empty.signedIn = false  // Signed out the profile, and so the dorm, is gone.
             empty.laundryBound = true; empty.laundryMachine = "3"; empty.laundry = .idle
             return (empty, nil)
         case .shower:

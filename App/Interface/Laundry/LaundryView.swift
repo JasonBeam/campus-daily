@@ -5,6 +5,7 @@ import Core
 /// All ordering/payment safety lives in `LaundryModel` / `LaundryCheckoutController`; this view only
 /// decides what to show and forwards explicit user confirmations.
 struct LaundryDetail: View {
+    @Environment(\.appTheme) private var appTheme
     @EnvironmentObject private var laundry: LaundryModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject private var reminders = Reminders.shared
@@ -197,7 +198,7 @@ struct LaundryDetail: View {
         var text = AttributedString()
         for segment in segments {
             var run = AttributedString(segment.text)
-            run.foregroundColor = segment.color ?? Theme.ink
+            run.foregroundColor = (segment.color ?? Theme.ink).color(appTheme)
             text += run
         }
         return Text(text)
@@ -504,6 +505,7 @@ enum LaundrySheet: Identifiable, Equatable {
 
 /// 「选程序」 row: selection mark · 「标准洗 · 45 分钟」 · price.
 struct LaundryProgramRow: View {
+    @Environment(\.appTheme) private var appTheme
     let program: WasherProgram
     let selected: Bool
     let action: () -> Void
@@ -550,7 +552,7 @@ struct LaundryProgramRow: View {
         }.fixedSize(horizontal:false, vertical:true)
     }
     private var price: some View {
-        Text(Theme.yuan(program.price.yuan)).scaledFont(20, .semibold, design:.rounded, relativeTo:.title3)
+        Text(Theme.yuan(program.price.yuan)).scaledFont(20, .semibold, design:appTheme.numberDesign, relativeTo:.title3)
             .monospacedDigit().foregroundStyle(Theme.ink).lineLimit(1)
     }
     /// Note for the spin-only program (the machine's own description text is not decoded).
@@ -559,6 +561,7 @@ struct LaundryProgramRow: View {
 
 /// Running hero: live label · minutes left · progress line · sub.
 struct LaundryRunHero: View {
+    @Environment(\.appTheme) private var appTheme
     let machine: String?
     let program: String
     /// Program length in minutes, when the machine lists it (drives the progress line).
@@ -576,7 +579,7 @@ struct LaundryRunHero: View {
                 }
                 HStack(alignment:.firstTextBaseline, spacing:6) {
                     Text("\(left)")
-                        .scaledFont(76, .semibold, design:.rounded, relativeTo:.largeTitle, cap:96)
+                        .scaledFont(76, .semibold, design:appTheme.numberDesign, relativeTo:.largeTitle, cap:96)
                         .monospacedDigit().tracking(-2).foregroundStyle(Theme.ink)
                         .contentTransition(.numericText(countsDown:true))
                         .animation(.default, value:left)
@@ -612,6 +615,7 @@ struct LaundryRunHero: View {
 
 /// One confirmation before any order or payment request (replaces the old review sheet + Alipay alert).
 private struct LaundryPaySheet: View {
+    @Environment(\.appTheme) private var appTheme
     let title: String
     let line: String
     let amount: Decimal?
@@ -624,7 +628,7 @@ private struct LaundryPaySheet: View {
                 .fixedSize(horizontal:false, vertical:true)
             Text(line).scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.ink2).padding(.top,14)
             if let amount {
-                Text(Theme.yuan(amount)).scaledFont(44, .semibold, design:.rounded, relativeTo:.largeTitle)
+                Text(Theme.yuan(amount)).scaledFont(44, .semibold, design:appTheme.numberDesign, relativeTo:.largeTitle)
                     .monospacedDigit().tracking(-1).foregroundStyle(Theme.ink).padding(.top,2)
             }
             Text("付完款机器可能马上开始洗，先把衣服放好。实际金额以支付宝里显示的为准。")

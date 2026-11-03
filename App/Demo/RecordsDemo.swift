@@ -11,11 +11,14 @@ import Core
 /// - `end`: today, then nothing older;
 /// - `failed`: the first read fails; the app's own shower and laundry order show alone;
 /// - `more-failed`: two days, then the older read fails;
-/// - `empty`: the school has nothing and the app has nothing.
+/// - `empty`: the school has nothing and the app has nothing;
+/// - `open` (清爽): `list` under a shower that is running and a laundry order that is washing;
+/// - `signed-out` (清爽): nobody signed in.
 enum RecordsDemo: String {
     case list, loading, more, end, failed
     case moreFailed = "more-failed"
-    case empty
+    case empty, open
+    case signedOut = "signed-out"
 
     static func handle(_ url: URL) -> RecordsDemo? {
         guard url.scheme == "campusdaily", url.host == "demo" else { return nil }
@@ -52,8 +55,8 @@ enum RecordsDemo: String {
     /// Days back from today that have records.
     private var days: [Int] {
         switch self {
-        case .list: return Array(0..<28)
-        case .loading, .failed, .empty: return []
+        case .list, .open: return Array(0..<28)
+        case .loading, .failed, .empty, .signedOut: return []
         case .more, .moreFailed: return [0, 1, 16, 17]
         case .end: return [0]
         }

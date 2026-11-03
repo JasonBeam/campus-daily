@@ -36,7 +36,7 @@ final class AppResetTests: XCTestCase {
         try Data("bundled".utf8).write(to: other)
         defer { try? FileManager.default.removeItem(at: folder) }
 
-        try AppReset.clear(store: store, preferences: defaults, preferencesDomain: suite, files: [water, folder.appendingPathComponent("missing")])
+        try AppReset.clear(store: store, preferences: defaults, preferencesDomain: suite, shared: nil, files: [water, folder.appendingPathComponent("missing")])
 
         for key in StoreKey.allCases { XCTAssertNil(try store.read(key), key.rawValue) }
         XCTAssertNil(try school.account(), "the saved password is gone")
@@ -78,7 +78,7 @@ final class AppResetTests: XCTestCase {
         let suite = "reset-s3-" + UUID().uuidString
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
-        try AppReset.clear(store: resetStore, preferences: defaults, preferencesDomain: suite, files: [])
+        try AppReset.clear(store: resetStore, preferences: defaults, preferencesDomain: suite, shared: nil, files: [])
         for key in StoreKey.allCases { XCTAssertNil(try resetStore.read(key), key.rawValue) }
 
         let signOutStore = InMemorySecureStore()
@@ -93,13 +93,57 @@ final class AppResetTests: XCTestCase {
         XCTAssertEqual(try SharedSnapshotStore(store: signOutStore).loadSnapshot(), .empty)
     }
 
+    /// 清爽 chosen on an install with the App Group: the choice lives in the group's preferences,
+    /// which the reset clears too (inside the shared lock), so the app is back to 暖橙 as on a
+    /// fresh install. Other suites are left alone.
+    func testResetClearsTheSharedPreferencesUnderTheLock() throws {
+        final class SpyLock: SharedLock, @unchecked Sendable {
+            var steps = 0
+            func locked<T>(_ body: () throws -> T) throws -> T { steps += 1; return try body() }
+        }
+        let own = "reset-own-" + UUID().uuidString
+        let group = "reset-group-" + UUID().uuidString
+        let ownDefaults = try XCTUnwrap(UserDefaults(suiteName: own))
+        let groupDefaults = try XCTUnwrap(UserDefaults(suiteName: group))
+        defer { ownDefaults.removePersistentDomain(forName: own); groupDefaults.removePersistentDomain(forName: group) }
+        try ThemePreference(storage: groupDefaults).set(.clear, under: UnsharedLock())
+        ownDefaults.set(true, forKey: "didSeeQuickSetup")
+        let lock = SpyLock()
+
+        try AppReset.clear(store: InMemorySecureStore(), preferences: ownDefaults, preferencesDomain: own,
+                           shared: AppReset.SharedPreferences(defaults: groupDefaults, domain: group, lock: lock), files: [])
+
+        XCTAssertEqual(ThemePreference(storage: try XCTUnwrap(UserDefaults(suiteName: group))).theme, .warm)
+        XCTAssertNil(groupDefaults.object(forKey: PreferenceKey.theme))
+        XCTAssertNil(ownDefaults.object(forKey: "didSeeQuickSetup"))
+        XCTAssertEqual(lock.steps, 1)
+    }
+
+    /// The shared lock can't be taken: the rest is cleared, the shared preferences are reported.
+    func testSharedPreferencesThatCannotBeLockedAreReported() throws {
+        struct Failing: SharedLock { func locked<T>(_ body: () throws -> T) throws -> T { throw CocoaError(.fileLocking) } }
+        let group = "reset-group-" + UUID().uuidString
+        let groupDefaults = try XCTUnwrap(UserDefaults(suiteName: group))
+        defer { groupDefaults.removePersistentDomain(forName: group) }
+        try ThemePreference(storage: groupDefaults).set(.clear, under: UnsharedLock())
+        let own = "reset-own-" + UUID().uuidString
+        let ownDefaults = try XCTUnwrap(UserDefaults(suiteName: own))
+        defer { ownDefaults.removePersistentDomain(forName: own) }
+        XCTAssertThrowsError(try AppReset.clear(store: InMemorySecureStore(), preferences: ownDefaults, preferencesDomain: own,
+                                                shared: AppReset.SharedPreferences(defaults: groupDefaults, domain: group, lock: Failing()),
+                                                files: [])) {
+            XCTAssertEqual(($0 as? AppReset.Failure)?.items, ["preferences.shared"])
+        }
+        XCTAssertEqual(ThemePreference(storage: groupDefaults).theme, .clear)
+    }
+
     func testFailedDeleteIsReportedAndTheRestStillCleared() throws {
         let store = InMemorySecureStore()
         for key in StoreKey.allCases { try store.write(Data("x".utf8), for: key) }
         store.failWrites(to: .schoolPassword)
         let suite = "reset-fail-" + UUID().uuidString
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        XCTAssertThrowsError(try AppReset.clear(store: store, preferences: defaults, preferencesDomain: suite, files: [])) {
+        XCTAssertThrowsError(try AppReset.clear(store: store, preferences: defaults, preferencesDomain: suite, shared: nil, files: [])) {
             XCTAssertEqual(($0 as? AppReset.Failure)?.items, ["school.password"])
         }
         for key in StoreKey.allCases where key != .schoolPassword && key != .sharedResetMarker {
@@ -295,7 +339,7 @@ final class AppResetTests: XCTestCase {
         let suite = "reset-failed-" + UUID().uuidString
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
-        let clear = { try AppReset.clear(store: store, preferences: defaults, preferencesDomain: suite, files: []) }
+        let clear = { try AppReset.clear(store: store, preferences: defaults, preferencesDomain: suite, shared: nil, files: []) }
         let t0 = Date(timeIntervalSince1970: 1_800_000_000)
         store.failWrites(to: .schoolPassword)
         do {

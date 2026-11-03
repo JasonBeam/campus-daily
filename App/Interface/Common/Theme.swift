@@ -1,24 +1,30 @@
 import SwiftUI
 import Core
 
-/// Round-1 design tokens (Assets.xcassets/Theme, Any/Dark).
+/// Design tokens. The colours are `ThemeColor`s, resolved from the theme in the view's
+/// environment (`\.appTheme`) where they are drawn; the other tokens are `AppTheme`'s
+/// (`AppTheme+Tokens`).
 enum Theme {
-    static let bg = Color("Theme/bg")
-    static let group = Color("Theme/group")
-    static let ink = Color("Theme/ink")
-    static let ink2 = Color("Theme/ink2")
-    static let ink3 = Color("Theme/ink3")
-    static let separator = Color("Theme/separator")
-    static let fill = Color("Theme/fill")
-    static let accent = Color("Theme/accent")
-    static let accentLarge = Color("Theme/accentLarge")
-    static let accentText = Color("Theme/accentText")
-    /// Label on an `accent` background: white in light, #111 in dark.
-    static let accentInk = Color("Theme/accentInk")
-    static let redLarge = Color("Theme/redLarge")
-    static let redText = Color("Theme/redText")
-    static let pill = Color("Theme/pill")
-    static let pillInk = Color("Theme/pillInk")
+    static let bg = ThemeColor(.bg)
+    static let group = ThemeColor(.group)
+    static let ink = ThemeColor(.ink)
+    static let ink2 = ThemeColor(.ink2)
+    static let ink3 = ThemeColor(.ink3)
+    static let separator = ThemeColor(.separator)
+    static let fill = ThemeColor(.fill)
+    static let accent = ThemeColor(.accent)
+    static let accentLarge = ThemeColor(.accentLarge)
+    static let accentText = ThemeColor(.accentText)
+    /// Label on an `accent` background: white in light, #111 in dark (清爽: white in both).
+    static let accentInk = ThemeColor(.accentInk)
+    static let redLarge = ThemeColor(.redLarge)
+    static let redText = ThemeColor(.redText)
+    static let pill = ThemeColor(.pill)
+    static let pillInk = ThemeColor(.pillInk)
+    /// Problems that aren't "running out": errors, 「暂停」, what the school refused. accentText in 暖橙.
+    static let notice = ThemeColor(.notice)
+    /// Line icons at the start of rows and beside labels: ink2 in 暖橙, accentText in 清爽.
+    static let icon = ThemeColor(.icon)
 
     /// UI copy language for `.typesettingLanguage(_:)`.
     static let typesetting = Locale.Language(identifier:"zh-Hans")

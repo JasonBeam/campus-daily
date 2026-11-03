@@ -53,7 +53,7 @@ final class ResetMarkerTests: XCTestCase {
             marker: ResetMarker(store: store), now: now,
             lock: { AppReset.storedLock(store: store) },
             signOut: { log.append("signOut") },
-            clear: { log.append("clear"); try AppReset.clear(store: store, preferences: defaults, preferencesDomain: suite, files: []) },
+            clear: { log.append("clear"); try AppReset.clear(store: store, preferences: defaults, preferencesDomain: suite, shared: nil, files: []) },
             reload: { log.append("reload") })
         steps = log
         return result

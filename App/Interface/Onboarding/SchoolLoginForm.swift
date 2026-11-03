@@ -51,6 +51,7 @@ enum SchoolLoginField: Hashable { case account, password }
 
 /// Account / password rows, the error line and the save-password check.
 struct SchoolLoginForm: View {
+    @Environment(\.appTheme) private var appTheme
     @Binding var account: String
     @Binding var password: String
     @Binding var savePassword: Bool
@@ -101,7 +102,7 @@ struct SchoolLoginForm: View {
                     .accessibilityLabel(reveal ? "隐藏密码" : "显示密码")
                 }
             }
-            .background(Theme.group, in:RoundedRectangle(cornerRadius:16, style:.continuous))
+            .background(Theme.group, in:RoundedRectangle(cornerRadius:appTheme.cardRadius(16), style:.continuous))
             .opacity(state == .loading ? 0.5 : 1)
             .disabled(state == .loading)
             if let message = state.message {
@@ -109,7 +110,7 @@ struct SchoolLoginForm: View {
                 Label { Text(message).fixedSize(horizontal:false, vertical:true) } icon: {
                     Image(systemName:"exclamationmark.circle.fill").font(.system(size:17))
                 }
-                .scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.accentText)
+                .scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.notice)
                 .padding(.top,14)
                 .accessibilityIdentifier("loginIssue")
             }

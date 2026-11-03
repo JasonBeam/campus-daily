@@ -93,4 +93,17 @@ final class RecentFitTests: XCTestCase {
         XCTAssertEqual(RecentFit.count(viewport: 800.4, above: 400, rowHeights: Array(repeating: 62.7, count: 10)), 6, "376.2 of 376.4")
         XCTAssertEqual(RecentFit.count(viewport: 800, above: 400, rowHeights: [188.3, 188.0]), 2, "376.3 fits 376")
     }
+
+    /// 清爽 draws 「最近」 in a card: its padding above and below the rows counts against the
+    /// screen like the header, so a row that fits on the flat page may not fit in the card.
+    func testCardChromeCountsAgainstTheScreen() {
+        // 800 - 400 - 40 - 24 = 336: six rows flat; with 28 of card padding 308 is left, five.
+        XCTAssertEqual(RecentFit.count(viewport: 800, above: 400, header: 40, rowHeights: rows), 6)
+        XCTAssertEqual(RecentFit.count(viewport: 800, above: 400, header: 40, chrome: 28, rowHeights: rows), 5)
+        // One row fits flat under the header, none inside the card: no section.
+        XCTAssertEqual(RecentFit.count(viewport: 600, above: 480, header: 40, rowHeights: rows), 1)
+        XCTAssertFalse(RecentFit.showsSection(viewport: 600, above: 480, header: 40, chrome: 28, rowHeights: rows))
+        // Before the first measurement the chrome changes nothing.
+        XCTAssertEqual(RecentFit.count(viewport: 0, above: 0, chrome: 28, rowHeights: rows), 3)
+    }
 }

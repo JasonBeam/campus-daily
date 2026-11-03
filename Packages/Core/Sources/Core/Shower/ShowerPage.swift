@@ -225,6 +225,10 @@ public enum ShowerPageEvent: Sendable, Equatable {
     case recheckReturned(ShowerRecheckResult?)
     /// 再结算一次 (unsure, a settlement that failed): the first tap arms it, the second sends it.
     case settleRetryTapped
+    /// A copy of the page pushed on a stack (清爽) came on screen.
+    case pushedAppeared
+    /// A copy of the page pushed on a stack went off screen (popped, covered, its tab left).
+    case pushedDisappeared
 }
 
 public enum ShowerPageEffect: Sendable, Equatable {
@@ -268,12 +272,19 @@ public struct ShowerPageFlow: Sendable, Equatable {
     public var rechecking: Bool
     /// What the last 再查一次水控 found, shown under it while the check face stays.
     public var recheckResult: ShowerRecheckResult?
+    /// Copies of the page pushed on a stack (清爽) now on screen. Such a page shows a record
+    /// while the flow is down (after 去核对, after a relaunch); while it is visible 再结算一次's
+    /// first tap is held as on a page that is up.
+    public private(set) var pushedShown: Int
+
+    /// A pushed copy of the page is on screen.
+    public var pushedVisible: Bool { pushedShown > 0 }
 
     /// After a relaunch the page starts closed; the home button shows where the record stands.
     public init(record: ShowerState, presented: Bool = false) {
         self.record = record; self.presented = presented; starting = false; cancelling = false; ending = false
         cancelWaiting = false; cancelRefused = false; endFailed = nil
-        rechecking = false; recheckResult = nil
+        rechecking = false; recheckResult = nil; pushedShown = 0
     }
 
     /// What the page shows. A start just tapped shows 连接 at once, before the record moves
@@ -320,10 +331,15 @@ public struct ShowerPageFlow: Sendable, Equatable {
     public static func reduce(_ flow: ShowerPageFlow, _ event: ShowerPageEvent) -> (ShowerPageFlow, [ShowerPageEffect]) {
         var (next, effects) = step(flow, event)
         // Leaving the page with 再结算一次 armed: coming back later must take two taps again.
-        if flow.presented, !next.presented, next.record.settleRetryArmed { effects.append(.disarmSettleRetry) }
-        // The first tap landed after the page went down (left while it was on its way): take it
-        // back too, once.
-        else if !flow.presented, !next.presented, next.record.settleRetryArmed, !flow.record.settleRetryArmed {
+        // Leaving is the page going down, or the last pushed copy going off screen while it is down.
+        let pushedLeft = flow.pushedVisible && !next.pushedVisible && !next.presented
+        if (flow.presented && !next.presented || pushedLeft), next.record.settleRetryArmed {
+            effects.append(.disarmSettleRetry)
+        }
+        // The first tap landed after the page went (left while it was on its way): take it back
+        // too, once.
+        else if !flow.presented, !next.presented, !flow.pushedVisible, !next.pushedVisible,
+                next.record.settleRetryArmed, !flow.record.settleRetryArmed {
             effects.append(.disarmSettleRetry)
         }
         return (next, effects)
@@ -458,6 +474,14 @@ public struct ShowerPageFlow: Sendable, Equatable {
         case .settleRetryTapped:
             guard flow.mayRetrySettle, !flow.rechecking else { return (flow, []) }
             return (f, [flow.settleRetryArmed ? .confirmSettleRetry : .requestSettleRetry])
+
+        case .pushedAppeared:
+            f.pushedShown += 1
+            return (f, [])
+
+        case .pushedDisappeared:
+            f.pushedShown = max(0, f.pushedShown - 1)
+            return (f, [])
 
         case .homeTapped:
             guard flow.page?.phase == .unsure else { return (flow, []) }

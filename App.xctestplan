@@ -58,6 +58,13 @@
         "identifier": "CommonTests",
         "name": "CommonTests"
       }
+    },
+    {
+      "target": {
+        "containerPath": "container:Packages/Core",
+        "identifier": "ThemeTests",
+        "name": "ThemeTests"
+      }
     }
   ],
   "version": 1

@@ -207,6 +207,10 @@ public struct RefreshLease: Sendable {
     }
 }
 
+/// The lease file's lock guards the other shared state too (the App Group's preferences):
+/// `locked` runs a step whoever holds the lease.
+extension RefreshLease: SharedLock {}
+
 /// The lease's file: `update` reads the record, lets the caller decide, and writes the
 /// decision back, all under one exclusive `flock`. An empty file is "no lease"; an unreadable
 /// one counts as long expired, so it can't block refreshes forever.

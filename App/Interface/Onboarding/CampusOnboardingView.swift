@@ -64,7 +64,7 @@ struct CampusLoginSheet: View {
                         .accessibilityElement(children:.combine)
                     }
                 }
-                if let issue = browser.issue { Text(issue).font(.footnote).foregroundStyle(.orange).padding(10) }
+                if let issue = browser.issue { Text(issue).font(.footnote).foregroundStyle(NativeTheme.notice).padding(10) }
                 if browser.stalled { Button("再连一次") { browser.retry?() }
                     .buttonStyle(.borderedProminent).padding().disabled(browser.reading) }
                 if browser.stalled || manual {Button("备用方式") { manual.toggle() }.font(.footnote).padding(.vertical,4)}
@@ -159,7 +159,7 @@ struct CampusOnboardingView: View {
                 }
             }
             if flow.busy { Section { HStack { ProgressView(); Text("正在读取学校信息…") } } }
-            if let issue = flow.issue { Section { Text(issue).foregroundStyle(.orange).font(.footnote) } }
+            if let issue = flow.issue { Section { Text(issue).foregroundStyle(NativeTheme.notice).font(.footnote) } }
             if flow.saved {
                 Section {
                     Label("宿舍已保存",systemImage:"checkmark.circle.fill").foregroundStyle(.green)

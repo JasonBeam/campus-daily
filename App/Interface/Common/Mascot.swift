@@ -2,13 +2,14 @@ import SwiftUI
 
 /// The orange droplet mascot with its one-time hop; the shape lives in Shared/MascotShape.swift.
 struct Mascot: View {
+    @Environment(\.appTheme) private var appTheme
     var size: CGFloat = 52
     /// Play the hop once on appear (disabled under Reduce Motion).
     var hops = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var phase = 0
     var body: some View {
-        MascotGlyph(size:size, color:Theme.accent)
+        MascotGlyph(size:size, color:Theme.accent.color(appTheme))
         .offset(y:phase == 0 ? 14 : phase == 1 ? -4 : 0)
         .scaleEffect(phase == 0 ? 0.7 : phase == 1 ? 1.04 : 1)
         .opacity(phase == 0 ? 0 : 1)

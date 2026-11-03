@@ -67,6 +67,7 @@ struct HomeDuo: View {
 
 /// One half of the duo: label, big number, optional small line. One VoiceOver element.
 struct HomeDuoColumn: View {
+    @Environment(\.appTheme) private var appTheme
     /// SF Symbol name: grey like the label, never red.
     let symbol: String
     let title: String
@@ -81,13 +82,13 @@ struct HomeDuoColumn: View {
         Button(action:{ if figure.tappable { action() } }) {
             VStack(alignment:.leading, spacing:0) {
                 HStack(spacing:6) {
-                    Image(systemName:symbol).symbolRenderingMode(.monochrome).accessibilityHidden(true)
+                    Image(systemName:symbol).symbolRenderingMode(.monochrome).foregroundStyle(Theme.icon).accessibilityHidden(true)
                     Text(title)
                 }
                 .scaledFont(15, .semibold, relativeTo:.subheadline).foregroundStyle(Theme.ink2)
                 HStack(alignment:.firstTextBaseline, spacing:4) {
                     Text(value ?? "—")
-                        .scaledFont(40, .semibold, design:.rounded, relativeTo:.largeTitle)
+                        .scaledFont(appTheme.heroSize, .semibold, design:appTheme.numberDesign, relativeTo:.largeTitle)
                         .monospacedDigit().tracking(-1)
                         .foregroundStyle(value == nil ? Theme.ink3 : figure.low ? Theme.redLarge : Theme.ink)
                         .contentTransition(.numericText())
@@ -108,7 +109,7 @@ struct HomeDuoColumn: View {
                 } else if let subline = figure.subline {
                     Text(subline.text)
                         .scaledFont(13, relativeTo:.footnote)
-                        .foregroundStyle(figure.low ? Theme.redText : subline == .meterNotFound ? Theme.accentText : Theme.ink2)
+                        .foregroundStyle(figure.low ? Theme.redText : subline == .meterNotFound ? Theme.notice : Theme.ink2)
                         .fixedSize(horizontal:false, vertical:true)
                         .padding(.top,4)
                 }

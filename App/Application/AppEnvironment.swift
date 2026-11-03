@@ -22,6 +22,14 @@ enum AppEnvironment {
                                                         didWriteSnapshot:{ WidgetCenter.shared.reloadTimelines(ofKind:SharedSnapshotStore.widgetKind) })
 
     static var school: SchoolSession { schoolStack.session }
+    /// The lock around what the app shares with its extensions besides the school session (the
+    /// theme): the refresh lease file's, whoever holds the lease.
+    static var sharedLock: any SharedLock { schoolStack.refresher.lease ?? UnsharedLock() }
+    /// The App Group's preferences, for 重置校日常; nil in a build without the group.
+    static var sharedPreferences: AppReset.SharedPreferences? {
+        guard let group = AppIdentity.usableAppGroup, let defaults = UserDefaults(suiteName:group) else { return nil }
+        return AppReset.SharedPreferences(defaults:defaults, domain:group, lock:sharedLock)
+    }
     static var refresher: SnapshotRefresher { schoolStack.refresher }
 
     static var userAgent: String {

@@ -6,6 +6,7 @@ import Core
 /// sizes (small 170×170, medium 364×170, corner 22, 16pt margins), because widgets can't be
 /// captured from the simulator CLI. Same view code as the widget; follows the system appearance.
 struct WidgetPreview: View {
+    @Environment(\.appTheme) private var appTheme
     struct Page: Identifiable { let number: Int; var id: Int { number } }
     /// Page 1, 2 or 3, nil when the URL is not a widget preview.
     static func handle(_ url: URL) -> Page? {
@@ -82,10 +83,10 @@ struct WidgetPreview: View {
     }
     private func tile(_ model: CampusWidgetModel, medium: Bool = false, caption: String) -> some View {
         VStack(spacing:4) {
-            CampusWidgetFace(model:model, medium:medium)
+            CampusWidgetFace(model:model, medium:medium, theme:appTheme)
                 .padding(16)
                 .frame(width:medium ? 364 : 170, height:170)
-                .background(CampusWidgetPalette.group, in:RoundedRectangle(cornerRadius:22, style:.continuous))
+                .background(CampusWidgetPalette.of(appTheme).group, in:RoundedRectangle(cornerRadius:22, style:.continuous))
             Text(caption).font(.system(size:11, weight:.medium))
                 .foregroundStyle(scheme == .dark ? Color.white.opacity(0.8) : Color.black.opacity(0.6))
         }

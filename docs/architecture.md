@@ -24,6 +24,14 @@ team and bundle id.
 App/
   Application/        XiaoRiChangApp (entry, scene), AppEnvironment (builds the services)
   Interface/<Feature>/ Home, CampusCard, Shower, Laundry, Onboarding, Settings, Location (shared dorm/meter pickers), Common
+  Interface/Clear/    清爽's page tree; CampusRootView picks 暖橙's (the feature folders) or 清爽's by theme.
+                      ClearRootView is a TabView (日常 / 记录 / 设置), one NavigationStack per tab, routes in
+                      ClearRoute and ClearDestination, tab/path/sheet state in ClearNavigator (an environment
+                      object). Pages: Home/, Shower/, Laundry/, Records/, Settings/, Setup/ (the first-run
+                      checklist). Pages only lay out and call the same models as 暖橙; the shared root
+                      handling (reset, first run, refresh, links) is in Common/CampusRootHooks and RootLink.
+                      Shared pages (meter, top-ups, 常用洗衣机, 学校账号, 高级, 主题) are 暖橙's views drawn in
+                      清爽's tokens.
   Services/           Bluetooth (CoreBluetooth ShowerTransport), CampusWebLogin (official-page WKWebView + login script),
                       BackgroundRefresh (BGAppRefreshTask), Alipay, LiveActivities, Intents, Reminders
   Resources/          Assets, Fonts, Info.plist, App.entitlements
@@ -31,8 +39,11 @@ App/
 Shared/               compiled into App and Widget
   WidgetViews/        widget views (also used by the in-app preview)
   LiveActivityViews/  ActivityAttributes and Live Activity views
-  Theme/              formatting and the mascot shape the widget also draws (app colours and fonts
-                      are in App/Interface/Common: Theme, NativeTheme)
+  Theme/              formatting and the mascot shape the widget also draws, and the colours the
+                      widget and Live Activities need in both themes (ClearPalette, CampusWidgetPalette,
+                      LiveActivityAccent); the app's tokens and fonts are in App/Interface/Common
+                      (Theme, ThemeColor, ThemeStore, ThemePalette, NativeTheme): the app owns one
+                      ThemeStore and injects it; tokens resolve from the view environment (\.appTheme)
 Widget/               XiaoRiChangWidget, ShowerLiveActivity, LaundryLiveActivity, Info.plist, Widget.entitlements
 Packages/Core/        one library product `Core` (swift-tools 6.0, iOS 17 / macOS 14, Swift 6 mode)
   Sources/Core/
@@ -47,8 +58,10 @@ Packages/Core/        one library product `Core` (swift-tools 6.0, iOS 17 / macO
     Storage/          generic Keychain and UserDefaults access only: SecureStore, StoreKey, SharedKeychain
                       (app-private and widget-shared access groups), PreferenceStorage, StorageError
     Common/           Money, ServiceError, JSONValue, DormAddress, ShowerHandoff (used by Campus and Shower)
+    Theme/            the chosen theme (AppTheme, ThemePreference in the App Group's preferences) and
+                      when the 主题 options are greyed out (ThemeLock, from the shower and laundry states)
   Tests/
-    CampusTests/ ShowerTests/ LaundryTests/ SnapshotTests/ NetworkingTests/ StorageTests/ CommonTests/
+    CampusTests/ ShowerTests/ LaundryTests/ SnapshotTests/ NetworkingTests/ StorageTests/ CommonTests/ ThemeTests/
     Support/          StubServer, FixtureLoader, FakeShowerTransport
     Fixtures/         synthetic/redacted API samples, one folder per service
 Scripts/              fetch-alipay-sdk, stage-water-profile, check-widget-signature, package-ipa, privacy-check
@@ -62,6 +75,7 @@ App ──→ Shared ──→ Core
 Widget ─→ Shared ──→ Core
 Core: Campus / Shower / Laundry ──→ Networking, Storage, Common
       Snapshot ──→ Campus (balances, electricity), Storage
+      Theme ──→ Shower, Laundry (their states, read only), Storage
 ```
 
 Campus never references Snapshot: `SchoolSession.refresh` returns a `SchoolReading` and the

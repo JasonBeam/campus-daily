@@ -2,6 +2,7 @@ import SwiftUI
 import Core
 
 struct ShowerDetail: View {
+    @Environment(\.appTheme) private var appTheme
     @EnvironmentObject private var shower: ShowerModel
     @EnvironmentObject private var campus: CampusModel
     @State private var confirmResolve = false
@@ -19,10 +20,10 @@ struct ShowerDetail: View {
                 VStack(alignment:.leading,spacing:13) {
                     HStack(spacing:9) {
                         if shower.busy { ProgressView().controlSize(.small) }
-                        else { Circle().fill(shower.problem ? Color.orange : NativeTheme.tint).frame(width:7,height:7).accessibilityHidden(true) }
+                        else { Circle().fill(shower.problem ? NativeTheme.notice : NativeTheme.tint).frame(width:7,height:7).accessibilityHidden(true) }
                         Text(headline).font(.title2.bold()).accessibilityIdentifier("waterHeadline")
                     }
-                    Text(shower.inspecting ? "正在只读核对附近水控，不会出水。" : shower.status).font(.subheadline).foregroundStyle(shower.problem ? Color.orange : Color.secondary)
+                    Text(shower.inspecting ? "正在只读核对附近水控，不会出水。" : shower.status).font(.subheadline).foregroundStyle(shower.problem ? NativeTheme.notice : .fixed(Color.secondary))
                         .fixedSize(horizontal:false,vertical:true).accessibilityIdentifier("waterStatus")
                 }
                 }
@@ -107,7 +108,7 @@ struct ShowerDetail: View {
     /// running again is the only way back to the shower page.
     private var checkBlock: some View {
         VStack(alignment:.leading, spacing:0) {
-            Image(systemName:"questionmark.circle").font(.system(size:34)).foregroundStyle(Theme.accentText)
+            Image(systemName:"questionmark.circle").font(.system(size:34)).foregroundStyle(Theme.notice)
                 .accessibilityHidden(true).padding(.bottom,14)
             Text(ShowerPageText.check).scaledFont(28, .bold, relativeTo:.title).foregroundStyle(Theme.ink)
                 .fixedSize(horizontal:false, vertical:true).accessibilityAddTraits(.isHeader)
@@ -127,7 +128,7 @@ struct ShowerDetail: View {
             Text(ShowerPageText.resolve).scaledFont(18, .semibold, relativeTo:.headline)
                 .foregroundStyle(enabled ? Theme.pillInk : Theme.ink3)
                 .frame(maxWidth:.infinity).frame(minHeight:60)
-                .background(enabled ? Theme.pill : Theme.fill, in:Capsule())
+                .background(enabled ? Theme.pill : Theme.fill, in:appTheme.buttonShape.shape)
         }
         .buttonStyle(PressScaleStyle())
         .disabled(!enabled)
@@ -172,7 +173,7 @@ struct ShowerDetail: View {
 
 struct ShowerButtonStyle: ButtonStyle {
     let primary: Bool
-    let accent: Color
+    let accent: ThemeColor
     @Environment(\.isEnabled) private var enabled
     func makeBody(configuration:Configuration) -> some View {
         configuration.label.font(.body.weight(.semibold))
