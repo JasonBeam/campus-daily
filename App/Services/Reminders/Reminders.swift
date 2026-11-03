@@ -40,7 +40,7 @@ enum ReminderKey {
     static let shared = Reminders()
 
     enum PromptOrigin: String, Identifiable { case settings, app; var id: String { rawValue } }
-    enum Route: Equatable { case home, laundry }
+    typealias Route = NotificationRoute
 
     @Published private(set) var authorization: UNAuthorizationStatus = .notDetermined
     /// Pre-permission sheet to show, and where (settings sheet or the home root).
@@ -311,16 +311,26 @@ enum ReminderKey {
         content.threadIdentifier = thread
         content.interruptionLevel = .active   // no time-sensitive entitlement
         if sound { content.sound = .default }
-        content.userInfo = ["route": route == .laundry ? "laundry" : "home"]
+        content.userInfo = route.userInfo
         return content
     }
 
-    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
-        [.banner, .list, .sound]
+    // UIKit's completion handlers must run on the main thread: on a launch from a tapped banner, one
+    // called elsewhere ends the app. The `async` forms of these methods finish on a background
+    // thread, so these take the handlers and call them on main.
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification,
+                                            withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        nonisolated(unsafe) let done = completionHandler
+        Task { @MainActor in done([.banner, .list, .sound]) }
     }
-    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
-        let target = response.notification.request.content.userInfo["route"] as? String
-        await MainActor.run { self.route = target == "laundry" ? .laundry : .home }
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
+                                            withCompletionHandler completionHandler: @escaping () -> Void) {
+        let route = Route(userInfo:response.notification.request.content.userInfo)
+        nonisolated(unsafe) let done = completionHandler
+        Task { @MainActor in
+            self.route = route
+            done()
+        }
     }
 
     #if DEBUG
