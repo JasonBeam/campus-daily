@@ -11,6 +11,8 @@ struct LaundryDetail: View {
     @ObservedObject private var reminders = Reminders.shared
     @State private var selectedId: Int?
     @State private var sheet: LaundrySheet?
+    /// 重新登录 U净, from an expired login.
+    @State private var relogin = false
     /// A confirmed create/pay sequence is running (covers the gap between its two steps).
     @State private var submitting = false
     /// Re-reading the machine right before the confirmation sheet.
@@ -87,6 +89,7 @@ struct LaundryDetail: View {
         }
         // Running: the model reads the order a minute after the expected end (`syncActivity`).
         .sheet(item:$sheet) { item in sheetView(item, facts:facts).typesettingLanguage(Theme.typesetting) }
+        .sheet(isPresented:$relogin) { UjingLoginView() }
         // A lookup after the sheet came up (back from the U净 app) found something other than
         // no order: the clear is no longer allowed, so its sheet goes instead of doing nothing.
         .onChange(of:facts.record?.canResolveManually == true) { _, allowed in
@@ -220,6 +223,12 @@ struct LaundryDetail: View {
             }
             .scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.ink2)
             .padding(.top,10)
+        }
+        if facts.sessionExpired {
+            Button(UjingAccountText.relogin) { relogin = true }
+                .scaledFont(15, .semibold, relativeTo:.subheadline).foregroundStyle(Theme.accentText)
+                .padding(.top,10)
+                .accessibilityIdentifier("ujingRelogin")
         }
     }
 

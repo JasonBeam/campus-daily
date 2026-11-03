@@ -40,9 +40,10 @@ extension HomeView {
 
     func dateBlock(_ data: HomeData) -> some View {
         VStack(spacing:2) {
-            Text(dateTitle).scaledFont(appTheme.titleFont.size, appTheme.titleFont.weight, design:appTheme.titleFont.design, relativeTo:.title2).foregroundStyle(Theme.ink)
+            // Rounded like the numbers under it; other pages keep the theme's serif title.
+            Text(dateTitle).scaledFont(appTheme.titleFont.size, appTheme.titleFont.weight, design:.rounded, relativeTo:.title2).foregroundStyle(Theme.ink)
             Text([SchoolCalendar.weekday(Date()), data.dorm].compactMap { $0 }.joined(separator:" · "))
-                .scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
+                .scaledFont(13, design:.rounded, relativeTo:.footnote).foregroundStyle(Theme.ink2)
         }
         .frame(maxWidth:.infinity)
         // Pull the date up into the nav-bar row so 「10月28日」 is centred on the gear; at
@@ -237,7 +238,13 @@ extension HomeView {
             #else
             LaundryDetail()
             #endif
-        case .washerSetup: WasherSetupView()
+        // Saved or switched: back a page, or on to 洗衣 when opened from home's unbound row.
+        case .washerSetup:
+            #if DEBUG
+            WasherSetupView(onDone:washerSetupDone, preview:washerDemo)
+            #else
+            WasherSetupView(onDone:washerSetupDone)
+            #endif
         case .records:
             #if DEBUG
             CardRecordsView(app:recordsDemo?.app() ?? data.recentActivities, source:recordsDemo?.source ?? .live)
@@ -245,6 +252,10 @@ extension HomeView {
             CardRecordsView(app:data.recentActivities, source:.live)
             #endif
         }
+    }
+
+    func washerSetupDone() {
+        path = WasherSetupExit.path(path, setup:.washerSetup, laundry:.laundry)
     }
 
     // MARK: Toolbar

@@ -16,12 +16,16 @@ public struct UjingAccount: Sendable, Equatable, Codable, CustomStringConvertibl
     public var debugDescription: String { description }
 }
 
-/// What `laundry.account` holds: the per-install `x-mobile-id` (kept across logins) and the
-/// current login, if any.
+/// What `laundry.account` holds: the per-install `x-mobile-id` (kept across logins), the
+/// current login, if any, and the number it was made with (shown masked; logins saved by
+/// earlier builds have none).
 public struct UjingAccountItem: Sendable, Equatable, Codable, CustomStringConvertible {
     public var mobileID: String
     public var account: UjingAccount?
-    public init(mobileID: String, account: UjingAccount? = nil) { self.mobileID = mobileID; self.account = account }
+    public var mobile: String?
+    public init(mobileID: String, account: UjingAccount? = nil, mobile: String? = nil) {
+        self.mobileID = mobileID; self.account = account; self.mobile = mobile
+    }
     public var description: String { "UjingAccountItem(signedIn: \(account != nil))" }
 }
 

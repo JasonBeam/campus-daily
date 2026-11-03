@@ -13,6 +13,8 @@ struct ClearLaundryPage: View {
     @ObservedObject private var reminders = Reminders.shared
     @State private var selectedID: Int?
     @State private var sheet: LaundrySheet?
+    /// 重新登录 U净, from an expired login.
+    @State private var relogin = false
     /// A confirmed create/pay sequence is running (covers the gap between its two steps).
     @State private var submitting = false
     /// Re-reading the machine right before the confirmation sheet.
@@ -49,6 +51,12 @@ struct ClearLaundryPage: View {
             VStack(alignment:.leading, spacing:20) {
                 content(facts, phase:phase, busyTitle:busyTitle)
                 ClearLaundryIssueLines(lines:ClearLaundryCopy.issues(facts, shown:shownLine(facts, phase:phase)))
+                if facts.sessionExpired {
+                    Button(UjingAccountText.relogin) { relogin = true }
+                        .font(.subheadline.weight(.semibold)).foregroundStyle(Theme.accentText)
+                        .frame(maxWidth:.infinity, alignment:.leading)
+                        .accessibilityIdentifier("ujingRelogin")
+                }
             }
             .padding(20)
             .frame(maxWidth:560)
@@ -81,6 +89,7 @@ struct ClearLaundryPage: View {
             await laundry.refreshOrder()
         }
         .sheet(item:$sheet) { item in sheetView(item, facts:facts).typesettingLanguage(Theme.typesetting) }
+        .sheet(isPresented:$relogin) { UjingLoginView() }
         // A lookup after the sheet came up (back from the U净 app) found something other than
         // no order: the clear is no longer allowed, so its sheet goes instead of doing nothing.
         .onChange(of:facts.record?.canResolveManually == true) { _, allowed in

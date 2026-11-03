@@ -3,14 +3,6 @@ import Combine
 import UIKit
 import Core
 
-/// A washer the user saved by scanning its code (UI preference, not a credential).
-struct SavedWasher: Codable, Identifiable, Equatable {
-    var id: String
-    var qrCode: String
-    var name: String
-    var savedAt = Date()
-}
-
 /// UI state over `UjingClient` (login, machine reads) and `LaundryEngine` (order + payment).
 /// No ordering or payment rules here: the engine decides what may be sent.
 /// Another U净 account tried to sign in while an order placed with the stored one is open.
@@ -30,6 +22,13 @@ enum LaundryLoginRefusal: Error { case otherAccount }
     @Published private(set) var candidate: WasherSnapshot?
     @Published private(set) var storageBlocked = false
     @Published private(set) var selectedMachineID: String?
+    /// Machines saved (the same one again included) or switched to since launch: the first-run
+    /// step finishes on each (`WasherSetupExit.finishesSetupStep`).
+    @Published private(set) var machineChoices = 0
+    /// The number the U净 login was made with (nil signed out, or saved by an earlier build).
+    @Published private(set) var ujingMobile: String?
+    /// U净 said the login ran out (a machine read or an order step): 「重新登录 U净」 is offered.
+    @Published private(set) var sessionExpired = false
     /// 「学校洗衣机」 (Settings / first-run question). Off: laundry hidden everywhere, no reads,
     /// no Live Activity, no reminder; the U净 login and saved machines stay.
     @Published private(set) var schoolEnabled = SchoolLaundryPreference(storage:UserDefaults.standard).isOn
@@ -44,9 +43,9 @@ enum LaundryLoginRefusal: Error { case otherAccount }
     private var activitySync: AnyCancellable?
     private var endCheck: (end: Date, task: Task<Void, Never>)?
     private var startWatch: (since: Date, task: Task<Void, Never>)?
-    private static let machinesKey = PreferenceKey.prefix + "laundry.machines"
-    private static let selectedKey = PreferenceKey.prefix + "laundry.selected"
-    nonisolated static let lastOrderKey = PreferenceKey.prefix + "laundry.lastOrder"
+    private static let machinesKey = PreferenceKey.laundryMachines
+    private static let selectedKey = PreferenceKey.laundrySelected
+    nonisolated static let lastOrderKey = PreferenceKey.laundryLastOrder
 
     init() {
         reloadAccount()
@@ -90,6 +89,7 @@ enum LaundryLoginRefusal: Error { case otherAccount }
             issue = "解锁手机后再打开校日常。"
         }
         accountConnected = account?.account != nil
+        ujingMobile = account?.account != nil ? account?.mobile : nil
         savedMachines = Self.loadMachines()
         selectedMachineID = UserDefaults.standard.string(forKey:Self.selectedKey).flatMap { id in
             savedMachines.contains { $0.id == id } ? id : nil
@@ -162,11 +162,11 @@ enum LaundryLoginRefusal: Error { case otherAccount }
         }
         let reread = checkout.map { $0.phase != .none } ?? false
         let clearsLastOrder = LaundryCheckout.clearsLastOrder(record:checkout, signedInAs:signedIn.id, stored:account?.account?.id)
-        let item = UjingAccountItem(mobileID:device.mobileID, account:signedIn)
+        let item = UjingAccountItem(mobileID:device.mobileID, account:signedIn, mobile:mobile)
         try AppEnvironment.laundryVault.saveAccountItem(item)
         if clearsLastOrder { forgetLastOrder() }
         account = item
-        accountConnected = true
+        accountConnected = true; ujingMobile = mobile; sessionExpired = false
         configured = selectedMachine != nil
         issue = nil; lastAttempt = nil
         rebuildEngine()
@@ -183,13 +183,22 @@ enum LaundryLoginRefusal: Error { case otherAccount }
         return (error as? ServiceError)?.userMessage ?? "登录没完成，核对手机号和验证码再试。"
     }
 
+    /// Why 退出 U净 can't go now (an unfinished order, a step running), or nil.
+    var signOutRefusal: UjingSignOut.Refusal? {
+        UjingSignOut.refusal(orderOpen:(checkout?.phase ?? LaundryPhase.none) != LaundryPhase.none, busy:loading || checkoutBusy)
+    }
+
+    /// 退出 U净 (`UjingSignOut`): the login goes, the saved machines stay. A login that can't be
+    /// written stays signed in rather than coming back at the next launch.
     func signOut() {
-        guard mayImport else { return }
-        let clearsLastOrder = LaundryCheckout.clearsLastOrder(record:checkout, signedInAs:nil, stored:account?.account?.id)
-        try? AppEnvironment.laundryVault.saveAccountItem(account.map { UjingAccountItem(mobileID:$0.mobileID) })
+        guard signOutRefusal == nil, !storageBlocked else { return }
+        guard let outcome = try? UjingSignOut.perform(vault:AppEnvironment.laundryVault, preferences:UserDefaults.standard, checkout:checkout) else { return }
         account = account.map { UjingAccountItem(mobileID:$0.mobileID) }
         accountConnected = false; configured = false; snapshot = nil
-        if clearsLastOrder { forgetLastOrder() }
+        ujingMobile = nil; sessionExpired = false
+        issue = nil; checkoutIssue = nil
+        if outcome.clearedCheckout { checkout = nil }
+        if outcome.forgotLastOrder { lastOrder = nil }
         rebuildEngine()
     }
 
@@ -210,7 +219,7 @@ enum LaundryLoginRefusal: Error { case otherAccount }
         startWatch?.task.cancel(); startWatch = nil
         schoolEnabled = SchoolLaundryPreference(storage:UserDefaults.standard).isOn
         lastOrder = nil; snapshot = nil; candidate = nil; checkout = nil
-        issue = nil; checkoutIssue = nil; checkoutProgress = nil; lastAttempt = nil
+        issue = nil; checkoutIssue = nil; checkoutProgress = nil; lastAttempt = nil; sessionExpired = false
         account = nil
         reloadAccount()
         LaundryActivityController.shared.endAll()
@@ -234,8 +243,8 @@ enum LaundryLoginRefusal: Error { case otherAccount }
         guard UjingInput.isWasherQR(qrCode) else { issue = "没认出这台洗衣机，换个角度再扫一次。"; return }
         loading = true; issue = nil; candidate = nil
         defer { loading = false }
-        do { candidate = try await client.washer(qr:qrCode) }
-        catch { issue = Self.message(error) ?? "没认出这台洗衣机，换个角度再扫一次。" }
+        do { candidate = try await client.washer(qr:qrCode); sessionExpired = false }
+        catch { issue = readText(error) ?? "没认出这台洗衣机，换个角度再扫一次。" }
     }
 
     /// Throws `WasherSetupRefusal`, whose text the page shows.
@@ -243,16 +252,11 @@ enum LaundryLoginRefusal: Error { case otherAccount }
         if let refusal = machineChangeRefusal { throw refusal }
         guard let value = candidate else { throw WasherSetupRefusal.nothingToSave }
         let alias = try WasherSetupRefusal.machineName(name).get()
-        var list = savedMachines
-        if let index = list.firstIndex(where:{ $0.id == value.deviceID }) {
-            list[index] = SavedWasher(id:value.deviceID, qrCode:value.qrCode, name:alias, savedAt:list[index].savedAt)
-        } else {
-            list.append(SavedWasher(id:value.deviceID, qrCode:value.qrCode, name:alias))
-        }
-        storeMachines(list)
+        storeMachines(SavedWasher.saving(id:value.deviceID, qrCode:value.qrCode, name:alias, in:savedMachines))
         select(value.deviceID)
         snapshot = value
         candidate = nil; issue = nil; checkoutIssue = nil; lastAttempt = Date()
+        machineChoices += 1
     }
 
     /// Throws `WasherSetupRefusal`, whose text the page shows.
@@ -261,6 +265,7 @@ enum LaundryLoginRefusal: Error { case otherAccount }
         guard savedMachines.contains(where:{ $0.id == item.id }) else { throw WasherSetupRefusal.notSaved }
         select(item.id)
         snapshot = nil; issue = nil; checkoutIssue = nil; lastAttempt = nil
+        machineChoices += 1
     }
 
     private func select(_ id: String) {
@@ -278,8 +283,8 @@ enum LaundryLoginRefusal: Error { case otherAccount }
         if !force, let lastAttempt, Date().timeIntervalSince(lastAttempt) < 60 { return }
         loading = true; issue = nil; lastAttempt = Date()
         defer { loading = false }
-        do { snapshot = try await client.washer(qr:machine.qrCode) }
-        catch { issue = Self.message(error) ?? "暂时连不上 U净，先显示上次的状态。" }
+        do { snapshot = try await client.washer(qr:machine.qrCode); sessionExpired = false }
+        catch { issue = readText(error) ?? "暂时连不上 U净，先显示上次的状态。" }
     }
 
     /// Order read (foreground, back from Alipay, pull to refresh). Read only.
@@ -357,10 +362,12 @@ enum LaundryLoginRefusal: Error { case otherAccount }
         do {
             let next = try await action()
             apply(next)
+            if next.notice == .sessionExpired { sessionExpired = true }
             checkoutIssue = Self.noticeText(next.notice)
             return next.notice == nil
         } catch {
             if let engine { storageBlocked = await engine.storageBlocked }
+            if UjingAccountText.isExpired(error) { sessionExpired = true }
             checkoutIssue = Self.engineText(error)
             return false
         }
@@ -422,7 +429,7 @@ enum LaundryLoginRefusal: Error { case otherAccount }
         switch notice {
         case nil: return nil
         case .refused(let e)?, .readFailed(let e)?: return e.userMessage
-        case .sessionExpired?: return "U净 登录过期了，重新登录一下。"
+        case .sessionExpired?: return UjingAccountText.expired
         case .washerChanged?: return "机器或价格变了，刷新一下再下单。"
         case .priceChanged?: return "U净 的订单价格比你确认的高，没去付款。取消这笔再重新下单。"
         case .orderMismatch?: return "U净 回的订单对不上，先去 U净 App 里看看。"
@@ -437,8 +444,15 @@ enum LaundryLoginRefusal: Error { case otherAccount }
     }
 
     static func engineText(_ error: Error) -> String {
+        if UjingAccountText.isExpired(error) { return UjingAccountText.expired }
         if let error = error as? LaundryEngineError { return error.message }
         return (error as? AppReset.InProgress)?.errorDescription ?? message(error) ?? uncertainText
+    }
+
+    /// A machine read failed: an expired login says so and offers 「重新登录 U净」.
+    private func readText(_ error: Error) -> String? {
+        if UjingAccountText.isExpired(error) { sessionExpired = true; return UjingAccountText.expired }
+        return Self.message(error)
     }
 
     private static func message(_ error: Error) -> String? {

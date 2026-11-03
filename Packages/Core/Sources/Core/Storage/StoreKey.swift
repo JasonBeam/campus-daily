@@ -83,4 +83,10 @@ public enum PreferenceKey {
     public static let ujingSMSCooldown = prefix + "ujing.smsCooldown"
     /// String, `AppTheme` raw value, in the App Group's preferences (`ThemePreference`).
     public static let theme = prefix + "theme"
+    /// Data, JSON `[SavedWasher]`: the common washers.
+    public static let laundryMachines = prefix + "laundry.machines"
+    /// String, the selected washer's id.
+    public static let laundrySelected = prefix + "laundry.selected"
+    /// Data, JSON: the last laundry order's program, machine and amount.
+    public static let laundryLastOrder = prefix + "laundry.lastOrder"
 }

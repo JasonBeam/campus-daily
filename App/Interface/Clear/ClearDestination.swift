@@ -1,4 +1,5 @@
 import SwiftUI
+import Core
 
 /// The page for a route, on any of 清爽's stacks. 清爽's own pages for the shower, laundry and
 /// first-run setup; the list and form pages both themes share for the rest.
@@ -11,7 +12,7 @@ struct ClearDestination: View {
         switch route {
         case .shower: ClearShowerPage()
         case .laundry: ClearLaundryPage()
-        case .washerSetup: WasherSetupView()
+        case .washerSetup: WasherSetupView(onDone:washerSetupDone)
         case .power: if campus.powerConfigured { CampusRechargeView(kind:.electricity) } else { CampusPowerSetupView() }
         case .powerSetup: CampusPowerSetupView()
         case .card:
@@ -41,5 +42,11 @@ struct ClearDestination: View {
             #endif
         case .setupChecklist: ClearSetupChecklist(inSheet:false)
         }
+    }
+
+    /// Saved or switched: back a page; on 日常 opened from home itself, on to 洗衣.
+    private func washerSetupDone() {
+        guard navigator.tab == .home else { navigator.pop(); return }
+        navigator.homePath = WasherSetupExit.path(navigator.homePath, setup:.washerSetup, laundry:.laundry)
     }
 }

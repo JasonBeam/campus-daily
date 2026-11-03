@@ -57,6 +57,8 @@ struct HomeView: View {
     @State var rechargeBlockedDemo = false
     /// campusdaily://demo/records/<state>: 校园卡记录 on synthetic pages.
     @State var recordsDemo: RecordsDemo?
+    /// campusdaily://demo/washer/<state>: 常用洗衣机 on synthetic values.
+    @State var washerDemo: WasherSetupDemo?
     #endif
 
     func openOnboarding() {

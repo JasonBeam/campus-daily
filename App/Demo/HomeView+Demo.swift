@@ -30,17 +30,25 @@ extension HomeView {
             if let laundryPage = LaundryDemo.handle(url) {
                 onboarding = nil
                 demo = HomeDemo.normal.content().0
-                laundryDemo = laundryPage
+                laundryDemo = laundryPage; washerDemo = nil
                 panel = laundryPage.panel
                 // Fresh push so the page's @State starts from this demo.
                 freshPush(.laundry)
+                return
+            }
+            if let washer = WasherSetupDemo.handle(url) {
+                // 常用洗衣机 over the home demo; a fresh push so the page starts from this demo.
+                onboarding = nil; panel = nil; laundryDemo = nil
+                demo = HomeDemo.normal.content().0
+                washerDemo = washer
+                freshPush(.washerSetup)
                 return
             }
             if let records = RecordsDemo.handle(url) {
                 // 校园卡记录 over the home demo; a fresh push so the page starts from this demo.
                 onboarding = nil; panel = nil; laundryDemo = nil
                 demo = HomeDemo.normal.content().0
-                recordsDemo = records
+                recordsDemo = records; washerDemo = nil
                 freshPush(.records)
                 return
             }
@@ -145,7 +153,7 @@ extension HomeView {
                                                                   "settings-theme-laundry":.authorized, "settings-theme-both":.authorized]
             reminders.demoStatus = settingsDemos[url.lastPathComponent]
             guard let result = HomeDemo.handle(url) else { return }
-            onboarding = nil; settings = false; path = []; laundryDemo = nil; recordsDemo = nil
+            onboarding = nil; settings = false; path = []; laundryDemo = nil; recordsDemo = nil; washerDemo = nil
             withAnimation(Theme.spring) {
                 demo = result?.0
                 panel = result?.1

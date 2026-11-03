@@ -50,6 +50,8 @@ struct LaundryFacts {
     var loading = false
     var mayCreate = false
     var mayCancel = false
+    /// U净 said the login ran out: 「重新登录 U净」 under the lines.
+    var sessionExpired = false
     /// The last order's program/machine/amount, for the record after it was cleared.
     var lastOrder: LaundryLastOrder?
 
@@ -58,6 +60,7 @@ struct LaundryFacts {
         busy = model.checkoutBusy; progress = model.checkoutProgress
         issue = model.issue; checkoutIssue = model.checkoutIssue; loading = model.loading
         mayCreate = model.mayCreate; mayCancel = model.mayCancel; lastOrder = model.lastOrder
+        sessionExpired = model.sessionExpired
     }
     init() {}
 

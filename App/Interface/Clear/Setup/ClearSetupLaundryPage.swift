@@ -2,7 +2,7 @@ import SwiftUI
 import Core
 
 /// Checklist › 学校洗衣机: the first-run guide's question. 「用，接着设置」 opens the U净 login or
-/// 常用洗衣机 as there; a machine saved, or 「不用」, goes back to the checklist.
+/// 常用洗衣机 as there; a machine saved or chosen, or 「不用」, goes back to the checklist.
 struct ClearSetupLaundryPage: View {
     let done: () -> Void
     /// DEBUG demo (`OnboardingDemo`): nothing is changed, the buttons only go back.
@@ -23,10 +23,11 @@ struct ClearSetupLaundryPage: View {
                 .font(.footnote).foregroundStyle(Theme.ink2)
                 .multilineTextAlignment(.center).fixedSize(horizontal:false, vertical:true)
         }
-        .navigationDestination(isPresented:$washer) { WasherSetupView() }
+        .navigationDestination(isPresented:$washer) { WasherSetupView(onDone:{ washer = false }) }
         .sheet(isPresented:$ujing) { UjingLoginView() }
-        .onChange(of:laundry.savedMachines.count) { old, new in
-            if !previewing, new > old { done() }
+        // Every save, the same machine again included, or a switch finishes the step.
+        .onChange(of:laundry.machineChoices) { old, new in
+            if !previewing, WasherSetupExit.finishesSetupStep(savedAt:new, lastSeen:old) { done() }
         }
     }
 

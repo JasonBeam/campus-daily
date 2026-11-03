@@ -42,6 +42,8 @@ struct UjingLoginView: View {
     @State private var mobile = ""
     @State private var code = ""
     @State private var consent = false
+    /// On the code field once the code is sent, so iOS can offer it from Messages there.
+    @FocusState private var codeFocused: Bool
     var body: some View {
         NavigationStack {
             Form {
@@ -50,6 +52,7 @@ struct UjingLoginView: View {
                         .accessibilityIdentifier("ujingMobile")
                     HStack {
                         TextField("短信验证码",text:$code).keyboardType(.numberPad).textContentType(.oneTimeCode)
+                            .focused($codeFocused)
                             .accessibilityIdentifier("ujingSMSCode")
                         TimelineView(.periodic(from:Date(),by:1)) { timeline in
                             let remaining = login.remaining(mobile,at:timeline.date)
@@ -75,6 +78,7 @@ struct UjingLoginView: View {
                 .toolbar { ToolbarItem(placement:.cancellationAction) { Button("取消") { dismiss() }.disabled(login.busy) } }
                 .interactiveDismissDisabled(login.busy)
                 .onDisappear { code = ""; mobile = "" }
+                .onChange(of:login.sent) { _, sent in if sent { codeFocused = true } }
         }
     }
 }

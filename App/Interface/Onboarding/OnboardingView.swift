@@ -130,7 +130,7 @@ struct OnboardingView: View {
             }
             .toolbar(.hidden, for:.navigationBar)
             .navigationDestination(isPresented:$dormPicker) { CampusOnboardingView() }
-            .navigationDestination(isPresented:$washer) { WasherSetupView() }
+            .navigationDestination(isPresented:$washer) { WasherSetupView(onDone:{ washer = false }) }
             .navigationDestination(isPresented:$meterPage) { CampusPowerSetupView(start:meterHalted) }
         }
         .tint(Theme.accentText)
@@ -163,8 +163,9 @@ struct OnboardingView: View {
             // Another account typed in: somebody else's password is not kept unless they tick it.
             savePassword = SchoolAccount.savePassword(savePassword, afterEditFrom:old, to:new, saved:savedAccount)
         }
-        .onChange(of:laundry.savedMachines.count) { old, new in
-            if !previewing, step == .washer, new > old { advance() }
+        // Every save, the same machine again included, or a switch finishes the step.
+        .onChange(of:laundry.machineChoices) { old, new in
+            if !previewing, step == .washer, WasherSetupExit.finishesSetupStep(savedAt:new, lastSeen:old) { advance() }
         }
     }
 
