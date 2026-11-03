@@ -6,7 +6,7 @@ import subprocess
 from pathlib import Path
 
 # The default APP_BUNDLE_IDENTIFIER; a build carries its own in Info.plist KeychainGroupIdentifier.
-PRIVATE = 'com.beamjason.xiaorichang'
+PRIVATE = 'org.zaxh.xiaorichang'
 
 
 def keychain_problem(app_groups, widget_groups, private=PRIVATE):

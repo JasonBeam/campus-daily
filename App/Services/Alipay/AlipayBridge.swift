@@ -7,11 +7,11 @@ import Core
     static let shared = AlipayBridge()
     /// Alipay returns to `<this build's bundle id>.alipay` (Info.plist: `$(PRODUCT_BUNDLE_IDENTIFIER).alipay`),
     /// so two builds with different bundle ids installed side by side each get their own result.
-    /// For the default bundle id this is `com.beamjason.xiaorichang.alipay`.
+    /// For the default bundle id this is `org.zaxh.xiaorichang.alipay`.
     static let scheme: String = {
         let types = Bundle.main.object(forInfoDictionaryKey:"CFBundleURLTypes") as? [[String:Any]] ?? []
         let declared = types.flatMap { ($0["CFBundleURLSchemes"] as? [String]) ?? [] }
-        let expected = (Bundle.main.bundleIdentifier ?? "com.beamjason.xiaorichang") + ".alipay"
+        let expected = (Bundle.main.bundleIdentifier ?? "org.zaxh.xiaorichang") + ".alipay"
         // Prefer the exact expected value; otherwise whatever .alipay scheme Info.plist declares.
         return declared.first { $0.caseInsensitiveCompare(expected) == .orderedSame }
             ?? declared.first { $0.hasSuffix(".alipay") } ?? expected

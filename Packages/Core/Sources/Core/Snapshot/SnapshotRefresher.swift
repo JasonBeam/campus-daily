@@ -104,7 +104,7 @@ public actor SnapshotRefresher {
 
     public static let osLog: @Sendable (String) -> Void = { event in
         #if canImport(os)
-        Logger(subsystem: "com.beamjason.xiaorichang", category: "snapshot").error("\(event, privacy: .public)")
+        Logger(subsystem: "org.zaxh.xiaorichang", category: "snapshot").error("\(event, privacy: .public)")
         #endif
     }
 

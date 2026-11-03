@@ -1,6 +1,6 @@
 import Foundation
 
-/// Keychain item names (architecture §4.1). Service = `com.beamjason.xiaorichang.<name>.v1`,
+/// Keychain item names (architecture §4.1). Service = `org.zaxh.xiaorichang.<name>.v1`,
 /// account = `default`.
 public enum StoreKey: String, Sendable, CaseIterable {
     case schoolPortal = "school.portal"
@@ -21,7 +21,7 @@ public enum StoreKey: String, Sendable, CaseIterable {
     /// A reset is under way, since when (`ResetMarker`). Holds a time only.
     case sharedResetMarker = "shared.resetMarker"
 
-    public static let servicePrefix = "com.beamjason.xiaorichang."
+    public static let servicePrefix = "org.zaxh.xiaorichang."
     public static let account = "default"
 
     public var service: String { Self.servicePrefix + rawValue + ".v1" }

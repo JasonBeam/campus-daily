@@ -22,8 +22,8 @@ final class FakeKeychain: KeychainBackend, @unchecked Sendable {
     /// Runs inside each call after it is recorded, e.g. to make a later step fail.
     var afterCall: ((String) -> Void)?
 
-    static let shared = "TEAMID1234.com.beamjason.xiaorichang.shared"
-    static let app = "TEAMID1234.com.beamjason.xiaorichang"
+    static let shared = "TEAMID1234.org.zaxh.xiaorichang.shared"
+    static let app = "TEAMID1234.org.zaxh.xiaorichang"
 
     init(entitlements: [String] = [FakeKeychain.shared]) { self.entitlements = entitlements }
 
@@ -93,12 +93,12 @@ final class FakeKeychainView: KeychainBackend, @unchecked Sendable {
 }
 
 final class KeychainStoreTests: XCTestCase {
-    let group = "TEAMID1234.com.beamjason.xiaorichang.shared"
+    let group = "TEAMID1234.org.zaxh.xiaorichang.shared"
     /// The shared group's name after the team prefix, as Info.plist gives it.
 
     func testNames() {
-        XCTAssertEqual(StoreKey.schoolEcykt.service, "com.beamjason.xiaorichang.school.ecykt.v1")
-        XCTAssertEqual(StoreKey.sharedSnapshot.service, "com.beamjason.xiaorichang.shared.snapshot.v1")
+        XCTAssertEqual(StoreKey.schoolEcykt.service, "org.zaxh.xiaorichang.school.ecykt.v1")
+        XCTAssertEqual(StoreKey.sharedSnapshot.service, "org.zaxh.xiaorichang.shared.snapshot.v1")
         XCTAssertEqual(StoreKey.account, "default")
         XCTAssertEqual(StoreKey.schoolPortal.accessibility, .afterFirstUnlockThisDeviceOnly)
         XCTAssertEqual(StoreKey.schoolEcykt.accessibility, .afterFirstUnlockThisDeviceOnly)
@@ -112,23 +112,23 @@ final class KeychainStoreTests: XCTestCase {
 
     /// Installed builds already wrote these names; renaming one would lose the item.
     func testRemainingItemsKeepTheirStoredNames() {
-        XCTAssertEqual(StoreKey.schoolPortal.service, "com.beamjason.xiaorichang.school.portal.v1")
-        XCTAssertEqual(StoreKey.schoolProfile.service, "com.beamjason.xiaorichang.school.profile.v1")
-        XCTAssertEqual(StoreKey.laundryAccount.service, "com.beamjason.xiaorichang.laundry.account.v1")
-        XCTAssertEqual(StoreKey.laundryCheckout.service, "com.beamjason.xiaorichang.laundry.checkout.v1")
-        XCTAssertEqual(StoreKey.sharedReminderLines.service, "com.beamjason.xiaorichang.shared.reminderLines.v1")
+        XCTAssertEqual(StoreKey.schoolPortal.service, "org.zaxh.xiaorichang.school.portal.v1")
+        XCTAssertEqual(StoreKey.schoolProfile.service, "org.zaxh.xiaorichang.school.profile.v1")
+        XCTAssertEqual(StoreKey.laundryAccount.service, "org.zaxh.xiaorichang.laundry.account.v1")
+        XCTAssertEqual(StoreKey.laundryCheckout.service, "org.zaxh.xiaorichang.laundry.checkout.v1")
+        XCTAssertEqual(StoreKey.sharedReminderLines.service, "org.zaxh.xiaorichang.shared.reminderLines.v1")
         XCTAssertEqual(PreferenceKey.schoolLaundry, "xrc.laundry.school")
-        XCTAssertEqual(StoreKey.schoolPassword.service, "com.beamjason.xiaorichang.school.password.v1")
-        XCTAssertEqual(StoreKey.schoolDevice.service, "com.beamjason.xiaorichang.school.device.v1")
-        XCTAssertEqual(StoreKey.sharedCredentialLog.service, "com.beamjason.xiaorichang.shared.credentialLog.v1")
-        XCTAssertEqual(StoreKey.sharedResetMarker.service, "com.beamjason.xiaorichang.shared.resetMarker.v1")
+        XCTAssertEqual(StoreKey.schoolPassword.service, "org.zaxh.xiaorichang.school.password.v1")
+        XCTAssertEqual(StoreKey.schoolDevice.service, "org.zaxh.xiaorichang.school.device.v1")
+        XCTAssertEqual(StoreKey.sharedCredentialLog.service, "org.zaxh.xiaorichang.shared.credentialLog.v1")
+        XCTAssertEqual(StoreKey.sharedResetMarker.service, "org.zaxh.xiaorichang.shared.resetMarker.v1")
         XCTAssertEqual(StoreKey.allCases.count, 13, "a new item needs its stored name pinned here")
     }
 
     /// The Swift names say shower; the stored names stay what installed builds already wrote.
     func testShowerItemsKeepTheirStoredNames() {
-        XCTAssertEqual(StoreKey.showerBinding.service, "com.beamjason.xiaorichang.water.binding.v1")
-        XCTAssertEqual(StoreKey.showerSession.service, "com.beamjason.xiaorichang.water.session.v1")
+        XCTAssertEqual(StoreKey.showerBinding.service, "org.zaxh.xiaorichang.water.binding.v1")
+        XCTAssertEqual(StoreKey.showerSession.service, "org.zaxh.xiaorichang.water.session.v1")
         XCTAssertEqual(PreferenceKey.showerNeedsResidenceReview, "xrc.water.needsResidenceReview")
     }
 

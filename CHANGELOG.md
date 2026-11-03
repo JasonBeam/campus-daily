@@ -6,7 +6,7 @@
 
 ### Added
 
-- Add Settings › 外观 › 主题 with two themes: 暖橙 (the current look, the default) and 清爽 (the original app's interface: the system grouped look with one blue tint, and his page layout). Both themes run on the same logic; only the pages differ. A tap switches at once and returns to home; the home-screen widget follows at its next reload and the Live Activities at their next update. While a shower is under way (from 开始洗澡, while it connects and authorizes, until the settlement) or a laundry order is unfinished the options are greyed out with the reason above the footer, and they grey out as soon as one starts with the page open.
+- Add Settings › 外观 › 主题 with two themes: 暖橙 (the current look, the default) and 清爽 (blue and white on the system grouped look, with the 0.8.0 page layout). Both themes run on the same logic; only the pages differ. A tap switches at once and returns to home; the home-screen widget follows at its next reload and the Live Activities at their next update. While a shower is under way (from 开始洗澡, while it connects and authorizes, until the settlement) or a laundry order is unfinished the options are greyed out with the reason above the footer, and they grey out as soon as one starts with the page open.
 - In 清爽, the app opens on three tabs, 日常, 记录 and 设置. 日常 shows 电量和校园卡 with 充电费 › and 充校园卡 ›, the 热水洗澡 and 洗衣 tiles, 继续设置 until first-run setup is done, and as many 最近 rows as fit; on short screens it drops the room line, then the large title, then tightens its cards, so it never scrolls below accessibility text sizes. 热水洗澡 and 洗衣 are pages pushed from their tiles with the main button at the bottom; while the shower connects, settles or waits for a check the page hides its back button and the tab bar. 记录 lists what is still open, then the card's records by day. 设置 opens with 首次设置 and holds 快捷指令 and the version. First-run setup is a checklist (学校账号, 宿舍, 学校洗衣机, 水控) whose button names the next row.
 
 - Show 最近 on the home screen: the card's records from the last three school days merged with the app's own showers and laundry orders, newest first, as many whole rows as fit the screen, so home does not scroll.
@@ -18,6 +18,7 @@
 
 ### Changed
 
+- Move the iPhone app's bundle id to `org.zaxh.xiaorichang`. It installs as a new app: sign in once more, and the old 校日常 can be deleted. Android keeps `com.beamjason.xiaorichang`.
 - Draw the row icons on home, 校园卡记录, the laundry page, Settings and the home-screen widget (small and medium) as one set of grey line symbols instead of emoji; they stay grey when a number turns red.
 - Look for the dorm's electricity meter one level at a time (campus, apartment, building, floor, room) with small reads instead of one read of every meter on the campus; each read is retried twice on a timeout or a lost connection.
 - When a level does not match the dorm exactly once, open the meter page at that level: the matched levels with 「重选」, the level's list headed 「选校区」「选公寓」「选楼栋」「选楼层」「选房间」, and the dorm's likely rows first with 「可能是这个」.

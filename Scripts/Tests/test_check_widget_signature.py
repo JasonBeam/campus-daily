@@ -7,8 +7,8 @@ _module = importlib.util.module_from_spec(_spec); _spec.loader.exec_module(_modu
 keychain_problem = _module.keychain_problem
 app_group_problem = _module.app_group_problem
 
-APP_PRIVATE = 'TEAM000099.com.beamjason.xiaorichang'
-SHARED = 'TEAM000099.com.beamjason.xiaorichang.shared'
+APP_PRIVATE = 'TEAM000099.org.zaxh.xiaorichang'
+SHARED = 'TEAM000099.org.zaxh.xiaorichang.shared'
 
 
 class KeychainGroupRuleTests(unittest.TestCase):
@@ -23,11 +23,11 @@ class KeychainGroupRuleTests(unittest.TestCase):
         self.assertIsNotNone(keychain_problem([SHARED, APP_PRIVATE], [SHARED]))
 
     def test_names_must_match_exactly(self):
-        self.assertIsNotNone(keychain_problem([APP_PRIVATE, SHARED], ['TEAM000099.other.com.beamjason.xiaorichang.shared']))
-        self.assertIsNotNone(keychain_problem(['TEAM000099.x.com.beamjason.xiaorichang', SHARED], [SHARED]))
+        self.assertIsNotNone(keychain_problem([APP_PRIVATE, SHARED], ['TEAM000099.other.org.zaxh.xiaorichang.shared']))
+        self.assertIsNotNone(keychain_problem(['TEAM000099.x.org.zaxh.xiaorichang', SHARED], [SHARED]))
 
     def test_team_prefixes_must_match(self):
-        other = 'TEAM000098.com.beamjason.xiaorichang.shared'
+        other = 'TEAM000098.org.zaxh.xiaorichang.shared'
         self.assertIsNotNone(keychain_problem([APP_PRIVATE, other], [other]))
 
     def test_app_must_list_the_shared_group(self):
@@ -45,7 +45,7 @@ class KeychainGroupRuleTests(unittest.TestCase):
         self.assertIsNotNone(keychain_problem([APP_PRIVATE, SHARED], []))
 
 
-GROUP = 'group.com.beamjason.xiaorichang'
+GROUP = 'group.org.zaxh.xiaorichang'
 
 
 class AppGroupRuleTests(unittest.TestCase):

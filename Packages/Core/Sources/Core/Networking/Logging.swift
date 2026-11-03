@@ -34,7 +34,7 @@ public struct OSLogSink: HTTPLogSink {
     public init() {}
     public func record(_ entry: HTTPLogEntry) {
         #if canImport(os)
-        let logger = Logger(subsystem: "com.beamjason.xiaorichang", category: "http")
+        let logger = Logger(subsystem: "org.zaxh.xiaorichang", category: "http")
         logger.info("\(entry.line, privacy: .public)")
         #endif
     }

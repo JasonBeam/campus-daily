@@ -137,8 +137,8 @@ final class ThemePreferenceTests: XCTestCase {
         XCTAssertEqual(AppTheme.clear.name, "清爽")
         XCTAssertEqual(AppTheme.warm.settingsRowLabel, "主题，暖橙")
         XCTAssertEqual(AppTheme.clear.unavailableLabel, "清爽，暂时不能选")
-        XCTAssertEqual(AppTheme.warm.summary, "暖色，数字大，一眼看清电量和余额。")
-        XCTAssertEqual(AppTheme.clear.summary, "原作者的设计，系统原生的样子。")
-        XCTAssertEqual(AppTheme.footer, "只换样子，内容和用法都一样。小组件、锁屏和灵动岛也会跟着换。")
+        XCTAssertEqual(AppTheme.warm.summary, "暖色，数字大，一页看完。")
+        XCTAssertEqual(AppTheme.clear.summary, "蓝白配色，像系统自带的 App。")
+        XCTAssertEqual(AppTheme.footer, "两套的功能和数据一样，只是样子和页面排法不同。小组件、锁屏和灵动岛也会跟着换。")
     }
 }

@@ -256,7 +256,7 @@ liveness OK); `school.portal` carries `obtainedAt` (first saved). When the liven
 portal says one is dead, one diagnostic line records only the kind and measured minutes:
 `school.credentialExpired kind=card ageMinutes=152 aliveMinutes=92` / `kind=portal ageMinutes=481`
 (once per credential per process). Both processes write it to the system log only (subsystem
-`com.beamjason.xiaorichang`, category `snapshot`). The `shared.credentialLog` Keychain item
+`org.zaxh.xiaorichang`, category `snapshot`). The `shared.credentialLog` Keychain item
 older builds wrote is deleted at launch (`RetiredDiagnostics`) and by reset.
 
 **One refresh at a time.** Callers are pull-to-refresh, the app coming to the foreground,
@@ -723,7 +723,7 @@ leaves the user signed out with everything else kept; the shower's Live Activity
 「还没结束洗澡？」 reminder then follow the shower record (`AppReset.Resync`), and laundry is not
 touched.
 
-All Keychain items use service `com.beamjason.xiaorichang.<name>.v1`, account `default`.
+All Keychain items use service `org.zaxh.xiaorichang.<name>.v1`, account `default`.
 Session stores (water/laundry) write synchronously and fail closed: a failed write blocks the
 next side effect (`storage` error), same as today.
 
@@ -764,14 +764,14 @@ become `xrc.reminder.*`, `xrc.water.needsResidenceReview`.
 
 | Item | Value |
 |---|---|
-| App bundle id | `com.beamjason.xiaorichang` (matches Android `applicationId`) |
-| Widget extension | `com.beamjason.xiaorichang.balances` |
-| App Group | `group.com.beamjason.xiaorichang` |
-| Keychain access groups | app: `$(AppIdentifierPrefix)com.beamjason.xiaorichang`, then `$(AppIdentifierPrefix)com.beamjason.xiaorichang.shared`; widget: the shared one only |
-| Keychain services | `com.beamjason.xiaorichang.<name>.v1` |
-| BG task id | `com.beamjason.xiaorichang.refresh` |
+| App bundle id | `org.zaxh.xiaorichang` (Android keeps `applicationId` `com.beamjason.xiaorichang`) |
+| Widget extension | `org.zaxh.xiaorichang.balances` |
+| App Group | `group.org.zaxh.xiaorichang` |
+| Keychain access groups | app: `$(AppIdentifierPrefix)org.zaxh.xiaorichang`, then `$(AppIdentifierPrefix)org.zaxh.xiaorichang.shared`; widget: the shared one only |
+| Keychain services | `org.zaxh.xiaorichang.<name>.v1` |
+| BG task id | `org.zaxh.xiaorichang.refresh` |
 | Widget kind | `XiaoRiChangBalances` |
-| Alipay return scheme | `com.beamjason.xiaorichang.alipay` (derived, see below) |
+| Alipay return scheme | `org.zaxh.xiaorichang.alipay` (derived, see below) |
 | Navigation scheme | `campusdaily://home`; `campusdaily://demo/<state>` in DEBUG builds only |
 | Xcode workspace / project / targets | `XiaoRiChang.xcworkspace` / `App.xcodeproj` / `App` (product `XiaoRiChang.app`), `Widget` (product `XiaoRiChangWidget.appex`) |
 | Swift package / product | `Packages/Core` / `Core` |
@@ -782,15 +782,17 @@ entitlements files and both Info.plists are filled from `APP_BUNDLE_IDENTIFIER` 
 (Info.plist keys `AppGroupIdentifier` = `group.$(APP_BUNDLE_IDENTIFIER)` and
 `KeychainGroupIdentifier` = `$(APP_BUNDLE_IDENTIFIER)`, read by `AppIdentity`; the widget carries
 the app's values, not its own bundle id; `BGTaskSchedulerPermittedIdentifiers` =
-`$(APP_BUNDLE_IDENTIFIER).refresh`). The table shows the values for the default bundle id. A build
+`$(APP_BUNDLE_IDENTIFIER).refresh`). The table shows the values for the default bundle id. iOS
+builds before it used `com.beamjason.xiaorichang` for all of these; nothing is migrated, so the
+new id installs as a separate app and the user signs in once. A build
 with another `APP_BUNDLE_IDENTIFIER` (Developer.xcconfig) gets its own groups; the Keychain service
-names stay `com.beamjason.xiaorichang.<name>.v1` in every build. An IPA re-signed under another
+names stay `org.zaxh.xiaorichang.<name>.v1` in every build. An IPA re-signed under another
 bundle id keeps the old Info.plist values: the keychain groups still follow its signature (above),
 and the App Group falls back to `group.` plus the bundle id it runs under (the widget's without
 `.balances`) when the Info.plist one has no container.
 
 Distribution is an unsigned IPA the user re-signs (`Scripts/package-ipa.py`); there is no App
-Store/TestFlight record. Paid-team signers register `com.beamjason.xiaorichang` and
+Store/TestFlight record. Paid-team signers register `org.zaxh.xiaorichang` and
 `.balances`; free Personal Teams count them toward the 10 App IDs / 7 days limit.
 `Scripts/check-widget-signature.py` checks a signed build before installing.
 

@@ -25,13 +25,13 @@ public enum AppTheme: String, Sendable, CaseIterable, Equatable {
     /// The line under the name on the 主题 page.
     public var summary: String {
         switch self {
-        case .warm: return "暖色，数字大，一眼看清电量和余额。"
-        case .clear: return "原作者的设计，系统原生的样子。"
+        case .warm: return "暖色，数字大，一页看完。"
+        case .clear: return "蓝白配色，像系统自带的 App。"
         }
     }
 
     /// 主题 page footer, also the second line while the options are greyed out.
-    public static let footer = "只换样子，内容和用法都一样。小组件、锁屏和灵动岛也会跟着换。"
+    public static let footer = "两套的功能和数据一样，只是样子和页面排法不同。小组件、锁屏和灵动岛也会跟着换。"
 
     /// VoiceOver for the settings row: 「主题，暖橙」.
     public var settingsRowLabel: String { "主题，" + name }

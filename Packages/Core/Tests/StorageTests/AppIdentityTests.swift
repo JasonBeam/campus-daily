@@ -37,25 +37,25 @@ final class AppIdentityTests: XCTestCase {
     /// The App Group named in Info.plist first; when it has no container (re-signed), `group.`
     /// plus the bundle id the process runs under, the widget's without `.balances`.
     func testReSignedBuildsTryTheAppGroupOfTheirBundleID() {
-        XCTAssertEqual(AppIdentity.appGroupCandidates(named: "group.com.beamjason.xiaorichang", bundleID: "org.example.daily", inExtension: false),
-                       ["group.com.beamjason.xiaorichang", "group.org.example.daily"])
-        XCTAssertEqual(AppIdentity.appGroupCandidates(named: "group.com.beamjason.xiaorichang", bundleID: "org.example.daily.balances", inExtension: true),
-                       ["group.com.beamjason.xiaorichang", "group.org.example.daily"])
+        XCTAssertEqual(AppIdentity.appGroupCandidates(named: "group.org.zaxh.xiaorichang", bundleID: "org.example.daily", inExtension: false),
+                       ["group.org.zaxh.xiaorichang", "group.org.example.daily"])
+        XCTAssertEqual(AppIdentity.appGroupCandidates(named: "group.org.zaxh.xiaorichang", bundleID: "org.example.daily.balances", inExtension: true),
+                       ["group.org.zaxh.xiaorichang", "group.org.example.daily"])
         XCTAssertEqual(AppIdentity.appGroupCandidates(named: "group.org.example.daily", bundleID: "org.example.daily", inExtension: false),
                        ["group.org.example.daily"], "the same group is tried once")
         XCTAssertEqual(AppIdentity.appGroupCandidates(named: nil, bundleID: "org.example.daily", inExtension: false), ["group.org.example.daily"])
         XCTAssertEqual(AppIdentity.appGroupCandidates(named: "group.org.example.daily", bundleID: nil, inExtension: false), ["group.org.example.daily"])
         XCTAssertEqual(AppIdentity.appGroupCandidates(named: nil, bundleID: nil, inExtension: true), [])
 
-        let candidates = ["group.com.beamjason.xiaorichang", "group.org.example.daily"]
-        XCTAssertEqual(AppIdentity.firstWithContainer(candidates) { _ in true }, "group.com.beamjason.xiaorichang")
+        let candidates = ["group.org.zaxh.xiaorichang", "group.org.example.daily"]
+        XCTAssertEqual(AppIdentity.firstWithContainer(candidates) { _ in true }, "group.org.zaxh.xiaorichang")
         XCTAssertEqual(AppIdentity.firstWithContainer(candidates) { $0 == "group.org.example.daily" }, "group.org.example.daily")
         XCTAssertNil(AppIdentity.firstWithContainer(candidates) { _ in false })
     }
 
-    /// With the bundle id in Base.xcconfig, every identifier is exactly what earlier builds
-    /// used, so installed copies keep their App Group, Keychain items and background task.
-    func testDefaultBundleIdKeepsTodaysIdentifiers() throws {
+    /// With the bundle id in Base.xcconfig, every identifier is the one architecture §4.2 lists
+    /// (org.zaxh.xiaorichang; Android keeps its own com.beamjason.xiaorichang).
+    func testDefaultBundleIdGivesTheListedIdentifiers() throws {
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let xcconfig = try String(contentsOf: root.appendingPathComponent("Configuration/Base.xcconfig"), encoding: .utf8)
@@ -71,28 +71,30 @@ final class AppIdentityTests: XCTestCase {
         let widgetEntitlements = try plist("Widget/Widget.entitlements")
 
         let app = AppIdentity(info: appInfo)
-        XCTAssertEqual(app.appGroup, "group.com.beamjason.xiaorichang")
-        XCTAssertEqual(app.keychainGroup, "com.beamjason.xiaorichang")
+        XCTAssertEqual(app.appGroup, "group.org.zaxh.xiaorichang")
+        XCTAssertEqual(app.keychainGroup, "org.zaxh.xiaorichang")
         XCTAssertEqual(AppIdentity(info: widgetInfo), app, "the widget reads the app's groups, not its own bundle id")
-        XCTAssertEqual(appInfo["BGTaskSchedulerPermittedIdentifiers"] as? [String], ["com.beamjason.xiaorichang.refresh"])
+        XCTAssertEqual(appInfo["BGTaskSchedulerPermittedIdentifiers"] as? [String], ["org.zaxh.xiaorichang.refresh"])
 
         for entitlements in [appEntitlements, widgetEntitlements] {
-            XCTAssertEqual(entitlements["com.apple.security.application-groups"] as? [String], ["group.com.beamjason.xiaorichang"])
+            XCTAssertEqual(entitlements["com.apple.security.application-groups"] as? [String], ["group.org.zaxh.xiaorichang"])
         }
         XCTAssertEqual(appEntitlements["keychain-access-groups"] as? [String],
-                       ["$(AppIdentifierPrefix)com.beamjason.xiaorichang", "$(AppIdentifierPrefix)com.beamjason.xiaorichang.shared"])
+                       ["$(AppIdentifierPrefix)org.zaxh.xiaorichang", "$(AppIdentifierPrefix)org.zaxh.xiaorichang.shared"])
         XCTAssertEqual(widgetEntitlements["keychain-access-groups"] as? [String],
-                       ["$(AppIdentifierPrefix)com.beamjason.xiaorichang.shared"])
+                       ["$(AppIdentifierPrefix)org.zaxh.xiaorichang.shared"])
     }
 
-    /// Nothing in the code names the default identity any more: the source files carry only
-    /// the build setting.
+    /// Nothing in these files names the default identity: they carry only the build setting,
+    /// neither today's bundle id nor the one iOS builds used before (still Android's).
     func testIdentifiersAreFilledFromTheBuildSetting() throws {
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         for path in ["App/Resources/Info.plist", "Widget/Info.plist", "App/Resources/App.entitlements", "Widget/Widget.entitlements"] {
             let text = try String(contentsOf: root.appendingPathComponent(path), encoding: .utf8)
-            XCTAssertFalse(text.contains("com.beamjason"), path)
+            for id in ["org.zaxh.xiaorichang", "com.beamjason.xiaorichang"] {
+                XCTAssertFalse(text.contains(id), "\(path) names \(id)")
+            }
         }
     }
 }
