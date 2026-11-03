@@ -1,4 +1,5 @@
 import AppIntents
+import Core
 
 struct StartShowerIntent: AppIntent {
     static let title: LocalizedStringResource = "开始洗澡"
@@ -6,8 +7,11 @@ struct StartShowerIntent: AppIntent {
     static let openAppWhenRun = true
     static let authenticationPolicy: IntentAuthenticationPolicy = .requiresLocalDeviceAuthentication
     @MainActor func perform() async throws -> some IntentResult & ProvidesDialog {
-        try await ShowerModel.shared.run(start: true)
-        return .result(dialog: "水控连上了，按出水键开水。")
+        // Throws `ShowerActionFailure`: the system shows its real reason.
+        switch try await ShowerModel.shared.run(start: true) {
+        case .startUnconfirmed: return .result(dialog: "\(ShowerActionOutcome.startUnconfirmedText)")
+        default: return .result(dialog: "\(ShowerActionOutcome.startedText)")
+        }
     }
 }
 
@@ -17,7 +21,7 @@ struct FinishShowerIntent: AppIntent {
     static let openAppWhenRun = true
     static let authenticationPolicy: IntentAuthenticationPolicy = .requiresLocalDeviceAuthentication
     @MainActor func perform() async throws -> some IntentResult & ProvidesDialog {
-        try await ShowerModel.shared.run(start: false)
+        try await ShowerModel.shared.run(start: false)  // throws the real reason (`ShowerActionFailure`)
         if let amount = ShowerModel.shared.lastCost {
             let text = amount.formatted(.currency(code:"CNY").locale(Locale(identifier:"zh_CN")))
             return .result(dialog: "已结算，这次\(text)。看一眼水停了没。")

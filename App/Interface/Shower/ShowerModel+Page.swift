@@ -21,7 +21,7 @@ extension ShowerModel {
         switch effect {
         case .start:
             startTask = Task {
-                try? await run(start:true)
+                _ = try? await run(start:true)  // the page shows the record itself
                 startTask = nil
                 pageEvent(.startReturned)
             }
@@ -33,7 +33,7 @@ extension ShowerModel {
             }
         case .finish:
             Task {
-                try? await run(start:false)
+                _ = try? await run(start:false)
                 pageEvent(.endReturned)
             }
         case .dismissRecord:

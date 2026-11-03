@@ -28,27 +28,26 @@ public enum SharedKeychain {
 
     public static var defaultGroup: String? { groups.defaultGroup }
 
-    /// `<TeamPrefix>.com.beamjason.xiaorichang.shared`. Nil when the prefix can't be read
-    /// (re-signed without keychain groups): the store then keeps everything in the default group
-    /// and the widget simply has no data.
+    /// `<TeamPrefix>.<bundle id>.shared`. Nil when the prefix can't be read (re-signed without
+    /// keychain groups) or Info.plist names no keychain group: the store then keeps everything
+    /// in the default group and the widget simply has no data.
     public static var accessGroup: String? { groups.sharedGroup }
 
     /// The app's private group, or nil in the widget (its default group is the shared one).
     public static var privateGroup: String? { groups.privateGroup }
 
-    /// The group names after the team prefix, as listed in App.entitlements and Widget.entitlements.
-    public static let groupIdentifier = "com.beamjason.xiaorichang.shared"
-    public static let privateGroupIdentifier = "com.beamjason.xiaorichang"
-
-    /// `<TeamPrefix>.` + `groupIdentifier`, taking the team prefix from any group this build wrote to.
-    public static func accessGroup(teamPrefixedFrom group: String) -> String? {
-        guard let dot = group.firstIndex(of:"."), dot != group.startIndex else { return nil }
-        return String(group[..<dot]) + "." + groupIdentifier
+    /// `<TeamPrefix>.` + `sharedGroup`, taking the team prefix from any group this build wrote to.
+    /// `sharedGroup` is the shared group's name after the prefix, from this build's Info.plist.
+    public static func accessGroup(teamPrefixedFrom group: String,
+                                   sharedGroup: String? = AppIdentity.main.sharedKeychainGroup) -> String? {
+        guard let sharedGroup, let dot = group.firstIndex(of:"."), dot != group.startIndex else { return nil }
+        return String(group[..<dot]) + "." + sharedGroup
     }
 
     /// The default group is private unless it is the shared group itself.
-    public static func privateGroup(defaultGroup group: String) -> String? {
-        group == accessGroup(teamPrefixedFrom:group) ? nil : group
+    public static func privateGroup(defaultGroup group: String,
+                                    sharedGroup: String? = AppIdentity.main.sharedKeychainGroup) -> String? {
+        group == accessGroup(teamPrefixedFrom:group, sharedGroup:sharedGroup) ? nil : group
     }
 
     public static let keychainStore = KeychainSecureStore(backend:SecItemKeychainBackend(), groups:groups)
@@ -64,8 +63,12 @@ public enum SharedKeychain {
 public final class KeychainGroupProbe: Sendable {
     private let probe: @Sendable () -> String?
     private let cached = OSAllocatedUnfairLock<String?>(initialState: nil)
+    /// The shared group's name after the team prefix (`AppIdentity.sharedKeychainGroup`).
+    private let sharedName: String?
 
-    public init(_ probe: @escaping @Sendable () -> String?) { self.probe = probe }
+    public init(sharedGroup: String? = AppIdentity.main.sharedKeychainGroup, _ probe: @escaping @Sendable () -> String?) {
+        self.sharedName = sharedGroup; self.probe = probe
+    }
 
     public var defaultGroup: String? {
         if let known = cached.withLock({ $0 }) { return known }
@@ -74,6 +77,6 @@ public final class KeychainGroupProbe: Sendable {
         return found
     }
 
-    public var sharedGroup: String? { defaultGroup.flatMap { SharedKeychain.accessGroup(teamPrefixedFrom:$0) } }
-    public var privateGroup: String? { defaultGroup.flatMap { SharedKeychain.privateGroup(defaultGroup:$0) } }
+    public var sharedGroup: String? { defaultGroup.flatMap { SharedKeychain.accessGroup(teamPrefixedFrom:$0, sharedGroup:sharedName) } }
+    public var privateGroup: String? { defaultGroup.flatMap { SharedKeychain.privateGroup(defaultGroup:$0, sharedGroup:sharedName) } }
 }

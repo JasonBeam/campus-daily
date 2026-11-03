@@ -82,36 +82,12 @@ public enum RechargeNavigation {
         if scheme == "about", ["about:blank", "about:srcdoc"].contains(url.absoluteString) { return .allow }
         return .cancel
     }
-
-    /// Diagnostic line for a cancelled navigation: for http(s) the host only, for any other scheme
-    /// the scheme only (an app link's "host" can be an identifier), never the path, query or
-    /// fragment, which can carry order ids or tokens.
-    public static func blockedEvent(_ url: URL) -> String { blockedEvent(url, event: "recharge.blocked") }
-
-    static func blockedEvent(_ url: URL, event: String) -> String {
-        let scheme = sanitized(url.scheme ?? "", limit: 16)
-        if scheme == "http" || scheme == "https", let host = url.host, !host.isEmpty {
-            return event + " " + scheme + "://" + sanitized(host, limit: 50)
-        }
-        return event + " " + (scheme.isEmpty ? "unknown" : scheme + ":")
-    }
-
-    private static func sanitized(_ text: String, limit: Int) -> String {
-        let allowed = Set("abcdefghijklmnopqrstuvwxyz0123456789.-")
-        return String(text.lowercased().filter { allowed.contains($0) }.prefix(limit))
-    }
 }
 
 /// WKWebView navigation allow-list for the school login page (the page and every frame in it):
 /// https on the three school hosts, default port, no user info. A frame may also be
 /// `about:blank` / `about:srcdoc`, which loads nothing. Everything else is cancelled.
 public enum SchoolLoginNavigation {
-    /// Diagnostic line for a cancelled navigation on the login page (the page or a frame in it),
-    /// written like the recharge one: host or scheme only.
-    public static func blockedEvent(_ url: URL, isMainFrame: Bool) -> String {
-        RechargeNavigation.blockedEvent(url, event: isMainFrame ? "login.blocked" : "login.blockedFrame")
-    }
-
     public static func allows(_ url: URL, isMainFrame: Bool) -> Bool {
         if !isMainFrame, url.scheme?.lowercased() == "about", ["about:blank", "about:srcdoc"].contains(url.absoluteString) { return true }
         guard url.scheme?.lowercased() == "https", let host = url.host?.lowercased(),

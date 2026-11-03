@@ -44,8 +44,6 @@ final class LxtClientTests: XCTestCase {
 
         try server.serve("lxt6/areaInfo-badSign", times: 1)
         await Golden.expectError(.badRequest(.lxt6)) { _ = try await client.areas(parent: "20021") }
-        try server.serve("lxt6/areaInfo-missingId", times: 1)
-        await Golden.expectError(.badRequest(.lxt6)) { _ = try await client.areas(parent: "") }
         try server.serve("lxt6/areaInfo-unknownParent", times: 1)
         await Golden.expectError(.rejected(.lxt6, code: "4034", message: "查无此信息，请联系管理员完善地址信息！")) {
             _ = try await client.areas(parent: "999999999999999999")

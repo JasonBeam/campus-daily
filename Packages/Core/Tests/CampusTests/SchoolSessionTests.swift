@@ -8,8 +8,6 @@ struct Harness {
     let clock = FakeClock()
     var passwordLogin: SchoolPasswordLogin? = nil
     var diagnostic: @Sendable (String) -> Void = { _ in }
-    /// Keep the lifetime lines in `store` as the app and the widget do.
-    var keepsCredentialLog = false
     /// False for the widget's session.
     var createsLoginDeviceID = true
     var recordsTimeout = CardActivity.timeout
@@ -25,7 +23,6 @@ struct Harness {
         let http: HTTPClient = beforeRecords.map { HeldRecordsClient(inner: stub, hold: $0) } ?? stub
         return SchoolSession(portal: PortalClient(http: http), ecykt: EcyktClient(http: http), vault: vault,
                              passwordLogin: passwordLogin, now: clock.function, diagnostic: diagnostic,
-                             credentialLog: keepsCredentialLog ? CredentialLifetimeLog(store: store) : nil,
                              createsLoginDeviceID: createsLoginDeviceID, recordsTimeout: recordsTimeout,
                              meterRetryWait: meterRetryWait)
     }

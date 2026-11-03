@@ -229,8 +229,11 @@ foreground, the BG task and the widget):**
    accepted it, only a definite refusal of the card login (`sessionExpired`, `rejected` with the
    service's own code, `badRequest`) pauses it; no network, a timeout, a school server error or a
    bare 401/403 is a failed read, and the next refresh exchanges the portal token that login
-   stored. That failure also puts the no-answer hold back (`unansweredAt`, in the shared account
-   item), so while the portal keeps failing neither process falls through to the password again.
+   stored. The no-answer hold written before the password went out (`unansweredAt`, in the
+   shared account item) is lifted only when the login ends with a card session; a failure, a
+   lost lease, a sign-out or a cancelled read after the accepted password all leave it, so while
+   the portal keeps failing neither process falls through to the password again. A card session
+   renewed through the portal token lifts any hold left from an outage.
    No loops, no retries beyond one.
 6. The live session (latest ciphertexts, `lastAliveAt`) is written back only while the stored one
    is still the session this read started from: a sign-out or a newer session from the other
@@ -240,11 +243,10 @@ foreground, the BG task and the widget):**
 liveness OK); `school.portal` carries `obtainedAt` (first saved). When the liveness check or the
 portal says one is dead, one diagnostic line records only the kind and measured minutes:
 `school.credentialExpired kind=card ageMinutes=152 aliveMinutes=92` / `kind=portal ageMinutes=481`
-(once per credential per process). Both processes write it to the system log (subsystem
-`com.beamjason.xiaorichang`, category `snapshot`) and append it to the shared Keychain item
-`shared.credentialLog` (`CredentialLifetimeLog`: the last 50 lines with their times), which the
-app's 导出热水诊断 report carries as `credentialLifetime`, apart from the 300 hot-water lines.
-Sign-out keeps it (nothing personal in it); reset deletes it.
+(once per credential per process). Both processes write it to the system log only (subsystem
+`com.beamjason.xiaorichang`, category `snapshot`). Builds before kept the lines in the shared
+Keychain item `shared.credentialLog` for the removed 导出热水诊断 report; the app deletes that
+item at launch (`RetiredDiagnostics`), and reset deletes it too.
 
 **One refresh at a time.** Callers are pull-to-refresh, the app coming to the foreground,
 the background task, the refreshes after a state change (sign-in, meter choice, recharge), and
@@ -263,7 +265,7 @@ records the failure and its time per tile.
 **One writer across two processes.** The app and the widget extension each have one
 `SnapshotRefresher` over one Keychain. They take turns
 through `RefreshLease`, the file `refresh.lease` = `{owner, expiresAt}` in the App Group container
-(`group.com.beamjason.xiaorichang`):
+(`group.$(APP_BUNDLE_IDENTIFIER)`, read from Info.plist `AppGroupIdentifier`, see 4.2):
 - every step (take, renew, check, give back, clear) is one read-compare-write done while holding
   an exclusive `flock` on that file, so two processes never both find the same lease free and a
   holder whose lease ran out never writes over the next one's; the lock is held only for that
@@ -293,8 +295,8 @@ through `RefreshLease`, the file `refresh.lease` = `{owner, expiresAt}` in the A
   stays). A refresh's password accepted after the other process took its lease keeps the hold
   written before it went out, so it is not sent again for a while. Its portal token is still
   written when the lease only ran out (this process is still the stored owner: nobody else took
-  it, so nobody else wrote): that step takes the lease again, lifts the hold and keeps the owner
-  and compare checks. A cancelled task (the widget at its deadline) writes nothing, as for every
+  it, so nobody else wrote): that step takes the lease again and keeps the owner and compare
+  checks; the hold, the pause and lifting the hold are written the same way. A cancelled task (the widget at its deadline) writes nothing, as for every
   other write, and the hold stays. Only deletions skip the lease check: sign-out and
   reset remove the lease first (below), and the first 保存密码 off-write removes the password at
   once, its second write under the lease taking out one a refresh wrote back;
@@ -310,8 +312,10 @@ through `RefreshLease`, the file `refresh.lease` = `{owner, expiresAt}` in the A
   never on the app's main thread, before the school items are deleted;
 - snapshot writes are ordered: a reading whose `checkedAt` is older than the stored snapshot's is
   dropped (unless more than 30 minutes older: the clock moved back, and the reading is written), and a "nobody signed in" reading leaves an emptied snapshot empty.
-- signed without the App Group (no container), the app refreshes on its own and the widget never
-  takes the lease: it draws the stored snapshot, so the two still never read at the same time.
+- signed without the App Group (no container), the app keeps the lease in its own container
+  (`Application Support/refresh.lease`, `RefreshLease.appFile`), so its reads, logins, recharge
+  and hand-off still take turns; the widget has no lease file and never takes the lease: it draws
+  the stored snapshot, so the two still never read at the same time.
 Builds before the lease file kept the lease in the Keychain item `shared.refreshLease`;
 `SchoolRefreshStack` deletes that leftover at launch.
 
@@ -364,7 +368,10 @@ In a same-name list each row is titled by the first location level that differs 
 candidates (`LocationNaming.titles`), with the full location under it. Every binding keeps that
 location (`MeterBinding.location`; floors are left out of picker paths); Settings shows it, and the dorm row uses it when it is the same room
 (`SchoolProfile.dormLocation`), else the portal address. Daily refresh queries the room-level
-node only (1 row).
+node only (1 row). A meter the school replaced keeps the room node but gets a new `comAddress`:
+when the bound node answers with one row under the room's name, the refresh reads that row and
+moves the binding to its `comAddress` (`MeterMatcher.pick`, one locked compare-and-write under
+the lease); several rows, another room's name or none read as no meter and leave the binding.
 `data` is a JSON **string**; all numeric fields are strings → parse with `Decimal` in POSIX locale.
 
 **Error mapping (school):**
@@ -397,8 +404,10 @@ what such a call charges lands on that student's own hot-water balance. An autho
 open the water. The read endpoints (areas, rooms, machines) are signable the same way;
 `getUserMsg` also needs the `appdata` of the school's ecykt hand-off (`LxtClient.userInfo`), so
 it is harder to misuse. This is a platform risk the client cannot fix, accepted as such. The redacted `description`, the
-exact-key check on `.waterconfig` files and iOS file protection on the imported copy keep the
-values out of logs and stray files; they do not protect them.
+exact-key check on `.waterconfig` files, iOS file protection on the imported copy
+(`Application Support/Water/imported.waterconfig`) and its folder kept out of backups
+(`ShowerImportFolder`, set before the copy is written and again at launch for older copies) keep
+the values out of logs, backups and stray files; they do not protect them.
 
 **Identity hand-off.** `EcyktClient.signData` → `appdata` (`vsuppid, appid, userId, deptId,
 username, phone, sign, nonce, timestamp`) → `getUserMsg` (signed, `requestType=1`) → water
@@ -437,7 +446,7 @@ three fields. Envelope casing differs by backend: `Code/Data/Message` (AECC) vs
 | `Code:-301 "…sign 不合法"` | `badRequest(.lxt6)` (same handling as 4002) |
 | `code:4034 "查无此信息…"` | `rejected(.lxt6, "4034", msg)` → onboarding shows "学校没有登记这个地址" |
 | `code:5000 "当前房间未绑定设备"` | `rejected(.lxt6, "5000", msg)` → "这个房间没有水控" |
-| authorize/settle: explicit non-zero code | `rejected` (definite refusal, nothing charged for authorize) |
+| authorize/settle: any other non-zero code | `rejected(.lxt6, code, msg)`. For authorize only 4002/-301 (`badRequest`, `LxtClient.requestRefusalCodes`) prove nothing was issued; every other code, a low balance included (none has been seen), is `authorizeUncertain` and waits for a check |
 | authorize/settle: transport error, non-200, unreadable body | `uncertain(.lxt6)` |
 
 Authorize/settle reply shapes and their refusal codes are **not captured**; the
@@ -518,8 +527,9 @@ idle ──start──► authorizing ──auth ok──► writePending ──
 
 Rules:
 
-- Any state but `idle`/`done` blocks `start`. Authorize: explicit refusal → `failed(needsReview:
-  false)` (nothing issued); anything else → `failed(needsReview: true)`; never re-authorize.
+- Any state but `idle`/`done` blocks `start`. Authorize: definite refusal (refused before
+  sending, or 4002/-301) → `failed(needsReview: false)` (nothing issued); anything else, any
+  other platform code included → `failed(needsReview: true)`; never re-authorize.
 - `writePending` shows as running on purpose (the controller may have accepted without acking).
   `finish` from it: probe shows the device idle with our identity → the check face
   (`stateReviewRequired`, as from `running`: the write may have been applied with only its ack
@@ -531,8 +541,19 @@ Rules:
   write was taken is `failed(closeUnconfirmed)`; from there a read-only review probe is
   allowed (the unsure face's 「再查一次水控」, Settings' 检查水控状态): `0xA5` returns to
   `running` (the close can be sent again), anything else keeps the check.
+- Whose session a close ended: the consumption frame is `55`, the machine id (4 bytes) and 15
+  bytes whose layout is not known; nothing in it is known to name the authorization or the
+  student, so it can't be checked against `authorizationID`. `0xA5` only says water runs, not
+  whose. The one reply tied to our authorization is the write's ack (`0xAA`, 9 bytes), so the
+  consumption frame is settled by itself only for a session that got it (`running` from the
+  ack). Without it (`writePending`, also when a probe later found `0xA5`), and after a probe
+  found water running behind an unconfirmed close, the frame is kept (`holdSettle`):
+  `failed(settleUnconfirmed)` with the settlement not sent, settled by 「再结算一次」's two taps
+  after the user looked. An acknowledged session the controller ended by itself, followed by
+  someone else's on the same controller before 结束, is not caught: nothing the controller
+  sends tells them apart.
 - `settling` is never auto-retried; repeat-settle idempotency is unknown, so a manual retry
-  needs a second confirmation and is recorded in diagnostics. It is 「再结算一次」 on the unsure
+  needs a second confirmation and is counted on the record (`manualSettleAttempts`). It is 「再结算一次」 on the unsure
   face of a settlement that failed with its consumption frame kept: the first tap arms it, the
   second sends it.
 - A probe that finds the controller stopped under a running record sets `stateReviewRequired`:
@@ -602,7 +623,8 @@ Rules:
   `biz_content.total_amount` **equals** the order amount. Any amount parameter in a link (also
   nested) must equal it too. Anything else (other hosts/schemes, `weixin://`, unknown amount)
   is refused and nothing opens. `skipPay`/`jumpToQuery` → poll directly.
-- On return (or after 10 s foreground) poll `order(id)` after 2, 4, 8, 15, 15, 15 s (≈ 1 min);
+- On return (the AlipaySDK reporting back, which also covers its own in-app web page when Alipay
+  is not installed, the app becoming active, or after 10 s foreground) poll `order(id)` after 2, 4, 8, 15, 15, 15 s (≈ 1 min);
   still unpaid → back to `created` with "付款未确认". Paid = `payFlag 1` or any non-10/17 status.
 - Re-pay only while unpaid (10/17) at the confirmed price, ≥ 2 min after the last payment
   request, with an order read taken after that window and under 5 min old, **and** a second
@@ -627,9 +649,18 @@ submit APIs itself (not captured).
 idle ─tap 充值─► checkingSession ─ok─► webSession ─page loaded─► inPage ─back / app foreground─► confirming ─► idle
                       │expired                                      │ alipays:// | weixin:// link
                       ▼                                             ▼ open external app
-                  needsLogin (re-login, then retry once)        inPage (still)
+                  renewing (one forced refresh)                 inPage (still)
+                      │card read: checkingSession once more
+                      │not renewed, or expired again
+                      ▼
+                  needsLogin (re-login, then retry once)
 ```
 
+- `renewing`: an expired card session (here or in the hot-water hand-off) is renewed once the
+  way home renews it, by a forced refresh (portal token, else the saved password), outside the
+  step's lease; when that refresh read the card, the step runs once more
+  (`CardSessionRenewal`). The user is asked to sign in only when the refresh did not read the
+  card or the second try finds the session expired again.
 - `checkingSession`: `boundCards` (liveness) then `freshLogin` → build `elecampus_state`
   `{logintoken: <fresh token>, loginInfo, schoolid, custInfo, custid}` and inject it as a
   document-start user script, ecykt origin only. Card: `/ykt-view/recharge?isbind=1`.
@@ -661,10 +692,11 @@ idle ─tap 充值─► checkingSession ─ok─► webSession ─page loaded�
 | U净 account, checkout record | Keychain `laundry.account`, `laundry.checkout` | AfterFirstUnlockThisDeviceOnly | never (private group) |
 | home snapshot (balances, meter, room label, per-tile error, fetchedAt, needsLogin) | Keychain `shared.snapshot` (≤64 KiB JSON) | AfterFirstUnlockThisDeviceOnly | **yes** |
 | reminder thresholds mirrored for widget | Keychain `shared.reminderLines` | same | **yes** |
-| credential-lifetime lines (kind, minutes, time; last 50) | Keychain `shared.credentialLog` | same | **yes** (the widget's refresh appends) |
+| credential-lifetime lines left by older builds (no longer written; deleted at launch) | Keychain `shared.credentialLog` | same | **yes** |
 | refresh lease (`{owner, expiresAt}`, one school read at a time across processes) | file `refresh.lease` in the App Group container | until first unlock | **yes** (the widget takes it for its own read) |
 | reset-in-progress marker (start time) | Keychain `shared.resetMarker` | same | **yes** (any process that can start a shower or a laundry order checks it) |
 | UI prefs, reminder toggles, de-dupe state | UserDefaults (standard), keys prefixed `xrc.` | – | no |
+| imported hot-water config | file `Application Support/Water/imported.waterconfig`, folder excluded from backup | until first unlock | no |
 
 Reset (Settings › 重置) is all or nothing. It writes `shared.resetMarker` first; while the
 marker is under five minutes old, `ShowerEngine.start` and `LaundryEngine.confirmOrder` refuse
@@ -684,22 +716,23 @@ Session stores (water/laundry) write synchronously and fail closed: a failed wri
 next side effect (`storage` error), same as today.
 
 Widget sharing: App.entitlements lists two keychain access groups, in this order: the app's
-private group `$(AppIdentifierPrefix)com.beamjason.xiaorichang` (`SharedKeychain.privateGroupIdentifier`),
-then the shared group `$(AppIdentifierPrefix)com.beamjason.xiaorichang.shared`
-(`SharedKeychain.groupIdentifier`). Widget.entitlements lists only the shared group. Order matters:
+private group `$(AppIdentifierPrefix)$(APP_BUNDLE_IDENTIFIER)` (`AppIdentity.keychainGroup`),
+then the shared group `$(AppIdentifierPrefix)$(APP_BUNDLE_IDENTIFIER).shared`
+(`AppIdentity.sharedKeychainGroup`). Widget.entitlements lists only the shared group. Order matters:
 iOS puts an item written without a group into the first listed group. Items marked "yes" are
 written to the shared group; all others are written to the private group, which the widget is
 not entitled to read. Both work with any signing team incl. free Personal Teams, no portal
 registration. The widget reads the school items above for its own refresh, and `shared.snapshot`,
-and `shared.reminderLines`, appends to `shared.credentialLog`, and shares the lease file in the App
+and `shared.reminderLines`, and shares the lease file in the App
 Group container. An item can still sit in its old group: builds before the private group existed kept
 every item in the shared group, and builds before the widget refreshed by itself kept the portal
 token (then WhenUnlocked) and the login device id in the private group. At launch
 (`migrateItemGroups()`) and on any read that finds one there, the item is written to its group
 with today's accessibility, read back, and only then deleted from the old group; a failed step
 keeps the original and retries next launch, so nobody is signed out or loses a binding. The App
-Group (`group.com.beamjason.xiaorichang`, both targets) holds only the lease file; a re-signed
-build without it keeps working, with the widget leaving every refresh to the app. Live Activities get data via ActivityKit content
+Group (`group.$(APP_BUNDLE_IDENTIFIER)`, both targets) holds only the lease file; a re-signed
+build without it keeps working: the app reads, signs in and recharges without the lease, and the
+widget leaves every refresh to the app, so the two never read at once. Live Activities get data via ActivityKit content
 state. Each snapshot write calls `WidgetCenter.reloadTimelines(ofKind:)`; tiles carry their own
 `fetchedAt`, and `needsLogin` shows a "需重新登录" badge instead of silently stale numbers.
 
@@ -712,6 +745,7 @@ become `xrc.reminder.*`, `xrc.laundry.ackFailedOrder`, `xrc.water.needsResidence
 |---|---|
 | App bundle id | `com.beamjason.xiaorichang` (matches Android `applicationId`) |
 | Widget extension | `com.beamjason.xiaorichang.balances` |
+| App Group | `group.com.beamjason.xiaorichang` |
 | Keychain access groups | app: `$(AppIdentifierPrefix)com.beamjason.xiaorichang`, then `$(AppIdentifierPrefix)com.beamjason.xiaorichang.shared`; widget: the shared one only |
 | Keychain services | `com.beamjason.xiaorichang.<name>.v1` |
 | BG task id | `com.beamjason.xiaorichang.refresh` |
@@ -721,6 +755,15 @@ become `xrc.reminder.*`, `xrc.laundry.ackFailedOrder`, `xrc.water.needsResidence
 | Xcode workspace / project / targets | `XiaoRiChang.xcworkspace` / `App.xcodeproj` / `App` (product `XiaoRiChang.app`), `Widget` (product `XiaoRiChangWidget.appex`) |
 | Swift package / product | `Packages/Core` / `Core` |
 | Display names | 校日常 / widget gallery title 校日常 |
+
+The App Group, the keychain groups and the BG task id are not written into the code: both
+entitlements files and both Info.plists are filled from `APP_BUNDLE_IDENTIFIER` at build time
+(Info.plist keys `AppGroupIdentifier` = `group.$(APP_BUNDLE_IDENTIFIER)` and
+`KeychainGroupIdentifier` = `$(APP_BUNDLE_IDENTIFIER)`, read by `AppIdentity`; the widget carries
+the app's values, not its own bundle id; `BGTaskSchedulerPermittedIdentifiers` =
+`$(APP_BUNDLE_IDENTIFIER).refresh`). The table shows the values for the default bundle id. A build
+with another `APP_BUNDLE_IDENTIFIER` (Developer.xcconfig) gets its own groups; the Keychain service
+names stay `com.beamjason.xiaorichang.<name>.v1` in every build.
 
 Distribution is an unsigned IPA the user re-signs (`Scripts/package-ipa.py`); there is no App
 Store/TestFlight record. Paid-team signers register `com.beamjason.xiaorichang` and
@@ -756,16 +799,16 @@ Every endpoint gets at least: success, expired/unauthorized, refused with messag
 
 | Path | Fixtures |
 |---|---|
-| ecykt liveness ok / expired | `getSysBindCustInfo-ok`, `-badToken`, `-*Token-t1`, `-*-afterMint10`, `expiry-*` |
-| fresh login (recharge) ok / expired / bad params | `loginBySysId-mintSeries*`, `-noTimestamp`, `-timestamp*`, `-badToken`, `-missingSyscustid`, `-wrongSyscustid` (empty body), `-rotatedSyscustidInput`, `-mintedTokenAsInput` |
-| balance (incl. "no expiry signal here") | `getUserBalance-ok`, `-missingCustid` (empty body → badRequest), `-tokenHeaderOnly`, `-tokenBodyOnly`, `-rotatedSyscustid`, `-afterLoginBySysId`, `-mintedToken*` |
+| ecykt liveness ok / expired | `getSysBindCustInfo-ok`, `-badToken` |
+| fresh login (recharge) ok / expired / bad params | `loginBySysId-mintSeries1`, `-mintSeries2`, `-badToken`, `-missingSyscustid` (empty body → badRequest) |
+| balance (incl. "no expiry signal here") | `getUserBalance-ok`, `-missingCustid` (empty body → badRequest) |
 | electricity tree / meters | `electric-getBuildingInfo-root`, `-level1..4`, `-leafEmpty`; `electric-getMeterStatus-ok` (campus), `-leaf`, `-room`, `-unknownBuilding` (`[]`); `electric-service-missingServer` (500) |
 | electricity web entry | `getPowerUrl-ok` (302 not followed) |
 | water hand-off | `getSignData-ok`, `-badToken` |
 | recharge web session state | `localStorage-elecampus_state-csaLogin` |
 | card records (最近, 昨天花了) | `card-getRecordList-ok` |
 | portal | `getMyInfo-ok`, `-badtoken` (-1001), `-notoken` (-1), `getMyECard-ok`, `me-user-ok` |
-| lxt6 reads | `getUserMsg-ok`, `-badSign` (-301, JSON-in-string); `areaInfo-level0..3`, `-badSign`/`-missingId` (4002), `-unknownParent` (4034); `getMachineMacAddress-ok`, `-unknownRoom` (5000) |
+| lxt6 reads | `getUserMsg-ok`, `-badSign` (-301, JSON-in-string); `areaInfo-level0..3`, `-badSign` (4002), `-unknownParent` (4034); `getMachineMacAddress-ok`, `-unknownRoom` (5000) |
 | U净 auth errors | `ujing/programInfo-noAuth`, `orderDetail-badAuth` (401 shapes, captured); `scanWasherCode-badAuth`, `orderCreate-badAuth` |
 | U净 (synthetic, shapes from the existing app) | `captcha-ok`/`-refused`; `login-ok`/`-tempToken`/`-challenge`/`-refused`; `scanWasherCode-ok`/`-activeOrder`/`-refused`; `programInfo-ok`/`-refused`; `orderCreate-ok`/`-refused`; `orderDetail-unpaid`/`-paid`/`-washing`/`-done`/`-failedStart`/`-cancelled`/`-refused`; `paymentMethods-ok`/`-refused`; `paymentArguments-f2f`/`-sdk`/`-skipPay`/`-refused`; `orderCancel-ok`/`-refused` |
 
@@ -843,15 +886,14 @@ Legend: **RO** read-only, **ST** changes server state, **$$** spends money.
 
 **Token behaviour.**
 - `loginBySysId` ignores `timestamp`, mints a new token on every call, accepts minted tokens
-  as input, and does not revoke older tokens (original, first and last minted tokens all still
-  validated after 10 mints). It also returns a re-encrypted `syscustid` each time;
+  as input, and does not revoke older tokens. It also returns a re-encrypted `syscustid` each time;
   `getSysBindCustInfo` re-encrypts `custid` each time. All variants are accepted as input:
   never compare these ciphertexts, keep the latest.
 - Only `loginBySysId`, `getSysBindCustInfo` and `getSignData` validate the token
   (`code:-1, msg:"登录状态已过期，请重新登录！"`, HTTP 200). Balance and electricity endpoints
   don't signal expiry; use `getSysBindCustInfo` as the liveness check.
-- Lifetime: tokens were still valid after > 1 h including 28 min idle; the real TTL is measured
-  by scheduled probes.
+- Lifetime: the original token and the first and last of ten minted tokens all still validated
+  after more than 1 h, 28 min of it idle (recorded once; no test replays it).
 
 ### A.2 ecykt.gdbtu.edu.cn (`/ykt-mini`)
 

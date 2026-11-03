@@ -61,7 +61,8 @@ final class PasswordLoginInterruptionTests: XCTestCase {
     }
 
     /// The login worked and the read was then given up (the widget's deadline) during the exchange
-    /// after it: the portal token from the login is already kept.
+    /// after it: the portal token from the login is already kept, and so is the hold (no card
+    /// session came of it yet).
     func testThePortalTokenIsKeptWhenTheReadIsGivenUpAfterTheLogin() async throws {
         let (h, _) = try harness(.success(SchoolPasswordSignInTests.freshToken))
         h.server.serve(try T.eCardWithTicket())
@@ -80,7 +81,7 @@ final class PasswordLoginInterruptionTests: XCTestCase {
         release.signal()
         _ = await read.value
         XCTAssertEqual(try h.vault.portalToken()?.value, SchoolPasswordSignInTests.freshToken.value)
-        XCTAssertNil(try h.vault.account()?.unansweredAt)
+        XCTAssertNotNil(try h.vault.account()?.unansweredAt)
     }
 }
 

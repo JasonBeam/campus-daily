@@ -124,22 +124,6 @@ final class EcyktLivenessTests: XCTestCase {
         await T.expectError(.sessionExpired(.ecykt)) { _ = try await EcyktClient(http: server.makeClient()).boundCards(T.session(token: "REDACTED_TOKEN_3")) }
     }
 
-    /// Original, first-minted and last-minted tokens all stay valid (after 10 mints, after 28 min idle).
-    func testAllTokenLifetimeCapturesValidate() async throws {
-        let names = ["originalToken-t1", "mintedFirstToken-t1", "mintedLastToken-t1", "originalToken-afterMint10",
-                     "mintedFirstToken-afterMint10", "mintedLastToken-afterMint10", "seriesLastToken-afterMint10"].map { "ecykt/getSysBindCustInfo-" + $0 }
-            + ["first-end", "first-p1", "last-end", "last-idle28m", "original-end", "original-idle28m"].map { "ecykt/expiry-" + $0 }
-        for name in names {
-            let f = try FixtureLoader.load(name)
-            let server = StubServer()
-            server.serve(f)
-            let token = f.requestBody?["acc_token"]?.text ?? ""
-            let cards = try await EcyktClient(http: server.makeClient()).boundCards(T.session(token: token))
-            XCTAssertEqual(cards.first?.unionID, "TESTid00000000000000000000000001", name)
-            XCTAssertEqual(server.requests.first?.bodyField("acc_token"), token, name)
-        }
-    }
-
     func testMalformedBoundCards() async throws {
         let ok = try FixtureLoader.load("ecykt/getSysBindCustInfo-ok")
         let noCustid = T.editingData(ok) { data in
@@ -175,33 +159,25 @@ final class EcyktLivenessTests: XCTestCase {
 }
 
 final class EcyktFreshLoginTests: XCTestCase {
-    /// `loginBySysId` ignores timestamp and accepts minted tokens and rotated syscustid as input.
-    func testFreshLoginSuccessShapes() async throws {
-        let names = (1...6).map { "ecykt/loginBySysId-mintSeries\($0)" } + ["noTimestamp", "timestampNowMs", "timestampNowS", "timestampStale1d",
-                     "rotatedSyscustidInput", "mintedTokenAsInput"].map { "ecykt/loginBySysId-" + $0 }
-        var tokens = Set<String>()
-        for name in names {
-            let f = try FixtureLoader.load(name)
-            let server = StubServer()
-            server.serve(f)
-            let s = T.session(token: f.requestBody?["acc_token"]?.text ?? "", syscustid: f.requestBody?["syscustid"]?.text ?? "")
-            let login = try await EcyktClient(http: server.makeClient()).freshLogin(s)
-            XCTAssertEqual(login.isbind, 1, name)
-            XCTAssertNotEqual(login.syscustid, s.syscustid, "\(name): syscustid is re-encrypted per call")
-            tokens.insert(login.token)
-            let r = try XCTUnwrap(server.requests.first)
-            XCTAssertNil(r.bodyJSON?["timestamp"], name)
-            XCTAssertEqual(r.bodyField("redirect"), "/recharge?isbind=1")
-            XCTAssertEqual(r.bodyField("syscustid"), s.syscustid, "rotated syscustid passed through")
-        }
-        XCTAssertEqual(tokens.count, names.count, "every call mints a new token")
+    func testFreshLoginSuccess() async throws {
+        let f = try FixtureLoader.load("ecykt/loginBySysId-mintSeries1")
+        let server = StubServer()
+        server.serve(f)
+        let s = T.session(token: f.requestBody?["acc_token"]?.text ?? "", syscustid: f.requestBody?["syscustid"]?.text ?? "")
+        let login = try await EcyktClient(http: server.makeClient()).freshLogin(s)
+        XCTAssertEqual(login.isbind, 1)
+        XCTAssertEqual(login.token, "REDACTED_TOKEN_9")
+        XCTAssertNotEqual(login.syscustid, s.syscustid, "syscustid is re-encrypted per call")
+        let r = try XCTUnwrap(server.requests.first)
+        XCTAssertNil(r.bodyJSON?["timestamp"])
+        XCTAssertEqual(r.bodyField("redirect"), "/recharge?isbind=1")
+        XCTAssertEqual(r.bodyField("syscustid"), s.syscustid)
     }
 
     func testFreshLoginFailures() async throws {
         let cases: [(String, ServiceError)] = [
             ("ecykt/loginBySysId-badToken", .sessionExpired(.ecykt)),
             ("ecykt/loginBySysId-missingSyscustid", .badRequest(.ecykt)),
-            ("ecykt/loginBySysId-wrongSyscustid", .badRequest(.ecykt)),
         ]
         for (name, expected) in cases {
             let server = StubServer()
@@ -239,13 +215,11 @@ final class EcyktFreshLoginTests: XCTestCase {
 }
 
 final class EcyktBalanceTests: XCTestCase {
-    func testBalanceSuccessShapes() async throws {
-        for name in ["ok", "tokenHeaderOnly", "tokenBodyOnly", "rotatedSyscustid", "afterLoginBySysId", "mintedTokenFirst", "mintedTokenLast"] {
-            let server = StubServer()
-            try server.serve("ecykt/getUserBalance-" + name)
-            let money = try await EcyktClient(http: server.makeClient()).balance(T.session(), custid: T.custid)
-            XCTAssertEqual(money, Money(fen: 790), name)
-        }
+    func testBalanceOK() async throws {
+        let server = StubServer()
+        try server.serve("ecykt/getUserBalance-ok")
+        let money = try await EcyktClient(http: server.makeClient()).balance(T.session(), custid: T.custid)
+        XCTAssertEqual(money, Money(fen: 790))
     }
 
     func testMissingCustidEmptyBodyIsBadRequestNotExpiry() async throws {

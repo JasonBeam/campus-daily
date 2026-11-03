@@ -192,6 +192,16 @@ public struct LaundryCheckout: Sendable, Equatable, Codable {
         return owner == id
     }
 
+    /// Whether the last order's outcome and the last-order note go when the U净 account on this
+    /// phone changes: signed out (`signedInAs` nil), or signed in as an account other than the
+    /// one saved before (`stored`). They belong to the old account; the same account signing in
+    /// again (its login ran out) keeps them. An open order is never cleared.
+    public static func clearsLastOrder(record: LaundryCheckout?, signedInAs new: String?, stored: String?) -> Bool {
+        guard (record?.phase ?? LaundryPhase.none) == LaundryPhase.none else { return false }
+        guard let new else { return true }
+        return new != stored
+    }
+
     /// What goes to the Keychain (no one-shot notice / arming).
     public var persistable: LaundryCheckout {
         var c = self

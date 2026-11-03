@@ -189,4 +189,22 @@ final class ShowerForeignSessionTests: XCTestCase {
         XCTAssertTrue(gateway.settleFrames.isEmpty)
         XCTAssertFalse(transport.writes.contains(close))
     }
+
+    /// The idle exit is for a session still waiting on its write, as 结束 checks
+    /// `from == .writePending`: a running record with the flag (a later write may have run
+    /// water) is kept for the check, never ended by a probe.
+    func testAProbeOfARunningRecordDoesNotEndItEvenWithTheFlag() {
+        let running = ShowerState(phase: .running, machineID: "11223344", peripheralID: "P", startedAt: Date(),
+                                  authorizeSent: true, authorizationID: "001122FF", reviewing: true,
+                                  authorizationNotWritten: true)
+        let (s, fx) = ShowerReducer.reduce(running, .probeReplied(FakeFrames.identity("11223344")))
+        XCTAssertEqual(s.phase, .running)
+        XCTAssertTrue(s.stateReviewRequired)
+        XCTAssertEqual(s.notice, .notActive)
+        XCTAssertEqual(fx, [.releaseDevice])
+
+        var pending = running
+        pending.phase = .writePending
+        XCTAssertEqual(ShowerReducer.reduce(pending, .probeReplied(FakeFrames.identity("11223344"))).0.phase, .idle)
+    }
 }

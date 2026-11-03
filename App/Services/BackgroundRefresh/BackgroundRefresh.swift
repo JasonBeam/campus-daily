@@ -3,8 +3,10 @@ import BackgroundTasks
 
 /// Background campus read: low power / card reminders and a fresh widget.
 enum BackgroundRefresh {
-    /// Also listed in Info.plist `BGTaskSchedulerPermittedIdentifiers`.
-    nonisolated static let refreshTask = "com.beamjason.xiaorichang.refresh"
+    /// The id Info.plist permits (`$(APP_BUNDLE_IDENTIFIER).refresh`, filled in at build time),
+    /// so the task follows the bundle id the app is built for.
+    nonisolated static let refreshTask = (Bundle.main.object(forInfoDictionaryKey:"BGTaskSchedulerPermittedIdentifiers") as? [String])?.first
+        ?? (Bundle.main.bundleIdentifier ?? "") + ".refresh"
 
     /// Asks for a campus read in the background (~hourly, the system decides).
     nonisolated static func scheduleRefresh() {

@@ -1,4 +1,5 @@
 import SwiftUI
+import Core
 
 /// The big capsule under the update line, and its caption.
 struct HomeShowerButton: View {
@@ -11,12 +12,14 @@ struct HomeShowerButton: View {
         case showering(Date, caption: String)
         /// Closing or settling: spinner, opens the shower page.
         case settling
-        /// 「核对上次结算」 with the accent caption.
-        case review
+        /// 「核对上次结算」 (or 「去核对」 under 「水没开」) with the accent caption.
+        case review(ShowerHomeReview)
         /// 「核对上次洗澡」: the controller showed itself stopped, nothing settled. Opens the page.
         case check
         /// 「登录学校账号」
         case signIn
+
+        var isReview: Bool { if case .review = self { return true } else { return false } }
     }
 
     let kind: Kind
@@ -34,6 +37,10 @@ struct HomeShowerButton: View {
                     .scaledFont(13, relativeTo:.footnote)
                     .foregroundStyle(caption.accent ? Theme.accentText : Theme.ink2)
                     .multilineTextAlignment(.center)
+                    // The school's own words can be long: two lines on home, the whole text
+                    // on the shower page (and to VoiceOver, below).
+                    .lineLimit(kind.isReview ? 2 : nil)
+                    .truncationMode(.tail)
                     .fixedSize(horizontal:false, vertical:true)
                     .frame(maxWidth:.infinity)
                     // 「上次 11 分钟，1.32 元」: no separator dot or currency sign read aloud.
@@ -62,8 +69,8 @@ struct HomeShowerButton: View {
             case .settling:
                 ProgressView().tint(Theme.ink2)
                 Text("正在结算…")
-            case .review:
-                Text("核对上次结算")
+            case .review(let review):
+                Text(review.button)
             case .check:
                 Text(ShowerPageText.checkButton)
             case .signIn:
@@ -103,7 +110,7 @@ struct HomeShowerButton: View {
         case .start(let caption?): return (caption, false)
         case .showering(_, let caption): return (caption, false)
         case .settling: return ("点一下回到洗澡页", false)
-        case .review: return ("上次洗澡不确定结算了没有", true)
+        case .review(let review): return (review.caption, true)
         case .signIn: return ("登录后就能看校园卡和电量，也能洗澡。", false)
         case .start(nil), .starting, .check: return nil
         }
@@ -122,7 +129,7 @@ struct HomeShowerButton: View {
         case .start, .starting: return "开始洗澡"
         case .showering: return "正在洗澡，回到洗澡页"
         case .settling: return "正在结算，回到洗澡页"
-        case .review: return "核对上次结算"
+        case .review(let review): return review.button
         case .check: return ShowerPageText.checkButton
         case .signIn: return "登录学校账号"
         }

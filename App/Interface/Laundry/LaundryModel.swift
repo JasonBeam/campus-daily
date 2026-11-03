@@ -116,7 +116,7 @@ enum LaundryLoginRefusal: Error { case otherAccount }
         guard !checkoutBusy else { return }
         observer?.cancel(); observer = nil; engine = nil
         do {
-            let engine = try LaundryEngine(api:client, vault:AppEnvironment.laundryVault, launcher:AlipayPaymentLauncher(),
+            let engine = try LaundryEngine(api:client, vault:AppEnvironment.laundryVault, launcher:AlipayPaymentLauncher(returned:{ [weak self] in Task { await self?.refreshOrder() } }),
                                            hooks:LaundryEngineHooks(), accountID:account?.account?.id,
                                            resetMarker:AppResetter.marker)
             self.engine = engine
@@ -168,8 +168,10 @@ enum LaundryLoginRefusal: Error { case otherAccount }
             throw LaundryLoginRefusal.otherAccount
         }
         let reread = checkout.map { $0.phase != .none } ?? false
+        let clearsLastOrder = LaundryCheckout.clearsLastOrder(record:checkout, signedInAs:signedIn.id, stored:account?.account?.id)
         let item = UjingAccountItem(mobileID:device.mobileID, account:signedIn)
         try AppEnvironment.laundryVault.saveAccountItem(item)
+        if clearsLastOrder { forgetLastOrder() }
         account = item
         accountConnected = true
         configured = selectedMachine != nil
@@ -190,10 +192,23 @@ enum LaundryLoginRefusal: Error { case otherAccount }
 
     func signOut() {
         guard mayImport else { return }
+        let clearsLastOrder = LaundryCheckout.clearsLastOrder(record:checkout, signedInAs:nil, stored:account?.account?.id)
         try? AppEnvironment.laundryVault.saveAccountItem(account.map { UjingAccountItem(mobileID:$0.mobileID) })
         account = account.map { UjingAccountItem(mobileID:$0.mobileID) }
         accountConnected = false; configured = false; snapshot = nil
+        if clearsLastOrder { forgetLastOrder() }
         rebuildEngine()
+    }
+
+    /// The finished order's outcome and the last-order note belong to the account that placed
+    /// it: they go before the engine is rebuilt from the stored record. Only called with no order
+    /// open (`LaundryCheckout.clearsLastOrder`), when the record holds nothing but that outcome.
+    private func forgetLastOrder() {
+        if checkout?.lastOutcome != nil, (try? AppEnvironment.laundryVault.saveCheckout(nil)) != nil {
+            checkout = nil
+        }
+        lastOrder = nil
+        UserDefaults.standard.removeObject(forKey:Self.lastOrderKey)
     }
 
     /// After a reset cleared the stores: no U净 login, machines or order; the switch back on.
@@ -221,7 +236,7 @@ enum LaundryLoginRefusal: Error { case otherAccount }
 
     /// Scanned a code: read the machine (scan + programs), keep it as the candidate.
     func prepareMachine(qrCode: String) async {
-        guard mayImport else { issue = "先核对已有洗衣订单。"; return }
+        if let refusal = machineChangeRefusal { issue = refusal.message; return }
         guard accountConnected else { issue = "先登录 U净，再添加洗衣机。"; return }
         guard UjingInput.isWasherQR(qrCode) else { issue = "没认出这台洗衣机，换个角度再扫一次。"; return }
         loading = true; issue = nil; candidate = nil
@@ -230,10 +245,11 @@ enum LaundryLoginRefusal: Error { case otherAccount }
         catch { issue = Self.message(error) ?? "没认出这台洗衣机，换个角度再扫一次。" }
     }
 
+    /// Throws `WasherSetupRefusal`, whose text the page shows.
     func savePreparedMachine(name: String) throws {
-        guard mayImport, let value = candidate else { throw LaundryEngineError.busy }
-        let alias = name.trimmingCharacters(in:.whitespacesAndNewlines)
-        guard !alias.isEmpty, alias.count <= 40, alias.rangeOfCharacter(from:.controlCharacters) == nil else { throw LaundryEngineError.notAllowed }
+        if let refusal = machineChangeRefusal { throw refusal }
+        guard let value = candidate else { throw WasherSetupRefusal.nothingToSave }
+        let alias = try WasherSetupRefusal.machineName(name).get()
         var list = savedMachines
         if let index = list.firstIndex(where:{ $0.id == value.deviceID }) {
             list[index] = SavedWasher(id:value.deviceID, qrCode:value.qrCode, name:alias, savedAt:list[index].savedAt)
@@ -246,8 +262,10 @@ enum LaundryLoginRefusal: Error { case otherAccount }
         candidate = nil; issue = nil; checkoutIssue = nil; lastAttempt = Date()
     }
 
+    /// Throws `WasherSetupRefusal`, whose text the page shows.
     func selectMachine(_ item: SavedWasher) throws {
-        guard mayImport, savedMachines.contains(where:{ $0.id == item.id }) else { throw LaundryEngineError.busy }
+        if let refusal = machineChangeRefusal { throw refusal }
+        guard savedMachines.contains(where:{ $0.id == item.id }) else { throw WasherSetupRefusal.notSaved }
         select(item.id)
         snapshot = nil; issue = nil; checkoutIssue = nil; lastAttempt = nil
     }
@@ -281,7 +299,11 @@ enum LaundryLoginRefusal: Error { case otherAccount }
 
     // MARK: Order + payment
 
-    var mayImport: Bool { !loading && !checkoutBusy && (checkout?.phase ?? LaundryPhase.none) == LaundryPhase.none }
+    var mayImport: Bool { machineChangeRefusal == nil }
+    /// Why the machine can't change now (an open order, or a read or order step running), or nil.
+    private var machineChangeRefusal: WasherSetupRefusal? {
+        WasherSetupRefusal.check(orderOpen:(checkout?.phase ?? LaundryPhase.none) != LaundryPhase.none, busy:loading || checkoutBusy)
+    }
     var mayCreate: Bool {
         guard engine != nil, configured, !checkoutBusy, !loading, !storageBlocked, issue == nil,
               let snapshot, snapshot.isOrderable else { return false }

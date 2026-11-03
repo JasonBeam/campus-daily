@@ -129,10 +129,6 @@ struct OfficialCampusBrowser: UIViewRepresentable {
             let mainFrame = navigationAction.targetFrame?.isMainFrame != false
             guard let url = navigationAction.request.url, SchoolLoginNavigation.allows(url, isMainFrame:mainFrame) else {
                 // A blocked frame leaves the page usable; only a blocked page needs the notice.
-                // Both are logged (host only) for the diagnostics export.
-                if let url = navigationAction.request.url {
-                    ShowerDiagnosticReport.record(SchoolLoginNavigation.blockedEvent(url, isMainFrame:mainFrame))
-                }
                 if mainFrame { state.issue = "用学校账号密码登录，目前只支持学校官方页面。" }
                 decisionHandler(.cancel); return
             }

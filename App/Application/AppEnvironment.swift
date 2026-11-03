@@ -18,7 +18,7 @@ enum AppEnvironment {
     static let laundryVault = StoredLaundryVault(store:store)
     /// The same stack the widget builds for its own reads; the two take turns through the lease.
     private static let schoolStack = SchoolRefreshStack(store:store, http:schoolHTTP, role:"app",
-                                                        leaseWait:SchoolRefreshStack.appLeaseWait, leaseFile:RefreshLease.sharedFile(),
+                                                        leaseWait:SchoolRefreshStack.appLeaseWait, leaseFile:RefreshLease.appFile(),
                                                         didWriteSnapshot:{ WidgetCenter.shared.reloadTimelines(ofKind:SharedSnapshotStore.widgetKind) })
 
     static var school: SchoolSession { schoolStack.session }

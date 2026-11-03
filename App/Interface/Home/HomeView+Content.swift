@@ -24,8 +24,13 @@ extension HomeView {
             }
             let recents = data.recents
             if !recents.isEmpty {
-                recentsHeader(all:data.signedIn).padding(.top,30)
-                recentRows(recents)
+                // Where 「最近」 starts, there whether it shows or not: what it measures from does not
+                // move when it goes. No row fits under its header: no header and 全部 either.
+                recentsAnchor(recents, all:data.signedIn)
+                if recentCount(recents) > 0 {
+                    recentsHeader(all:data.signedIn).padding(.top,30)
+                    recentRows(recents)
+                }
             }
         }
         .coordinateSpace(name:HomeView.contentSpace)
@@ -87,7 +92,7 @@ extension HomeView {
         case .showering(let start):
             return .showering(start, caption:data.showerUnconfirmed ? ShowerCopy.writeUnconfirmed : "点一下回到洗澡页")
         case .settling: return .settling
-        case .unresolved: return .review
+        case .unresolved(let review): return .review(review)
         case .needsCheck: return .check
         }
     }
@@ -153,11 +158,19 @@ extension HomeView {
         .padding(.horizontal,24).padding(.bottom,4)
     }
 
-    /// The whole rows that fit the screen under everything else (`RecentFit`): home never
-    /// scrolls. Every row given is measured, unseen, at the current text size.
+    /// The whole rows that fit the screen under everything else and the header (`RecentFit`);
+    /// none, and no section, when not one does. The header and every row are measured, unseen,
+    /// at the current text size.
     func recentCount(_ items: [RecentItem]) -> Int {
-        RecentFit.count(viewport:homeViewport, above:recentsTop,
+        RecentFit.count(viewport:homeViewport, above:recentsTop, header:recentsHeaderHeight,
                         rowHeights:items.map { Double(recentHeights[$0.id] ?? 0) })
+    }
+
+    /// No height of its own: the section's top, and the hidden header and rows measured there.
+    func recentsAnchor(_ items: [RecentItem], all: Bool) -> some View {
+        Color.clear.frame(height:0).frame(maxWidth:.infinity)
+            .onGeometryChange(for:CGFloat.self) { $0.frame(in:.named(HomeView.contentSpace)).minY } action: { recentsTop = $0 }
+            .background(alignment:.top) { recentMeasure(items, all:all) }
     }
 
     /// The app's own showers and orders open their page; card records are plain rows.
@@ -178,14 +191,14 @@ extension HomeView {
             }
         }
         .frame(maxWidth:.infinity, alignment:.top)
-        .background(alignment:.top) { recentMeasure(items) }
-        .onGeometryChange(for:CGFloat.self) { $0.frame(in:.named(HomeView.contentSpace)).minY } action: { recentsTop = $0 }
         .animation(Theme.spring, value:shown.map(\.id))
     }
 
-    /// Every row as it would be drawn, hidden, for its height.
-    func recentMeasure(_ items: [RecentItem]) -> some View {
+    /// The header and every row as they would be drawn, hidden, for their heights.
+    func recentMeasure(_ items: [RecentItem], all: Bool) -> some View {
         VStack(spacing:0) {
+            recentsHeader(all:all).padding(.top,30)
+                .onGeometryChange(for:CGFloat.self) { $0.size.height } action: { recentsHeaderHeight = $0 }
             ForEach(Array(items.enumerated()), id:\.element.id) { index, item in
                 VStack(spacing:0) {
                     if index > 0 { RowSeparator() }

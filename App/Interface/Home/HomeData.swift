@@ -138,7 +138,7 @@ extension HomeData {
         else if let start = state.startedAt, state.phase == .closing || state.phase == .settling { shower = .settling(start) }
         else if state.phase == .authorizing || (model.busy && (state.phase == .idle || state.phase == .done)) { shower = .starting }
         else if state.phase == .failed, state.failure?.needsReview == true {
-            shower = .unresolved(model.unresolvedClose ? "上次结算还没确认" : ShowerDisplay.failureTitle(state.failure))
+            shower = .unresolved(ShowerHomeReview(state.failure))
         }
         else if model.platformMissing { shower = .unavailable(ShowerModel.platformMissingText) }
         else { shower = .idle }
@@ -291,7 +291,7 @@ enum HomeDemo: String, CaseIterable {
             data.resetLock = .showering
             return (data, nil)
         case .settingsResetUnsure:
-            data.shower = .unresolved("上次结算还没确认")
+            data.shower = .unresolved(.settlement)
             data.resetLock = .unsettled
             return (data, nil)
         case .settingsResetLaundry:
@@ -323,7 +323,7 @@ enum HomeDemo: String, CaseIterable {
             data.laundry = .unresolved
             return (data, nil)
         case .unconfirmedRow:
-            data.shower = .unresolved("上次结算还没确认")
+            data.shower = .unresolved(.settlement)
             return (data, nil)
         case .low:
             // Runs out tomorrow evening (只够到明晚); the balance is under the default line too.

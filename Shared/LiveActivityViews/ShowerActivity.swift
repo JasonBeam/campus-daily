@@ -47,8 +47,8 @@ struct FinishShowerLiveIntent: LiveActivityIntent {
     static let authenticationPolicy: IntentAuthenticationPolicy = .requiresLocalDeviceAuthentication
     init() {}
     @MainActor func perform() async throws -> some IntentResult {
-        guard let finish = ShowerActivityBridge.finish else { throw ShowerDeviceError.interrupted }
-        try await finish()
+        guard let finish = ShowerActivityBridge.finish else { throw ShowerActionFailure("打开校日常结束这次洗澡。") }
+        try await finish()  // throws the real reason (`ShowerActionFailure`)
         return .result()
     }
 }

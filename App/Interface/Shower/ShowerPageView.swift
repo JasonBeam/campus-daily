@@ -14,7 +14,7 @@ enum ShowerPageText {
     static let doneLabel = "洗好了"
     static let connectFailed = "没连上水控"
     static let connectFailedBody = "站近一点，确认蓝牙开着，再试一次。"
-    static let denied = "水控没让开水"
+    static let denied = ShowerAuthorizeRefusedText.title
     static let deniedBody = "这次没扣钱。过一会儿再试，一直这样就去学校的热水记录里看看。"
     static let inUse = "水控有人在用"
     static let inUseBody = "附近的水控有人在用，现在开不了水。等它空了再试。这次没扣钱。"
@@ -36,8 +36,9 @@ enum ShowerPageText {
     static let settleRefusedBody = "学校拒绝了这次结算。先去学校的热水记录里看这次扣了没有：扣了，点「我在学校记录里核对过了」；没扣，再结算一次。"
     /// The settlement never left.
     static let settleNotSentBody = "结算没发出去，学校那边应该还没扣钱。再结算一次就行。"
-    /// Held back after a close that may not have taken: the water read since may be someone else's.
-    static let settleHeldBody = "中间有人用过这台水控，这次读到的用水可能不是你的。先去学校的热水记录里看你这次洗澡扣了没有：扣了，点「我在学校记录里核对过了」；没扣、又确定刚才是你在用，再结算一次。"
+    /// Held back because the water read may be someone else's: after a close that may not have
+    /// taken, or a session the controller never confirmed. Also after a retry of it that failed.
+    static let settleHeldBody = "水控没确认这次是你开的水，读到的用水可能不是你的。先去学校的热水记录里看你这次洗澡扣了没有：扣了，点「我在学校记录里核对过了」；没扣、又确定刚才是你在用，再结算一次。"
     static func settleRetryBody(_ cause: ShowerSettleRetryCause) -> String {
         switch cause {
         case .refused: return settleRefusedBody
@@ -257,8 +258,14 @@ struct ShowerPageView: View {
                 }
             case .unsure:
                 icon("questionmark.circle", Theme.accentText)
-                title(ShowerPageText.unsure)
-                bodyText(flow.settleRetryCause.map(ShowerPageText.settleRetryBody) ?? ShowerPageText.unsureBody)
+                if let copy = page?.authorizeUnclear {
+                    // Nothing reached the controller: no settlement to talk about.
+                    title(copy.title)
+                    bodyText(copy.body)
+                } else {
+                    title(ShowerPageText.unsure)
+                    bodyText(flow.settleRetryCause.map(ShowerPageText.settleRetryBody) ?? ShowerPageText.unsureBody)
+                }
                 // A close that may not have taken: water still running goes back to the timer.
                 if flow.showsRecheck { ShowerRecheckRow().padding(.top,18) }
                 if flow.mayRetrySettle { ShowerSettleRetryRow().padding(.top,18) }
@@ -406,7 +413,7 @@ struct ShowerPageView: View {
         case .done: return ShowerPageText.doneLabel
         case .connectFailed: return ShowerPageText.connectFailed
         case .denied: return flow.page?.denial == .inUse ? ShowerPageText.inUse : ShowerPageText.denied
-        case .unsure: return ShowerPageText.unsure
+        case .unsure: return flow.page?.authorizeUnclear?.title ?? ShowerPageText.unsure
         case .needsCheck: return ShowerPageText.check
         }
     }

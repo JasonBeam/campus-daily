@@ -103,9 +103,7 @@ final class ShowerFrameGoldenTests: XCTestCase {
         XCTAssertEqual(ShowerFrames.classify(Data([0xAA])), .unreadable)
         XCTAssertTrue(ShowerFrames.isAck(Data([0xAA] + [UInt8](repeating: 0, count: 8))))
         XCTAssertFalse(ShowerFrames.isAck(Data([0xAA] + [UInt8](repeating: 0, count: 7))))
-        XCTAssertEqual(ShowerFrames.command(ShowerFrames.probeCommand), .probe)
-        XCTAssertEqual(ShowerFrames.command(Data(count: 15)), .authorization)
-        XCTAssertEqual(ShowerFrames.command(Data([0xAC, 0, 0, 0, 0])), .close)
+        XCTAssertEqual(ShowerFrames.probeCommand, Data([0xAA]))
         XCTAssertEqual(ShowerFrames.serviceUUID + ShowerFrames.notifyUUID + ShowerFrames.writeUUID, "FFE0FFE1FFE2")
     }
 

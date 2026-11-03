@@ -15,21 +15,34 @@ import Glibc
 /// suspended process that still holds a file lock in a shared container.
 ///
 /// A holder that dies leaves its lease to expire after `duration`; the next process takes it.
-/// Without the shared container (a build signed without the App Group) `file` is nil and the
-/// lease can never be taken.
+/// Without the shared container (a build signed without the App Group) the app keeps the lease
+/// in its own container (`appFile`), so its own reads and logins still take turns; the widget's
+/// `file` is nil and its lease can never be taken, so it leaves every read to the app.
 public struct RefreshLease: Sendable {
     struct Record: Codable, Equatable {
         var owner: String
         var expiresAt: Date
     }
 
-    /// The App Group both targets are entitled to.
-    public static let groupIdentifier = "group.com.beamjason.xiaorichang"
-
-    /// The lease file in the shared container, or nil when this build has no App Group.
-    public static func sharedFile() -> LeaseFile? {
-        FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: groupIdentifier)
+    /// The lease file in the shared container, or nil when this build has no App Group (none
+    /// named in Info.plist, or not entitled to the one named).
+    public static func sharedFile(appGroup: String? = AppIdentity.main.appGroup) -> LeaseFile? {
+        appGroup.flatMap { FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: $0) }
             .map { LeaseFile(url: $0.appendingPathComponent("refresh.lease")) }
+    }
+
+    /// The app's lease file: the shared one, or, in a build without the App Group, one in the
+    /// app's own container (`ownContainer`, Application Support; created when missing). The widget
+    /// can't open that one, so it never reads (`sharedFile` is nil there too), while the app's own
+    /// reads, logins, recharge and hand-off still take turns: `flock` on separate descriptors
+    /// excludes within one process as well. nil only when neither can be used.
+    public static func appFile(appGroup: String? = AppIdentity.main.appGroup,
+                               ownContainer: URL? = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first) -> LeaseFile? {
+        if let shared = sharedFile(appGroup: appGroup) { return shared }
+        guard let ownContainer,
+              (try? FileManager.default.createDirectory(at: ownContainer, withIntermediateDirectories: true)) != nil
+        else { return nil }
+        return LeaseFile(url: ownContainer.appendingPathComponent("refresh.lease"))
     }
 
     let file: LeaseFile?
@@ -233,8 +246,8 @@ public struct LeaseFile: Sendable {
 
 /// Handed to a credential or snapshot write-back that runs under the refresh lease: the write
 /// happens in one locked step with the check that the lease is still ours
-/// (`RefreshLease.withOwnership`). Without a lease (tests, previews, a build without the App
-/// Group, where the app refreshes alone) it just runs.
+/// (`RefreshLease.withOwnership`). Without a lease (tests, previews, an app with no container
+/// for its lease file) it just runs.
 public struct LeaseOwnership: Sendable {
     let lease: RefreshLease?
 
@@ -250,7 +263,8 @@ public struct LeaseOwnership: Sendable {
         return try lease.withOwnership(body)
     }
 
-    /// `write` for a password login's accepted portal token only: the lease may have run out
+    /// `write` for a password login's accepted portal token and the saved account's hold and
+    /// pause only: the lease may have run out
     /// while this owner is still the stored one (`RefreshLease.withOwnershipRetaking`). The owner
     /// check stays, and so does the cancellation check: a cancelled task (the widget past its
     /// deadline, about to be suspended) must not take the file lock, so nothing is written.

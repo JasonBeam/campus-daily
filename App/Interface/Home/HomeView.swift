@@ -18,9 +18,10 @@ struct HomeView: View {
     @State var relogin = false
     @State var onboarding: OnboardingRequest?
     @State var scrolledPastDate = false
-    /// For 「最近」 (`recentCount`): the visible height, where its rows start, and each row's height.
+    /// For 「最近」 (`recentCount`): the visible height, where it starts, its header's height and each row's height.
     @State var homeViewport: CGFloat = 0
     @State var recentsTop: CGFloat = 0
+    @State var recentsHeaderHeight: CGFloat = 0
     @State var recentHeights: [RecentItem.ID: CGFloat] = [:]
     nonisolated static let contentSpace = "homeContent"
     /// Pages to push once the settings sheet has gone (`open(_:)`).
@@ -152,7 +153,12 @@ struct HomeView: View {
         ZStack {
             NavigationStack(path:$path) {
                 ScrollViewReader { proxy in
-                    // Home fits the screen (「最近」 takes the rows that fit) and only bounces, for the pull.
+                    // 「最近」 takes the rows that fit (none when none fits), so home fits the screen
+                    // and only bounces, for the pull. When the rest alone is taller than the screen
+                    // (accessibility sizes, a small phone at a large size) home scrolls: content is
+                    // never held to the screen's height and cut off. Not
+                    // `.scrollBounceBehavior(.basedOnSize)`: content that fits would then not
+                    // bounce, and the pull would not refresh.
                     ScrollView {
                         content(data).padding(.bottom,CGFloat(RecentFit.bottomGap))
                     }

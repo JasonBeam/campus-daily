@@ -49,6 +49,11 @@ public enum ShowerFailureReason: String, Sendable, Codable, Equatable {
         case .closeUnconfirmed, .settleRefused, .settleUncertain, .settleUnconfirmed: return false
         }
     }
+
+    /// The authorize got an answer the app can't read, or an OK whose authorization can't be
+    /// used: it waits for the check, but nothing reached the controller, so no water ran and
+    /// nothing is to be settled. Said as 「水没开」 (`ShowerAuthorizeUnclearText`).
+    public var isUnclearAuthorize: Bool { self == .authorizeUncertain || self == .authorizationInvalid }
 }
 
 public struct ShowerFailure: Sendable, Codable, Equatable {
@@ -61,8 +66,8 @@ public struct ShowerFailure: Sendable, Codable, Equatable {
     /// The settlement provably never left (cancelled before it, or held for the user): the
     /// school can't have charged it. False when it may have left.
     public var settleNotSent: Bool
-    /// The settlement was held back after an unconfirmed close found the water still running:
-    /// the consumption read since is most likely someone else's.
+    /// The settlement was held back because the consumption may be someone else's
+    /// (`ShowerState.holdSettle`), or this is a failed retry of that held frame.
     public var settleHeld: Bool
     public init(reason: ShowerFailureReason, needsReview: Bool, error: ServiceError? = nil, deviceError: ShowerDeviceError? = nil,
                 settleNotSent: Bool = false, settleHeld: Bool = false) {
@@ -127,7 +132,8 @@ public struct ShowerState: Sendable, Codable, Equatable {
     public var reviewing: Bool
     /// First tap of a manual settle retry; the second confirmation sends it.
     public var settleRetryArmed: Bool
-    /// Manual settle retries made (diagnostics: idempotency unknown).
+    /// Manual settle retries made on this record (whether the school dedupes a settlement is not
+    /// known). Kept in the record only; nothing shows or exports it.
     public var manualSettleAttempts: Int
     public var endedAt: Date?
     public var notice: ShowerNotice?
@@ -135,14 +141,20 @@ public struct ShowerState: Sendable, Codable, Equatable {
     /// the write was refused): no water could run, so an idle controller at 结束 ends the
     /// record without a check. An unconfirmed write may have been applied and never sets it.
     public var authorizationNotWritten: Bool
-    /// Back on the timer from a close that most likely took (a probe found water running
-    /// afterwards, most likely someone else's): the next consumption frame is kept for the user
-    /// to settle with the two-tap retry, never settled by itself.
+    /// The next consumption frame is kept for the user to settle with the two-tap retry, never
+    /// settled by itself, because the water it ends may not be ours: back on the timer from a
+    /// close that most likely took (a probe found water running afterwards, most likely someone
+    /// else's), or an end of a session the controller never acknowledged (`writePending`, also
+    /// when a probe then found water running). The frame names only the controller, so it can't
+    /// tell whose session it ended.
     public var holdSettle: Bool
     /// When the session came back to the timer from the unsure face (a probe found water
     /// running after an unconfirmed close). The 「还在计时」 reminder counts from here, also after
     /// a relaunch: the water start may be long past.
     public var timerResumedAt: Date?
+    /// The consumption frame that was held (`holdSettle`), upper hex. A retry of it that is
+    /// refused or gets no answer is still held: the water it read may still not be ours.
+    public var heldConsumption: String?
 
     public init(phase: ShowerPhase = .idle, machineID: String? = nil, peripheralID: String? = nil, startedAt: Date? = nil,
                 authorizeSent: Bool = false, authorizationID: String? = nil, closingFrom: ShowerPhase? = nil,
@@ -150,14 +162,14 @@ public struct ShowerState: Sendable, Codable, Equatable {
                 lastReceipt: ShowerReceipt? = nil, failure: ShowerFailure? = nil, stateReviewRequired: Bool = false,
                 reviewing: Bool = false, settleRetryArmed: Bool = false, manualSettleAttempts: Int = 0,
                 endedAt: Date? = nil, notice: ShowerNotice? = nil, authorizationNotWritten: Bool = false,
-                holdSettle: Bool = false, timerResumedAt: Date? = nil) {
+                holdSettle: Bool = false, timerResumedAt: Date? = nil, heldConsumption: String? = nil) {
         self.phase = phase; self.machineID = machineID; self.peripheralID = peripheralID; self.startedAt = startedAt
         self.authorizeSent = authorizeSent; self.authorizationID = authorizationID; self.closingFrom = closingFrom
         self.closeSent = closeSent; self.consumption = consumption; self.receipt = receipt; self.lastReceipt = lastReceipt
         self.failure = failure; self.stateReviewRequired = stateReviewRequired; self.reviewing = reviewing
         self.settleRetryArmed = settleRetryArmed; self.manualSettleAttempts = manualSettleAttempts
         self.endedAt = endedAt; self.notice = notice; self.authorizationNotWritten = authorizationNotWritten
-        self.holdSettle = holdSettle; self.timerResumedAt = timerResumedAt
+        self.holdSettle = holdSettle; self.timerResumedAt = timerResumedAt; self.heldConsumption = heldConsumption
     }
 
     public static let idle = ShowerState()
@@ -183,6 +195,9 @@ public struct ShowerState: Sendable, Codable, Equatable {
         (phase == .failed && failure?.needsReview == true)
             || ((phase == .writePending || phase == .running) && stateReviewRequired && !reviewing)
     }
+
+    /// The frame to settle is the one that was held.
+    public var consumptionHeld: Bool { consumption != nil && consumption == heldConsumption }
 
     public var canRetrySettle: Bool {
         phase == .failed && failure?.needsReview == true && consumption != nil
@@ -253,6 +268,7 @@ extension ShowerState {
         authorizationNotWritten = try c.decodeIfPresent(Bool.self, forKey: .authorizationNotWritten) ?? false
         holdSettle = try c.decodeIfPresent(Bool.self, forKey: .holdSettle) ?? false
         timerResumedAt = try? c.decodeIfPresent(Date.self, forKey: .timerResumedAt)
+        heldConsumption = try? c.decodeIfPresent(String.self, forKey: .heldConsumption)
     }
 }
 
@@ -314,6 +330,17 @@ public enum ShowerReducer {
         }
     }
 
+    /// An authorize answer that proves nothing was issued: a refusal before anything was sent,
+    /// or one of the codes the platform is known to answer before it acts on a request
+    /// (`LxtClient.requestRefusalCodes`, both `badRequest`). Any other non-zero code is
+    /// `rejected` and may come after the authorization was created, so it is not one.
+    public static func isDefiniteAuthorizeRefusal(_ e: ServiceError) -> Bool {
+        switch e {
+        case .badRequest, .sessionExpired: return true
+        default: return false
+        }
+    }
+
     public static func reduce(_ state: ShowerState, _ event: ShowerEvent) -> (ShowerState, [ShowerEffect]) {
         var s = state
         s.notice = nil
@@ -370,8 +397,12 @@ public enum ShowerReducer {
             return (s, [.scheduleReminder, .writeAuthorization(auth.payload)])
 
         case (.authorizing, .authorizeFailed(let e)) where state.authorizeSent:
-            if isDefiniteRefusal(e) {
+            if isDefiniteAuthorizeRefusal(e) {
                 return (failed(s, .authorizeRefused, review: false, error: e), [.releaseDevice])
+            }
+            // A code we don't know keeps its answer with the record; nothing else is assumed from it.
+            if case .rejected = e {
+                return (failed(s, .authorizeUncertain, review: true, error: e), [.releaseDevice])
             }
             return (failed(s, .authorizeUncertain, review: true, error: .uncertain(.lxt6)), [.releaseDevice])
 
@@ -401,6 +432,9 @@ public enum ShowerReducer {
             s.phase = .closing
             s.closingFrom = state.phase
             s.closeSent = false
+            // The controller never acknowledged our authorization, so an A5 now may be someone
+            // else's water: the consumption frame can't say whose (see `ShowerFrames`).
+            if state.phase == .writePending { s.holdSettle = true }
             return (s, [.probe(peripheralID: state.peripheralID)])
 
         case (.writePending, .review), (.running, .review):
@@ -419,12 +453,15 @@ public enum ShowerReducer {
                 s.notice = .inUseByOther
                 return (s, [.releaseDevice])
             case .active:
+                // Back on the timer, but an A5 proves nothing about whose water it is: without
+                // the acknowledgement, the end still waits for the user.
+                if state.phase == .writePending { s.holdSettle = true }
                 s.phase = .running
                 s.stateReviewRequired = false
                 return (s, [])
-            case .idle(let id) where id == state.machineID && state.authorizationNotWritten:
+            case .idle(let id) where id == state.machineID && state.phase == .writePending && state.authorizationNotWritten:
                 // The authorization never reached the controller and nothing runs: no water, no
-                // charge. The record ends as 结束 ends it.
+                // charge. The record ends as 结束 ends it (which checks `from == .writePending`).
                 return (state.idleAfter(receipt: state.lastReceipt),
                         [.cancelReminder, .releaseDevice, .diagnostic("review.writeNeverApplied")])
             case .idle(let id) where id == state.machineID:
@@ -519,6 +556,7 @@ public enum ShowerReducer {
             s.consumption = HexCoding.upper(frame)
             if state.holdSettle {
                 s.holdSettle = false
+                s.heldConsumption = s.consumption
                 return (failed(s, .settleUnconfirmed, review: true, settleNotSent: true, settleHeld: true),
                         [.cancelReminder, .releaseDevice, .diagnostic("settle.heldAfterUnconfirmedClose")])
             }
@@ -539,10 +577,10 @@ public enum ShowerReducer {
 
         case (.settling, .settleFailed(let e)):
             let reason: ShowerFailureReason = isDefiniteRefusal(e) ? .settleRefused : .settleUncertain
-            return (failed(s, reason, review: true, error: e), [])
+            return (failed(s, reason, review: true, error: e, settleHeld: state.consumptionHeld), [])
 
         case (.settling, .cancelledBeforeSend):
-            return (failed(s, .settleUnconfirmed, review: true, settleNotSent: true), [])
+            return (failed(s, .settleUnconfirmed, review: true, settleNotSent: true, settleHeld: state.consumptionHeld), [])
 
         case (.failed, .requestSettleRetry) where state.canRetrySettle:
             s.settleRetryArmed = true
@@ -600,7 +638,7 @@ public enum ShowerReducer {
             if s.closeSent { return failed(s, .closeUnconfirmed, review: true, device: .interrupted) }
             return back(s, to: s.closingFrom ?? .running, notice: nil)
         case .settling:
-            return failed(s, .settleUnconfirmed, review: true)
+            return failed(s, .settleUnconfirmed, review: true, settleHeld: s.consumptionHeld)
         }
     }
 
@@ -671,13 +709,20 @@ public struct ShowerDisplay: Sendable, Equatable {
         case .deviceUnavailable: return "没连上水控，靠近一点再试。"
         case .wrongDevice: return "这不是你宿舍的水控。"
         case .deviceBusy: return "水控正在使用中。"
-        case .authorizeRefused:
-            if case .rejected(_, _, let m)? = f.error, !m.isEmpty { return m }
-            return "热水平台没同意开水。"
-        case .authorizeUncertain, .authorizationInvalid: return "开水结果未确认"
+        case .authorizeRefused: return ShowerAuthorizeRefusedText.title
+        case .authorizeUncertain, .authorizationInvalid: return ShowerAuthorizeUnclearText.title(platformMessage: f.platformMessage)
         case .closeUnconfirmed: return "结束指令未确认"
         case .settleRefused, .settleUncertain: return "结算未确认"
         case .settleUnconfirmed: return "结算待核对"
         }
+    }
+}
+
+public extension ShowerFailure {
+    /// The platform's own sentence, when it answered with one (`rejected`).
+    var platformMessage: String? {
+        guard case .rejected(_, _, let message)? = error else { return nil }
+        let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 }

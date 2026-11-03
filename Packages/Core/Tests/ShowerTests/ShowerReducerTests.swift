@@ -104,11 +104,11 @@ final class ShowerReducerTests: XCTestCase {
     }
 
     func testDefiniteRefusalIssuesNothingButUncertaintyBlocks() {
-        let refusal = ServiceError.rejected(.lxt6, code: "1", message: "余额不足")
+        let refusal = ServiceError.badRequest(.lxt6)
         let (r, _) = reduce(authorizing(), .authorizeFailed(refusal))
         XCTAssertEqual(r.failure, ShowerFailure(reason: .authorizeRefused, needsReview: false, error: refusal))
         XCTAssertTrue(r.canStart)
-        XCTAssertEqual(ShowerDisplay(r).title, "余额不足")
+        XCTAssertEqual(ShowerDisplay(r).title, "水没开成")
 
         for e in [ServiceError.timedOut, .offline, .uncertain(.lxt6), .malformed(.lxt6, "x"), .tls] {
             let (u, _) = reduce(authorizing(), .authorizeFailed(e))

@@ -41,7 +41,7 @@ public final class KeychainSecureStore: SecureStore, @unchecked Sendable {
     private let lock = NSLock()
     private var unavailable: Set<String> = []
 
-    /// `accessGroup`: the resolved `<TeamPrefix>.com.beamjason.xiaorichang.shared`, or nil.
+    /// `accessGroup`: the resolved `<TeamPrefix>.<bundle id>.shared`, or nil.
     /// `privateGroup`: the resolved app-only group, or nil (the widget, or unknown): private items
     /// then use the default group.
     public init(backend: KeychainBackend, accessGroup: String?, privateGroup: String? = nil) {

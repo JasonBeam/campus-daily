@@ -193,16 +193,16 @@ public actor SnapshotRefresher {
     /// ours, so there is no variant without it. The heartbeat stops quietly when a renewal fails
     /// (the app was suspended past the lease, and the other process may have taken it), while
     /// the body keeps running; its writes then find the lease lost and write nothing. Without a
-    /// lease (tests, previews) `body` just runs with `.unchecked`.
+    /// lease, or with one that has no file to lock (the app with no container for one, where no
+    /// other process can take it either), `body` just runs with `.unchecked`.
     public nonisolated func holdingLease<T: Sendable>(_ body: @Sendable (_ owning: LeaseOwnership) async throws -> T) async throws -> T {
-        guard let shared = lease else { return try await body(.unchecked) }
+        guard let shared = lease, shared.isAvailable else { return try await body(.unchecked) }
         // Its own owner, one per call: neither the lease this process's refresh holds nor one
         // another login, recharge or hand-off here holds is "ours" to reuse, so a second one waits
         // for the first, and the first giving its lease back never releases the second's.
         let lease = shared.with(owner: shared.owner + "-login-" + UUID().uuidString)
         var waited: TimeInterval = 0
         while !lease.acquire() {
-            guard lease.isAvailable else { throw SchoolLoginFailure.busy }
             guard waited < leaseWait else { throw SchoolLoginFailure.busy }
             try Task.checkCancellation()
             await sleep(1)

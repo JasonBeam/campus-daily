@@ -102,8 +102,9 @@ public enum ShowerSettleRetryCause: Sendable, Equatable {
     case notSent
     /// It went out (or may have) and no answer came back.
     case noAnswer
-    /// Held back, never sent: the water was found still running after a close that may not
-    /// have taken, so the consumption is most likely someone else's.
+    /// Held back because the consumption may be someone else's (`ShowerState.holdSettle`): the
+    /// water was found still running after a close that may not have taken, or the controller
+    /// never acknowledged the session. Stays so when a retry of that frame fails.
     case held
 }
 
@@ -115,8 +116,8 @@ public enum ShowerStepMark: String, Sendable, Equatable {
 public struct ShowerPage: Sendable, Equatable {
     /// Why the start was turned down.
     public enum Denial: Sendable, Equatable {
-        /// The platform said no (its own words, when it gave any).
-        case refused(String?)
+        /// The platform said no before it acted (a known refusal code; it gives no words then).
+        case refused
         /// The controller is running for someone else.
         case inUse
     }
@@ -133,10 +134,14 @@ public struct ShowerPage: Sendable, Equatable {
     public var startedAt: Date?
     /// The controller didn't confirm the authorization write; shown as running on purpose.
     public var writeUnconfirmed: Bool
+    /// The unsure face of an authorize the platform answered in a way the app can't read
+    /// (`authorizeUncertain`) or with an authorization that can't be used (`authorizationInvalid`):
+    /// its own words, with the platform's when it gave any.
+    public var authorizeUnclear: ShowerPageCopy?
 
     /// Nil when nothing is going on (idle): the page has nothing to show.
     public init?(_ s: ShowerState) {
-        denial = nil; amount = nil; minutes = nil; startedAt = s.startedAt
+        denial = nil; amount = nil; minutes = nil; startedAt = s.startedAt; authorizeUnclear = nil
         writeUnconfirmed = s.phase == .writePending
         switch s.phase {
         case .idle:
@@ -161,14 +166,11 @@ public struct ShowerPage: Sendable, Equatable {
             case .deviceBusy:
                 phase = .denied; steps = [.done, .failed, .future]; denial = .inUse
             case .authorizeRefused:
-                phase = .denied; steps = [.done, .failed, .future]
-                if case .rejected(_, _, let message)? = s.failure?.error, !message.isEmpty {
-                    denial = .refused(message)
-                } else {
-                    denial = .refused(nil)
-                }
+                phase = .denied; steps = [.done, .failed, .future]; denial = .refused
             case .authorizeUncertain, .authorizationInvalid:
                 phase = .unsure; steps = [.done, .failed, .future]
+                authorizeUnclear = ShowerPageCopy(title: ShowerAuthorizeUnclearText.title,
+                                                  body: ShowerAuthorizeUnclearText.body(platformMessage: s.failure?.platformMessage))
             case .closeUnconfirmed, .settleRefused, .settleUncertain, .settleUnconfirmed:
                 phase = .unsure; steps = [.done, .done, .failed]
             }
@@ -307,8 +309,9 @@ public struct ShowerPageFlow: Sendable, Equatable {
     /// Why the unsure face offers 再结算一次; nil when it doesn't.
     public var settleRetryCause: ShowerSettleRetryCause? {
         guard mayRetrySettle, let failure = record.failure else { return nil }
-        if failure.reason == .settleRefused { return .refused }
+        // Held first: a refused or unanswered retry of a held frame is still maybe not ours.
         if failure.settleHeld { return .held }
+        if failure.reason == .settleRefused { return .refused }
         return failure.settleNotSent ? .notSent : .noAnswer
     }
     /// The first tap of 再结算一次 is in: the next one sends it.
@@ -462,4 +465,11 @@ public struct ShowerPageFlow: Sendable, Equatable {
             return (f, [])
         }
     }
+}
+
+/// A face's headline and the text under it, when Core decides them.
+public struct ShowerPageCopy: Sendable, Equatable {
+    public let title: String
+    public let body: String
+    public init(title: String, body: String) { self.title = title; self.body = body }
 }

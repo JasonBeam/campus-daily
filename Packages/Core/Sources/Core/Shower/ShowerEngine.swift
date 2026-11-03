@@ -72,7 +72,7 @@ public protocol ShowerHooks: Sendable {
     /// water starts (the same moment as `ShowerState.startedAt`).
     func scheduleUnsettledReminder(after seconds: TimeInterval) async
     func cancelUnsettledReminder() async
-    /// Event names only (no ids, frames or tokens).
+    /// Event names only (no ids, frames or tokens). The app records nothing; tests observe them.
     func diagnostic(_ event: String) async
 }
 

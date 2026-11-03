@@ -9,7 +9,9 @@ import Foundation
 /// - Authorization: write the 15-byte `systemData` from the authorize reply; the controller
 ///   acks with a 9-byte frame starting `AA`.
 /// - Close: write `AC <authorizationId XOR 55>` (5 bytes); the controller answers with a
-///   20-byte `55` consumption frame carrying its identity, which is what gets settled.
+///   20-byte `55` consumption frame, which is what gets settled: `55`, the machine id (4 bytes),
+///   then 15 bytes whose layout is not known. Nothing in it is known to name the authorization
+///   or the student, so it shows which controller answered, not whose session ended.
 public enum ShowerFrames {
     public static let serviceUUID = "FFE0"
     public static let notifyUUID = "FFE1"
@@ -21,7 +23,6 @@ public enum ShowerFrames {
     public static let identityFrameLength = 20
     public static let ackLength = 9
     public static let authorizationLength = 15
-    public static let closeCommandLength = 5
 
     /// Machine id (upper hex) of a 20-byte `55` frame, else nil.
     public static func identity(_ frame: Data) -> String? {
@@ -61,15 +62,6 @@ public enum ShowerFrames {
         case .active: return .busy
         case .unreadable: return .unreadable
         }
-    }
-
-    /// Which command a write is, for diagnostics (never the bytes themselves).
-    public enum Command: String, Sendable { case probe, authorization, close, other }
-    public static func command(_ data: Data) -> Command {
-        if data == probeCommand { return .probe }
-        if data.count == authorizationLength { return .authorization }
-        if data.count == closeCommandLength, data.first == 0xAC { return .close }
-        return .other
     }
 }
 

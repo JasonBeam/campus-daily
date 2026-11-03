@@ -32,12 +32,33 @@ final class RecentFitTests: XCTestCase {
         XCTAssertEqual(RecentFit.count(viewport: 600, above: 520, rowHeights: rows), 1)
     }
 
-    /// Not even one row fits (accessibility text sizes: everything above is taller than the
-    /// screen): home scrolls anyway, so 「最近」 is not left as a header alone; three rows follow.
-    func testThreeRowsBelowWhenHomeScrollsAnyway() {
-        XCTAssertEqual(RecentFit.count(viewport: 600, above: 560, rowHeights: rows), 3)
-        XCTAssertEqual(RecentFit.count(viewport: 600, above: 1400, rowHeights: rows), 3)
-        XCTAssertEqual(RecentFit.count(viewport: 600, above: 1400, rowHeights: [80]), 1)
+    /// Not even one row fits under everything else: no row, so a small phone at a large text
+    /// size does not get rows pushed off the screen.
+    func testNoRowWhenNoneFits() {
+        XCTAssertEqual(RecentFit.count(viewport: 600, above: 560, rowHeights: rows), 0)
+        XCTAssertEqual(RecentFit.count(viewport: 600, above: 1400, rowHeights: rows), 0)
+        XCTAssertEqual(RecentFit.count(viewport: 600, above: 1400, rowHeights: [80]), 0)
+    }
+
+    /// No row fits: the section goes, header and 全部 too, rather than a header over nothing.
+    func testNoSectionWhenNoRowFits() {
+        XCTAssertFalse(RecentFit.showsSection(viewport: 600, above: 560, rowHeights: rows))
+        XCTAssertFalse(RecentFit.showsSection(viewport: 600, above: 1400, rowHeights: [80]))
+        XCTAssertFalse(RecentFit.showsSection(viewport: 2000, above: 300, rowHeights: []), "nothing to show")
+        XCTAssertTrue(RecentFit.showsSection(viewport: 600, above: 520, rowHeights: rows), "one row")
+        XCTAssertTrue(RecentFit.showsSection(viewport: 0, above: 0, rowHeights: rows), "not measured yet")
+    }
+
+    /// The header counts against the screen too: it fits, but no row fits under it, so the
+    /// section goes. `above` is where the section starts, over its header.
+    func testHeaderThatFitsOverNoRowHidesTheSection() {
+        // 600 - 500 - 24 = 76 would take one 56 row; under a 40 header only 36 is left.
+        XCTAssertEqual(RecentFit.count(viewport: 600, above: 500, rowHeights: rows), 1)
+        XCTAssertEqual(RecentFit.count(viewport: 600, above: 500, header: 40, rowHeights: rows), 0)
+        XCTAssertFalse(RecentFit.showsSection(viewport: 600, above: 500, header: 40, rowHeights: rows))
+        // 800 - 400 - 40 - 24 = 336: six rows under the header.
+        XCTAssertEqual(RecentFit.count(viewport: 800, above: 400, header: 40, rowHeights: rows), 6)
+        XCTAssertTrue(RecentFit.showsSection(viewport: 800, above: 400, header: 40, rowHeights: rows))
     }
 
     /// Before the first measurement: three rows (fewer if there are fewer).

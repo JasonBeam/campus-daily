@@ -19,12 +19,13 @@ import Core
                              checkingController:shower.inspecting)
     }
 
-    /// Files the app wrote (the imported hot-water file and diagnostics, the laundry and Bluetooth
-    /// caches). The bundled hot-water parameters are app resources and stay.
+    /// Files the app wrote (the imported hot-water file, the laundry cache, what older builds left:
+    /// the hot-water diagnostics and their export, the Bluetooth scan note). The bundled hot-water
+    /// parameters are app resources and stay.
     static var files: [URL] {
         let support = FileManager.default.urls(for:.applicationSupportDirectory, in:.userDomainMask)[0]
         return ["Water", "LaundryCache", "WaterSession"].map { support.appendingPathComponent($0, isDirectory:true) }
-            + [ShowerDiagnosticReport.exportFolder]
+            + [RetiredDiagnostics.exportFolder(in:FileManager.default.temporaryDirectory)]
     }
 
     /// A reset left unfinished by the last run of the app was found at launch and stopped by a
@@ -86,8 +87,6 @@ import Core
     }
 
     private static func clear() throws {
-        // The in-memory diagnostics first: the next event would write them all back.
-        ShowerDiagnosticReport.clearMemory()
         try AppReset.clear(store:AppEnvironment.store, preferences:.standard,
                            preferencesDomain:Bundle.main.bundleIdentifier ?? "", files:files)
     }

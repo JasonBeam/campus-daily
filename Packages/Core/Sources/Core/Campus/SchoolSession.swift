@@ -110,8 +110,6 @@ public actor SchoolSession {
     let now: @Sendable () -> Date
     /// Event names and measured ages only, never values (the credential-lifetime log).
     let diagnostic: @Sendable (String) -> Void
-    /// Where the same lifetime lines are kept for the in-app diagnostics export.
-    let credentialLog: CredentialLifetimeLog?
     /// False in the widget. Every saved password came with a login device id, so a widget that
     /// sees a password but no id is running before the app moved the id (and the portal token)
     /// out of its private group; a login then would start a second "browser" at the school and
@@ -142,11 +140,11 @@ public actor SchoolSession {
 
     public init(portal: PortalClient, ecykt: EcyktClient, vault: SchoolVault, passwordLogin: SchoolPasswordLogin? = nil,
                 now: @escaping @Sendable () -> Date = Date.init, diagnostic: @escaping @Sendable (String) -> Void = { _ in },
-                credentialLog: CredentialLifetimeLog? = nil, createsLoginDeviceID: Bool = true,
+                createsLoginDeviceID: Bool = true,
                 recordsTimeout: TimeInterval = CardActivity.timeout,
                 meterRetryWait: @escaping @Sendable (TimeInterval) async -> Void = { try? await Task.sleep(nanoseconds: UInt64($0 * 1_000_000_000)) }) {
         self.portal = portal; self.ecykt = ecykt; self.vault = vault; self.passwordLogin = passwordLogin; self.now = now
-        self.diagnostic = diagnostic; self.credentialLog = credentialLog; self.createsLoginDeviceID = createsLoginDeviceID
+        self.diagnostic = diagnostic; self.createsLoginDeviceID = createsLoginDeviceID
         self.recordsTimeout = recordsTimeout; self.meterRetryWait = meterRetryWait
     }
 
@@ -601,6 +599,9 @@ public actor SchoolSession {
             records.cancel()
             return SchoolReading(outcome: .notSignedIn, checkedAt: now())
         }
+        if case .success(let meter?)? = m, let binding, meter.comAddress != binding.comAddress {
+            followReplacedMeter(binding, to: meter.comAddress, owning: owning)
+        }
         var reading = SchoolReading(outcome: .ok, checkedAt: checkedAt, balance: b, meter: m,
                                     roomLabel: m == nil ? nil : binding?.label, readAt: now(), reexchanged: reexchanged,
                                     noMeter: binding?.nodeIsRoom != true)
@@ -634,7 +635,14 @@ public actor SchoolSession {
             do {
                 let fresh = try await exchangeSession(portalToken: portalToken, userAgent: stored.userAgent, previous: stored)
                 exchanged = true
-                return .renewed(try await liveCard(fresh))
+                let found = try await liveCard(fresh)
+                // The portal works again: a hold left by an earlier outage goes, so Settings
+                // no longer shows automatic sign-in as held and the password is the way back
+                // in again when this portal token dies.
+                if let saved = (try? vault.account()) ?? nil, saved.unansweredAt != nil {
+                    _ = updateSavedAccount(saved, since: started, owning: owning) { $0.unansweredAt = nil }
+                }
+                return .renewed(found)
             } catch let e2 as ServiceError where e2.isSessionExpired {
                 if e2 == .sessionExpired(.portal) {
                     logExpired(.portal, obtainedAt: portalToken.obtainedAt, lastAliveAt: nil)
@@ -651,9 +659,8 @@ public actor SchoolSession {
             } catch let e2 as ServiceError {
                 // A timeout, a school server error or a bare 401/403: the portal (or the exchange
                 // behind it) may be down while CAS works, and its token would keep failing until
-                // it expires. The saved password goes once. Its hold stays on when that login got
-                // no answer, and goes back on when the login was accepted but the steps after it
-                // failed again, so the password does not go on every refresh.
+                // it expires. The saved password goes once. Its hold stays on unless that login
+                // ends with a card session, so the password does not go on every refresh.
                 portalNoAnswer = e2
             } catch {
                 // Cancelled (the widget at its deadline): nothing is known.
@@ -738,7 +745,6 @@ public actor SchoolSession {
         guard loggedExpiries.insert(id).inserted else { return }
         let line = Self.expiredEvent(kind, obtainedAt: obtainedAt, lastAliveAt: lastAliveAt, now: now())
         diagnostic(line)
-        credentialLog?.append(line, at: now())
     }
 
     /// A portal token gets its `obtainedAt` when this app first saves it.
@@ -767,9 +773,10 @@ public actor SchoolSession {
     /// does an accepted one whose card session then could not be made.
     ///
     /// The widget can be suspended or killed at any await, so each fact is stored as soon as it
-    /// is known: the hold is written before the password goes out and lifted once an answer (or
-    /// a failure before sending) comes back; the portal token is saved as soon as the login
-    /// returns it, before the exchange that follows.
+    /// is known: the hold is written before the password goes out and lifted when a refusal or
+    /// no network comes back (or nothing was sent), and after an accepted password only once
+    /// the card session is made; the portal token is saved as soon as the login returns it,
+    /// before the exchange that follows.
     ///
     /// `previous` and `seenPortalToken` are the credentials this refresh found dead. If the
     /// other process stored new ones meanwhile (its own password login was accepted), nothing
@@ -837,9 +844,11 @@ public actor SchoolSession {
         // this login started from: a token the other process stored after taking the lease is
         // never overwritten. A lease that only ran out meanwhile (suspended, nobody took it) is
         // taken again in that step. A cancelled task (the widget at its deadline, about to be
-        // suspended) writes nothing: it must not take the shared file lock then, and the hold
-        // stays. A sign-out in between (this process, or the account gone from the Keychain)
-        // drops it. The hold is lifted in the same step, only with the token stored.
+        // suspended) writes nothing: it must not take the shared file lock then. A sign-out in
+        // between (this process, or the account gone from the Keychain) drops it. The hold
+        // stays on until the card session is made: any other way out of this login (the lease
+        // lost, a sign-out, a cancelled exchange, a failed one) leaves it, so while the portal
+        // keeps failing neither process sends the password again on every refresh.
         guard started == signOutGeneration else { return .unavailable }
         enum TokenSave { case written, gone, changed }
         let vault = vault, fresh = stamped(token)
@@ -851,12 +860,6 @@ public actor SchoolSession {
             do { portal = try vault.portalToken() } catch { return .changed }
             guard still.account == saved.account, portal?.value == seenPortalToken else { return .changed }
             guard (try? vault.savePortalToken(fresh)) != nil else { return .changed }
-            // Read again: an older build's sign-out deletes without the lease, also right here.
-            if var current = (try? vault.account()) ?? nil, current.account == saved.account,
-               current.password == saved.password, current.unansweredAt == sentAt {
-                current.unansweredAt = nil
-                try? vault.saveAccount(current)
-            }
             return .written
         }) ?? nil
         switch saveStep {
@@ -882,6 +885,7 @@ public actor SchoolSession {
             let fresh = try await exchangeSession(portalToken: token, userAgent: previous.userAgent, previous: previous)
             let found = try await liveCard(fresh)
             guard started == signOutGeneration else { return .unavailable }
+            liftHold(saved, sentAt: sentAt, since: started, owning: owning)
             return .signedIn(found)
         } catch let e as ServiceError where Self.isDefiniteRefusal(e) {
             // The password worked but the school turned the card login after it down: paused as
@@ -892,11 +896,12 @@ public actor SchoolSession {
         } catch let e as ServiceError {
             // The password was accepted; the steps after it got no answer (no network, a timeout,
             // a school server error, a bare 401/403). Nothing is paused: the next refresh
-            // exchanges the portal token this login stored. The hold goes back on, in the shared
-            // account item: while the portal keeps failing, neither process falls through to
-            // the password again on every refresh.
-            _ = updateSavedAccount(saved, since: started, owning: owning) { if $0.unansweredAt == nil { $0.unansweredAt = sentAt } }
+            // exchanges the portal token this login stored. The hold written before the
+            // password went out stays, in the shared account item.
             return .failed(e)
+        } catch is CancellationError {
+            // Cancelled (the widget at its deadline): nothing is known, an interruption.
+            return .retryLater
         } catch {
             return .unavailable
         }
@@ -905,12 +910,14 @@ public actor SchoolSession {
     private enum AccountUpdate { case written, changed, lostLease }
 
     /// Changes the saved account only while it is still the one this login started from (same
-    /// account and password, not signed out), in one locked step with the lease check.
+    /// account and password, not signed out), in one locked step with the lease check. A lease
+    /// that only ran out (nobody took it) is taken again in that step, so a hold or a pause is
+    /// not skipped then.
     private func updateSavedAccount(_ saved: SchoolAccount, since started: Int, owning: LeaseOwnership,
                                     _ change: (inout SchoolAccount) -> Void) -> AccountUpdate {
         guard started == signOutGeneration else { return .changed }
         let vault = vault
-        let step = (try? owning.write { () -> AccountUpdate in
+        let step = (try? owning.writeRetaking { () -> AccountUpdate in
             guard var current = (try? vault.account()) ?? nil,
                   current.account == saved.account, current.password == saved.password else { return .changed }
             change(&current)
@@ -1211,6 +1218,26 @@ public actor SchoolSession {
         guard !seen.nodeIsRoom, var profile, profile.meter == seen else { return nil }
         profile.meter = nil
         return profile
+    }
+
+    /// The profile with `seen` moved to the meter that replaced it in the same room
+    /// (`comAddress`), if `seen` is still the one stored; nil when there is nothing to move
+    /// (another meter, or none, is stored now).
+    public static func withMeterMoved(_ profile: SchoolProfile?, seen: MeterBinding, to comAddress: String) -> SchoolProfile? {
+        guard var profile, profile.meter == seen, seen.comAddress != comAddress else { return nil }
+        profile.meter?.comAddress = comAddress
+        return profile
+    }
+
+    /// The bound room's meter was replaced (`MeterMatcher.pick` read the new one): the binding
+    /// follows it, in one locked step with the lease check, only while the stored binding is
+    /// still the one this read used. Not written: the next refresh reads and tries again.
+    private func followReplacedMeter(_ seen: MeterBinding, to comAddress: String, owning: LeaseOwnership) {
+        let vault = vault
+        _ = try? owning.write {
+            guard let next = Self.withMeterMoved(try vault.profile(), seen: seen, to: comAddress) else { return }
+            try vault.saveProfile(next)
+        }
     }
 
     /// Launch: a meter bound to the campus node (older builds) is dropped. True when one was.

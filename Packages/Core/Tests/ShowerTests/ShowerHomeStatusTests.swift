@@ -7,7 +7,7 @@ final class ShowerHomeStatusTests: XCTestCase {
     /// Signed out of the school (or the session could not be read) mid-shower: the button
     /// stays the shower's, so ending and settling are still on home.
     func testAShowerInUseKeepsItsButtonWhenSignedOut() {
-        for status: ShowerHomeStatus in [.starting, .showering(start), .settling(start), .unresolved("结算")] {
+        for status: ShowerHomeStatus in [.starting, .showering(start), .settling(start), .unresolved(.settlement)] {
             XCTAssertFalse(status.asksForSchoolSignIn(signedIn: false), "\(status)")
             XCTAssertFalse(status.asksForSchoolSignIn(signedIn: true), "\(status)")
         }

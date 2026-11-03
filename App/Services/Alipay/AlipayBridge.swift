@@ -16,51 +16,39 @@ import Core
         return declared.first { $0.caseInsensitiveCompare(expected) == .orderedSame }
             ?? declared.first { $0.hasSuffix(".alipay") } ?? expected
     }()
-    private var completion: ((String, String) -> Void)?
+    /// Called once when the SDK reports the payment finished, either from its own web page (no
+    /// Alipay installed, the app never left the foreground) or after Alipay returned the app.
+    private var returned: (() -> Void)?
     func openCheckout(_ url: URL, completion: @escaping (Bool) -> Void) {
         guard PaymentLaunchPolicy.isAllowedCheckoutURL(url) else { completion(false); return }
         UIApplication.shared.open(url,options:[:]) { opened in
-            Task { @MainActor in
-                self.record(status:opened ? "checkout_opened" : "checkout_open_failed",memo:"")
-                completion(opened)
-            }
+            Task { @MainActor in completion(opened) }
         }
     }
-    func pay(_ signed: String, completion: @escaping (String, String) -> Void) {
-        self.completion = completion
-        AlipaySDK.defaultService().payOrder(signed,fromScheme:Self.scheme) { [weak self] result in
-            let values = result as NSDictionary?
-            let status = values?["resultStatus"] as? String ?? "unknown"
-            let memo = values?["memo"] as? String ?? ""
-            Task { @MainActor in self?.finish(status:status,memo:memo) }
+    func pay(_ signed: String, returned: @escaping () -> Void) {
+        self.returned = returned
+        AlipaySDK.defaultService().payOrder(signed,fromScheme:Self.scheme) { [weak self] _ in
+            Task { @MainActor in self?.finish() }
         }
     }
     func handle(_ url: URL) {
         guard url.scheme?.caseInsensitiveCompare(Self.scheme) == .orderedSame, url.host == "safepay" else { return }
-        AlipaySDK.defaultService().processOrder(withPaymentResult:url) { [weak self] result in
-            let values = result as NSDictionary?
-            let status = values?["resultStatus"] as? String ?? "unknown"
-            let memo = values?["memo"] as? String ?? ""
-            Task { @MainActor in self?.finish(status:status,memo:memo) }
+        AlipaySDK.defaultService().processOrder(withPaymentResult:url) { [weak self] _ in
+            Task { @MainActor in self?.finish() }
         }
     }
-    private func finish(status: String, memo: String) {
-        record(status:status,memo:memo)
-        let callback = completion; completion = nil; callback?(status,memo)
-    }
-    private func record(status: String, memo: String) {
-        #if DEBUG
-        let folder = FileManager.default.urls(for:.applicationSupportDirectory,in:.userDomainMask)[0].appendingPathComponent("LaundryCache",isDirectory:true)
-        let object = ["status":status,"memo":String(memo.prefix(512)),"receivedAt":ISO8601DateFormatter().string(from:Date())]
-        if let data = try? JSONSerialization.data(withJSONObject:object) {
-            try? data.write(to:folder.appendingPathComponent("last-payment-launch.json"),options:[.atomic,.completeFileProtectionUntilFirstUserAuthentication])
-        }
-        #endif
+    /// The result itself is not used: the order is read from U净 either way.
+    private func finish() {
+        let callback = returned; returned = nil; callback?()
     }
 }
 
 /// `LaundryEngine`'s launcher: only the two checked launch kinds, through AlipayBridge.
 struct AlipayPaymentLauncher: PaymentLauncher {
+    /// The SDK reported the payment finished: read the order now, without waiting for the app
+    /// to become active again (the SDK's own web page never leaves the app).
+    let returned: @MainActor @Sendable () -> Void
+
     func open(_ launch: PayLaunch) async -> Bool {
         switch launch {
         case .query:
@@ -71,9 +59,10 @@ struct AlipayPaymentLauncher: PaymentLauncher {
                 Task { @MainActor in AlipayBridge.shared.openCheckout(url) { done.resume(returning:$0) } }
             }
         case .sdk(let order):
-            // The SDK switches to Alipay (or its own web page); the result comes back through
-            // `handle(_:)`, and the engine reads the order when the app is active again.
-            await MainActor.run { AlipayBridge.shared.pay(order) { _, _ in } }
+            // The SDK switches to Alipay (or shows its own web page); when it reports back
+            // (`handle(_:)` or its own completion) the order is read.
+            let returned = returned
+            await MainActor.run { AlipayBridge.shared.pay(order) { returned() } }
             return true
         }
     }

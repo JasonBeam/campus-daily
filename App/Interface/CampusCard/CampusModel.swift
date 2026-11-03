@@ -165,8 +165,8 @@ struct PowerChoice: Identifiable, Equatable {
         }
     }
 
-    /// 校园卡记录 found the card session expired: renewed the way home renews it (a forced
-    /// refresh, under the lease). True when that read the card again.
+    /// 校园卡记录, recharge or the hot-water hand-off found the card session expired: renewed the
+    /// way home renews it (a forced refresh, under the lease). True when that read the card again.
     func renewCardSession() async -> Bool {
         guard configured else { return false }
         await refresh(force:true)
@@ -384,13 +384,18 @@ struct PowerChoice: Identifiable, Equatable {
     // MARK: Recharge / hot water hand-off
 
     /// Both write the live card session back: under the lease, so never beside the widget's refresh.
+    /// An expired card session is renewed once as home renews it, then the step is tried again.
     func rechargeSession(_ kind: RechargeKind) async throws -> RechargeWebSession {
-        let session = session
-        return try await refresher.holdingLease { owning in try await session.rechargeSession(kind, owning:owning) }
+        let session = session, refresher = refresher
+        return try await CardSessionRenewal.renewingOnce({
+            try await refresher.holdingLease { owning in try await session.rechargeSession(kind, owning:owning) }
+        }, renew: { await renewCardSession() })
     }
     func showerHandoff() async throws -> ShowerHandoff {
-        let session = session
-        return try await refresher.holdingLease { owning in try await session.showerHandoff(owning:owning) }
+        let session = session, refresher = refresher
+        return try await CardSessionRenewal.renewingOnce({
+            try await refresher.holdingLease { owning in try await session.showerHandoff(owning:owning) }
+        }, renew: { await renewCardSession() })
     }
     /// Taken before `showerHandoff()`; `isSamePerson(since:)` says whether its identity still
     /// belongs to whoever is signed in.

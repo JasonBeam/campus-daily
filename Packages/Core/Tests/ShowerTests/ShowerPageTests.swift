@@ -57,9 +57,7 @@ final class ShowerPageTests: XCTestCase {
 
     func testDenialSaysWhy() {
         XCTAssertEqual(ShowerPage(failed(.deviceBusy, review: false))?.denial, .inUse)
-        XCTAssertEqual(ShowerPage(failed(.authorizeRefused, review: false, error: .rejected(.lxt6, code: "1", message: "余额不足")))?.denial,
-                       .refused("余额不足"))
-        XCTAssertEqual(ShowerPage(failed(.authorizeRefused, review: false, error: .badRequest(.lxt6)))?.denial, .refused(nil))
+        XCTAssertEqual(ShowerPage(failed(.authorizeRefused, review: false, error: .badRequest(.lxt6)))?.denial, .refused)
     }
 
     /// Only the platform's amount is shown, and minutes only with both ends known.
@@ -162,7 +160,7 @@ final class ShowerPageTests: XCTestCase {
     /// 取消 as the controller or the platform turns the start down: the refusal is shown (nothing
     /// was charged), the page does not just close.
     func testACancelMeetingARefusalShowsTheRefusal() {
-        for (reason, denial) in [(ShowerFailureReason.authorizeRefused, ShowerPage.Denial.refused(nil)), (.deviceBusy, .inUse)] {
+        for (reason, denial) in [(ShowerFailureReason.authorizeRefused, ShowerPage.Denial.refused), (.deviceBusy, .inUse)] {
             var flow = ShowerPageFlow(record: ShowerState(phase: .authorizing, startedAt: t0), presented: true)
             XCTAssertEqual(reduce(&flow, .cancelTapped), [.cancelStart])
             XCTAssertEqual(reduce(&flow, .record(failed(reason, review: false))), [], "\(reason)")

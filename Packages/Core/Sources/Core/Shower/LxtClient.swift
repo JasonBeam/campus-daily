@@ -10,8 +10,10 @@ public protocol ShowerDirectory: Sendable {
     func machines(room: String, schoolId: String) async throws -> [ShowerMachine]
 }
 
-/// The two money calls. Errors: `rejected`/`badRequest`/`sessionExpired` are definite refusals;
-/// everything else is `uncertain` (the request may have taken effect).
+/// The two money calls. Errors: `badRequest` is a definite refusal (nothing sent, or a known
+/// request refusal code); `rejected` carries any other code the platform answered, which for
+/// authorize is not proof that nothing was issued; everything else is `uncertain` (the request
+/// may have taken effect).
 public protocol ShowerGateway: Sendable {
     /// False when the calls can't be sent at all (no platform profile): nothing that ends in a
     /// settlement starts then.
@@ -164,13 +166,18 @@ public struct LxtClient: ShowerDirectory, ShowerGateway {
         return value.object != nil ? value : nil
     }
 
+    /// Codes the platform answers before it acts on a request, both captured: `4002`
+    /// (参数不匹配, a field missing or wrong) and `-301` (the sign rejected). They are the only
+    /// known definite refusals; no code for a low balance or a blocked account has been seen.
+    public static let requestRefusalCodes: Set<String> = ["4002", "-301"]
+
     /// Envelope code mapping shared by reads and operations (both casings, `code`/`Code`).
+    /// A known request refusal is `badRequest`; any other non-zero code is `rejected` with the
+    /// platform's message, which for authorize does not prove nothing was issued.
     static func check(_ root: JSONValue, code: String) throws {
-        switch code {
-        case "0": return
-        case "4002", "-301": throw ServiceError.badRequest(.lxt6)
-        default: throw ServiceError.rejection(.lxt6, code: code, message: ResponseDecoding.message(root))
-        }
+        if code == "0" { return }
+        if requestRefusalCodes.contains(code) { throw ServiceError.badRequest(.lxt6) }
+        throw ServiceError.rejection(.lxt6, code: code, message: ResponseDecoding.message(root))
     }
 
     /// Reads: non-2xx → `rejected("HTTP n")`; unreadable → `malformed`.
@@ -185,7 +192,7 @@ public struct LxtClient: ShowerDirectory, ShowerGateway {
     }
 
     /// Authorize/settle: only HTTP 200 + readable JSON + an explicit integer code is an answer.
-    /// Non-zero code → definite refusal; anything less certain → `uncertain`.
+    /// A non-zero code is `badRequest` or `rejected` (`check`); anything less certain → `uncertain`.
     static func decodeOperation(_ response: HTTPResponse) throws -> JSONValue {
         guard response.status == 200, let root = root(response.body),
               let code = ResponseDecoding.code(root), Int(code) != nil else { throw ServiceError.uncertain(.lxt6) }
