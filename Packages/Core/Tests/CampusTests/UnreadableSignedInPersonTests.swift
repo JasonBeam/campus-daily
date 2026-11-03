@@ -20,7 +20,7 @@ final class UnreadableSignedInPersonTests: XCTestCase {
         let h = Harness()
         try previousPersonUnreadable(h)
         try h.server.serve("ecykt/getSysBindCustInfo-ok")
-        let state = try XCTUnwrap(try FixtureLoader.loadRaw("ecykt/localStorage-elecampus_state-csaLogin")["value"])
+        let state = try FixtureLoader.csaLoginState()
         let summary = try await h.session().adoptWebState(try state.encoded(), owning: .unchecked)
         XCTAssertTrue(summary.previousPersonUnconfirmed)
         XCTAssertTrue(summary.dormAndMeterCleared)

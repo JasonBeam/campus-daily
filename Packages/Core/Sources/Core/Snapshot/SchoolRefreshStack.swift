@@ -15,8 +15,7 @@ public struct SchoolRefreshStack: Sendable {
     /// `leaseFile`: `RefreshLease.appFile()` in the app, `RefreshLease.sharedFile()` in the
     /// widget. Signed without the App Group, the app's is in its own container, so the app's
     /// reads and logins still take turns, and the widget has none and never reads, so the two
-    /// never read at the same time. An app with no file at all refreshes without the lease. Builds before the lease file kept the lease in the
-    /// Keychain; that leftover item is deleted here.
+    /// never read at the same time. An app with no file at all refreshes without the lease.
     public init(store: SecureStore, http: HTTPClient, role: String, leaseWait: TimeInterval, leaseFile: LeaseFile?,
                 didWriteSnapshot: @escaping @Sendable () -> Void = {},
                 diagnostic: @escaping @Sendable (String) -> Void = SnapshotRefresher.osLog) {
@@ -24,7 +23,6 @@ public struct SchoolRefreshStack: Sendable {
                                 vault: StoredSchoolVault(store: store), passwordLogin: CASLoginClient(http: http),
                                 diagnostic: diagnostic,
                                 createsLoginDeviceID: role != "widget")
-        try? store.delete(.sharedRefreshLease)
         let lease: RefreshLease? = leaseFile == nil && role != "widget" ? nil : RefreshLease(file: leaseFile, owner: RefreshLease.owner(role))
         refresher = SnapshotRefresher(school: session, store: SharedSnapshotStore(store: store, didWrite: didWriteSnapshot),
                                       lease: lease,

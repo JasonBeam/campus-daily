@@ -13,3 +13,6 @@ TARGETED_DEVICE_FAMILY = 1
 IPHONEOS_DEPLOYMENT_TARGET = 17.0
 
 CODE_SIGN_STYLE = Automatic
+
+// Local signing (untracked), last so it overrides the values above.
+#include? "Developer.xcconfig"

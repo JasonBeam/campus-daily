@@ -168,11 +168,6 @@ struct LaundryFacts {
 }
 
 enum LaundryFormat {
-    static func clock(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier:"en_US_POSIX"); formatter.dateFormat = "HH:mm"
-        return formatter.string(from:date)
-    }
     static func spokenClock(_ date: Date) -> String {
         let parts = Calendar.current.dateComponents([.hour,.minute], from:date)
         return "\(parts.hour ?? 0) 点 \(parts.minute ?? 0) 分"

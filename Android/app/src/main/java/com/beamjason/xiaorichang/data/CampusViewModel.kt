@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 
 data class DormSetup(val identity:DormIdentity?=null,val levels:List<List<Option>> = emptyList(),val path:List<Option> = emptyList(),
     val machines:List<DormWater> = emptyList(),val selected:DormWater?=null,val candidates:List<BleCandidate> = emptyList(),val verifiedAddress:String?=null,
@@ -63,6 +64,11 @@ class CampusViewModel @JvmOverloads constructor(application:Application,
     private val attempts=mutableMapOf<String,Long>()
     private val balanceRefresh=CampusRefreshSchedule()
     init { provisionBundledPlatform();provisionDevelopmentPlatform() }
+    // What older builds' 导出热水诊断 kept; nothing writes it any more.
+    init { viewModelScope.launch(Dispatchers.IO) { runCatching {
+        File(application.noBackupFilesDir,"water-diagnostics-v1.json").delete()
+        File(application.cacheDir,"water-diagnostics").deleteRecursively()
+    } } }
 
     private fun provisionBundledPlatform() {
         val current=_state.value
@@ -440,7 +446,6 @@ class CampusViewModel @JvmOverloads constructor(application:Application,
         val active=waterController.review(water.profile())
         notice(if(active)"水控当前返回使用中；本次只读取状态，未发送关水或结算" else "水控未返回使用中状态，请核对现场及官方用水记录")
     }
-    fun waterDiagnosticReport()=WaterDiagnosticStore.report(getApplication<Application>(),waterController.session)
     fun sendCode(phone:String) = action("sms") { laundryApi.sendCode(phone); notice("验证码已发送，请查看本人短信") }
     fun loginLaundry(phone:String,code:String) = action("laundryLogin") {
         transactionAllowed(); val s=_state.value; check(!s.transactionBusy && !s.unresolvedLaundry) { "请先完成或核对当前洗衣订单" }

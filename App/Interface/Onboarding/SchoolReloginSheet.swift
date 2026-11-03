@@ -11,8 +11,12 @@ struct SchoolReloginSheet: View {
     @Environment(\.dynamicTypeSize) private var typeSize
     /// After a successful sign-in (form or web), before the sheet closes.
     var signedIn: () async -> Void = {}
+    #if DEBUG
     /// DEBUG demo: seed from this account; nothing is sent.
     var preview: SchoolAccount? = nil
+    #else
+    private var preview: SchoolAccount? { nil }
+    #endif
     @State private var account = ""
     @State private var password = ""
     @State private var savePassword = false
@@ -35,10 +39,12 @@ struct SchoolReloginSheet: View {
             Button { dismiss() } label: {
                 Image(systemName:"xmark").font(.system(size:15, weight:.semibold)).foregroundStyle(Theme.ink2)
                     .frame(width:36, height:36).background(Theme.fill, in:Circle())
+                    // A 44 pt target around the 36 pt circle, which stays where it was.
+                    .frame(width:44, height:44).contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel("关闭")
-            .padding(.top,18).padding(.leading,24)
+            .padding(.top,14).padding(.leading,20)
             ScrollView {
                 VStack(alignment:.leading, spacing:0) {
                     Text("登录学校账号").scaledFont(28, .bold, relativeTo:.largeTitle).foregroundStyle(Theme.ink)
@@ -136,24 +142,14 @@ struct SchoolReloginSheet: View {
         if preview != nil { return }
         focus = nil
         state = .loading
-        let name = account.trimmingCharacters(in:.whitespaces), secret = password, save = savePassword
+        let name = account, secret = password, save = savePassword
         Task {
-            do {
-                try await campus.signIn(account:name, password:secret, savePassword:save)
-                password = ""
-                await campus.refresh(force:true)
-                await signedIn()
-                state = .idle
-                dismiss()
-            } catch SchoolLoginFailure.wrongCredentials {
-                password = ""
-                state = .wrong
-                focus = .password
-            } catch SchoolLoginFailure.cannotLoginDirectly {
-                state = .cannotDirect
-            } catch {
-                state = .failed(SchoolLoginText.text(error))
-            }
+            let next = await campus.submitLogin(account:name, password:secret, savePassword:save)
+            if next == .idle || next == .wrong { password = "" }
+            if next == .idle { await signedIn() }
+            state = next
+            if next == .wrong { focus = .password }
+            if next == .idle { dismiss() }
         }
     }
 

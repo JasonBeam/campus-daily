@@ -7,7 +7,7 @@
 # commit must pass (build, test, test-app, scan). BUILD_CMD, TEST_CMD and
 # TEST_APP_CMD replace the xcodebuild build, swift test and xcodebuild test
 # commands (to run them on another machine); BUILD_CMD gets the configuration
-# as its last argument.
+# as its last argument. They run through `eval`, like a line typed in the shell.
 
 [task_config]
 dir = "{{config_root}}"
@@ -32,7 +32,9 @@ eval "$cmd Debug"
 # (private/distribution/, or CAMPUS_WATER_PROFILE_PATH), this check build gets a
 # synthetic platform-only profile; package-ipa still requires the real one.
 if [ -z "${CAMPUS_WATER_PROFILE_PATH:-}" ] && [ ! -f private/distribution/WaterPlatformProfile.json ]; then
-  CAMPUS_WATER_PROFILE_PATH=$(mktemp -d)/SyntheticWaterProfile.json
+  synthetic=$(mktemp -d)
+  trap 'rm -rf "$synthetic"' EXIT
+  CAMPUS_WATER_PROFILE_PATH=$synthetic/SyntheticWaterProfile.json
   printf '{"secret":"synthetic-release-check","sid":"synthetic","bleName":"SYNTHETIC","typeID":0,"version":1}\n' > "$CAMPUS_WATER_PROFILE_PATH"
   export CAMPUS_WATER_PROFILE_PATH
 fi
@@ -86,8 +88,18 @@ run = "echo 'all checks passed'"
 description = "Check a signed app and its widget share one keychain group (APP=path/to/XiaoRiChang.app)"
 run = 'python3 Scripts/check-widget-signature.py --app "$APP"'
 
+[tasks.build-public]
+description = "Build the unsigned Release app for a device that package-ipa takes (needs the hot-water profile)"
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+xcodebuild build -workspace XiaoRiChang.xcworkspace -scheme App -configuration Release \
+  -destination "generic/platform=iOS" -derivedDataPath .DerivedData CODE_SIGNING_ALLOWED=NO
+echo "APP=.DerivedData/Build/Products/Release-iphoneos/XiaoRiChang.app"
+'''
+
 [tasks.package-ipa]
-description = "Package an unsigned Release build (APP=..., OUTPUT=..., PROFILE=...)"
+description = "Package the unsigned Release build from build-public (APP=..., OUTPUT=..., PROFILE=...)"
 run = 'python3 Scripts/package-ipa.py --app "$APP" --output "$OUTPUT" --platform-profile "$PROFILE"'
 
 [tasks.android]

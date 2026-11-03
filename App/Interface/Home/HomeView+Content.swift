@@ -90,7 +90,7 @@ extension HomeView {
             return .start(caption:last)
         case .starting: return .starting
         case .showering(let start):
-            return .showering(start, caption:data.showerUnconfirmed ? ShowerCopy.writeUnconfirmed : "点一下回到洗澡页")
+            return .showering(start, caption:data.showerUnconfirmed ? ShowerDisplay.writeUnconfirmedHint : "点一下回到洗澡页")
         case .settling: return .settling
         case .unresolved(let review): return .review(review)
         case .needsCheck: return .check
@@ -215,7 +215,7 @@ extension HomeView {
 
     @ViewBuilder func destination(_ route: HomeRoute) -> some View {
         switch route {
-        case .power: if campus.powerConfigured { CampusRechargeView(kind:.power) } else { CampusPowerSetupView() }
+        case .power: if campus.powerConfigured { CampusRechargeView(kind:.electricity) } else { CampusPowerSetupView() }
         case .powerSetup: CampusPowerSetupView()
         case .card:
             #if DEBUG

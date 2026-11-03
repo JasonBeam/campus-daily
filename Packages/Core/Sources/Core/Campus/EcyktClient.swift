@@ -164,24 +164,8 @@ public struct EcyktClient: Sendable {
                      updatedAt: row["updateDateTime"]?.text)
     }
 
-    /// `GET /api/electricnew/getPowerUrl?custid&syscustid` → the 302 `Location` (not followed).
-    public func powerPageURL(_ s: EcyktSession, custid: String) async throws -> URL {
-        let req = HTTPRequest(service: .ecykt, method: .get, url: Self.powerEntryURL(s, custid: custid),
-                              headers: baseHeaders(userAgent: s.userAgent, referer: .recharge, token: s.token), logName: "getPowerUrl")
-        let response = try await http.send(req)
-        if response.status == 401 || response.status == 403 { throw ServiceError.rejected(.ecykt, code: "HTTP \(response.status)", message: "") }
-        guard (300..<400).contains(response.status) else {
-            if response.status == 200, response.isBodyEmpty { throw ServiceError.badRequest(.ecykt) }
-            throw ServiceError.malformed(.ecykt, "status")
-        }
-        guard let location = response.header("Location"),
-              let url = URL(string: location, relativeTo: SchoolEndpoints.ecyktOrigin)?.absoluteURL,
-              url.host?.lowercased() == SchoolEndpoints.ecyktHost else {
-            throw ServiceError.malformed(.ecykt, "Location")
-        }
-        return url
-    }
-
+    /// `GET /api/electricnew/getPowerUrl?custid&syscustid`: a 302 to the electricity page, which
+    /// the recharge WebView follows.
     public static func powerEntryURL(_ s: EcyktSession, custid: String) -> URL {
         URL(string: SchoolEndpoints.ecyktBase.absoluteString + "/api/electricnew/getPowerUrl?custid="
             + FormEncoding.encode(custid) + "&syscustid=" + FormEncoding.encode(s.syscustid))!

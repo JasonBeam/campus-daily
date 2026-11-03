@@ -108,6 +108,33 @@ final class RefreshLeaseChainTests: XCTestCase {
         XCTAssertEqual(try h.vault.ecyktSession()?.token, T.session().token)
     }
 
+    /// The widget holds the lease and has read the saved account, password and all; the app
+    /// turns 保存密码 off while the widget's password login is out. Whatever the login's answer,
+    /// none of the widget's writes afterwards (the hold lifted, the pause, the token, the
+    /// session) brings the password back.
+    func testAPasswordTurnedOffDuringTheWidgetsLoginStaysOff() async throws {
+        let answers: [Result<PortalToken, SchoolLoginFailure>] = [.success(SchoolPasswordSignInTests.freshToken), .failure(.wrongCredentials)]
+        for answer in answers {
+            let login = FakePasswordLogin(answer)
+            let h = try passwordHarness(login)
+            try h.server.serve("ecykt/getSysBindCustInfo-badToken", times: 1)
+            h.server.serve(try T.eCardWithTicket())
+            h.server.respond("POST", T.exchangeURL, body: T.exchangeBody(token: "AFTER-PASSWORD"))
+            try h.server.serve("ecykt/getSysBindCustInfo-ok")
+            try h.server.serve("ecykt/getUserBalance-ok")
+            let app = h.session(), appLease = RefreshLease(file: h.store.leaseFile, owner: "app-1", now: h.clock.function)
+            let widgetLease = h.store.leaseFile
+            login.whileSent {
+                XCTAssertEqual(widgetLease.storedOwner()?.hasPrefix("widget-1"), true, "the widget holds the lease")
+                do { try await app.forgetPassword(lockingWith: appLease) } catch { XCTFail("not turned off: \(error)") }
+            }
+            _ = await refresher(h, owner: "widget-1").refresh(inBackground: true)
+            XCTAssertEqual(login.calls.count, 1, "\(answer)")
+            XCTAssertEqual(try h.vault.account()?.account, "99100991", "\(answer)")
+            XCTAssertNil(try h.vault.account()?.password, "not written back (\(answer))")
+        }
+    }
+
     /// Even with nothing to mint, the live session is written back only while the lease is held.
     func testWriteBackNeedsTheLease() async throws {
         let h = Harness()

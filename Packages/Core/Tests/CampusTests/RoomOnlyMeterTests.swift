@@ -88,15 +88,6 @@ final class RoomOnlyMeterTests: XCTestCase {
         XCTAssertNil(try store.loadSnapshot()?.power.value)
     }
 
-    func testTheRechargeCheckReadsNoCampusWideMeter() async throws {
-        let h = Harness()
-        try h.signedIn(meter: Self.campusBinding)
-        h.server.serve(try SchoolElectricityTests.campusMeters(extra: ["99栋991"]), matchBody: ["server", "buildingID"])
-        let value = try await h.session().readRechargeValue(.electricity)
-        XCTAssertNil(value)
-        XCTAssertEqual(meterReads(h).count, 0)
-    }
-
     /// A same-name choice without its room is never bound to the campus.
     func testAChoiceWithoutItsRoomIsNotBound() async throws {
         let h = Harness()

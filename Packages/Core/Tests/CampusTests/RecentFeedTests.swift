@@ -222,6 +222,16 @@ final class RecentFeedTests: XCTestCase {
         XCTAssertNil(CardSpending.yesterday(activity(unreadable, fetchedAt: noon), now: noon), "a time that can't be read")
     }
 
+    /// One rule with the day totals in 校园卡记录: a record of another day whose time can't be
+    /// read leaves yesterday's total; one whose day can't be read may be yesterday's.
+    func testAnUnreadableRecordOfAnotherDayLeavesYesterday() {
+        let records = [record("20261029", "080000", "示例超市", "1")]
+        let otherDay = records + [record("20261030", "xx", "示例超市", "1")]
+        XCTAssertEqual(CardSpending.yesterday(activity(otherDay, fetchedAt: noon), now: noon), Money(fen: 100))
+        let noDay = records + [record("2026-10", "080000", "示例超市", "1")]
+        XCTAssertNil(CardSpending.yesterday(activity(noDay, fetchedAt: noon), now: noon))
+    }
+
     /// A refund, a reversal or a grant is money in: a 12 元 meal refunded the same day is
     /// 「昨天花了 ¥12.00」, not 24; a 100 元 grant is not spending.
     func testRefundsAndGrantsAreMoneyIn() {

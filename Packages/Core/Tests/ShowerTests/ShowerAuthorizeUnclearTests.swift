@@ -31,14 +31,14 @@ final class ShowerAuthorizeUnclearTests: XCTestCase {
         let copy = try XCTUnwrap(page.authorizeUnclear)
         XCTAssertEqual(copy.title, "水没开")
         XCTAssertEqual(copy.body, ShowerAuthorizeUnclearText.body + "学校提示：余额不足")
-        XCTAssertEqual(ShowerDisplay(s).title, "水没开。学校提示：余额不足")
+        XCTAssertEqual(ShowerDisplay.title(s), "水没开。学校提示：余额不足")
         XCTAssertEqual(ShowerDisplay.failureTitle(s.failure), "水没开。学校提示：余额不足")
         XCTAssertEqual(siri(s), "水没开。学校提示：余额不足。打开校日常核对一下再开始。")
 
-        for text in [copy.title, copy.body, ShowerDisplay(s).title, siri(s) ?? ""] {
+        for text in [copy.title, copy.body, ShowerDisplay.title(s), siri(s) ?? ""] {
             XCTAssertFalse(text.contains("结算"), text)
         }
-        for text in [copy.body, ShowerDisplay(s).title, siri(s) ?? ""] {
+        for text in [copy.body, ShowerDisplay.title(s), siri(s) ?? ""] {
             XCTAssertTrue(text.contains("余额不足"), text)
         }
     }
@@ -50,7 +50,7 @@ final class ShowerAuthorizeUnclearTests: XCTestCase {
             let copy = try XCTUnwrap(ShowerPage(s)?.authorizeUnclear, "\(e)")
             XCTAssertEqual(copy.title, "水没开")
             XCTAssertEqual(copy.body, "学校那边没给准话，所以没开水。先去学校的热水记录里看看有没有多记一笔，看过了点「我在学校记录里核对过了」，再重新开始。")
-            XCTAssertEqual(ShowerDisplay(s).title, "水没开")
+            XCTAssertEqual(ShowerDisplay.title(s), "水没开")
             XCTAssertEqual(siri(s), "水没开。打开校日常核对一下再开始。")
         }
     }
@@ -75,7 +75,7 @@ final class ShowerAuthorizeUnclearTests: XCTestCase {
         let page = try XCTUnwrap(ShowerPage(s))
         XCTAssertEqual(page.phase, .unsure)
         XCTAssertEqual(page.authorizeUnclear, ShowerPageCopy(title: "水没开", body: ShowerAuthorizeUnclearText.body))
-        XCTAssertEqual(ShowerDisplay(s).title, "水没开")
+        XCTAssertEqual(ShowerDisplay.title(s), "水没开")
         XCTAssertEqual(siri(s), "水没开。打开校日常核对一下再开始。")
         XCTAssertEqual(ShowerActionFailure.blockedText(s.failure), "水没开。打开校日常核对一下再开始。")
         XCTAssertEqual(ShowerHomeReview(s.failure), ShowerHomeReview(button: "去核对", caption: "水没开"))

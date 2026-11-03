@@ -17,12 +17,4 @@ public extension LaundryVault {
         try saveAccountItem(UjingAccountItem(mobileID: id))
         return id
     }
-
-    func account() throws -> UjingAccount? { try accountItem()?.account }
-
-    /// Stores (or clears) the login, keeping the install's mobile id.
-    func saveAccount(_ account: UjingAccount?) throws {
-        let id = try mobileID()
-        try saveAccountItem(UjingAccountItem(mobileID: id, account: account))
-    }
 }

@@ -6,16 +6,6 @@ public protocol PaymentLauncher: Sendable {
     func open(_ launch: PayLaunch) async -> Bool
 }
 
-/// Live Activity / notification / diagnostics hooks (App side). Optional.
-public protocol LaundryHooks: Sendable {
-    /// Status 40: start or update the Live Activity and schedule the done notification at `endsAt`.
-    func updateActivity(_ plan: LaundryActivityPlan) async
-    /// 50/51/52/53: end the activity, drop the pending done notification.
-    func endActivity() async
-    /// Event names only (no ids, links or tokens).
-    func diagnostic(_ event: String) async
-}
-
 public enum LaundryEngineError: Error, Equatable, Sendable {
     /// Another operation is running.
     case busy
@@ -34,7 +24,6 @@ public actor LaundryEngine {
     let api: LaundryOrdering
     let vault: LaundryVault
     let launcher: PaymentLauncher
-    let hooks: LaundryHooks?
     let accountID: String?
     let now: @Sendable () -> Date
     let sleep: @Sendable (TimeInterval) async throws -> Void
@@ -48,12 +37,12 @@ public actor LaundryEngine {
     /// Restores the persisted record (relaunch rules in `LaundryReducer.restore`).
     /// `resetMarker`: while a reset runs, no order is created (`AppReset.InProgress`).
     /// `accountID`: the signed-in U净 account `api` sends as; a new order records it.
-    public init(api: LaundryOrdering, vault: LaundryVault, launcher: PaymentLauncher, hooks: LaundryHooks? = nil,
+    public init(api: LaundryOrdering, vault: LaundryVault, launcher: PaymentLauncher,
                 accountID: String? = nil, resetMarker: ResetMarker? = nil, now: @escaping @Sendable () -> Date = Date.init,
                 sleep: @escaping @Sendable (TimeInterval) async throws -> Void = { s in
                     try await Task.sleep(nanoseconds: UInt64(max(0, s) * 1_000_000_000))
                 }) throws {
-        self.api = api; self.vault = vault; self.launcher = launcher; self.hooks = hooks; self.accountID = accountID
+        self.api = api; self.vault = vault; self.launcher = launcher; self.accountID = accountID
         self.now = now; self.sleep = sleep
         self.resetMarker = resetMarker
         let persisted: LaundryCheckout?
@@ -67,7 +56,6 @@ public actor LaundryEngine {
         self.state = restored
     }
 
-    public var display: LaundryDisplay { LaundryDisplay(state) }
 
     /// Current state first, then every change.
     public func updates() -> AsyncStream<LaundryCheckout> {
@@ -236,18 +224,6 @@ public actor LaundryEngine {
             guard !Task.isCancelled else { return .cancelledBeforeSend }
             do { try await api.cancel(id); return .cancelAcknowledged }
             catch { return .cancelFailed(Self.serviceError(error, stateChanging: true)) }
-
-        case .updateActivity(let plan):
-            await hooks?.updateActivity(plan)
-            return nil
-
-        case .endActivity:
-            await hooks?.endActivity()
-            return nil
-
-        case .diagnostic(let name):
-            await hooks?.diagnostic(name)
-            return nil
         }
     }
 

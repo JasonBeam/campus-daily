@@ -4,8 +4,12 @@ import Core
 /// 高级 → 「连接检查」 and 「热水排查」: read-only Bluetooth check of the dorm controller and the
 /// session review. Shown inline in AdvancedSettingsView's list.
 struct ShowerTroubleshootingSections: View {
+    #if DEBUG
     /// DEBUG demo data from the settings sheet; nil = live model. Keeps 「热水」 here in step with the main page.
     var preview: HomeData? = nil
+    #else
+    private var preview: HomeData? { nil }
+    #endif
     @EnvironmentObject private var water: ShowerModel
     /// Same source as the main page's 「热水」 row: a dorm controller is bound (HomeData.shower != .unconfigured).
     private var waterConfigured: Bool { preview.map { $0.shower != .unconfigured } ?? water.configured }

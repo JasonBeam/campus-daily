@@ -263,7 +263,7 @@ final class SnapshotRefresherSingleFlightTests: XCTestCase {
         await refresher.noteChange()
         async let a = refresher.refresh(inBackground: false, includingChanges: true)
         async let b = refresher.refresh(inBackground: false, includingChanges: true)
-        try? await Task.sleep(nanoseconds: 50_000_000)
+        await eventually { await refresher.changeWaitCount == 2 }
         XCTAssertEqual(reader.callCount, 1, "nothing starts while the old read runs")
         reader.release(SchoolReading(outcome: .ok, checkedAt: t1, balance: .success(Money(fen: 1)), readAt: t1))
         await eventually { reader.callCount == 2 && reader.waitingCount == 1 }

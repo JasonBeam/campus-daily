@@ -3,8 +3,8 @@ import XCTest
 import CoreTestSupport
 
 enum T {
-    static let syscustid = "TESTsyscus%3Ntid00000000000000000000000000%1H00%7J"
-    static let custid = "TESTcustid000000000000000000000000000%1A00000%3G"
+    static let syscustid = "TESTsyscustid0000000000000000000000000001%"
+    static let custid = "TESTcustid0000000000000000000000000000001%"
     static let pcUrl = "https://ecykt.gdbtu.edu.cn/ykt-view/authcsatoken?areacode=450010&redirect=%2Fhome&ticket=SYNTHETIC-TICKET-1"
     static func session(token: String = "REDACTED_TOKEN_2", syscustid: String = T.syscustid) -> EcyktSession {
         EcyktSession(token: token, syscustid: syscustid, custid: T.custid, cardUnionID: "TESTid00000000000000000000000001")
@@ -378,14 +378,11 @@ final class EcyktElectricityTests: XCTestCase {
         }
     }
 
-    func testPowerPageURLReturnsLocationWithoutFollowing() async throws {
-        let s = StubServer()
-        try s.serve("ecykt/getPowerUrl-ok")
-        let url = try await EcyktClient(http: s.makeClient()).powerPageURL(T.session(), custid: T.custid)
-        XCTAssertEqual(url.absoluteString, "https://ecykt.gdbtu.edu.cn/ykt-view/powersel?interfaceName=powernew_450010&isbind=1")
-        XCTAssertEqual(s.requests.count, 1)
-        // Query matches the capture: ciphertext `%` encoded as `%25`.
+    /// The recharge WebView's electricity entry: the query as captured, ciphertext `%` encoded as `%25`.
+    func testPowerEntryURLMatchesTheCapture() throws {
         let fixtureURL = try FixtureLoader.load("ecykt/getPowerUrl-ok").url
-        XCTAssertEqual(s.requests[0].url.query, fixtureURL.query)
+        let url = EcyktClient.powerEntryURL(T.session(), custid: T.custid)
+        XCTAssertEqual(url.path, fixtureURL.path)
+        XCTAssertEqual(url.query, fixtureURL.query)
     }
 }

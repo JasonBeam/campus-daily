@@ -74,7 +74,7 @@ final class SchoolAccountSwitchTests: XCTestCase {
     func testWebSignInAsSomeoneElseClearsTheOldDormAndMeter() async throws {
         let h = try signedInHarness(card: Self.otherCard, password: "old-pw")
         try h.server.serve("ecykt/getSysBindCustInfo-ok")
-        let state = try XCTUnwrap(try FixtureLoader.loadRaw("ecykt/localStorage-elecampus_state-csaLogin")["value"])
+        let state = try FixtureLoader.csaLoginState()
         let summary = try await h.session().adoptWebState(try state.encoded(), owning: .unchecked)
         XCTAssertTrue(summary.switchedAccount)
         XCTAssertNil(try h.vault.profile())
@@ -84,7 +84,7 @@ final class SchoolAccountSwitchTests: XCTestCase {
     func testWebSignInAsTheSamePersonKeepsTheDorm() async throws {
         let h = try signedInHarness(card: "TESTid00000000000000000000000001", account: nil)
         try h.server.serve("ecykt/getSysBindCustInfo-ok")
-        let state = try XCTUnwrap(try FixtureLoader.loadRaw("ecykt/localStorage-elecampus_state-csaLogin")["value"])
+        let state = try FixtureLoader.csaLoginState()
         let summary = try await h.session().adoptWebState(try state.encoded(), owning: .unchecked)
         XCTAssertFalse(summary.switchedAccount)
         XCTAssertEqual(try h.vault.profile()?.meter, Harness.roomBinding)
@@ -98,7 +98,7 @@ final class SchoolAccountSwitchTests: XCTestCase {
         var unread = try XCTUnwrap(try h.vault.ecyktSession()); unread.cardUnionID = nil
         try h.vault.saveEcyktSession(unread)
         try h.server.serve("ecykt/getSysBindCustInfo-ok")
-        let state = try XCTUnwrap(try FixtureLoader.loadRaw("ecykt/localStorage-elecampus_state-csaLogin")["value"])
+        let state = try FixtureLoader.csaLoginState()
         let summary = try await h.session().adoptWebState(try state.encoded(), owning: .unchecked)
         XCTAssertFalse(summary.switchedAccount)
         XCTAssertTrue(summary.previousPersonUnconfirmed)
@@ -126,7 +126,7 @@ final class SchoolAccountSwitchTests: XCTestCase {
     }
 
     func testOnlyALoginThatCannotTellThePreviousPersonIsUnconfirmed() async throws {
-        let state = try XCTUnwrap(try FixtureLoader.loadRaw("ecykt/localStorage-elecampus_state-csaLogin")["value"])
+        let state = try FixtureLoader.csaLoginState()
         let same = try signedInHarness(card: "TESTid00000000000000000000000001")
         try same.server.serve("ecykt/getSysBindCustInfo-ok")
         let kept = try await same.session().adoptWebState(try state.encoded(), owning: .unchecked)
@@ -141,7 +141,7 @@ final class SchoolAccountSwitchTests: XCTestCase {
 
     /// The widget keeps signing in with the saved password after the same person used the web page.
     func testWebSignInKeepsTheSavedPasswordOnlyForTheSamePerson() async throws {
-        let state = try XCTUnwrap(try FixtureLoader.loadRaw("ecykt/localStorage-elecampus_state-csaLogin")["value"])
+        let state = try FixtureLoader.csaLoginState()
         let same = try signedInHarness(card: "TESTid00000000000000000000000001", password: "synthetic-pw-991")
         try same.server.serve("ecykt/getSysBindCustInfo-ok")
         let kept = try await same.session().adoptWebState(try state.encoded(), owning: .unchecked)

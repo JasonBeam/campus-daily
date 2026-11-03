@@ -10,8 +10,12 @@ struct CampusLoginSheet: View {
     /// Adopts the login and reads the card and meter; the sheet shows 「正在读电量…」 meanwhile and
     /// closes when it returns (or after `readLimit`, leaving the read running).
     let receive: (CampusWebLogin) async -> Void
+    #if DEBUG
     /// DEBUG demo: keep the opening state (no page is loaded).
     var holdOpening = false
+    #else
+    private var holdOpening: Bool { false }
+    #endif
     private static let readLimit: Duration = .seconds(20)
     private func deliver(_ config: CampusWebLogin) {
         guard !delivered else { return }
@@ -34,7 +38,11 @@ struct CampusLoginSheet: View {
                         .font(.footnote).foregroundStyle(.secondary).padding(12)
                 }
                 ZStack {
+                    #if DEBUG
                     OfficialCampusBrowser(state:browser, loads:!holdOpening)
+                    #else
+                    OfficialCampusBrowser(state:browser)
+                    #endif
                     if hidden {
                         VStack(spacing:16) {
                             ProgressView()
@@ -193,7 +201,7 @@ struct CampusOnboardingView: View {
                     login = true
                 }
             }
-            .scrollContentBackground(.hidden).background(NothingTheme.background).tint(NativeTheme.tint)
+            .scrollContentBackground(.hidden).background(NativeTheme.background).tint(NativeTheme.tint)
     }
     private var dormMenus: some View {
         ForEach(0..<4,id:\.self) {level in

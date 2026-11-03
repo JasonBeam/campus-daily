@@ -11,13 +11,6 @@ struct SavedWasher: Codable, Identifiable, Equatable {
     var savedAt = Date()
 }
 
-private struct LaundryEngineHooks: LaundryHooks {
-    // The Live Activity and the done reminder follow `LaundryFacts` (LaundryModel.syncActivity).
-    func updateActivity(_ plan: LaundryActivityPlan) async {}
-    func endActivity() async {}
-    func diagnostic(_ event: String) async {}
-}
-
 /// UI state over `UjingClient` (login, machine reads) and `LaundryEngine` (order + payment).
 /// No ordering or payment rules here: the engine decides what may be sent.
 /// Another U净 account tried to sign in while an order placed with the stored one is open.
@@ -117,7 +110,7 @@ enum LaundryLoginRefusal: Error { case otherAccount }
         observer?.cancel(); observer = nil; engine = nil
         do {
             let engine = try LaundryEngine(api:client, vault:AppEnvironment.laundryVault, launcher:AlipayPaymentLauncher(returned:{ [weak self] in Task { await self?.refreshOrder() } }),
-                                           hooks:LaundryEngineHooks(), accountID:account?.account?.id,
+                                           accountID:account?.account?.id,
                                            resetMarker:AppResetter.marker)
             self.engine = engine
             observer = Task { [weak self] in
@@ -186,7 +179,7 @@ enum LaundryLoginRefusal: Error { case otherAccount }
 
     static func loginText(_ error: Error) -> String {
         if error is LaundryLoginRefusal { return "还有一笔洗衣订单没结束，要用下单的那个 U净 账号登录。" }
-        if error is LaundryEngineError { return engineText(error) }
+        if let error = error as? LaundryEngineError { return error.loginMessage }
         return (error as? ServiceError)?.userMessage ?? "登录没完成，核对手机号和验证码再试。"
     }
 
@@ -444,13 +437,8 @@ enum LaundryLoginRefusal: Error { case otherAccount }
     }
 
     static func engineText(_ error: Error) -> String {
-        switch error as? LaundryEngineError {
-        case .busy?: return "正在处理上一步，稍等一下。"
-        case .notAllowed?: return "现在不能这样操作，下拉刷新看看。"
-        case .washerChanged?: return "机器或价格变了，刷新一下再下单。"
-        case .storage?: return "这台手机暂时存不了洗衣订单，重启 App 后再试。"
-        case nil: return (error as? AppReset.InProgress)?.errorDescription ?? message(error) ?? uncertainText
-        }
+        if let error = error as? LaundryEngineError { return error.message }
+        return (error as? AppReset.InProgress)?.errorDescription ?? message(error) ?? uncertainText
     }
 
     private static func message(_ error: Error) -> String? {

@@ -13,7 +13,10 @@ enum AccountText {
     static let notSavedFooter = "不保存的话，过几个小时小组件就要打开 App 才能更新。"
     static let pausedRefused = "存的密码登录不上，自动登录先停了。可能是在学校那边改过密码，重新输入就能恢复。"
     static let signOutFailed = "退出没完成，再试一次。"
-    static let pausedNoAnswer = "上次登录学校没回应，为免账号被锁，自动登录先停几个小时，到时会自己恢复。"
+    /// 保存密码 off didn't go through (the Keychain or the lease file couldn't be written yet).
+    static let forgetFailed = "密码还存着，没关掉。再试一次。"
+    /// The hold: the school never answered the last login, or answered it and then failed a later step.
+    static let pausedNoAnswer = "上次登录学校没走完，自动登录先停一会儿，免得反复发密码，过几个小时会自己再试。"
 
     /// The 学校账号 row on the settings page.
     static func row(signedIn: Bool, account: SchoolAccount?, at now: Date = Date()) -> String {
@@ -34,7 +37,15 @@ enum AccountText {
 /// 学校账号 detail: account, status, 保存密码 (and 重新输入密码 while paused),
 /// re-login, sign out.
 struct AccountView: View {
+    #if DEBUG
+    /// DEBUG demo data; nil = live model.
     var preview: HomeData? = nil
+    /// DEBUG demo: the switch flips locally (seeded from the demo data).
+    @State private var previewSaved: Bool?
+    #else
+    private var preview: HomeData? { nil }
+    private var previewSaved: Bool? { get { nil } nonmutating set {} }
+    #endif
     @EnvironmentObject private var campus: CampusModel
     @State private var confirmSignOut = false
     @State private var askPassword = false
@@ -51,8 +62,6 @@ struct AccountView: View {
     @State private var askReenter = false
     /// 重新登录学校账号: the account-and-password sheet.
     @State private var relogin = false
-    /// DEBUG demo: the switch flips locally (seeded from the demo data).
-    @State private var previewSaved: Bool?
     private var signedIn: Bool { preview?.signedIn ?? campus.configured }
     private var dorm: String? { preview?.dorm ?? Theme.dorm(campus.room) }
     private var account: SchoolAccount? { preview != nil ? preview?.schoolAccount : campus.account }
@@ -76,9 +85,10 @@ struct AccountView: View {
                 previewSaved = false
             } else {
                 Task {
-                    // Not stored as asked (the Keychain refused, or an update held the lease):
-                    // the switch shows what is stored, and this says why.
-                    do { try await campus.forgetPassword() } catch { saveIssue = SchoolLoginText.text(error) }
+                    // Not removed (the Keychain or the lease file refused, before the first
+                    // unlock say): the password is still stored, so the switch reads it back
+                    // and shows on again, and this says so.
+                    do { try await campus.forgetPassword() } catch { saveIssue = AccountText.forgetFailed }
                 }
             }
         })
@@ -189,7 +199,7 @@ struct AccountView: View {
                 }
                 .tint(nil)
         }
-        .sheet(isPresented:$relogin) { SchoolReloginSheet(preview:preview.map { _ in account ?? SchoolAccount(account:"") }) }
+        .sheet(isPresented:$relogin) { reloginSheet }
         // A pause written by a refresh (foreground, background or the widget) shows on arrival.
         .onAppear { if preview == nil { campus.reloadAccount() } }
         .confirmationDialog("退出学校账号？", isPresented:$confirmSignOut, titleVisibility:.visible) {
@@ -200,6 +210,12 @@ struct AccountView: View {
             Text("首页的电量和余额会清空，热水记录和洗衣设置都还在。")
         }
     }
+
+    #if DEBUG
+    private var reloginSheet: SchoolReloginSheet { SchoolReloginSheet(preview:preview.map { _ in account ?? SchoolAccount(account:"") }) }
+    #else
+    private var reloginSheet: SchoolReloginSheet { SchoolReloginSheet() }
+    #endif
 
     /// One login checks the password before it is kept; never retried.
     private func save() {

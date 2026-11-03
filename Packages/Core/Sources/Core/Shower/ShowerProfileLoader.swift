@@ -28,28 +28,17 @@ public enum ShowerConfigFile {
     }
 }
 
-/// Resolves the two profile sources (`ShowerProfileSource`). File and bundle reads are
-/// injected (App: `Bundle.main` / the imported-file container).
-public struct ShowerProfileLoader: ShowerProfileProviding {
-    let bundled: @Sendable () throws -> Data?
-    let imported: @Sendable (String) throws -> Data?
-
-    public init(bundled: @escaping @Sendable () throws -> Data?, imported: @escaping @Sendable (String) throws -> Data?) {
-        self.bundled = bundled; self.imported = imported
-    }
-
-    public func resolve(_ source: ShowerProfileSource) async throws -> ShowerPlatformAccess {
-        switch source {
-        case .bundled:
-            guard let data = try read(bundled, source) else { throw ShowerProfileError.missing(source) }
-            return .local(try ShowerConfigFile.parse(data, source: source), source: source)
-        case .imported(let name):
-            guard let data = try read({ try imported(name) }, source) else { throw ShowerProfileError.missing(source) }
-            return .local(try ShowerConfigFile.parse(data, source: source), source: source)
+/// The profile the app uses: the imported `.waterconfig` when it reads as one, else the one
+/// staged into the bundle. Both go through `ShowerConfigFile.parse`. Reads are injected (App:
+/// the imported-file container / `Bundle.main`).
+public enum ShowerProfileLoader {
+    public static func localProfile(imported: () throws -> Data?, bundled: () throws -> Data?) -> ShowerPlatformProfile? {
+        if let data = try? imported(), let profile = try? ShowerConfigFile.parse(data, source: .imported(fileName: importedFileName)) {
+            return profile
         }
+        if let data = try? bundled(), let profile = try? ShowerConfigFile.parse(data, source: .bundled) { return profile }
+        return nil
     }
 
-    private func read(_ load: () throws -> Data?, _ source: ShowerProfileSource) throws -> Data? {
-        do { return try load() } catch { throw ShowerProfileError.unreadable(source) }
-    }
+    public static let importedFileName = "imported.waterconfig"
 }

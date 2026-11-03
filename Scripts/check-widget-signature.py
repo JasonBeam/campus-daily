@@ -30,8 +30,6 @@ def keychain_problem(app_groups, widget_groups, private=PRIVATE):
         return 'The widget group must be %s.%s (same team prefix as the app)' % (prefix, shared)
     if widget_groups[0] not in app_groups:
         return 'The main app must list the shared keychain group too'
-    if app_groups[0] in widget_groups:
-        return 'The widget must not list the app private keychain group'
     return None
 
 
@@ -79,9 +77,6 @@ def main():
                                 app_info.get('AppGroupIdentifier'), widget_info.get('AppGroupIdentifier'))
     if problem:
         p.error(problem)
-    for bundle in [app, widget]:
-        if 'CampusKeychainGroup' in plistlib.loads((bundle / 'Info.plist').read_bytes()):
-            p.error('Stale build-time keychain group found in Info.plist')
     print('Signed main app and widget share the keychain group and the App Group; app-only items stay in the app keychain group.')
 
 

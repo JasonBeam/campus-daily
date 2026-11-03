@@ -46,7 +46,7 @@ struct ShowerDetail: View {
                                 Text(ended.formatted(date:.abbreviated,time:.shortened)).font(.caption).foregroundStyle(.secondary)
                             }
                             Spacer()
-                            if let cost = shower.lastCost { Text(cost,format:.currency(code:"CNY")).font(.subheadline).monospacedDigit() }
+                            if let cost = shower.lastCost { Text(Theme.yuan(cost)).font(.subheadline).monospacedDigit() }
                         }
                     }.padding(18).background(NativeTheme.surface,in:RoundedRectangle(cornerRadius:16))
                 }
@@ -143,7 +143,7 @@ struct ShowerDetail: View {
     }
     @ViewBuilder private var cost: some View {
         if shower.state.phase == .done, let cost = shower.lastCost {
-            Text(cost,format:.currency(code:"CNY")).font(.title2.weight(.semibold)).monospacedDigit().accessibilityIdentifier("settlementCost")
+            Text(Theme.yuan(cost)).font(.title2.weight(.semibold)).monospacedDigit().accessibilityIdentifier("settlementCost")
         } else if shower.state.phase == .done {
             Text("没拿到金额").font(.subheadline).foregroundStyle(.secondary)
         } else { Text("结算后显示").font(.subheadline) }

@@ -32,7 +32,7 @@ final class UndecodableStoredItemTests: XCTestCase {
             try h.signedIn(portal: true)
             try h.store.write(Self.damaged, for: key)
             try h.server.serve("ecykt/getSysBindCustInfo-ok")
-            let state = try XCTUnwrap(try FixtureLoader.loadRaw("ecykt/localStorage-elecampus_state-csaLogin")["value"])
+            let state = try FixtureLoader.csaLoginState()
             _ = try await h.session().adoptWebState(try state.encoded(), owning: .unchecked)
             XCTAssertNotNil(try h.vault.ecyktSession(), "\(key): the card session is written (readable again)")
         }

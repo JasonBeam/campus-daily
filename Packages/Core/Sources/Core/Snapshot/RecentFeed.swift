@@ -147,17 +147,7 @@ public enum CardSpending {
               let yesterdayDate = calendar.date(byAdding: .day, value: -1, to: now) else { return nil }
         let yesterday = SchoolCalendar.dayString(yesterdayDate, calendar: calendar)
         guard read.begin <= yesterday, yesterday <= read.end else { return nil }
-        var total = Money.zero
-        for record in read.records {
-            guard let moment = record.moment(calendar: calendar) else { return nil }
-            guard calendar.isDate(moment, inSameDayAs: yesterdayDate) else { continue }
-            switch record.flow {
-            case .moneyOut: total = total + record.amount
-            case .moneyIn: continue
-            // A record that may be money in or out: no total rather than a wrong one.
-            case .unknown: return nil
-            }
-        }
-        return total
+        // No payment yesterday is 「昨天没花钱」.
+        return CardDays.spending(on: yesterday, read.records, calendar: calendar)?.total
     }
 }

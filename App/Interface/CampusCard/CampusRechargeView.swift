@@ -2,23 +2,20 @@ import SwiftUI
 import WebKit
 import Core
 
-enum CampusRechargeKind: String, Identifiable {
-    case card, power
-    var id: String { rawValue }
-    var title: String { self == .card ? "校园卡充值" : "宿舍电费充值" }
-    var school: RechargeKind { self == .card ? .card : .electricity }
-}
-
 struct CampusRechargeView: View {
     @EnvironmentObject private var campus: CampusModel
-    let kind: CampusRechargeKind
+    let kind: RechargeKind
     @State private var context: RechargeWebSession?
     @State private var issue: RechargeOpenIssue?
     @State private var loading = false
     @State private var login = false
     @State private var revision = UUID()
+    #if DEBUG
     /// DEBUG demo: show the state of a web view that can't enforce its allow-list.
     var demoBlocked = false
+    #else
+    private var demoBlocked: Bool { false }
+    #endif
     /// Without the navigation allow-list the page would load nothing; say so instead of a blank page.
     private var pageBlocked: Bool { demoBlocked || !WebNavigationPolicy.isEnforced(by:CampusRechargeBrowser.Coordinator.self) }
     static let blockedText = "充值页现在打不开，过会儿再试。急用的话，先去学校官网充值。"
@@ -44,7 +41,7 @@ struct CampusRechargeView: View {
                 }
             }
         }.background(NativeTheme.background).tint(NativeTheme.tint)
-            .navigationTitle(kind.title).navigationBarTitleDisplayMode(.inline)
+            .navigationTitle(kind == .card ? "校园卡充值" : "宿舍电费充值").navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement:.topBarTrailing) { Button("重试") { revision = UUID() }.disabled(loading) } }
             .task(id:revision) { await prepare() }
             // Account and password first, the school's web page as the fallback.
@@ -55,7 +52,7 @@ struct CampusRechargeView: View {
         defer { loading = false }
         guard campus.configured else { issue = RechargeOpenIssue(text:"先登录学校账号。"); return }
         do {
-            let result = try await campus.rechargeSession(kind.school)
+            let result = try await campus.rechargeSession(kind)
             try Task.checkCancellation()
             context = result
         } catch is CancellationError { }
@@ -78,7 +75,7 @@ private struct CampusRechargeBrowser: UIViewRepresentable {
         configuration.userContentController.addUserScript(WKUserScript(source:context.userScript,injectionTime:.atDocumentStart,forMainFrameOnly:true))
         configuration.userContentController.add(bridge.coordinator,name:"campusRechargeExpired")
         let expiryScript = """
-        (()=>{if(location.hostname!=='ecykt.gdbtu.edu.cn')return;
+        (()=>{if(location.hostname!=='\(SchoolEndpoints.ecyktHost)')return;
         let sent=false;function check(){if(!sent&&document.body&&/登录状态过期|登录已过期|登录失效/.test(document.body.innerText)){sent=true;window.webkit.messageHandlers.campusRechargeExpired.postMessage('expired')}}
         new MutationObserver(check).observe(document.documentElement,{childList:true,subtree:true});check()})();
         """
@@ -106,7 +103,7 @@ private struct CampusRechargeBrowser: UIViewRepresentable {
         }
         func userContentController(_ userContentController: WKUserContentController,didReceive message: WKScriptMessage) {
             if message.name == "campusRechargeExpired", message.frameInfo.isMainFrame,
-               message.frameInfo.securityOrigin.protocol == "https", message.frameInfo.securityOrigin.host == "ecykt.gdbtu.edu.cn",
+               message.frameInfo.securityOrigin.protocol == "https", message.frameInfo.securityOrigin.host == SchoolEndpoints.ecyktHost,
                message.body as? String == "expired" { expired() }
         }
         func webView(_ webView: WKWebView,decidePolicyFor action: WKNavigationAction,decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy)->Void) {
@@ -121,7 +118,7 @@ private struct CampusRechargeBrowser: UIViewRepresentable {
             }
         }
         func webView(_ webView: WKWebView,createWebViewWith configuration: WKWebViewConfiguration,for action: WKNavigationAction,windowFeatures: WKWindowFeatures) -> WKWebView? {
-            if action.targetFrame == nil, action.request.url?.scheme == "https", action.request.url?.host == "ecykt.gdbtu.edu.cn" { webView.load(action.request) }
+            if action.targetFrame == nil, action.request.url?.scheme == "https", action.request.url?.host == SchoolEndpoints.ecyktHost { webView.load(action.request) }
             return nil
         }
     }

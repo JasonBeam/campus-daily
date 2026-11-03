@@ -10,7 +10,6 @@ final class AppIdentityTests: XCTestCase {
                                           "KeychainGroupIdentifier": "org.example.daily"])
         XCTAssertEqual(identity.appGroup, "group.org.example.daily")
         XCTAssertEqual(identity.keychainGroup, "org.example.daily")
-        XCTAssertEqual(identity.sharedKeychainGroup, "org.example.daily.shared")
     }
 
     /// No keys (or empty ones): no App Group and no shared keychain group, never a guessed one.
@@ -19,18 +18,39 @@ final class AppIdentityTests: XCTestCase {
             let identity = AppIdentity(info: info)
             XCTAssertNil(identity.appGroup)
             XCTAssertNil(identity.keychainGroup)
-            XCTAssertNil(identity.sharedKeychainGroup)
         }
     }
 
-    /// A build signed under another bundle id finds its own shared group, not the default one.
-    func testSharedGroupFollowsTheBuildsIdentity() {
-        let shared = AppIdentity(info: ["KeychainGroupIdentifier": "org.example.daily"]).sharedKeychainGroup
-        XCTAssertEqual(SharedKeychain.accessGroup(teamPrefixedFrom: "TEAM000042.org.example.daily", sharedGroup: shared),
+    /// An IPA re-signed under another bundle id still carries the default ids in Info.plist. The
+    /// shared keychain group comes from the group the process writes to by default (the
+    /// re-signer's), so the app and the widget still meet there.
+    func testReSignedBuildsShareTheKeychainGroupOfTheirSignature() {
+        XCTAssertEqual(SharedKeychain.sharedGroup(defaultGroup: "TEAM000042.org.example.daily", inExtension: false),
                        "TEAM000042.org.example.daily.shared")
-        XCTAssertNil(SharedKeychain.accessGroup(teamPrefixedFrom: "TEAM000042.org.example.daily", sharedGroup: nil))
-        XCTAssertEqual(SharedKeychain.privateGroup(defaultGroup: "TEAM000042.org.example.daily", sharedGroup: nil),
+        XCTAssertEqual(SharedKeychain.sharedGroup(defaultGroup: "TEAM000042.org.example.daily.shared", inExtension: true),
+                       "TEAM000042.org.example.daily.shared")
+        XCTAssertEqual(SharedKeychain.privateGroup(defaultGroup: "TEAM000042.org.example.daily", inExtension: false),
                        "TEAM000042.org.example.daily")
+        XCTAssertNil(SharedKeychain.privateGroup(defaultGroup: "TEAM000042.org.example.daily.shared", inExtension: true))
+    }
+
+    /// The App Group named in Info.plist first; when it has no container (re-signed), `group.`
+    /// plus the bundle id the process runs under, the widget's without `.balances`.
+    func testReSignedBuildsTryTheAppGroupOfTheirBundleID() {
+        XCTAssertEqual(AppIdentity.appGroupCandidates(named: "group.com.beamjason.xiaorichang", bundleID: "org.example.daily", inExtension: false),
+                       ["group.com.beamjason.xiaorichang", "group.org.example.daily"])
+        XCTAssertEqual(AppIdentity.appGroupCandidates(named: "group.com.beamjason.xiaorichang", bundleID: "org.example.daily.balances", inExtension: true),
+                       ["group.com.beamjason.xiaorichang", "group.org.example.daily"])
+        XCTAssertEqual(AppIdentity.appGroupCandidates(named: "group.org.example.daily", bundleID: "org.example.daily", inExtension: false),
+                       ["group.org.example.daily"], "the same group is tried once")
+        XCTAssertEqual(AppIdentity.appGroupCandidates(named: nil, bundleID: "org.example.daily", inExtension: false), ["group.org.example.daily"])
+        XCTAssertEqual(AppIdentity.appGroupCandidates(named: "group.org.example.daily", bundleID: nil, inExtension: false), ["group.org.example.daily"])
+        XCTAssertEqual(AppIdentity.appGroupCandidates(named: nil, bundleID: nil, inExtension: true), [])
+
+        let candidates = ["group.com.beamjason.xiaorichang", "group.org.example.daily"]
+        XCTAssertEqual(AppIdentity.firstWithContainer(candidates) { _ in true }, "group.com.beamjason.xiaorichang")
+        XCTAssertEqual(AppIdentity.firstWithContainer(candidates) { $0 == "group.org.example.daily" }, "group.org.example.daily")
+        XCTAssertNil(AppIdentity.firstWithContainer(candidates) { _ in false })
     }
 
     /// With the bundle id in Base.xcconfig, every identifier is exactly what earlier builds
@@ -53,7 +73,6 @@ final class AppIdentityTests: XCTestCase {
         let app = AppIdentity(info: appInfo)
         XCTAssertEqual(app.appGroup, "group.com.beamjason.xiaorichang")
         XCTAssertEqual(app.keychainGroup, "com.beamjason.xiaorichang")
-        XCTAssertEqual(app.sharedKeychainGroup, "com.beamjason.xiaorichang.shared")
         XCTAssertEqual(AppIdentity(info: widgetInfo), app, "the widget reads the app's groups, not its own bundle id")
         XCTAssertEqual(appInfo["BGTaskSchedulerPermittedIdentifiers"] as? [String], ["com.beamjason.xiaorichang.refresh"])
 

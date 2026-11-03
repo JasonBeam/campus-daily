@@ -49,6 +49,26 @@ final class RecentFitTests: XCTestCase {
         XCTAssertTrue(RecentFit.showsSection(viewport: 0, above: 0, rowHeights: rows), "not measured yet")
     }
 
+    /// The screen is measured but no row is yet (the first layout): no section until one is,
+    /// rather than three rows that may not fit and then jump.
+    func testNoSectionUntilARowIsMeasured() {
+        XCTAssertEqual(RecentFit.count(viewport: 800, above: 400, rowHeights: [0, 0, 0, 0]), 0)
+        XCTAssertFalse(RecentFit.showsSection(viewport: 800, above: 400, rowHeights: [0, 0]))
+        XCTAssertEqual(RecentFit.count(viewport: 800, above: 400, rowHeights: [56, 56]), 2, "all measured")
+    }
+
+    /// A new record arrives on top and is not measured yet: the section stays, counted as if
+    /// each unmeasured row were as tall as the tallest measured one, so 「最近」 doesn't vanish
+    /// for a frame on every refresh that brings a record.
+    func testANewUnmeasuredRowKeepsTheSection() {
+        // 376 left: six rows of 56 with or without the new one on top.
+        XCTAssertEqual(RecentFit.count(viewport: 800, above: 400, rowHeights: [0] + rows), 6)
+        XCTAssertEqual(RecentFit.count(viewport: 800, above: 400, rowHeights: [56, 56, 0, 56]), 4)
+        XCTAssertTrue(RecentFit.showsSection(viewport: 800, above: 400, rowHeights: [0, 56]))
+        // Counted at the tallest measured row: never more rows than may fit.
+        XCTAssertEqual(RecentFit.count(viewport: 800, above: 400, rowHeights: [0, 0, 100, 56, 56, 56]), 4, "100 × 3 + 56 = 356 fits, a fifth row would need 412")
+    }
+
     /// The header counts against the screen too: it fits, but no row fits under it, so the
     /// section goes. `above` is where the section starts, over its header.
     func testHeaderThatFitsOverNoRowHidesTheSection() {
@@ -65,7 +85,6 @@ final class RecentFitTests: XCTestCase {
     func testThreeRowsBeforeAnythingIsMeasured() {
         XCTAssertEqual(RecentFit.minimumRows, 3)
         XCTAssertEqual(RecentFit.count(viewport: 0, above: 0, rowHeights: rows), 3)
-        XCTAssertEqual(RecentFit.count(viewport: 800, above: 400, rowHeights: [0, 0, 0, 0]), 3, "rows not measured yet")
         XCTAssertEqual(RecentFit.count(viewport: 0, above: 0, rowHeights: [56, 56]), 2)
     }
 

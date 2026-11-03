@@ -316,8 +316,6 @@ public enum ShowerEffect: Sendable, Equatable {
     case releaseDevice
     /// Drop `peripheralID` from the saved binding: it answered with another machine's identity.
     case forgetPeripheral(String)
-    case scheduleReminder
-    case cancelReminder
     case diagnostic(String)
 }
 
@@ -394,7 +392,7 @@ public enum ShowerReducer {
             s.authorizationID = auth.authorizationID.uppercased()
             // 出水: the timer, the Live Activity and the reminder (scheduled here) start now.
             s.startedAt = at
-            return (s, [.scheduleReminder, .writeAuthorization(auth.payload)])
+            return (s, [.writeAuthorization(auth.payload)])
 
         case (.authorizing, .authorizeFailed(let e)) where state.authorizeSent:
             if isDefiniteAuthorizeRefusal(e) {
@@ -463,7 +461,7 @@ public enum ShowerReducer {
                 // The authorization never reached the controller and nothing runs: no water, no
                 // charge. The record ends as 结束 ends it (which checks `from == .writePending`).
                 return (state.idleAfter(receipt: state.lastReceipt),
-                        [.cancelReminder, .releaseDevice, .diagnostic("review.writeNeverApplied")])
+                        [.releaseDevice, .diagnostic("review.writeNeverApplied")])
             case .idle(let id) where id == state.machineID:
                 s.stateReviewRequired = true
                 s.notice = .notActive
@@ -497,7 +495,7 @@ public enum ShowerReducer {
                 s.closeSent = false
                 s.stateReviewRequired = false
                 s.holdSettle = true
-                return (s, [.scheduleReminder, .releaseDevice])
+                return (s, [.releaseDevice])
             case .idle(let id) where id == state.machineID:
                 // Stopped: the close may have taken, or water stopped by itself. The check stands.
                 s.notice = .notActive
@@ -530,7 +528,7 @@ public enum ShowerReducer {
             case .idle(let id) where id == state.machineID:
                 if from == .writePending, state.authorizationNotWritten {
                     // The authorization never reached the controller: no water, no charge.
-                    return (state.idleAfter(receipt: state.lastReceipt), [.cancelReminder, .releaseDevice, .diagnostic("finish.writeNeverApplied")])
+                    return (state.idleAfter(receipt: state.lastReceipt), [.releaseDevice, .diagnostic("finish.writeNeverApplied")])
                 }
                 // Stopped now, but an unconfirmed write may have been applied and run water.
                 var b = back(s, to: from, notice: .notActive)
@@ -551,20 +549,20 @@ public enum ShowerReducer {
 
         case (.closing, .closeReplied(let frame)) where state.closeSent:
             guard ShowerFrames.identity(frame) == state.machineID else {
-                return (failed(s, .closeUnconfirmed, review: true, device: .malformedFrame), [.cancelReminder, .releaseDevice])
+                return (failed(s, .closeUnconfirmed, review: true, device: .malformedFrame), [.releaseDevice])
             }
             s.consumption = HexCoding.upper(frame)
             if state.holdSettle {
                 s.holdSettle = false
                 s.heldConsumption = s.consumption
                 return (failed(s, .settleUnconfirmed, review: true, settleNotSent: true, settleHeld: true),
-                        [.cancelReminder, .releaseDevice, .diagnostic("settle.heldAfterUnconfirmedClose")])
+                        [.releaseDevice, .diagnostic("settle.heldAfterUnconfirmedClose")])
             }
             s.phase = .settling
-            return (s, [.cancelReminder, .releaseDevice, .settle(frame: frame)])
+            return (s, [.releaseDevice, .settle(frame: frame)])
 
         case (.closing, .closeFailed(let e)) where state.closeSent:
-            return (failed(s, .closeUnconfirmed, review: true, device: e), [.cancelReminder, .releaseDevice])
+            return (failed(s, .closeUnconfirmed, review: true, device: e), [.releaseDevice])
 
         // MARK: settle
         case (.settling, .settled(let receipt, let at)):
@@ -600,7 +598,7 @@ public enum ShowerReducer {
 
         // MARK: leaving
         case (_, .resolveManually) where state.canResolveManually:
-            return (state.idleAfter(receipt: state.lastReceipt), [.cancelReminder, .releaseDevice, .diagnostic("resolvedManually.\(state.phase.rawValue)")])
+            return (state.idleAfter(receipt: state.lastReceipt), [.releaseDevice, .diagnostic("resolvedManually.\(state.phase.rawValue)")])
 
         case (.done, .dismiss):
             return (state.idleAfter(receipt: state.receipt), [])
@@ -664,42 +662,25 @@ public enum ShowerReducer {
     }
 }
 
-// MARK: - Presentation (UI + Live Activity mirror)
+// MARK: - Presentation
 
-public struct ShowerDisplay: Sendable, Equatable {
-    public enum Phase: String, Sendable, Codable { case idle, starting, running, ending, settling, done, failed }
-    public var phase: Phase
-    public var title: String
-    public var hint: String?
-    public var startedAt: Date?
-    /// The controller did not confirm the authorization write (shown as running on purpose).
-    public var writeUnconfirmed: Bool
-    public var amountYuan: String?
-    public var needsReview: Bool
-
+/// The record's words where a caller speaks or shows a line instead of the page (Siri,
+/// Shortcuts, the lock screen, the status line).
+public enum ShowerDisplay {
+    /// Under the timer while the controller did not confirm the authorization write (shown as
+    /// running on purpose): the page, home, the lock screen and the island.
     public static let writeUnconfirmedHint = "水控没回应，有热水就照常洗"
 
-    public init(_ s: ShowerState) {
-        startedAt = s.startedAt
-        writeUnconfirmed = s.phase == .writePending
-        amountYuan = nil
-        hint = nil
-        needsReview = s.failure?.needsReview ?? false
+    /// One line for the record.
+    public static func title(_ s: ShowerState) -> String {
         switch s.phase {
-        case .idle: phase = .idle; title = "开水"
-        case .authorizing: phase = .starting; title = "正在开水…"
-        case .writePending: phase = .running; title = "洗澡中"; hint = Self.writeUnconfirmedHint
-        case .running: phase = .running; title = "洗澡中"
-        case .closing: phase = .ending; title = "正在结束…"
-        case .settling: phase = .settling; title = "正在结算…"
-        case .done:
-            phase = .done
-            amountYuan = s.receipt?.amount?.yuanText
-            title = amountYuan.map { "本次 ¥\($0)" } ?? "已结算"
-        case .failed:
-            phase = .failed
-            title = Self.failureTitle(s.failure)
-            if needsReview { hint = "去看热水记录" }
+        case .idle: return "开水"
+        case .authorizing: return "正在开水…"
+        case .writePending, .running: return "洗澡中"
+        case .closing: return "正在结束…"
+        case .settling: return "正在结算…"
+        case .done: return s.receipt?.amount.map { "本次 ¥\($0.yuanText)" } ?? "已结算"
+        case .failed: return failureTitle(s.failure)
         }
     }
 

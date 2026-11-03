@@ -29,10 +29,14 @@ public final class FakeShowerTransport: ShowerTransport, @unchecked Sendable {
     private var _writes: [Data] = []
     private var _connects: [Connect] = []
     private var _disconnects = 0
+    private var _onExchange: (@Sendable (Data) -> Void)?
     /// Peripheral returned when no connect result is scripted.
-    public var defaultPeripheral = "PERIPHERAL-A"
+    private let defaultPeripheral = "PERIPHERAL-A"
     /// Called before each exchange reply is returned (e.g. to cancel a task mid-flow).
-    public var onExchange: (@Sendable (Data) -> Void)?
+    public var onExchange: (@Sendable (Data) -> Void)? {
+        get { lock.withLock { _onExchange } }
+        set { lock.withLock { _onExchange = newValue } }
+    }
 
     public init() {}
 

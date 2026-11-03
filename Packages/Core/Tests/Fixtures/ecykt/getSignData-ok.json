@@ -7,8 +7,8 @@
       "acc_token": "REDACTED_TOKEN_2"
     },
     "body": {
-      "syscustid": "TESTsyscus%3Ntid00000000000000000000000000%1H00%7J",
-      "custid": "TESTcustid000000000000000000000000000%1A00000%3G",
+      "syscustid": "TESTsyscustid0000000000000000000000000001%",
+      "custid": "TESTcustid0000000000000000000000000000001%",
       "acc_token": "REDACTED_TOKEN_2",
       "timestamp": ""
     }

@@ -2,7 +2,6 @@ package com.beamjason.xiaorichang
 
 import android.app.Application
 import android.content.Context
-import androidx.core.content.FileProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.beamjason.xiaorichang.ble.*
@@ -91,14 +90,5 @@ class RefreshAndWaterParityTest {
         assertEquals(ShowerStage.SETTLED,saved!!.stage);assertFalse(saved!!.stateReviewRequired)
         assertEquals(1,disconnects);assertEquals(1,settlements);assertEquals(listOf(15,1,5),writes.map{it.size})
         assertTrue(runCatching{controller.finish(profile)}.isFailure);assertEquals(1,settlements)
-    }
-    @Test fun diagnosticSharingCannotExposeOtherPrivateFiles() {
-        val context=InstrumentationRegistry.getInstrumentation().targetContext
-        val authority="${BuildConfig.APPLICATION_ID}.fileprovider"
-        val provider=context.packageManager.resolveContentProvider(authority,0)!!
-        assertFalse(provider.exported);assertTrue(provider.grantUriPermissions)
-        val file=File(context.cacheDir,"water-diagnostics/report.json")
-        assertEquals(authority,FileProvider.getUriForFile(context,authority,file).authority)
-        assertTrue(runCatching{FileProvider.getUriForFile(context,authority,File(context.filesDir,"private-state.json"))}.isFailure)
     }
 }

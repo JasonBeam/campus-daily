@@ -27,21 +27,6 @@ private struct SlowGateway: ShowerGateway {
     }
 }
 
-/// Records the clock when the engine asks for the 「还没结束洗澡？」 reminder.
-private final class ClockedHooks: ShowerHooks, @unchecked Sendable {
-    private let lock = NSLock()
-    private let clock: StepClock
-    private var _scheduled: [(at: Date, after: TimeInterval)] = []
-    init(_ clock: StepClock) { self.clock = clock }
-    var scheduled: [(at: Date, after: TimeInterval)] { lock.withLock { _scheduled } }
-    func scheduleUnsettledReminder(after seconds: TimeInterval) async {
-        let at = clock.now
-        lock.withLock { _scheduled.append((at, seconds)) }
-    }
-    func cancelUnsettledReminder() async {}
-    func diagnostic(_ event: String) async {}
-}
-
 /// The shower timer counts from the moment water may flow (出水), not from the 开始洗澡 tap:
 /// connecting and authorizing take ~15 s that are not shower time.
 final class ShowerTimerOriginTests: XCTestCase {
@@ -54,11 +39,10 @@ final class ShowerTimerOriginTests: XCTestCase {
         let clock = StepClock(t0)
         let transport = FakeShowerTransport()
         let gateway = FakeGateway()
-        let hooks = ClockedHooks(clock)
         let vault = StoredShowerVault(store: InMemorySecureStore())
         let engine = try ShowerEngine(transport: transport, gateway: SlowGateway(inner: gateway, clock: clock, delay: 15),
-                                      vault: vault, configuration: .init(bleName: "fixture-ble", reminderMinutes: 30),
-                                      hooks: hooks, now: { clock.now })
+                                      vault: vault, configuration: .init(bleName: "fixture-ble"),
+                                      now: { clock.now })
         transport.script(.frame(FakeFrames.identity(machine)), .frame(FakeFrames.ack))
         gateway.scriptAuthorize(.ok(auth))
 
@@ -77,8 +61,6 @@ final class ShowerTimerOriginTests: XCTestCase {
                        "Live Activity / Dynamic Island / lock screen count from the water")
         XCTAssertEqual(AppReset.Resync(shower: s, now: at20).showerReminderStart, water,
                        "the app's reminder is scheduled from the water")
-        XCTAssertEqual(hooks.scheduled.map(\.at), [water], "the engine's reminder hook runs when the water starts")
-        XCTAssertEqual(hooks.scheduled.map(\.after), [30 * 60])
     }
 
     /// The write is not acknowledged (shown as running on purpose): the water may still flow,

@@ -229,24 +229,39 @@ public enum CardDays {
         for item in items {
             let id = SchoolCalendar.dayString(item.date, calendar: calendar)
             if days.last?.id == id { days[days.count - 1].items.append(item); continue }
-            let total = history.flatMap { h in h.isComplete(day: id) ? spent(on: id, h.records, calendar: calendar) : nil }
+            // A day without a payment has no total.
+            let total = history.flatMap { h in
+                h.isComplete(day: id) ? spending(on: id, h.records, calendar: calendar).flatMap { $0.paid ? $0.total : nil } : nil
+            }
             days.append(CardDay(id: id, title: title(day: item.date, now: now, calendar: calendar), items: [item], total: total))
         }
         return days
     }
 
-    /// Payments of `day` from the school's records, as 昨天花了 counts them.
-    static func spent(on day: String, _ records: [CardRecord], calendar: Calendar) -> Money? {
+    /// What was paid on `day` (`yyyyMMdd`, the school's calendar) by the school's records: the
+    /// one rule behind 「昨天花了」 on home and each day's total in 校园卡记录. Money in (top-ups,
+    /// refunds, grants) is left out; a payment's amount counts with its sign. `paid`: at least
+    /// one payment. Nil when the records can't say: a record of that day whose time can't be
+    /// read or that may be money in or out, or a record whose day can't be read at all.
+    static func spending(on day: String, _ records: [CardRecord],
+                         calendar: Calendar) -> (total: Money, paid: Bool)? {
         var total = Money.zero, paid = false
-        for record in records where CardHistory.trimmed(record.date) == day {
-            guard record.moment(calendar: calendar) != nil else { return nil }
+        for record in records {
+            let recordDay = CardHistory.trimmed(record.date)
+            guard record.moment(calendar: calendar) != nil else {
+                // It may be that day's.
+                if recordDay == day || recordDay.count != 8 || !recordDay.allSatisfy({ $0.isASCII && $0.isNumber }) { return nil }
+                continue
+            }
+            guard recordDay == day else { continue }
             switch record.flow {
             case .moneyOut: total = total + record.amount; paid = true
             case .moneyIn: continue
+            // A record that may be money in or out: no total rather than a wrong one.
             case .unknown: return nil
             }
         }
-        return paid ? total : nil
+        return (total, paid)
     }
 
     /// 「今天」 / 「昨天」 / 「10月28日 周三」, with the year only outside the current one.

@@ -12,9 +12,9 @@ final class SchoolLaundryPreferenceTests: XCTestCase {
         let storage = MemoryPreferences()
         let preference = SchoolLaundryPreference(storage:storage)
         XCTAssertTrue(preference.isOn, "nothing stored: on")
-        preference.answer(usesSchoolWashers:true)
+        preference.set(true)
         XCTAssertTrue(preference.isOn)
-        preference.answer(usesSchoolWashers:false)
+        preference.set(false)
         XCTAssertFalse(preference.isOn, "「不用」 turns it off")
         XCTAssertEqual(storage.values[SchoolLaundryPreference.key] as? Bool, false)
     }

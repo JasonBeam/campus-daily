@@ -331,7 +331,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "P=\"$CAMPUS_WATER_PROFILE_PATH\"\nif [ -z \"$P\" ] && [ -f \"$SRCROOT/private/distribution/WaterPlatformProfile.json\" ]; then P=\"$SRCROOT/private/distribution/WaterPlatformProfile.json\"; fi\nif [ -z \"$P\" ] && [ \"$CONFIGURATION\" = \"Debug\" ]; then\n  echo \"warning: no water platform profile; hot water will not connect. Run python3 Scripts/stage-water-profile.py fetch\"\n  exit 0\nfi\npython3 \"$SRCROOT/Scripts/stage-water-profile.py\" stage --profile \"$P\" --output \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/CampusWaterPlatform.json\"\n";
+			shellScript = "P=\"$CAMPUS_WATER_PROFILE_PATH\"\nif [ -z \"$P\" ] && [ -f \"$SRCROOT/private/distribution/WaterPlatformProfile.json\" ]; then P=\"$SRCROOT/private/distribution/WaterPlatformProfile.json\"; fi\nif [ -z \"$P\" ] && [ \"$CONFIGURATION\" = \"Debug\" ]; then\n  echo \"warning: no water platform profile; hot water will not connect. Run python3 Scripts/stage-water-profile.py fetch\"\n  rm -f \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/CampusWaterPlatform.json\"\n  exit 0\nfi\npython3 \"$SRCROOT/Scripts/stage-water-profile.py\" stage --profile \"$P\" --output \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/CampusWaterPlatform.json\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -364,7 +364,7 @@
 		C0DA00270000000000000000 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReferenceAnchor = C0DA000B0000000000000000 /* Configuration */;
-			baseConfigurationReferenceRelativePath = Debug.xcconfig;
+			baseConfigurationReferenceRelativePath = Base.xcconfig;
 			buildSettings = {
 				CLANG_ENABLE_MODULES = YES;
 				SDKROOT = iphoneos;
@@ -375,7 +375,7 @@
 		C0DA00280000000000000000 /* Release */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReferenceAnchor = C0DA000B0000000000000000 /* Configuration */;
-			baseConfigurationReferenceRelativePath = Release.xcconfig;
+			baseConfigurationReferenceRelativePath = Base.xcconfig;
 			buildSettings = {
 				CLANG_ENABLE_MODULES = YES;
 				SDKROOT = iphoneos;
@@ -386,7 +386,7 @@
 		C0DA00290000000000000000 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReferenceAnchor = C0DA000B0000000000000000 /* Configuration */;
-			baseConfigurationReferenceRelativePath = Debug.xcconfig;
+			baseConfigurationReferenceRelativePath = Base.xcconfig;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = App/Resources/App.entitlements;
@@ -394,7 +394,6 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = App/Resources/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "$(APP_DISPLAY_NAME)";
-				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "连接你选择的校园水控，完成授权、结束并结算。";
 				INFOPLIST_KEY_NSCameraUsageDescription = "扫描洗衣机机身二维码，保存你的常用机器。";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -422,7 +421,7 @@
 		C0DA002A0000000000000000 /* Release */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReferenceAnchor = C0DA000B0000000000000000 /* Configuration */;
-			baseConfigurationReferenceRelativePath = Release.xcconfig;
+			baseConfigurationReferenceRelativePath = Base.xcconfig;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = App/Resources/App.entitlements;
@@ -430,7 +429,6 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = App/Resources/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "$(APP_DISPLAY_NAME)";
-				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "连接你选择的校园水控，完成授权、结束并结算。";
 				INFOPLIST_KEY_NSCameraUsageDescription = "扫描洗衣机机身二维码，保存你的常用机器。";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -457,7 +455,7 @@
 		C0DA002B0000000000000000 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReferenceAnchor = C0DA000B0000000000000000 /* Configuration */;
-			baseConfigurationReferenceRelativePath = Debug.xcconfig;
+			baseConfigurationReferenceRelativePath = Base.xcconfig;
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = Widget/Widget.entitlements;
@@ -479,7 +477,7 @@
 		C0DA002C0000000000000000 /* Release */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReferenceAnchor = C0DA000B0000000000000000 /* Configuration */;
-			baseConfigurationReferenceRelativePath = Release.xcconfig;
+			baseConfigurationReferenceRelativePath = Base.xcconfig;
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = Widget/Widget.entitlements;

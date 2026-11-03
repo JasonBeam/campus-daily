@@ -95,7 +95,7 @@ final class MeterLookupRetryTests: XCTestCase {
         let box = SessionBox()
         let h = try harness(waits) {
             guard let session = box.session,
-                  let state = try? FixtureLoader.loadRaw("ecykt/localStorage-elecampus_state-csaLogin")["value"],
+                  let state = try? FixtureLoader.csaLoginState(),
                   let data = try? state.encoded() else { return }
             _ = try? await session.adoptWebState(data, owning: .unchecked)
         }

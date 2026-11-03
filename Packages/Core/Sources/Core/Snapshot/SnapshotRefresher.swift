@@ -28,15 +28,14 @@ public struct RefreshReport: Sendable, Equatable {
     public typealias Outcome = SchoolReading.Outcome
     public var outcome: Outcome
     public var snapshot: HomeSnapshot
-    public var reexchanged: Bool
     public var snapshotSaved: Bool
     /// The other process held the lease the whole wait (it is reading, or it was suspended
     /// while holding it): nothing was read here. `snapshot` is the stored one, and the app
     /// shows it without an error.
     public var leaseBusy: Bool
 
-    public init(outcome: Outcome, snapshot: HomeSnapshot, reexchanged: Bool, snapshotSaved: Bool, leaseBusy: Bool = false) {
-        self.outcome = outcome; self.snapshot = snapshot; self.reexchanged = reexchanged; self.snapshotSaved = snapshotSaved
+    public init(outcome: Outcome, snapshot: HomeSnapshot, snapshotSaved: Bool, leaseBusy: Bool = false) {
+        self.outcome = outcome; self.snapshot = snapshot; self.snapshotSaved = snapshotSaved
         self.leaseBusy = leaseBusy
     }
 }
@@ -63,8 +62,9 @@ public actor SnapshotRefresher {
     let store: SnapshotStoring
     /// Failures worth a look, by event name only (no values), e.g. the snapshot could not be saved.
     let diagnostic: @Sendable (String) -> Void
-    /// Nil = this process is the only refresher (tests of the in-process rules).
-    let lease: RefreshLease?
+    /// Nil = this process is the only refresher (tests of the in-process rules). Public for a
+    /// write that only needs the lease file's lock (`RefreshLease.locked`).
+    public nonisolated let lease: RefreshLease?
     let leaseWait: TimeInterval
     let sleep: @Sendable (TimeInterval) async -> Void
     /// How often the lease is renewed while a read runs.
@@ -87,6 +87,8 @@ public actor SnapshotRefresher {
     private var generation = 0
     /// Callers that joined a running refresh (for tests).
     private(set) var joinedCount = 0
+    /// Times a caller asking for changes waited for a read that started before them (for tests).
+    private(set) var changeWaitCount = 0
     /// Waiters whose task was cancelled (for tests).
     private(set) var cancelledWaiters = 0
 
@@ -123,6 +125,7 @@ public actor SnapshotRefresher {
     /// Runs a refresh, or joins the one already running (see the type's rules).
     public func refresh(inBackground: Bool, includingChanges: Bool = false) async -> RefreshReport {
         while includingChanges, let run = current, run.changes != changes {
+            changeWaitCount += 1
             _ = await wait(for: run.id, run.task)
         }
         if let run = current {
@@ -242,7 +245,7 @@ public actor SnapshotRefresher {
             guard await acquireLease(lease) else {
                 // The other process is still reading; its result lands in the shared snapshot.
                 diagnostic("snapshot.leaseBusy")
-                return RefreshReport(outcome: .failed(.timedOut), snapshot: latest(), reexchanged: false, snapshotSaved: false,
+                return RefreshReport(outcome: .failed(.timedOut), snapshot: latest(), snapshotSaved: false,
                                      leaseBusy: true)
             }
         }
@@ -279,7 +282,7 @@ public actor SnapshotRefresher {
     private func write(_ reading: SchoolReading, started: Int, lease: RefreshLease?) async -> RefreshReport {
         guard started == generation, !Task.isCancelled else {
             let outcome: RefreshReport.Outcome = started == generation ? reading.outcome : .notSignedIn
-            return RefreshReport(outcome: outcome, snapshot: latest(), reexchanged: reading.reexchanged, snapshotSaved: false)
+            return RefreshReport(outcome: outcome, snapshot: latest(), snapshotSaved: false)
         }
         enum Step { case older(HomeSnapshot), stored(HomeSnapshot, saved: Bool) }
         let store = store, diagnostic = diagnostic
@@ -298,7 +301,7 @@ public actor SnapshotRefresher {
         case nil, .older?:
             let stored: HomeSnapshot
             if case .older(let s)? = step { stored = s } else { stored = latest() }
-            return RefreshReport(outcome: reading.outcome, snapshot: stored, reexchanged: reading.reexchanged, snapshotSaved: false)
+            return RefreshReport(outcome: reading.outcome, snapshot: stored, snapshotSaved: false)
         case .stored(let s, let ok)?:
             snapshot = s; saved = ok
         }
@@ -307,9 +310,9 @@ public actor SnapshotRefresher {
         // that read, so a sign-out that lands while the session is read is still seen.
         if saved, let lease, !(await school.hasCardSession()), !lease.holds() {
             try? store.saveSnapshot(SchoolSnapshotReducer.reduce(latest(), .signedOut))
-            return RefreshReport(outcome: .notSignedIn, snapshot: latest(), reexchanged: reading.reexchanged, snapshotSaved: false)
+            return RefreshReport(outcome: .notSignedIn, snapshot: latest(), snapshotSaved: false)
         }
-        return RefreshReport(outcome: reading.outcome, snapshot: snapshot, reexchanged: reading.reexchanged, snapshotSaved: saved)
+        return RefreshReport(outcome: reading.outcome, snapshot: snapshot, snapshotSaved: saved)
     }
 
     /// Renews `lease` every `interval` until cancelled or lost.

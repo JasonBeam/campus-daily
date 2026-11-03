@@ -1,7 +1,7 @@
 {
   "request": {
     "method": "GET",
-    "url": "https://ecykt.gdbtu.edu.cn/ykt-mini/api/electricnew/getPowerUrl?custid=TESTcustid000000000000000000000000000%251A00000%253G&syscustid=TESTsyscus%253Ntid00000000000000000000000000%251H00%257J",
+    "url": "https://ecykt.gdbtu.edu.cn/ykt-mini/api/electricnew/getPowerUrl?custid=TESTcustid0000000000000000000000000000001%25&syscustid=TESTsyscustid0000000000000000000000000001%25",
     "headers": {
       "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36"
     },

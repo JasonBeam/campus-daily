@@ -32,8 +32,8 @@ class WaterParityTest {
         override suspend fun settle(profile:WaterProfile,frame:ByteArray):WaterReceipt {settlements++;return WaterReceipt(5)}
     }
     @Test fun authorizationRetainsLinkAndInactiveFinishRemainsUnderReviewAfterRestart()=runBlocking {
-        val store=Store();val radio=Transport();val service=Service();val log=WaterDiagnostics()
-        val controller=WaterController(radio,service,store,log)
+        val store=Store();val radio=Transport();val service=Service()
+        val controller=WaterController(radio,service,store)
         radio.replies+=byteArrayOf(0xAA.toByte())+ByteArray(8)
         controller.start(profile)
         assertEquals(0,radio.disconnected);assertEquals(ShowerStage.ACTIVE,store.value?.stage)
@@ -43,8 +43,6 @@ class WaterParityTest {
         assertTrue(restarted.session!!.stateReviewRequired)
         assertEquals(1,service.authorizations);assertEquals(0,service.settlements)
         assertEquals(listOf(15,1),radio.writes.map{it.size})
-        assertTrue(log.snapshot().toString().contains("FINISH_BLOCKED"))
-        assertFalse(log.snapshot().toString().contains("\"CLOSE\""))
     }
     @Test fun readOnlyInspectionUsesOriginalDeviceAndKeepsAnActiveLink()=runBlocking {
         val store=Store().apply{value=ShowerSession(ShowerStage.ACTIVE,profile.machineId,"fixture-address",stateReviewRequired=true)}
@@ -64,14 +62,8 @@ class WaterParityTest {
         assertEquals(1,radio.disconnected);assertEquals(ShowerStage.AUTHORIZATION_WRITE_PENDING,store.value?.stage)
         assertTrue(runCatching{controller.start(profile)}.isFailure);assertEquals(1,service.authorizations)
     }
-    @Test fun legacySessionsAndDiagnosticsExcludePrivateData() {
+    @Test fun legacySessionsDefaultToNoReview() {
         val old=JSONObject().put("stage","ACTIVE").put("machineId",profile.machineId).put("peripheralAddress","private-address")
         assertFalse(ShowerSession.read(old).stateReviewRequired)
-        var saved="";val log=WaterDiagnostics(save={saved=it})
-        repeat(210){log.record(WaterDiagnostics.Event.STATE_REPLY,ShowerStage.ACTIVE,identity)}
-        assertEquals(200,log.snapshot().length())
-        val restored=WaterDiagnostics(history=saved).snapshot().toString()
-        for(secret in listOf(profile.secret,profile.studentId,profile.machineId,"private-address","authorizationId","acc_token"))assertFalse(restored.contains(secret))
-        assertEquals(200,WaterDiagnostics(history=saved).snapshot().length())
     }
 }

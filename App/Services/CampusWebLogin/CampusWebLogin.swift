@@ -27,7 +27,7 @@ struct CampusWebLogin {
         // Only the official wallet session is read in the user-started sign-in flow.
         // No password fields, form hooks, injected listeners or remote uploads.
         let script = """
-        (()=>{if(location.origin!=="https://ecykt.gdbtu.edu.cn")return null;const s=JSON.parse(localStorage.getItem("elecampus_state")||"{}");return JSON.stringify({logintoken:s.logintoken,loginInfo:s.loginInfo,schoolid:s.schoolid,custInfo:s.custInfo,custid:s.custid,userAgent:navigator.userAgent})})()
+        (()=>{if(location.origin!=="https://ecykt.gdbtu.edu.cn")return null;const s=JSON.parse(localStorage.getItem("elecampus_state")||"{}");return JSON.stringify({logintoken:s.logintoken,loginInfo:s.loginInfo,schoolid:s.schoolid,custInfo:s.custInfo})})()
         """
         guard let raw = try await webView.evaluateJavaScript(script) as? String, raw.utf8.count <= 65536 else {
             throw ServiceError.malformed(.ecykt, "elecampus_state")
@@ -38,8 +38,12 @@ struct CampusWebLogin {
 
 struct OfficialCampusBrowser: UIViewRepresentable {
     @ObservedObject var state: CampusBrowserState
+    #if DEBUG
     /// DEBUG demo: nothing is loaded (loading-state screenshots).
     var loads = true
+    #else
+    private var loads: Bool { true }
+    #endif
     func makeCoordinator() -> Coordinator { Coordinator(state) }
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()

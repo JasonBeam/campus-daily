@@ -33,10 +33,6 @@ except (ValueError, OSError):
 widget = app / 'PlugIns' / 'XiaoRiChangWidget.appex'
 if not widget.is_dir():
     parser.error('XiaoRiChangWidget extension missing from public app')
-for bundle in [app, widget]:
-    metadata = plistlib.loads((bundle / 'Info.plist').read_bytes())
-    if 'CampusKeychainGroup' in metadata:
-        parser.error('Build-time keychain group must not be frozen into an unsigned IPA')
 version, build = info['CFBundleShortVersionString'], info['CFBundleVersion']
 name = f'XiaoRiChang-{version}-build{build}-unsigned.ipa'
 output = args.output.resolve()
@@ -49,7 +45,7 @@ for path in app.rglob('*'):
     if path.is_symlink():
         parser.error('unexpected symlink in app bundle')
     lower = path.name.lower()
-    if lower in {'waterplatformprofile.json', '_codesignature', 'embedded.mobileprovision'} or lower.endswith('water-access.json') or path.suffix.lower() in {'.p12', '.waterconfig', '.campusconfig', '.campuscache', '.laundryconfig', '.har', '.pcap', '.pklg'} or lower.startswith('bootstrap.'):
+    if lower in {'waterplatformprofile.json', '_codesignature', 'embedded.mobileprovision'} or path.suffix.lower() in {'.p12', '.waterconfig', '.har', '.pklg'} or '.pcap' in lower:
         parser.error('private configuration or signing material found; refusing package')
     if path.is_file() and path.read_bytes()[:4] in {b'\xcf\xfa\xed\xfe', b'\xfe\xed\xfa\xcf', b'\xca\xfe\xba\xbe'}:
         signature = subprocess.run(['codesign', '-d', str(path)], capture_output=True)

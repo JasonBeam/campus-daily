@@ -39,6 +39,14 @@ class PlatformBuildProfileTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             validate_profile(b' ' * 8193)
 
+    def test_format_characters_are_refused_as_the_app_refuses_them(self):
+        # The app's parser refuses Unicode control and format characters (Cc, Cf), such as a
+        # zero-width space: a profile the build stages must not be refused at runtime.
+        for text in ('fixture\u200bsid', 'fixture\u00adsid', 'fixture\ufeffsid', 'fixture\u0085sid'):
+            with self.subTest(text=ascii(text)), self.assertRaises(ValueError):
+                self.validate(dict(self.seed(), sid=text))
+        self.validate(dict(self.seed(), sid='fixture-sid=1 ~/+'))
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -30,6 +30,16 @@ public struct ShowerActionFailure: Error, LocalizedError, Sendable, Equatable {
         }
         return ShowerActionFailure(.blocked).message
     }
+
+    /// What a start or an end that threw `error` says. `failure`: the record's failure at that
+    /// moment, so a start the engine itself turned down says what waits (`blockedText`).
+    /// `other`: the words for an error that is none of the shower's own.
+    public static func thrown(_ error: Error, failure: ShowerFailure?, other: (Error) -> String) -> ShowerActionFailure {
+        if let e = error as? ShowerActionFailure { return e }
+        if let e = error as? ShowerEngineError { return e == .blocked ? ShowerActionFailure(blockedText(failure)) : ShowerActionFailure(e) }
+        if let e = error as? ShowerDeviceError { return ShowerActionFailure(e.userText) }
+        return ShowerActionFailure(other(error))
+    }
 }
 
 public extension ShowerDeviceError {

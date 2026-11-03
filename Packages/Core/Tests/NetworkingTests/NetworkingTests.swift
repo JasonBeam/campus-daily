@@ -3,7 +3,7 @@ import XCTest
 import CoreTestSupport
 
 final class FixtureLoaderTests: XCTestCase {
-    /// Batch 0 acceptance: the loader parses every fixture.
+    /// The loader parses every fixture.
     func testLoaderParsesEveryFixture() throws {
         let names = FixtureLoader.allNames()
         XCTAssertGreaterThan(names.count, 50)
@@ -81,7 +81,7 @@ final class URLSessionHTTPClientTests: XCTestCase {
         XCTAssertTrue(server.unmatched.isEmpty)
     }
 
-    /// Batch 0 acceptance: `getPowerUrl-ok` 302 is not followed.
+    /// `getPowerUrl-ok`: the 302 is returned, not followed.
     func testRedirectIsReturnedNotFollowed() async throws {
         let server = StubServer()
         let fixture = try FixtureLoader.load("ecykt/getPowerUrl-ok")

@@ -24,9 +24,9 @@ public struct RefreshLease: Sendable {
         var expiresAt: Date
     }
 
-    /// The lease file in the shared container, or nil when this build has no App Group (none
-    /// named in Info.plist, or not entitled to the one named).
-    public static func sharedFile(appGroup: String? = AppIdentity.main.appGroup) -> LeaseFile? {
+    /// The lease file in the shared container, or nil when this build has no App Group (none it
+    /// is entitled to, under the Info.plist name or its own bundle id: `AppIdentity.usableAppGroup`).
+    public static func sharedFile(appGroup: String? = AppIdentity.usableAppGroup) -> LeaseFile? {
         appGroup.flatMap { FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: $0) }
             .map { LeaseFile(url: $0.appendingPathComponent("refresh.lease")) }
     }
@@ -35,14 +35,22 @@ public struct RefreshLease: Sendable {
     /// app's own container (`ownContainer`, Application Support; created when missing). The widget
     /// can't open that one, so it never reads (`sharedFile` is nil there too), while the app's own
     /// reads, logins, recharge and hand-off still take turns: `flock` on separate descriptors
-    /// excludes within one process as well. nil only when neither can be used.
-    public static func appFile(appGroup: String? = AppIdentity.main.appGroup,
+    /// excludes within one process as well. That file is created here and excluded from backup
+    /// (a restore must not bring a lease back). nil only when neither can be used.
+    public static func appFile(appGroup: String? = AppIdentity.usableAppGroup,
                                ownContainer: URL? = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first) -> LeaseFile? {
         if let shared = sharedFile(appGroup: appGroup) { return shared }
         guard let ownContainer,
               (try? FileManager.default.createDirectory(at: ownContainer, withIntermediateDirectories: true)) != nil
         else { return nil }
-        return LeaseFile(url: ownContainer.appendingPathComponent("refresh.lease"))
+        var url = ownContainer.appendingPathComponent("refresh.lease")
+        if !FileManager.default.fileExists(atPath: url.path) {
+            FileManager.default.createFile(atPath: url.path, contents: nil, attributes: [.posixPermissions: 0o600])
+        }
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        try? url.setResourceValues(values)
+        return LeaseFile(url: url)
     }
 
     let file: LeaseFile?
@@ -125,6 +133,28 @@ public struct RefreshLease: Sendable {
         return try ran?.get()
     }
 
+    /// `body` inside the file's lock, whoever holds the lease; the lease itself is left as it is.
+    /// For a write that needs no lease of its own but must not land between another owner's
+    /// compare and write (保存密码 off). Only a lease with no file at all (a build with no
+    /// container for it) runs `body` as it is. A file that can't be opened, locked or read
+    /// (protected before the first unlock) throws that error and `body` does not run: unlocked,
+    /// it could land between the other process's compare and write. What `body` throws is
+    /// rethrown; once `body` ran, its result stands even if the file could not be written after.
+    public func locked<T>(_ body: () throws -> T) throws -> T {
+        guard let file else { return try body() }
+        var ran: Result<T, Error>?
+        do {
+            _ = try file.update { current -> (RefreshLease.Record?, Void) in
+                ran = Result { try body() }
+                return (current, ())
+            }
+        } catch {
+            guard ran != nil else { throw error }
+        }
+        guard let ran else { throw LeaseFile.Failure(step: "lock", code: EIO) }
+        return try ran.get()
+    }
+
     /// `acquire()` without waiting for the lock: false while another step holds it. Tests use it
     /// as the other process trying at one exact moment.
     func tryAcquire() -> Bool {
@@ -196,8 +226,8 @@ public struct LeaseFile: Sendable {
 
     struct Failure: Error { let step: String; let code: Int32 }
 
-    /// The stored owner, run out or not (nil = no lease). For diagnostics and tests.
-    public func storedOwner() -> String? { ((try? update { ($0, $0?.owner) }) ?? nil) }
+    /// The stored owner, run out or not (nil = no lease). Read by the tests only.
+    func storedOwner() -> String? { ((try? update { ($0, $0?.owner) }) ?? nil) }
 
     func update<T>(waiting: Bool = true, _ body: (RefreshLease.Record?) -> (RefreshLease.Record?, T)) throws -> T {
         let fd = open(url.path, O_RDWR | O_CREAT | O_CLOEXEC, 0o600)

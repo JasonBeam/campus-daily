@@ -23,8 +23,19 @@ enum ResetLockText {
 
 /// Settings sheet.
 struct SettingsView: View {
+    #if DEBUG
     /// DEBUG demo data; nil = live models.
     var preview: HomeData? = nil
+    /// DEBUG demo: the switch flips locally (seeded from the demo data).
+    @State private var previewLaundry: Bool?
+    private var account: AccountView { AccountView(preview:preview) }
+    private var advanced: AdvancedSettingsView { AdvancedSettingsView(preview:preview) }
+    #else
+    private var preview: HomeData? { nil }
+    private var previewLaundry: Bool? { get { nil } nonmutating set {} }
+    private var account: AccountView { AccountView() }
+    private var advanced: AdvancedSettingsView { AdvancedSettingsView() }
+    #endif
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var shower: ShowerModel
     @EnvironmentObject private var campus: CampusModel
@@ -39,8 +50,6 @@ struct SettingsView: View {
     @Environment(\.openURL) private var openURL
 
     private var data: HomeData { preview ?? HomeData(campus:campus, shower:shower, laundry:laundry) }
-    /// DEBUG demo: the switch flips locally (seeded from the demo data).
-    @State private var previewLaundry: Bool?
     /// 「去设置热水」 after an account switch.
     @State private var hotWaterSetup = false
     /// 学校账号, pushed when the widget asked for it.
@@ -63,7 +72,7 @@ struct SettingsView: View {
         NavigationStack {
             reminderHandlers(List {
                 Section("我的") {
-                    NavigationLink { AccountView(preview:preview) } label: {
+                    NavigationLink { account } label: {
                         SettingsRow(symbol:"graduationcap", title:"学校账号", value:AccountText.row(signedIn:data.signedIn, account:data.schoolAccount))
                     }
                     NavigationLink { CampusOnboardingView() } label: {
@@ -109,7 +118,7 @@ struct SettingsView: View {
                 }.listRowBackground(Theme.group)
                 reminderSection
                 Section {
-                    NavigationLink { AdvancedSettingsView(preview:preview) } label: {
+                    NavigationLink { advanced } label: {
                         SettingsRow(symbol:"wrench.and.screwdriver", title:"高级")
                     }
                 } footer: {
@@ -130,7 +139,7 @@ struct SettingsView: View {
             .navigationDestination(isPresented:$hotWaterSetup) {
                 if shower.configured { ShowerDetail() } else { CampusOnboardingView() }
             }
-            .navigationDestination(isPresented:$accountPage) { AccountView(preview:preview) }
+            .navigationDestination(isPresented:$accountPage) { account }
             .onAppear {
                 if preview == nil { campus.reloadAccount() }
                 if campus.hotWaterSetupRequested { campus.hotWaterSetupRequested = false; hotWaterSetup = true }
@@ -315,8 +324,12 @@ struct ChevronRow: View {
 
 /// 高级: config imports, Bluetooth connection check, Shortcuts hint, version, reset.
 struct AdvancedSettingsView: View {
+    #if DEBUG
     /// DEBUG demo data from the settings sheet; nil = live model. Keeps 「热水」 here in step with the main page.
     var preview: HomeData? = nil
+    #else
+    private var preview: HomeData? { nil }
+    #endif
     @EnvironmentObject private var shower: ShowerModel
     @EnvironmentObject private var campus: CampusModel
     @EnvironmentObject private var laundry: LaundryModel
@@ -382,7 +395,11 @@ struct AdvancedSettingsView: View {
                     Text("一般不用导入。有没结算的记录时，别卸载 App，也别换配置。")
                 }
             }.listRowBackground(Theme.group)
+            #if DEBUG
             ShowerTroubleshootingSections(preview:preview)
+            #else
+            ShowerTroubleshootingSections()
+            #endif
             Section {
                 Link(destination:URL(string:"shortcuts://")!) { ChevronRow(title:"快捷指令") }
             } footer: {
@@ -401,7 +418,7 @@ struct AdvancedSettingsView: View {
             Button("取消", role:.cancel) {}
             Button("重置", role:.destructive) { runReset() }
         } message: {
-            Text("会清掉学校账号和保存的密码、宿舍和电表、记住的水控、U净 登录、洗澡和洗衣记录、小组件上的数字、选的主题，还有导入的热水配置。学校那边的余额和消费记录不受影响。")
+            Text("会清掉学校账号和保存的密码、宿舍和电表、记住的水控、U净 登录、洗澡和洗衣记录、小组件上的数字，还有导入的热水配置。学校那边的余额和消费记录不受影响。")
         }
         .alert(ResetLockText.blockedTitle(resetBlocked), isPresented:Binding(get:{ resetBlocked != nil }, set:{ if !$0 { resetBlocked = nil } })) {
             Button("好", role:.cancel) {}

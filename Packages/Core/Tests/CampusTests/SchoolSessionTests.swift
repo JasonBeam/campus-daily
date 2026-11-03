@@ -75,7 +75,7 @@ final class SchoolRefreshTests: XCTestCase {
         XCTAssertEqual(h.server.requests(path: "/getUserBalance").first?.bodyField("custid"), "TESTid00000000000000000000000002")
     }
 
-    /// Batch 1 acceptance: liveness `-1` → needsLogin while the old balance stays with its fetchedAt.
+    /// Liveness `-1` → needsLogin while the old balance stays with its fetchedAt.
     func testExpiredLivenessMarksNeedsLoginAndKeepsOldValues() async throws {
         let h = Harness()
         try h.signedIn(meter: Harness.roomBinding)
@@ -94,7 +94,7 @@ final class SchoolRefreshTests: XCTestCase {
         XCTAssertEqual(report.snapshot.card.fetchedAt, t0)
         XCTAssertEqual(report.snapshot.power.fetchedAt, t0)
         XCTAssertEqual(try h.snapshots.loadSnapshot()?.needsLogin, true)
-        XCTAssertFalse(report.reexchanged, "no silent re-exchange in background")
+        XCTAssertTrue(h.server.requests(path: "/csalogintoken/450010").isEmpty, "no silent re-exchange in background")
         XCTAssertTrue(h.server.requests(path: "/getUserBalance").isEmpty, "session state is never derived from balance")
     }
 
@@ -109,7 +109,7 @@ final class SchoolRefreshTests: XCTestCase {
 
         let report = await h.refresher().refresh(inBackground: false)
         XCTAssertEqual(report.outcome, .ok)
-        XCTAssertTrue(report.reexchanged)
+        XCTAssertEqual(h.server.requests(path: "/csalogintoken/450010").count, 1)
         XCTAssertFalse(report.snapshot.needsLogin)
         let stored = try XCTUnwrap(try h.vault.ecyktSession())
         XCTAssertEqual(stored.token, "REEXCHANGED-TOKEN")
@@ -220,7 +220,7 @@ final class SchoolRefreshTests: XCTestCase {
 }
 
 final class SchoolRechargeTests: XCTestCase {
-    /// Batch 1 acceptance: the recharge session calls loginBySysId once and uses the fresh token.
+    /// The recharge session calls loginBySysId once and uses the fresh token.
     func testCardRechargeSessionUsesFreshToken() async throws {
         let h = Harness()
         try h.signedIn()
@@ -243,8 +243,8 @@ final class SchoolRechargeTests: XCTestCase {
         XCTAssertFalse("\(web)".contains("REDACTED_TOKEN_9"))
         XCTAssertEqual(try h.vault.ecyktSession()?.syscustid, "TESTid00000000000000000000000003")
         // Same shape as the official CSA state for the fields the page reads.
-        let official = try FixtureLoader.loadRaw("ecykt/localStorage-elecampus_state-csaLogin")["value"]
-        for key in ["logintoken", "loginInfo", "schoolid", "custInfo"] { XCTAssertNotNil(official?[key], key); XCTAssertNotNil(state[key], key) }
+        let official = try FixtureLoader.csaLoginState()
+        for key in ["logintoken", "loginInfo", "schoolid", "custInfo"] { XCTAssertNotNil(official[key], key); XCTAssertNotNil(state[key], key) }
     }
 
     func testElectricityRechargeStartsAtPowerEntry() async throws {
@@ -466,14 +466,15 @@ final class SchoolElectricityTests: XCTestCase {
 
 final class SchoolSignInTests: XCTestCase {
     func testNativeSignInSavesSessionAndResidence() async throws {
-        let h = Harness()
+        var h = Harness()
+        h.passwordLogin = FakePasswordLogin(.success(PortalToken("PORTAL")))
         try h.server.serve("portal/getMyInfo-ok")
         h.server.serve(try T.eCardWithTicket())
         h.server.respond("POST", T.exchangeURL, body: T.exchangeBody(token: "REDACTED_TOKEN_2"))
         try h.server.serve("ecykt/getSysBindCustInfo-ok")
-        let summary = try await h.session().signIn(portalToken: PortalToken("PORTAL"), owning: .unchecked)
-        XCTAssertEqual(summary.cardholder, "测试员")
-        XCTAssertEqual(summary.residence?.address?.meterName, "99栋991")
+        let summary = try await h.session().signIn(account: "99100991", password: "synthetic-pw-991", savePassword: false, owning: .unchecked)
+        XCTAssertFalse(summary.switchedAccount)
+        XCTAssertEqual(try h.vault.profile()?.residence?.address?.meterName, "99栋991")
         XCTAssertEqual(try h.vault.portalToken(), stamped(PortalToken("PORTAL"), h))
         XCTAssertEqual(try h.vault.ecyktSession()?.cardUnionID, "TESTid00000000000000000000000001")
         XCTAssertEqual(try h.vault.profile()?.residence?.raw, "星湖校区99栋9号1层991房")
@@ -482,9 +483,9 @@ final class SchoolSignInTests: XCTestCase {
     func testAdoptWebStateFallback() async throws {
         let h = Harness()
         try h.server.serve("ecykt/getSysBindCustInfo-ok")
-        let state = try XCTUnwrap(try FixtureLoader.loadRaw("ecykt/localStorage-elecampus_state-csaLogin")["value"])
+        let state = try FixtureLoader.csaLoginState()
         let summary = try await h.session().adoptWebState(try state.encoded(), owning: .unchecked)
-        XCTAssertEqual(summary.cardholder, "测试员")
+        XCTAssertFalse(summary.switchedAccount)
         let s = try XCTUnwrap(try h.vault.ecyktSession())
         XCTAssertEqual(s.token, "REDACTED_TOKEN_2")
         XCTAssertEqual(s.syscustid, T.syscustid)
@@ -492,11 +493,14 @@ final class SchoolSignInTests: XCTestCase {
     }
 
     func testSignInWithBadTicketExchangeSavesNothing() async throws {
-        let h = Harness()
+        var h = Harness()
+        h.passwordLogin = FakePasswordLogin(.success(PortalToken("PORTAL")))
         try h.server.serve("portal/getMyInfo-ok")
         h.server.serve(try T.eCardWithTicket())
         h.server.respond("POST", T.exchangeURL, body: Data())
-        await T.expectError(.badRequest(.ecykt)) { _ = try await h.session().signIn(portalToken: PortalToken("PORTAL"), owning: .unchecked) }
+        await T.expectError(.badRequest(.ecykt)) {
+            _ = try await h.session().signIn(account: "99100991", password: "synthetic-pw-991", savePassword: false, owning: .unchecked)
+        }
         XCTAssertNil(try h.vault.ecyktSession())
         XCTAssertNil(try h.vault.portalToken())
     }

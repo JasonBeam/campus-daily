@@ -33,6 +33,16 @@ final class NoAppGroupTests: XCTestCase {
         XCTAssertFalse(RefreshLease(file: file, owner: "app-2").acquire())
     }
 
+    /// The lease file in the app's own container is not backed up: a restore must not bring
+    /// back a lease, and it holds nothing worth keeping.
+    func testTheOwnLeaseFileIsNotBackedUp() throws {
+        let file = try XCTUnwrap(RefreshLease.appFile(appGroup: nil, ownContainer: container))
+        let values = try file.url.resourceValues(forKeys: [.isExcludedFromBackupKey])
+        XCTAssertEqual(values.isExcludedFromBackup, true)
+        XCTAssertEqual(try RefreshLease.appFile(appGroup: nil, ownContainer: container)?.url.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup,
+                       true, "found again on the next launch")
+    }
+
     func testAppSignsInUnderItsOwnLease() async throws {
         let value = try await stack(Harness(), role: "app").refresher.holdingLease { owning in try owning.write { 7 } }
         XCTAssertEqual(value, 7)

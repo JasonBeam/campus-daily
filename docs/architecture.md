@@ -2,7 +2,7 @@
 
 How the iOS code is organised and why. Endpoint details (params, envelopes, raw shapes) are in
 Appendix A; the Android app in `Android/` is a separate Gradle project that only shares the
-school-login script and, later, the fixtures.
+school-login script.
 
 Ground rules: the BLE frame format and the `wxcode`/MD5 signing are kept byte for byte; any
 change to signing, BLE commands or school/U净 response parsing goes in its own commit with its
@@ -16,8 +16,9 @@ built into every public build in plain text (see 2.2).
 
 Open `XiaoRiChang.xcworkspace`. It holds `App.xcodeproj` (targets **App** and **Widget**, both
 using file-system synchronized folders, so adding a file needs no project edit) and the local
-package `Packages/Core`. Build settings live in `Configuration/*.xcconfig`; a per-developer
-`Configuration/Developer.xcconfig` (untracked) overrides team and bundle id.
+package `Packages/Core`. Debug and Release both use `Configuration/Base.xcconfig` (with
+`Version.xcconfig`); a per-developer `Configuration/Developer.xcconfig` (untracked) overrides
+team and bundle id.
 
 ```
 App/
@@ -26,11 +27,12 @@ App/
   Services/           Bluetooth (CoreBluetooth ShowerTransport), CampusWebLogin (official-page WKWebView + login script),
                       BackgroundRefresh (BGAppRefreshTask), Alipay, LiveActivities, Intents, Reminders
   Resources/          Assets, Fonts, Info.plist, App.entitlements
+  Demo/               DEBUG-only demo screens and data behind campusdaily://demo/… (not in Release)
 Shared/               compiled into App and Widget
   WidgetViews/        widget views (also used by the in-app preview)
   LiveActivityViews/  ActivityAttributes and Live Activity views
   Theme/              formatting and the mascot shape the widget also draws (app colours and fonts
-                      are in App/Interface/Common: Theme, NothingTheme)
+                      are in App/Interface/Common: Theme, NativeTheme)
 Widget/               XiaoRiChangWidget, ShowerLiveActivity, LaundryLiveActivity, Info.plist, Widget.entitlements
 Packages/Core/        one library product `Core` (swift-tools 6.0, iOS 17 / macOS 14, Swift 6 mode)
   Sources/Core/
@@ -86,15 +88,11 @@ Pure / testable vs platform:
 Rules: clients are `Sendable` structs, engines are actors, time is injected in Core, only
 Networking makes sessions.
 
-**Current state of the App layer.** The screen models are `ObservableObject` classes passed down
+**App layer.** The screen models are `ObservableObject` classes passed down
 with `@EnvironmentObject`. `ShowerModel.shared`, `CampusModel.shared` and `Reminders.shared` are
 singletons (the Live Activity intent, background refresh and notification delegate reach them
 outside the view tree); `LaundryModel` is created by the app scene. Core, the App and the Widget
 targets all build in Swift 6 language mode.
-
-**Target design.** Models become `@Observable`
-adapters that observe the engines' `AsyncStream<State>`, created in `AppEnvironment` and passed
-through initializers or the environment, with no singletons.
 
 ### Networking
 
@@ -244,9 +242,8 @@ liveness OK); `school.portal` carries `obtainedAt` (first saved). When the liven
 portal says one is dead, one diagnostic line records only the kind and measured minutes:
 `school.credentialExpired kind=card ageMinutes=152 aliveMinutes=92` / `kind=portal ageMinutes=481`
 (once per credential per process). Both processes write it to the system log only (subsystem
-`com.beamjason.xiaorichang`, category `snapshot`). Builds before kept the lines in the shared
-Keychain item `shared.credentialLog` for the removed 导出热水诊断 report; the app deletes that
-item at launch (`RetiredDiagnostics`), and reset deletes it too.
+`com.beamjason.xiaorichang`, category `snapshot`). The `shared.credentialLog` Keychain item
+older builds wrote is deleted at launch (`RetiredDiagnostics`) and by reset.
 
 **One refresh at a time.** Callers are pull-to-refresh, the app coming to the foreground,
 the background task, the refreshes after a state change (sign-in, meter choice, recharge), and
@@ -265,7 +262,8 @@ records the failure and its time per tile.
 **One writer across two processes.** The app and the widget extension each have one
 `SnapshotRefresher` over one Keychain. They take turns
 through `RefreshLease`, the file `refresh.lease` = `{owner, expiresAt}` in the App Group container
-(`group.$(APP_BUNDLE_IDENTIFIER)`, read from Info.plist `AppGroupIdentifier`, see 4.2):
+(`group.$(APP_BUNDLE_IDENTIFIER)`, read from Info.plist `AppGroupIdentifier`, else `group.` plus
+the bundle id the process runs under: `AppIdentity.usableAppGroup`, see 4.2):
 - every step (take, renew, check, give back, clear) is one read-compare-write done while holding
   an exclusive `flock` on that file, so two processes never both find the same lease free and a
   holder whose lease ran out never writes over the next one's; the lock is held only for that
@@ -286,8 +284,8 @@ through `RefreshLease`, the file `refresh.lease` = `{owner, expiresAt}` in the A
   process can't take the lease or store its own value in between; the step is synchronous (a
   Keychain write), with no `await` inside the lock;
 - every other write of the card session, portal token, saved account or login device id goes the
-  same way: the app's logins (the form, 保存密码 / 重新输入密码, the web sign-in, the second 保存密码
-  off-write) through `holdingLease`'s `owning`, and the refresh's saved-password login (its hold,
+  same way: the app's logins (the form, 保存密码 / 重新输入密码, the web sign-in) through
+  `holdingLease`'s `owning`, and the refresh's saved-password login (its hold,
   its pause, the portal token it brings back). A login compares the stored session, portal token
   and account with the ones it started from and writes everything in that one step; lost lease or
   changed credentials (the app was suspended past the lease and the widget stored newer ones),
@@ -298,8 +296,11 @@ through `RefreshLease`, the file `refresh.lease` = `{owner, expiresAt}` in the A
   it, so nobody else wrote): that step takes the lease again and keeps the owner and compare
   checks; the hold, the pause and lifting the hold are written the same way. A cancelled task (the widget at its deadline) writes nothing, as for every
   other write, and the hold stays. Only deletions skip the lease check: sign-out and
-  reset remove the lease first (below), and the first 保存密码 off-write removes the password at
-  once, its second write under the lease taking out one a refresh wrote back;
+  reset remove the lease first (below), and 保存密码 off removes the password inside the lease
+  file's lock without taking the lease (`RefreshLease.locked`), so a refresh's compare-and-write
+  of the account never straddles it. A lease file that can't be opened or locked (before the
+  first unlock) fails the off instead: the password stays, 学校账号 says
+  「密码还存着，没关掉。再试一次。」 and the switch shows on;
 - each `holdingLease` call (a login, 保存密码, recharge, the hot-water hand-off) takes the lease
   under its own owner (the process's owner plus `-login-` and a random UUID): two of them at once
   (the login sheet closed and submitted again) take turns like the two processes, and the first
@@ -316,8 +317,6 @@ through `RefreshLease`, the file `refresh.lease` = `{owner, expiresAt}` in the A
   (`Application Support/refresh.lease`, `RefreshLease.appFile`), so its reads, logins, recharge
   and hand-off still take turns; the widget has no lease file and never takes the lease: it draws
   the stored snapshot, so the two still never read at the same time.
-Builds before the lease file kept the lease in the Keychain item `shared.refreshLease`;
-`SchoolRefreshStack` deletes that leftover at launch.
 
 **The widget's own refresh.** `SchoolRefreshStack` builds the school session (with the CAS
 password login) and the refresher with its lease, the same in both processes (`role` "app" /
@@ -355,7 +354,7 @@ with its location 「校区 · 公寓 · 楼栋 · 房间」. A level matching n
 meter page opens there with the matched levels on one line, 「重选」, and the level's list headed
 「选校区」/「选公寓」/「选楼栋」/「选楼层」/「选房间」, suggested rows first with 「可能是这个」
 (`MeterPageText`). Each read is retried twice with growing waits on a timeout or a lost
-connection; there is no campus-wide meter read and no longer wait or second network session.
+connection.
 Only room nodes are bound. A campus-node binding saved by an older build counts as no meter: at
 launch it is removed from the profile (the dorm stays) and the launch lookup walks to the room;
 neither refresh nor the recharge check reads it meanwhile.
@@ -646,7 +645,7 @@ Payment stays inside the school's own web pages (WKWebView); the app does not ca
 submit APIs itself (not captured).
 
 ```
-idle ─tap 充值─► checkingSession ─ok─► webSession ─page loaded─► inPage ─back / app foreground─► confirming ─► idle
+idle ─tap 充值─► checkingSession ─ok─► webSession ─page loaded─► inPage ─back─► idle
                       │expired                                      │ alipays:// | weixin:// link
                       ▼                                             ▼ open external app
                   renewing (one forced refresh)                 inPage (still)
@@ -672,9 +671,8 @@ idle ─tap 充值─► checkingSession ─ok─► webSession ─page loaded�
   (and logged by host), a frame never opens a pay app, and only `about:blank`/`about:srcdoc`
   (which load nothing) are added for frames. The school login sheet does the same through
   `SchoolLoginNavigation` (three school hosts, https, default port).
-- `confirming`: on return, refresh balance (card) or the room meter (electricity) up to 3 times
-  over 30 s and show the delta; no claim of success without a changed value
-  ("充值结果以学校记录为准").
+- Back from the page, the app claims no result: the next refresh reads the balance and the room
+  meter as usual.
 
 ---
 
@@ -692,7 +690,7 @@ idle ─tap 充值─► checkingSession ─ok─► webSession ─page loaded�
 | U净 account, checkout record | Keychain `laundry.account`, `laundry.checkout` | AfterFirstUnlockThisDeviceOnly | never (private group) |
 | home snapshot (balances, meter, room label, per-tile error, fetchedAt, needsLogin) | Keychain `shared.snapshot` (≤64 KiB JSON) | AfterFirstUnlockThisDeviceOnly | **yes** |
 | reminder thresholds mirrored for widget | Keychain `shared.reminderLines` | same | **yes** |
-| credential-lifetime lines left by older builds (no longer written; deleted at launch) | Keychain `shared.credentialLog` | same | **yes** |
+| credential-lifetime lines from older builds (deleted at launch, never written) | Keychain `shared.credentialLog` | same | **yes** |
 | refresh lease (`{owner, expiresAt}`, one school read at a time across processes) | file `refresh.lease` in the App Group container | until first unlock | **yes** (the widget takes it for its own read) |
 | reset-in-progress marker (start time) | Keychain `shared.resetMarker` | same | **yes** (any process that can start a shower or a laundry order checks it) |
 | UI prefs, reminder toggles, de-dupe state | UserDefaults (standard), keys prefixed `xrc.` | – | no |
@@ -718,8 +716,15 @@ next side effect (`storage` error), same as today.
 Widget sharing: App.entitlements lists two keychain access groups, in this order: the app's
 private group `$(AppIdentifierPrefix)$(APP_BUNDLE_IDENTIFIER)` (`AppIdentity.keychainGroup`),
 then the shared group `$(AppIdentifierPrefix)$(APP_BUNDLE_IDENTIFIER).shared`
-(`AppIdentity.sharedKeychainGroup`). Widget.entitlements lists only the shared group. Order matters:
-iOS puts an item written without a group into the first listed group. Items marked "yes" are
+Widget.entitlements lists only the shared group. Order matters:
+iOS puts an item written without a group into the first listed group, and the code takes the
+groups from that default group (`SharedKeychain.sharedGroup(defaultGroup:inExtension:bundleID:)`): the
+app's shared group is its default plus `.shared`, the widget's is its default itself. A re-signer
+that grants a wildcard (`TEAM.*`) makes each default group the process's own bundle id; the
+widget's default then doesn't end in `.shared`, and it uses `TEAM.<bundle id without
+.balances>.shared`, the app's (a signature that doesn't allow it falls back to no group). The
+first probe of the default group (a throwaway item deleted and added again) is serialised, so two
+first uses at once can't make one of them fail. Items marked "yes" are
 written to the shared group; all others are written to the private group, which the widget is
 not entitled to read. Both work with any signing team incl. free Personal Teams, no portal
 registration. The widget reads the school items above for its own refresh, and `shared.snapshot`,
@@ -731,13 +736,15 @@ token (then WhenUnlocked) and the login device id in the private group. At launc
 with today's accessibility, read back, and only then deleted from the old group; a failed step
 keeps the original and retries next launch, so nobody is signed out or loses a binding. The App
 Group (`group.$(APP_BUNDLE_IDENTIFIER)`, both targets) holds only the lease file; a re-signed
-build without it keeps working: the app reads, signs in and recharges without the lease, and the
-widget leaves every refresh to the app, so the two never read at once. Live Activities get data via ActivityKit content
+build without it keeps working: the app keeps its lease file in its own container
+(`RefreshLease.appFile`, Application Support, excluded from backup), so its reads, logins,
+recharge and hot-water hand-off still take turns, and the widget, which can't open that file,
+leaves every refresh to the app, so the two never read at once. Live Activities get data via ActivityKit content
 state. Each snapshot write calls `WidgetCenter.reloadTimelines(ofKind:)`; tiles carry their own
 `fetchedAt`, and `needsLogin` shows a "需重新登录" badge instead of silently stale numbers.
 
-UserDefaults keys: old `reminder.*`, `laundryAckFailedOrder`, `water.needsResidenceReview`
-become `xrc.reminder.*`, `xrc.laundry.ackFailedOrder`, `xrc.water.needsResidenceReview`.
+UserDefaults keys: old `reminder.*`, `water.needsResidenceReview`
+become `xrc.reminder.*`, `xrc.water.needsResidenceReview`.
 
 ### 4.2 Identifiers
 
@@ -751,7 +758,7 @@ become `xrc.reminder.*`, `xrc.laundry.ackFailedOrder`, `xrc.water.needsResidence
 | BG task id | `com.beamjason.xiaorichang.refresh` |
 | Widget kind | `XiaoRiChangBalances` |
 | Alipay return scheme | `com.beamjason.xiaorichang.alipay` (derived, see below) |
-| Navigation scheme | `campusdaily://home`, `campusdaily://demo/<state>` |
+| Navigation scheme | `campusdaily://home`; `campusdaily://demo/<state>` in DEBUG builds only |
 | Xcode workspace / project / targets | `XiaoRiChang.xcworkspace` / `App.xcodeproj` / `App` (product `XiaoRiChang.app`), `Widget` (product `XiaoRiChangWidget.appex`) |
 | Swift package / product | `Packages/Core` / `Core` |
 | Display names | 校日常 / widget gallery title 校日常 |
@@ -763,7 +770,10 @@ entitlements files and both Info.plists are filled from `APP_BUNDLE_IDENTIFIER` 
 the app's values, not its own bundle id; `BGTaskSchedulerPermittedIdentifiers` =
 `$(APP_BUNDLE_IDENTIFIER).refresh`). The table shows the values for the default bundle id. A build
 with another `APP_BUNDLE_IDENTIFIER` (Developer.xcconfig) gets its own groups; the Keychain service
-names stay `com.beamjason.xiaorichang.<name>.v1` in every build.
+names stay `com.beamjason.xiaorichang.<name>.v1` in every build. An IPA re-signed under another
+bundle id keeps the old Info.plist values: the keychain groups still follow its signature (above),
+and the App Group falls back to `group.` plus the bundle id it runs under (the widget's without
+`.balances`) when the Info.plist one has no container.
 
 Distribution is an unsigned IPA the user re-signs (`Scripts/package-ipa.py`); there is no App
 Store/TestFlight record. Paid-team signers register `com.beamjason.xiaorichang` and
@@ -807,7 +817,7 @@ Every endpoint gets at least: success, expired/unauthorized, refused with messag
 | water hand-off | `getSignData-ok`, `-badToken` |
 | recharge web session state | `localStorage-elecampus_state-csaLogin` |
 | card records (最近, 昨天花了) | `card-getRecordList-ok` |
-| portal | `getMyInfo-ok`, `-badtoken` (-1001), `-notoken` (-1), `getMyECard-ok`, `me-user-ok` |
+| portal | `getMyInfo-ok`, `-badtoken` (-1001), `-notoken` (-1), `getMyECard-ok` |
 | lxt6 reads | `getUserMsg-ok`, `-badSign` (-301, JSON-in-string); `areaInfo-level0..3`, `-badSign` (4002), `-unknownParent` (4034); `getMachineMacAddress-ok`, `-unknownRoom` (5000) |
 | U净 auth errors | `ujing/programInfo-noAuth`, `orderDetail-badAuth` (401 shapes, captured); `scanWasherCode-badAuth`, `orderCreate-badAuth` |
 | U净 (synthetic, shapes from the existing app) | `captcha-ok`/`-refused`; `login-ok`/`-tempToken`/`-challenge`/`-refused`; `scanWasherCode-ok`/`-activeOrder`/`-refused`; `programInfo-ok`/`-refused`; `orderCreate-ok`/`-refused`; `orderDetail-unpaid`/`-paid`/`-washing`/`-done`/`-failedStart`/`-cancelled`/`-refused`; `paymentMethods-ok`/`-refused`; `paymentArguments-f2f`/`-sdk`/`-skipPay`/`-refused`; `orderCancel-ok`/`-refused` |
@@ -816,7 +826,7 @@ Fixture consistency: `portal/getMyInfo-ok`, `lxt6/areaInfo-level3` and
 `lxt6/getMachineMacAddress-ok` share one faked dorm, so dorm → room → machine matching runs end to
 end; the `piplineName` match test appends one synthetic meter row in-test.
 
-State machines (ShowerEngine, LaundryEngine, recharge) are tested with scripted fakes for every
+State machines (ShowerEngine, LaundryEngine) are tested with scripted fakes for every
 transition in §3, including: crash/relaunch in each persisted state, store write failure,
 cancellation between persist and side effect, refusal vs uncertain on authorize/settle/create/
 pay/cancel.
@@ -851,9 +861,7 @@ Recorded with read-only requests only. Redacted fixtures live in
 `Location` values and the hot-water `sid` are `REDACTED_TOKEN_n` (same value → same number
 across fixtures). Personal identifiers (`syscustid`, `custid`, `custunionid`, name, `idno`,
 phone, `studentid`, `userId`, `deptId`, `vsuppid`, appid, `headurl`, `voucherno`, meter
-`comAddress`, water `machineId`/`Mac`/`machineName`, portal `gydz`/`szbj`, and in `me/user`
-`username`/`userUid`, `organizationId`, `accountId`, `userId`, `imageUrl`,
-`organizationName`/`organizationCode`, `identityTypeId`, `userName`) are fake values. Numeric
+`comAddress`, water `machineId`/`Mac`/`machineName`, portal `gydz`/`szbj`) are fake values. Numeric
 ids and ciphertexts use shapes no real value has, so `Scripts/privacy-check.sh` can allow them by whole value: zero-padded
 counters (`TESTid` + 26 digits, meter `000000000991`), numeric ids starting with `99` (dorm
 building ids `991001…`, hot-water area ids `997…`, room `991000000000000002`), or a few fixed
@@ -932,7 +940,6 @@ Headers as in A.1. Envelope `{code, message, data}`, HTTP 200.
 |---|---|---|---|
 | `GET /portalData/v2/personalData/getMyInfo` | `{gydz:"示例校区99栋9号1层991房", szbj}` (`gydz` = registered dorm address) | bad token `code:-1001 "无效 token"`; no token `code:-1 "没有访问权限"` | RO |
 | `GET /portal-api/v2/personalData/getMyECard` | `{balance, monthBalance, cardStatus, lastExpenditure[], lastIncome[], appUrl, pcUrl, …}` | same | RO (new CAS ticket in `pcUrl` each call) |
-| `GET https://authx-service.gdbtu.edu.cn/personal/api/v1/personal/me/user` | `{username, roles, attributes}` | same | RO |
 
 ### A.4 Hot water: isv.lxt6.cn
 

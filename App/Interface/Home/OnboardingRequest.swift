@@ -4,5 +4,7 @@ import Foundation
 struct OnboardingRequest: Identifiable {
     let id = UUID()
     var step: OnboardingView.Step
+    #if DEBUG
     var preview: OnboardingView.Preview? = nil
+    #endif
 }

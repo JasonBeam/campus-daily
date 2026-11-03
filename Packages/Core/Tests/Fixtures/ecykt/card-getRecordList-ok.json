@@ -12,14 +12,14 @@
     },
     "body": {
       "begin": "20251210",
-      "custid": "TESTcustid000000000000000000000000000%1A00000%3G",
+      "custid": "TESTcustid0000000000000000000000000000001%",
       "datetype": 1,
       "end": "20260110",
       "pageNum": 1,
       "pageSize": 5,
       "dcflag": "",
       "address": "",
-      "syscustid": "TESTsyscus%3Ntid00000000000000000000000000%1H00%7J",
+      "syscustid": "TESTsyscustid0000000000000000000000000001%",
       "acc_token": "REDACTED_TOKEN_2"
     }
   },

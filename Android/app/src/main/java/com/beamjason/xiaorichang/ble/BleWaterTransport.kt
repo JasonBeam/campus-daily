@@ -42,7 +42,6 @@ interface WaterTransport {
     fun disconnect()
 }
 class BleWaterTransport(private val context:Context):WaterTransport {
-    private val support=BleSupport(context)
     private val adapter get() = (context.getSystemService(Context.BLUETOOTH_SERVICE) as? android.bluetooth.BluetoothManager)?.adapter ?: error("此设备不支持蓝牙")
     @Volatile private var generation=0L
     @Volatile private var gatt:BluetoothGatt?=null
@@ -63,12 +62,10 @@ class BleWaterTransport(private val context:Context):WaterTransport {
     // complete the pending request exceptionally instead of escaping a callback.
     @SuppressLint("MissingPermission")
     override suspend fun connect(deviceName:String,expectedAddress:String?):String {
-        support.event("connect-start")
         permissions(scan=expectedAddress==null)
         check(adapter.isEnabled) { "请先打开蓝牙" }
         synchronized(this) {
             if(expectedAddress!=null && readyAddress==expectedAddress && gatt!=null && !linkLost) {
-                support.event("reuse-connection")
                 return expectedAddress
             }
             if(gatt!=null && linkLost)disconnect()
@@ -91,7 +88,6 @@ class BleWaterTransport(private val context:Context):WaterTransport {
         val callback=object:BluetoothGattCallback() {
             override fun onConnectionStateChange(g:BluetoothGatt,status:Int,newState:Int) = synchronized(this@BleWaterTransport) {
                 if(token!=generation) return@synchronized
-                support.event("connection-state",mapOf("status" to status,"state" to newState))
                 if(status!=BluetoothGatt.GATT_SUCCESS || newState==BluetoothProfile.STATE_DISCONNECTED) {
                     linkLost=true;readyAddress=null
                     ready.completeExceptionally(IllegalStateException("BLE 连接中断")); exchange?.let { e -> e.ack.completeExceptionally(IllegalStateException("BLE 连接中断")); e.frame.completeExceptionally(IllegalStateException("BLE 连接中断")) }
@@ -102,7 +98,6 @@ class BleWaterTransport(private val context:Context):WaterTransport {
             }
             override fun onServicesDiscovered(g:BluetoothGatt,status:Int) = synchronized(this@BleWaterTransport) {
                 if(token!=generation) return@synchronized
-                support.event("services",mapOf("status" to status))
                 try {
                 permissions()
                 if(status!=BluetoothGatt.GATT_SUCCESS) { ready.completeExceptionally(IllegalStateException("水控服务发现失败")); return@synchronized }
@@ -126,7 +121,6 @@ class BleWaterTransport(private val context:Context):WaterTransport {
             }
             override fun onDescriptorWrite(g:BluetoothGatt,d:BluetoothGattDescriptor,status:Int) = synchronized(this@BleWaterTransport) {
                 if(token!=generation) return@synchronized
-                support.event("notifications",mapOf("status" to status))
                 if(d.uuid==cccdUuid) if(status==BluetoothGatt.GATT_SUCCESS) ready.complete(Unit) else ready.completeExceptionally(IllegalStateException("订阅水控通知失败"))
             }
             override fun onCharacteristicWrite(g:BluetoothGatt,c:BluetoothGattCharacteristic,status:Int) = synchronized(this@BleWaterTransport) {
@@ -150,8 +144,8 @@ class BleWaterTransport(private val context:Context):WaterTransport {
         return try {
             withTimeout(20_000) { ready.await() }
             synchronized(this){check(token==generation && !linkLost){"BLE 连接中断"};readyAddress=chosen.address}
-            support.event("gatt-ready");chosen.address
-        } catch(t:Throwable) { support.event("connect-failed");disconnect();throw t }
+            chosen.address
+        } catch(t:Throwable) { disconnect();throw t }
     }
 
     /** Returns with the verified GATT connection open. Sends only the 0xAA identity query. */
@@ -180,8 +174,6 @@ class BleWaterTransport(private val context:Context):WaterTransport {
                 @Suppress("DEPRECATION") g.writeCharacteristic(c)
             }
             check(initiated) { "水控写入未开始" }
-            val command=when {bytes.contentEquals(byteArrayOf(0xAA.toByte()))->1;bytes.size==15->2;bytes.size==5 && bytes[0]==0xAC.toByte()->3;else->0}
-            support.event("write",mapOf("command" to command))
             val pair=withTimeout(10_000) { current.ack.await(); current.frame.await() }
             return pair
         } finally { synchronized(this) { if(exchange===current) exchange=null } }
@@ -191,7 +183,6 @@ class BleWaterTransport(private val context:Context):WaterTransport {
         try {
             val frames=decoder.append(bytes)
             require(frames.size<=1) { "收到多帧水控通知" }
-            frames.forEach{support.event("reply",mapOf("bytes" to it.size,"frameKind" to WaterDiagnostics.frameKind(it)))}
             if(frames.isNotEmpty()) exchange?.frame?.complete(frames.first())
         } catch(t:Throwable) { exchange?.frame?.completeExceptionally(t) }
     }
@@ -206,27 +197,23 @@ class BleWaterTransport(private val context:Context):WaterTransport {
         }
         val scanner=adapter.bluetoothLeScanner ?: error("BLE 扫描器不可用")
         val found=ConcurrentHashMap<String,BleCandidate>()
-        var received=0
         val done=CompletableDeferred<Unit>()
         val cb=object:ScanCallback() {
             private fun collect(result:ScanResult) {
-                received++
                 val cached=runCatching { result.device.name }.getOrNull()
                 if(matchesWaterAdvertisement(name,cached,result.scanRecord?.deviceName))
                     found[result.device.address]=BleCandidate(result.device.address,name,result.rssi)
             }
             override fun onScanResult(type:Int,result:ScanResult)=collect(result)
             override fun onBatchScanResults(results:MutableList<ScanResult>)=results.forEach(::collect)
-            override fun onScanFailed(errorCode:Int) {support.event("scan-error",mapOf("code" to errorCode));done.completeExceptionally(IllegalStateException("BLE 扫描失败 ($errorCode)"))}
+            override fun onScanFailed(errorCode:Int) {done.completeExceptionally(IllegalStateException("BLE 扫描失败 ($errorCode)"))}
         }
-        support.event("scan-start")
         scanner.startScan(null,ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build(),cb)
         try {withTimeoutOrNull(6_000){done.await()};found.values.sortedByDescending{it.rssi}}
-        finally {runCatching{scanner.stopScan(cb)};support.event("scan-end",mapOf("packets" to received,"matches" to found.size))}
+        finally {runCatching{scanner.stopScan(cb)}}
     }
 
     @Synchronized override fun disconnect() {
-        support.event("disconnect")
         generation++
         val g=gatt; gatt=null; writeCharacteristic=null;readyAddress=null;linkLost=false
         exchange?.let { val error=IllegalStateException("BLE disconnected"); it.ack.completeExceptionally(error); it.frame.completeExceptionally(error) }

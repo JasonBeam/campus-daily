@@ -65,7 +65,7 @@ final class SchoolPersonSwitchRaceTests: XCTestCase {
 
     /// The next person signs in on the official web page (their card answers the liveness check).
     func signInSomeoneElse(_ session: SchoolSession) async throws {
-        let state = try XCTUnwrap(try FixtureLoader.loadRaw("ecykt/localStorage-elecampus_state-csaLogin")["value"])
+        let state = try FixtureLoader.csaLoginState()
         let summary = try await session.adoptWebState(try state.encoded(), owning: .unchecked)
         XCTAssertTrue(summary.switchedAccount)
     }
@@ -375,7 +375,7 @@ final class SchoolPersonSwitchRaceTests: XCTestCase {
         try h.server.serve("ecykt/getSysBindCustInfo-ok")
         let session = h.session()
         let stamp = await session.personStamp()
-        let state = try XCTUnwrap(try FixtureLoader.loadRaw("ecykt/localStorage-elecampus_state-csaLogin")["value"])
+        let state = try FixtureLoader.csaLoginState()
         let summary = try await session.adoptWebState(try state.encoded(), owning: .unchecked)
         XCTAssertFalse(summary.switchedAccount)
         let same = await session.isSamePerson(since: stamp)

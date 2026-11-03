@@ -16,9 +16,8 @@ enum CampusFormat {
         value.formatted(.number.precision(.fractionLength(1)).grouping(.never).locale(posix))
     }
     static func clock(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = posix; formatter.dateFormat = "HH:mm"
-        return formatter.string(from:date)
+        date.formatted(Date.VerbatimFormatStyle(format:"\(hour:.twoDigits(clock:.twentyFourHour, hourCycle:.zeroBased)):\(minute:.twoDigits)",
+                                                timeZone:.current, calendar:Calendar(identifier:.gregorian)))
     }
     /// 「10:32 更新」/「昨天 22:10 更新」/「10月26日更新」
     static func updated(_ date: Date, now: Date = Date(), calendar: Calendar = .current) -> String {

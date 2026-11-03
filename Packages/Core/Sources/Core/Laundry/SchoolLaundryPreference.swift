@@ -12,15 +12,10 @@ public struct SchoolLaundryPreference {
     public init(storage: any PreferenceStorage) { self.storage = storage }
 
     public var isOn: Bool {
-        if let value = storage.object(forKey:Self.key) as? Bool { return value }
-        if let number = storage.object(forKey:Self.key) as? NSNumber { return number.boolValue }
-        return true
+        (storage.object(forKey:Self.key) as? Bool) ?? true
     }
 
     public func set(_ on: Bool) { storage.set(on, forKey:Self.key) }
-
-    /// First-run 「宿舍用学校的洗衣机吗？」: 用 → on, 不用 → off.
-    public func answer(usesSchoolWashers: Bool) { set(usesSchoolWashers) }
 
     // MARK: Switch rules
 

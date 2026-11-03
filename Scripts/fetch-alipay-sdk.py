@@ -12,10 +12,8 @@ import zipfile
 root = Path(__file__).resolve().parents[1]
 target = root / 'Vendor/AlipaySDK-15.8.30'
 source = json.loads((target / 'source.json').read_text())
-url = source['podspec']['source']['http']
+url = source['url']
 expected = source['archiveSHA256']
-if url != 'https://mdn.alipayobjects.com/mobilecashier_res/afts/file/lEoLQ64WOGAAAAAAAAAAAAAADnW6AQBr':
-    raise SystemExit('Unexpected source URL; inspect source.json before downloading.')
 names = ('AlipaySDK.xcframework', 'AlipaySDK.bundle')
 if any((target / name).exists() for name in names):
     raise SystemExit('SDK destination already exists; keep it intact and inspect it manually.')

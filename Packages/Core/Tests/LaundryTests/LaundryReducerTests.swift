@@ -111,7 +111,7 @@ final class LaundryReducerTests: XCTestCase {
         XCTAssertEqual(reduce(none, .activeOrderLookupFailed(.offline)).0.notice, .readFailed(.offline))
         let (cleared, fx) = reduce(none, .resolveManually)
         XCTAssertEqual(cleared.phase, .none)
-        XCTAssertEqual(fx, [.diagnostic("laundry.resolvedManually")])
+        XCTAssertEqual(fx, [])
     }
 
     /// Clearing the record on the user's word needs a lookup that found no order on the machine.
@@ -207,7 +207,7 @@ final class LaundryReducerTests: XCTestCase {
         let (r, rfx) = reduce(p, .paymentArguments(bad))
         XCTAssertEqual(r.phase, .created)
         XCTAssertEqual(r.notice, .launchRefused(.disallowedLink))
-        XCTAssertEqual(rfx, [.diagnostic("pay.launchRefused.disallowedLink")])
+        XCTAssertEqual(rfx, [], "nothing is opened")
 
         let signed = "method=alipay.trade.app.pay&biz_content=%7B%22total_amount%22%3A%225.00%22%7D"
         XCTAssertEqual(reduce(p, .paymentArguments(PaymentArguments(.object(["orderInfo": .string(signed)])))).0.notice,
@@ -257,7 +257,7 @@ final class LaundryReducerTests: XCTestCase {
         XCTAssertEqual(reduce(expired.0, .refresh).1, [.readOrder(id: L.orderID, after: 0)])
     }
 
-    func testPaidAndWashingEmitActivityPlan() {
+    func testPaidAndWashingAreActiveWithNothingToSend() {
         let v = reduce(reduce(paying(), .launched(true)).0, .returnedFromPayment).0
         let (paid, fx) = reduce(v, .orderRead(L.order("20"), at: t0))
         XCTAssertEqual(paid.phase, .active)
@@ -265,8 +265,7 @@ final class LaundryReducerTests: XCTestCase {
         let readAt = t0.addingTimeInterval(600)
         let (washing, wfx) = reduce(paid, .orderRead(L.order("40", remain: 2400), at: readAt))
         XCTAssertEqual(washing.phase, .active)
-        XCTAssertEqual(wfx, [.updateActivity(LaundryActivityPlan(orderID: L.orderID, machineName: "测试洗衣机01", programName: "标准洗",
-                                                                  endsAt: readAt.addingTimeInterval(2400)))])
+        XCTAssertEqual(wfx, [])
         XCTAssertFalse(washing.canCancel)
         XCTAssertFalse(washing.canPay)
     }
@@ -277,12 +276,12 @@ final class LaundryReducerTests: XCTestCase {
             let (s, fx) = reduce(washing, .orderRead(L.order(code), at: t0.addingTimeInterval(100)))
             XCTAssertEqual(s.phase, .none, code)
             XCTAssertEqual(s.lastOutcome, LaundryOutcome(orderID: L.orderID, status: LaundryOrderStatus(code), at: t0.addingTimeInterval(100)))
-            XCTAssertEqual(fx, [.endActivity])
+            XCTAssertEqual(fx, [])
             XCTAssertTrue(s.canCreate)
         }
         let (attention, fx) = reduce(washing, .orderRead(L.order("52"), at: t0))
         XCTAssertEqual(attention.phase, .attention)
-        XCTAssertEqual(fx, [.endActivity])
+        XCTAssertEqual(fx, [])
         XCTAssertFalse(attention.canCreate, "52 warning stays until acknowledged")
         let ack = reduce(attention, .acknowledge).0
         XCTAssertEqual(ack.phase, .none)
@@ -318,7 +317,7 @@ final class LaundryReducerTests: XCTestCase {
         let armed = reduce(s, .requestRepay(at: now)).0
         XCTAssertTrue(armed.repayArmed)
         XCTAssertFalse(armed.persistable.repayArmed)
-        XCTAssertEqual(reduce(armed, .confirmRepay(at: now)).1, [.diagnostic("pay.repay"), .loadPaymentMethods(orderID: L.orderID)])
+        XCTAssertEqual(reduce(armed, .confirmRepay(at: now)).1, [.loadPaymentMethods(orderID: L.orderID)])
         let again = reduce(armed, .paymentMethods([PayChannel(channel: "alipay")], at: now)).0
         XCTAssertEqual(again.phase, .paying)
         XCTAssertEqual(again.paymentRequestedAt, now)
@@ -342,7 +341,7 @@ final class LaundryReducerTests: XCTestCase {
         XCTAssertEqual(reduce(sent, .cancelAcknowledged).1, [.readOrder(id: L.orderID, after: 0)])
         let (done, dfx) = reduce(sent, .orderRead(L.order("53"), at: t0))
         XCTAssertEqual(done.phase, .none)
-        XCTAssertEqual(dfx, [.endActivity])
+        XCTAssertEqual(dfx, [])
         // Still unpaid after the POST: poll, never POST again.
         var (s, pfx) = reduce(sent, .orderRead(L.order("10"), at: t0))
         var count = 0

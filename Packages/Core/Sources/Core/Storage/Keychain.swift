@@ -63,9 +63,6 @@ public final class KeychainSecureStore: SecureStore, @unchecked Sendable {
     private var sharedGroup: String? { groups().shared }
     private var privateGroup: String? { groups().private }
 
-    /// True once a shared-group write failed and the store switched to no access group.
-    public var isUsingFallback: Bool { lock.withLock { sharedGroup.map(unavailable.contains) ?? false } }
-
     private func usable(_ group: String?) -> String? {
         guard let group else { return nil }
         return lock.withLock { unavailable.contains(group) } ? nil : group
@@ -115,38 +112,6 @@ public final class KeychainSecureStore: SecureStore, @unchecked Sendable {
         }
         let status = upsert(key, data, nil)
         guard status == KeychainStatus.success else { throw StorageError(operation: "write \(key.rawValue)", status: status) }
-    }
-
-    /// `SecItemAdd` alone: it fails with `errSecDuplicateItem` when the item exists, which the
-    /// Keychain decides atomically for every process sharing the group.
-    public func create(_ data: Data, for key: StoreKey) throws -> Bool {
-        var group = group(for: key)
-        var status = backend.add(service: key.service, account: StoreKey.account, accessGroup: group,
-                                 accessibility: key.accessibility, data: data)
-        if status == KeychainStatus.missingEntitlement, let missing = group {
-            lock.withLock { _ = unavailable.insert(missing) }
-            group = nil
-            status = backend.add(service: key.service, account: StoreKey.account, accessGroup: nil,
-                                 accessibility: key.accessibility, data: data)
-        }
-        if status == KeychainStatus.duplicateItem { return false }
-        guard status == KeychainStatus.success else { throw StorageError(operation: "create \(key.rawValue)", status: status) }
-        return true
-    }
-
-    /// `SecItemUpdate` alone: it never adds, so an item deleted by another process stays deleted.
-    /// Tried in the key's group, then without a group (where a fallback create may have put it).
-    public func replace(_ data: Data, for key: StoreKey) throws -> Bool {
-        let group = group(for: key)
-        for g in group == nil ? [nil] : [group, nil] {
-            let status = backend.update(service: key.service, account: StoreKey.account, accessGroup: g,
-                                        accessibility: key.accessibility, data: data)
-            if status == KeychainStatus.success { return true }
-            guard status == KeychainStatus.itemNotFound || status == KeychainStatus.missingEntitlement else {
-                throw StorageError(operation: "replace \(key.rawValue)", status: status)
-            }
-        }
-        return false
     }
 
     public func delete(_ key: StoreKey) throws {
@@ -307,24 +272,6 @@ public final class InMemorySecureStore: SecureStore, @unchecked Sendable {
         try lock.withLock {
             if failing.contains(key) { throw StorageError(operation: "delete \(key.rawValue)", status: -1) }
             items[key] = nil
-        }
-    }
-
-    public func create(_ data: Data, for key: StoreKey) throws -> Bool {
-        try lock.withLock {
-            if failing.contains(key) { throw StorageError(operation: "create \(key.rawValue)", status: -1) }
-            guard items[key] == nil else { return false }
-            items[key] = data
-            return true
-        }
-    }
-
-    public func replace(_ data: Data, for key: StoreKey) throws -> Bool {
-        try lock.withLock {
-            if failing.contains(key) { throw StorageError(operation: "replace \(key.rawValue)", status: -1) }
-            guard items[key] != nil else { return false }
-            items[key] = data
-            return true
         }
     }
 }

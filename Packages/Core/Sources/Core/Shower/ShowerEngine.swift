@@ -66,12 +66,8 @@ public enum ShowerTargetSelection {
     }
 }
 
-/// Reminder / diagnostics hooks (App: UNUserNotificationCenter, diagnostic log). Optional.
+/// Diagnostics hook. Optional. (Reminders follow the published state in the app.)
 public protocol ShowerHooks: Sendable {
-    /// "还没结束洗澡？" after the configured minutes in writePending/running; asked for when the
-    /// water starts (the same moment as `ShowerState.startedAt`).
-    func scheduleUnsettledReminder(after seconds: TimeInterval) async
-    func cancelUnsettledReminder() async
     /// Event names only (no ids, frames or tokens). The app records nothing; tests observe them.
     func diagnostic(_ event: String) async
 }
@@ -101,8 +97,7 @@ public enum ShowerEngineError: Error, Equatable, Sendable {
 public actor ShowerEngine {
     public struct Configuration: Sendable {
         public var bleName: String
-        public var reminderMinutes: Int
-        public init(bleName: String, reminderMinutes: Int = 30) { self.bleName = bleName; self.reminderMinutes = reminderMinutes }
+        public init(bleName: String) { self.bleName = bleName }
     }
 
     let transport: ShowerTransport
@@ -142,8 +137,6 @@ public actor ShowerEngine {
         self.storageBlocked = blocked
         self.state = restored
     }
-
-    public var display: ShowerDisplay { ShowerDisplay(state) }
 
     /// Current state first, then every change.
     public func updates() -> AsyncStream<ShowerState> {
@@ -356,14 +349,6 @@ public actor ShowerEngine {
                 b.peripheralID = nil
                 try? vault.saveBinding(b)
             }
-            return nil
-
-        case .scheduleReminder:
-            await hooks?.scheduleUnsettledReminder(after: TimeInterval(configuration.reminderMinutes * 60))
-            return nil
-
-        case .cancelReminder:
-            await hooks?.cancelUnsettledReminder()
             return nil
 
         case .diagnostic(let name):

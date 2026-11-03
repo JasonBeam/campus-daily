@@ -41,7 +41,7 @@ extension ShowerModel {
             Task {
                 // A cancelled start may still be winding down. Only this record is cleared: the
                 // wait can outlast the next start, whose record stays.
-                while busy { try? await Task.sleep(for:.milliseconds(50)) }
+                await untilIdle()
                 await dismiss(only:record)
             }
         case .openReview:
@@ -62,7 +62,7 @@ extension ShowerModel {
         case .disarmSettleRetry:
             Task {
                 // Taken back once whatever runs now (a retry's first tap, say) is done.
-                while busy { try? await Task.sleep(for:.milliseconds(50)) }
+                await untilIdle()
                 await disarmSettleRetry()
             }
         }

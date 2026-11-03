@@ -87,7 +87,7 @@ final class ShowerReducerTests: XCTestCase {
         let (s, fx) = reduce(authorizing(), .authorized(auth, at: t0))
         XCTAssertEqual(s.phase, .writePending)
         XCTAssertEqual(s.authorizationID, "001122FF")
-        XCTAssertEqual(fx, [.scheduleReminder, .writeAuthorization(Data(count: 15))])
+        XCTAssertEqual(fx, [.writeAuthorization(Data(count: 15))])
         XCTAssertTrue(s.mayBeFlowing)
     }
 
@@ -108,7 +108,7 @@ final class ShowerReducerTests: XCTestCase {
         let (r, _) = reduce(authorizing(), .authorizeFailed(refusal))
         XCTAssertEqual(r.failure, ShowerFailure(reason: .authorizeRefused, needsReview: false, error: refusal))
         XCTAssertTrue(r.canStart)
-        XCTAssertEqual(ShowerDisplay(r).title, "水没开成")
+        XCTAssertEqual(ShowerDisplay.title(r), "水没开成")
 
         for e in [ServiceError.timedOut, .offline, .uncertain(.lxt6), .malformed(.lxt6, "x"), .tls] {
             let (u, _) = reduce(authorizing(), .authorizeFailed(e))
@@ -145,10 +145,7 @@ final class ShowerReducerTests: XCTestCase {
         let (p2, _) = reduce(w, .writeFailed(.timedOut))
         XCTAssertEqual(p2.phase, .writePending)
         XCTAssertEqual(p2.notice, .device(.timedOut))
-        let d = ShowerDisplay(p2)
-        XCTAssertEqual(d.phase, .running)
-        XCTAssertTrue(d.writeUnconfirmed)
-        XCTAssertEqual(d.hint, ShowerDisplay.writeUnconfirmedHint)
+        XCTAssertEqual(ShowerDisplay.title(p2), "洗澡中", "shown as running")
         XCTAssertNil(p2.persistable.notice)
     }
 
@@ -165,7 +162,7 @@ final class ShowerReducerTests: XCTestCase {
         let (s, fx3) = reduce(c2, .closeReplied(consumption))
         XCTAssertEqual(s.phase, .settling)
         XCTAssertEqual(s.consumption, HexCoding.upper(consumption))
-        XCTAssertEqual(fx3, [.cancelReminder, .releaseDevice, .settle(frame: consumption)])
+        XCTAssertEqual(fx3, [.releaseDevice, .settle(frame: consumption)])
     }
 
     func testFinishProbeProblemsGoBackWithoutSendingClose() {
@@ -222,7 +219,7 @@ final class ShowerReducerTests: XCTestCase {
             XCTAssertEqual(f.failure?.reason, .closeUnconfirmed, "\(event)")
             XCTAssertEqual(f.failure?.needsReview, true)
             XCTAssertFalse(f.canRetrySettle)
-            XCTAssertEqual(fx, [.cancelReminder, .releaseDevice])
+            XCTAssertEqual(fx, [.releaseDevice])
         }
     }
 
@@ -246,7 +243,7 @@ final class ShowerReducerTests: XCTestCase {
         XCTAssertEqual(i.notice, .notActive)
         let (gone, fxR) = reduce(i, .resolveManually)
         XCTAssertEqual(gone.phase, .idle)
-        XCTAssertTrue(fxR.contains(.cancelReminder))
+        XCTAssertTrue(fxR.contains(.releaseDevice))
 
         let (f, _) = reduce(rv, .probeFailed(.timedOut))
         XCTAssertEqual(f.notice, .device(.timedOut))
@@ -263,8 +260,8 @@ final class ShowerReducerTests: XCTestCase {
         XCTAssertEqual(d.phase, .done)
         XCTAssertEqual(d.endedAt, t1)
         XCTAssertTrue(fx.isEmpty)
-        XCTAssertEqual(ShowerDisplay(d).title, "本次 ¥1.63")
-        XCTAssertEqual(ShowerDisplay(ShowerState(phase: .done, receipt: ShowerReceipt(amount: nil))).title, "已结算")
+        XCTAssertEqual(ShowerDisplay.title(d), "本次 ¥1.63")
+        XCTAssertEqual(ShowerDisplay.title(ShowerState(phase: .done, receipt: ShowerReceipt(amount: nil))), "已结算")
         let (i, _) = reduce(d, .dismiss)
         XCTAssertEqual(i.phase, .idle)
         XCTAssertEqual(i.lastReceipt, receipt)
@@ -295,8 +292,7 @@ final class ShowerReducerTests: XCTestCase {
     func testSettleCancelledIsUnconfirmedAndResolvable() {
         let (f, _) = reduce(settling(), .cancelledBeforeSend)
         XCTAssertEqual(f.failure?.reason, .settleUnconfirmed)
-        XCTAssertEqual(ShowerDisplay(f).title, "结算待核对")
-        XCTAssertEqual(ShowerDisplay(f).hint, "去看热水记录")
+        XCTAssertEqual(ShowerDisplay.title(f), "结算待核对")
         XCTAssertEqual(reduce(f, .dismiss).0, f, "review failures are not dismissed")
         XCTAssertEqual(reduce(f, .resolveManually).0.phase, .idle)
     }

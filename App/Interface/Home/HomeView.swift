@@ -133,11 +133,11 @@ struct HomeView: View {
         return clear
     }
 
-    var settingsPreview: HomeData? {
+    var settingsSheet: SettingsView {
         #if DEBUG
-        return demo
+        SettingsView(preview:demo)
         #else
-        return nil
+        SettingsView()
         #endif
     }
 
@@ -186,7 +186,7 @@ struct HomeView: View {
         .accountSwitchAlert { pathAfterSettings = nil; campus.hotWaterSetupRequested = true; settings = true }
         .sheet(isPresented:$settings, onDismiss:{
             if let routes = pathAfterSettings { pathAfterSettings = nil; path = routes }
-        }) { SettingsView(preview:settingsPreview).typesettingLanguage(Theme.typesetting) }
+        }) { settingsSheet.typesettingLanguage(Theme.typesetting) }
         .sheet(isPresented:$relogin) { SchoolReloginSheet().typesettingLanguage(Theme.typesetting) }
         // The shower page: down only by its own buttons, or a swipe while water runs (收起).
         .fullScreenCover(isPresented:Binding(get:{ pageCover },
@@ -202,11 +202,11 @@ struct HomeView: View {
         .fullScreenCover(item:$onboarding, onDismiss:{ didSeeQuickSetup = true }) { request in
             // .id: a new request must reset the cover's @State (step), not reuse it.
             // Own device chooser: a sheet from the home root can't show above this cover.
-            let cover = OnboardingView(start:request.step, preview:request.preview) { onboarding = nil }.id(request.id)
             #if DEBUG
-            cover.onOpenURL { handleDemo($0) }
+            OnboardingView(start:request.step, preview:request.preview) { onboarding = nil }.id(request.id)
+                .onOpenURL { handleDemo($0) }
             #else
-            cover
+            OnboardingView(start:request.step) { onboarding = nil }.id(request.id)
             #endif
         }
         #if DEBUG
@@ -244,7 +244,8 @@ struct HomeView: View {
             if let index = path.firstIndex(of:.records) { path.removeSubrange(index...) }
         }
         .onChange(of:phase) { _, value in
-            if value == .active { Task { await campus.refresh(); await laundry.refresh(); await laundry.refreshOrder() } }
+            // The order is read by the app scene on the same event (back from Alipay).
+            if value == .active { Task { await campus.refresh(); await laundry.refresh() } }
         }
         .onChange(of:shower.state.phase) { old, value in
             // The result is on the shower page; the balance it was taken from is read again.

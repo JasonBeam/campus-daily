@@ -80,7 +80,7 @@ final class SchoolSignOutRaceTests: XCTestCase {
     func testSignOutDuringWebStateAdoptionSavesNothing() async throws {
         let h = Harness()
         try h.server.serve("ecykt/getSysBindCustInfo-ok")
-        let state = try XCTUnwrap(try FixtureLoader.loadRaw("ecykt/localStorage-elecampus_state-csaLogin")["value"])
+        let state = try FixtureLoader.csaLoginState()
         let data = try state.encoded()
         let hold = Hold(h, self, suffix: "/getSysBindCustInfo")
         let session = h.session()

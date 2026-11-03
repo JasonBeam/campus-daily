@@ -204,7 +204,7 @@ private fun FormRow(title:String,value:String?=null,action:(()->Unit)?=null,blue
 }
 
 @Composable
-fun DevicesScreen(s:CampusUiState,padding:PaddingValues,navigate:(String)->Unit,glassEnabled:Boolean=true,onGlassChange:(Boolean)->Unit={},refresh:()->Unit={},exportDiagnostics:()->Unit={},review:()->Unit={}) = Page(padding,spacing=0.dp,top=35.dp) {
+fun DevicesScreen(s:CampusUiState,padding:PaddingValues,navigate:(String)->Unit,glassEnabled:Boolean=true,onGlassChange:(Boolean)->Unit={},refresh:()->Unit={},review:()->Unit={}) = Page(padding,spacing=0.dp,top=35.dp) {
     var advanced by rememberSaveable {mutableStateOf(false)}
     Surface(onClick={navigate("setup")},shape=RoundedCornerShape(26.dp),color=MaterialTheme.colorScheme.surface){
         Row(Modifier.fillMaxWidth().padding(horizontal=20.dp,vertical=24.dp),verticalAlignment=Alignment.CenterVertically) {
@@ -225,8 +225,6 @@ fun DevicesScreen(s:CampusUiState,padding:PaddingValues,navigate:(String)->Unit,
         FormRow("高级设置与故障排查",action={advanced=!advanced})
         if(advanced){
             FormRow("只读检查本次水控状态",action=review,blue=true,enabled=!s.storageIssue && !s.transactionBusy && s.waterSession?.stage in setOf(ShowerStage.ACTIVE,ShowerStage.AUTHORIZATION_WRITE_PENDING))
-            FormRow("导出热水诊断",action=exportDiagnostics,blue=true)
-            Hint("仅含版本、时间、操作阶段及设备回复类型，不含账号、密钥或设备编号。")
             Hint("通常优先使用上方账号与设备设置。")
             FormRow("重新登录学校账号",action={navigate("login")},blue=true)
             FormRow("导入内测热水配置",action={navigate("import")},blue=true)

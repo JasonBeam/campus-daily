@@ -96,6 +96,6 @@ final class ShowerWritePendingFinishTests: XCTestCase {
         XCTAssertEqual(unsent.notice, .device(.interrupted))
         let (gone, fxGone) = ShowerReducer.reduce(ShowerReducer.reduce(unsent, .finish).0, .probeReplied(identity))
         XCTAssertEqual(gone.phase, .idle)
-        XCTAssertTrue(fxGone.contains(.cancelReminder))
+        XCTAssertTrue(fxGone.contains(.releaseDevice))
     }
 }

@@ -11,7 +11,7 @@
       "Referer": "https://ecykt.gdbtu.edu.cn/ykt-view/powernew?interfaceName=powernew_450010&isbind=1"
     },
     "body": {
-      "syscustid": "TESTsyscus%3Ntid00000000000000000000000000%1H00%7J",
+      "syscustid": "TESTsyscustid0000000000000000000000000001%",
       "acc_token": "REDACTED_TOKEN_2",
       "server": "/api/getBuildingInfo",
       "areacode": "450010",

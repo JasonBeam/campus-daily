@@ -129,11 +129,12 @@ report "machine id" "$tmp/mid"
 # JSON escaped inside a JSON string (\"custid\":\"x\"), URL-encoded
 # (custid%22%3A%22x, custid%3Dx), query/plist/code (custid=x, custid: "x"),
 # URLQueryItem(name: "custid", value: "x"), and suffixed keys (custidList).
-# The value must be one of the synthetic shapes in full; a TEST prefix in
-# front of anything else is not enough.
+# The value must be one of the synthetic shapes in full (TEST, the key name,
+# a zero-padded counter and an optional trailing %, which the real ciphertexts
+# carry); a TEST prefix in front of anything else is not enough.
 scan "$tmp/custraw" 'custid[A-Za-z0-9_]*(\\?["'"'"']|%22|%3[AaDd]|[[:space:]:=,]|value)+[A-Za-z0-9+/_-][A-Za-z0-9+/=_%-]{15,}' -i
 sed -E "s/${tab}[^${tab}]*[Cc][Uu][Ss][Tt][Ii][Dd][A-Za-z0-9_]*(\\\\?[\"']|%22|%3[AaDd]|[[:space:]:=,]|[Vv][Aa][Ll][Uu][Ee])+/${tab}/" "$tmp/custraw" \
-  | notallowed 'TESTid0+[0-9]{1,3}|TESTsyscus%(25)?3Ntid0+%(25)?1H00%(25)?7J|TESTcustid0+%(25)?1A00000%(25)?3G|mintedTokenAsInput|afterLoginBySysId' > "$tmp/custid"
+  | notallowed 'TEST(sys)?(cust)?id0+[0-9]{1,3}(%|%25)?' > "$tmp/custid"
 report "custid ciphertext" "$tmp/custid"
 # Card record vouchers (voucherno) next to a voucher key in any shape, as for
 # custid. Only the synthetic shape is allowed: 99 and a zero-padded counter.

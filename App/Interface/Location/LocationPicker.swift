@@ -106,7 +106,7 @@ struct LocationCheck: View {
         ZStack {
             if selected {
                 Circle().fill(Theme.accentText)
-                Image(systemName:"checkmark").font(.system(size:size * 0.5, weight:.bold)).foregroundStyle(.white)
+                Image(systemName:"checkmark").font(.system(size:size * 0.5, weight:.bold)).foregroundStyle(Theme.accentInk)
             } else {
                 Circle().strokeBorder(Theme.ink3, lineWidth:1.5)
             }

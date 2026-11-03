@@ -60,6 +60,19 @@ final class ShowerActionOutcomeTests: XCTestCase {
         XCTAssertEqual(ShowerActionFailure.blockedText(nil), ShowerActionFailure(.blocked).message)
     }
 
+    /// The engine itself refused the start (the record changed in another process after the
+    /// app's own check): the same words as the app's refusal, from the record that blocks it.
+    func testABlockedStartFromTheEngineSaysWhatWaits() {
+        let unclear = ShowerFailure(reason: .authorizeUncertain, needsReview: true, error: .rejected(.lxt6, code: "1", message: "余额不足"))
+        XCTAssertEqual(ShowerActionFailure.thrown(ShowerEngineError.blocked, failure: unclear, other: { _ in "其他" }).message,
+                       "水没开。学校提示：余额不足。打开校日常核对一下再开始。")
+        XCTAssertEqual(ShowerActionFailure.thrown(ShowerEngineError.blocked, failure: nil, other: { _ in "其他" }).message, ShowerActionFailure(.blocked).message)
+        XCTAssertEqual(ShowerActionFailure.thrown(ShowerEngineError.busy, failure: unclear, other: { _ in "其他" }).message, ShowerActionFailure(.busy).message)
+        XCTAssertEqual(ShowerActionFailure.thrown(ShowerDeviceError.bluetoothOff, failure: nil, other: { _ in "其他" }).message, ShowerDeviceError.bluetoothOff.userText)
+        XCTAssertEqual(ShowerActionFailure.thrown(ShowerActionFailure("x"), failure: unclear, other: { _ in "其他" }).message, "x")
+        XCTAssertEqual(ShowerActionFailure.thrown(CocoaError(.fileReadUnknown), failure: nil, other: { _ in "其他" }).message, "其他")
+    }
+
     func testEngineRefusalsSayWhatToDo() {
         let all: [ShowerEngineError] = [.busy, .blocked, .notAllowed, .wrongBinding, .storage, .unreadableRecord, .platformMissing]
         let texts = all.map { ShowerActionFailure($0).message }

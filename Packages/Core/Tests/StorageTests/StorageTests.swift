@@ -95,7 +95,6 @@ final class FakeKeychainView: KeychainBackend, @unchecked Sendable {
 final class KeychainStoreTests: XCTestCase {
     let group = "TEAMID1234.com.beamjason.xiaorichang.shared"
     /// The shared group's name after the team prefix, as Info.plist gives it.
-    let sharedName = "com.beamjason.xiaorichang.shared"
 
     func testNames() {
         XCTAssertEqual(StoreKey.schoolEcykt.service, "com.beamjason.xiaorichang.school.ecykt.v1")
@@ -105,10 +104,9 @@ final class KeychainStoreTests: XCTestCase {
         XCTAssertEqual(StoreKey.schoolEcykt.accessibility, .afterFirstUnlockThisDeviceOnly)
         XCTAssertEqual(StoreKey.allCases.filter(\.isShared),
                        [.schoolPortal, .schoolEcykt, .schoolProfile, .schoolPassword, .schoolDevice, .sharedSnapshot, .sharedReminderLines,
-                        .sharedRefreshLease, .sharedCredentialLog, .sharedResetMarker])
+                        .sharedCredentialLog, .sharedResetMarker])
         XCTAssertEqual(StoreKey.schoolPassword.accessibility, .afterFirstUnlockThisDeviceOnly)
         XCTAssertEqual(PreferenceKey.reminder("card"), "xrc.reminder.card")
-        XCTAssertEqual(PreferenceKey.laundryAckFailedOrder, "xrc.laundry.ackFailedOrder")
         XCTAssertEqual(SharedSnapshotStore.widgetKind, "XiaoRiChangBalances")
     }
 
@@ -122,10 +120,9 @@ final class KeychainStoreTests: XCTestCase {
         XCTAssertEqual(PreferenceKey.schoolLaundry, "xrc.laundry.school")
         XCTAssertEqual(StoreKey.schoolPassword.service, "com.beamjason.xiaorichang.school.password.v1")
         XCTAssertEqual(StoreKey.schoolDevice.service, "com.beamjason.xiaorichang.school.device.v1")
-        XCTAssertEqual(StoreKey.sharedRefreshLease.service, "com.beamjason.xiaorichang.shared.refreshLease.v1")
         XCTAssertEqual(StoreKey.sharedCredentialLog.service, "com.beamjason.xiaorichang.shared.credentialLog.v1")
         XCTAssertEqual(StoreKey.sharedResetMarker.service, "com.beamjason.xiaorichang.shared.resetMarker.v1")
-        XCTAssertEqual(StoreKey.allCases.count, 14, "a new item needs its stored name pinned here")
+        XCTAssertEqual(StoreKey.allCases.count, 13, "a new item needs its stored name pinned here")
     }
 
     /// The Swift names say shower; the stored names stay what installed builds already wrote.
@@ -142,34 +139,6 @@ final class KeychainStoreTests: XCTestCase {
     func appStore(_ kc: FakeKeychain) -> KeychainSecureStore { KeychainSecureStore(backend: kc, accessGroup: group, privateGroup: app) }
     func key(_ k: StoreKey, _ g: String) -> FakeKeychain.Key { .init(service: k.service, group: g) }
 
-    /// Replace only updates: an item deleted by another process is not added back.
-    func testReplaceNeverAddsAnItem() throws {
-        let kc = appKeychain()
-        let store = appStore(kc)
-        XCTAssertFalse(try store.replace(Data("x".utf8), for: .sharedRefreshLease))
-        XCTAssertNil(kc.items[key(.sharedRefreshLease, group)])
-        XCTAssertFalse(kc.calls.contains { $0.hasPrefix("add") })
-        try store.write(Data("a".utf8), for: .sharedRefreshLease)
-        XCTAssertTrue(try store.replace(Data("b".utf8), for: .sharedRefreshLease))
-        XCTAssertEqual(kc.items[key(.sharedRefreshLease, group)], Data("b".utf8))
-    }
-
-    /// An item a fallback create left without a group is still found and replaced.
-    func testReplaceFindsAnItemOutsideTheGroup() throws {
-        let kc = appKeychain()
-        let store = appStore(kc)
-        kc.failing["update \(group)"] = KeychainStatus.missingEntitlement
-        kc.items[key(.sharedRefreshLease, app)] = Data("a".utf8)
-        XCTAssertTrue(try store.replace(Data("b".utf8), for: .sharedRefreshLease))
-        XCTAssertEqual(kc.items[key(.sharedRefreshLease, app)], Data("b".utf8))
-    }
-
-    func testReplaceReportsOtherFailures() {
-        let kc = appKeychain()
-        kc.failing["update \(group)"] = -25308
-        XCTAssertThrowsError(try appStore(kc).replace(Data("b".utf8), for: .sharedRefreshLease))
-    }
-
     func testSharedItemsUseAccessGroupCredentialsNever() throws {
         let kc = appKeychain()
         let store = appStore(kc)
@@ -178,7 +147,6 @@ final class KeychainStoreTests: XCTestCase {
         XCTAssertEqual(kc.items[key(.sharedSnapshot, group)], Data("s".utf8))
         XCTAssertEqual(kc.items[key(.showerBinding, app)], Data("c".utf8))
         XCTAssertNil(kc.items[key(.showerBinding, group)])
-        XCTAssertFalse(store.isUsingFallback)
         XCTAssertEqual(try store.read(.sharedSnapshot), Data("s".utf8))
         // Overwrite goes through update.
         try store.write(Data("s2".utf8), for: .sharedSnapshot)
@@ -207,7 +175,6 @@ final class KeychainStoreTests: XCTestCase {
         let kc = FakeKeychain(entitlements: ["TEAMID1234.com.example.resigned"])
         let store = appStore(kc)
         try store.write(Data("s".utf8), for: .sharedSnapshot)
-        XCTAssertTrue(store.isUsingFallback)
         XCTAssertEqual(kc.items[key(.sharedSnapshot, "TEAMID1234.com.example.resigned")], Data("s".utf8))
         XCTAssertEqual(try store.read(.sharedSnapshot), Data("s".utf8))
         try store.write(Data("w".utf8), for: .showerBinding)
@@ -293,7 +260,7 @@ final class KeychainStoreTests: XCTestCase {
     /// changes what the widget can see or when an item can be read; update docs/privacy.md too.
     func testEveryItemsGroupAndAccessibilityArePinned() throws {
         let shared: Set<StoreKey> = [.schoolPortal, .schoolEcykt, .schoolProfile, .schoolPassword, .schoolDevice,
-                                     .sharedSnapshot, .sharedReminderLines, .sharedRefreshLease, .sharedCredentialLog, .sharedResetMarker]
+                                     .sharedSnapshot, .sharedReminderLines, .sharedCredentialLog, .sharedResetMarker]
         let kc = appKeychain()
         let store = appStore(kc)
         for k in StoreKey.allCases {
@@ -449,7 +416,6 @@ final class KeychainStoreTests: XCTestCase {
         XCTAssertEqual(kc.items[key(.showerBinding, app)], Data("y".utf8))
         kc.failing["add \(group)"] = -25308
         XCTAssertThrowsError(try store.write(Data("s".utf8), for: .sharedSnapshot))
-        XCTAssertFalse(store.isUsingFallback)
         kc.failing = [:]
         try store.write(Data("s".utf8), for: .sharedSnapshot)
         XCTAssertEqual(kc.items[key(.sharedSnapshot, group)], Data("s".utf8))
@@ -459,7 +425,7 @@ final class KeychainStoreTests: XCTestCase {
     /// again, and once it answers the store writes shared items where the widget reads them.
     func testFailedGroupProbeIsRetried() throws {
         let answers = ProbeScript([nil, app])
-        let probe = KeychainGroupProbe(sharedGroup: sharedName) { answers.next() }
+        let probe = KeychainGroupProbe(inExtension: false) { answers.next() }
         XCTAssertNil(probe.defaultGroup)
         XCTAssertEqual(probe.sharedGroup, group)
         XCTAssertEqual(probe.privateGroup, app)
@@ -469,7 +435,7 @@ final class KeychainStoreTests: XCTestCase {
 
         let kc = appKeychain()
         let late = ProbeScript([nil, app])
-        let store = KeychainSecureStore(backend: kc, groups: KeychainGroupProbe(sharedGroup: sharedName) { late.next() })
+        let store = KeychainSecureStore(backend: kc, groups: KeychainGroupProbe(inExtension: false) { late.next() })
         XCTAssertNil(try store.read(.sharedSnapshot))
         try store.write(Data("s".utf8), for: .sharedSnapshot)
         XCTAssertEqual(kc.items[key(.sharedSnapshot, group)], Data("s".utf8))
@@ -484,15 +450,58 @@ final class KeychainStoreTests: XCTestCase {
         XCTAssertTrue(kc.items.isEmpty)
     }
 
-    /// The shared group is the build's own name under the team prefix of whatever group this
-    /// build wrote to; the app's default group is its private one.
-    func testAccessGroupFromTheTeamPrefix() {
-        XCTAssertEqual(SharedKeychain.accessGroup(teamPrefixedFrom: app, sharedGroup: sharedName), group)
-        XCTAssertEqual(SharedKeychain.accessGroup(teamPrefixedFrom: group, sharedGroup: sharedName), group)
-        XCTAssertNil(SharedKeychain.accessGroup(teamPrefixedFrom: "nodot", sharedGroup: sharedName))
-        XCTAssertNil(SharedKeychain.accessGroup(teamPrefixedFrom: ".leadingdot", sharedGroup: sharedName))
-        XCTAssertEqual(SharedKeychain.privateGroup(defaultGroup: app, sharedGroup: sharedName), app)
-        XCTAssertNil(SharedKeychain.privateGroup(defaultGroup: group, sharedGroup: sharedName), "the widget has no private group")
+    /// The groups come from the one this process writes to by default: the app's is its private
+    /// group and the shared one is that plus `.shared`; the widget's is the shared one itself.
+    func testGroupsFromTheDefaultGroup() {
+        XCTAssertEqual(SharedKeychain.sharedGroup(defaultGroup: app, inExtension: false), group)
+        XCTAssertEqual(SharedKeychain.sharedGroup(defaultGroup: group, inExtension: true), group)
+        XCTAssertEqual(SharedKeychain.privateGroup(defaultGroup: app, inExtension: false), app)
+        XCTAssertNil(SharedKeychain.privateGroup(defaultGroup: group, inExtension: true), "the widget has no private group")
+        let shared = group
+        let widget = KeychainGroupProbe(inExtension: true) { shared }
+        XCTAssertEqual(widget.sharedGroup, group)
+        XCTAssertNil(widget.privateGroup)
+    }
+
+    /// Re-signed with a wildcard keychain entitlement (`TEAM.*`): each process's default group
+    /// is its own bundle id, so the widget's is `TEAM.<app id>.balances`. It then uses the
+    /// app's shared group, `TEAM.<app id>.shared`, as the app does, so the two still meet.
+    /// A default group that is already a shared one is used as it is.
+    func testAWildcardReSignedWidgetUsesTheAppsSharedGroup() {
+        let wildcard = "TEAMID1234.org.example.daily.balances"
+        XCTAssertEqual(SharedKeychain.sharedGroup(defaultGroup: wildcard, inExtension: true, bundleID: "org.example.daily.balances"),
+                       "TEAMID1234.org.example.daily.shared")
+        XCTAssertEqual(SharedKeychain.sharedGroup(defaultGroup: "TEAMID1234.org.example.daily", inExtension: false, bundleID: "org.example.daily"),
+                       "TEAMID1234.org.example.daily.shared", "the app's, for comparison")
+        XCTAssertEqual(SharedKeychain.sharedGroup(defaultGroup: group, inExtension: true, bundleID: "org.example.daily.balances"), group,
+                       "explicit groups: the widget's default is the shared one")
+        XCTAssertEqual(SharedKeychain.sharedGroup(defaultGroup: wildcard, inExtension: true, bundleID: nil), wildcard,
+                       "no bundle id to go by: the default group")
+        let widget = KeychainGroupProbe(inExtension: true, bundleID: "org.example.daily.balances") { wildcard }
+        XCTAssertEqual(widget.sharedGroup, "TEAMID1234.org.example.daily.shared")
+        XCTAssertNil(widget.privateGroup)
+    }
+
+    /// Two first uses at the same moment: one probe runs (its delete and add are never
+    /// interleaved with another's, which would fail the second add as a duplicate), and both
+    /// get its answer.
+    func testConcurrentFirstUsesProbeOnce() {
+        let running = Counter(), overlapped = Counter(), calls = Counter()
+        let probe = KeychainGroupProbe(inExtension: false, bundleID: nil) {
+            calls.bump(); running.bump()
+            if running.value > 1 { overlapped.bump() }
+            Thread.sleep(forTimeInterval: 0.05)
+            running.drop()
+            return FakeKeychain.app
+        }
+        let answers = OSAllocatedUnfairLock<[String?]>(initialState: [])
+        DispatchQueue.concurrentPerform(iterations: 8) { _ in
+            let found = probe.defaultGroup
+            answers.withLock { $0.append(found) }
+        }
+        XCTAssertEqual(overlapped.value, 0, "no two probes at once")
+        XCTAssertEqual(calls.value, 1, "the first answer is kept for the others")
+        XCTAssertEqual(answers.withLock { $0 }, Array(repeating: FakeKeychain.app, count: 8))
     }
 
     func testReadErrorsThrow() {
@@ -547,6 +556,7 @@ final class Counter: @unchecked Sendable {
     private let lock = NSLock()
     private var n = 0
     func bump() { lock.withLock { n += 1 } }
+    func drop() { lock.withLock { n -= 1 } }
     var value: Int { lock.withLock { n } }
 }
 

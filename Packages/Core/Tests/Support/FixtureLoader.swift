@@ -58,6 +58,15 @@ public enum FixtureLoader {
         return try JSONValue.parse(data)
     }
 
+    /// The school web page's signed-in state (`localStorage-elecampus_state-csaLogin` → `value`),
+    /// as the login page hands it to the session.
+    public static func csaLoginState() throws -> JSONValue {
+        guard let value = try loadRaw("ecykt/localStorage-elecampus_state-csaLogin")["value"] else {
+            throw FixtureError.invalid("ecykt/localStorage-elecampus_state-csaLogin", "no value")
+        }
+        return value
+    }
+
     /// Every fixture file name (`service/name`), sorted.
     public static func allNames() -> [String] {
         let fm = FileManager.default

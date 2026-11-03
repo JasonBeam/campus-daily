@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 import Core
 
 /// Resolves the money calls at call time, so the engine survives a profile import.
@@ -21,30 +22,21 @@ final class ShowerGatewayBox: ShowerGateway, @unchecked Sendable {
     }
 }
 
-private struct ShowerModelHooks: ShowerHooks {
-    func scheduleUnsettledReminder(after seconds: TimeInterval) async {}
-    func cancelUnsettledReminder() async {}
-    /// Nothing is recorded: the engine's event names stay in the engine (and its tests).
-    func diagnostic(_ event: String) async {}
-}
-
 /// Where the hot-water platform profile comes from (bundled / imported `.waterconfig`).
 enum ShowerProfileFiles {
     static var importedURL: URL {
         FileManager.default.urls(for:.applicationSupportDirectory, in:.userDomainMask)[0]
-            .appendingPathComponent("Water", isDirectory:true).appendingPathComponent("imported.waterconfig")
+            .appendingPathComponent("Water", isDirectory:true).appendingPathComponent(ShowerProfileLoader.importedFileName)
     }
-    static let loader = ShowerProfileLoader(bundled: {
-        guard let url = Bundle.main.url(forResource:"CampusWaterPlatform", withExtension:"json") else { return nil }
-        return try Data(contentsOf:url)
-    }, imported: { _ in
-        let url = ShowerProfileFiles.importedURL
-        return FileManager.default.fileExists(atPath:url.path) ? try Data(contentsOf:url) : nil
-    })
-    static let sources: [ShowerProfileSource] = [.imported(fileName:"imported.waterconfig"), .bundled]
+    /// The imported profile if usable, else the bundled one.
     static func localProfile() async -> ShowerPlatformProfile? {
-        if case .success(.local(let profile, _)) = await ShowerProfileResolver.firstUsable(sources, provider:loader) { return profile }
-        return nil
+        ShowerProfileLoader.localProfile(imported: {
+            let url = importedURL
+            return FileManager.default.fileExists(atPath:url.path) ? try Data(contentsOf:url) : nil
+        }, bundled: {
+            guard let url = Bundle.main.url(forResource:"CampusWaterPlatform", withExtension:"json") else { return nil }
+            return try Data(contentsOf:url)
+        })
     }
 }
 
@@ -70,6 +62,10 @@ enum ShowerProfileFiles {
     @Published private(set) var profileLoaded = false
     @Published private(set) var busy = false {
         didSet { if oldValue, !busy, rebuildPending { rebuildPending = false; rebuildEngine() } }
+    }
+    /// Returns once nothing is in flight (at once when nothing is).
+    func untilIdle() async {
+        for await value in $busy.values where !value { return }
     }
     /// A rebuild (after a profile import, say) came while something was in flight: it runs once
     /// that is done, so 结束 isn't left without the new profile's gateway.
@@ -115,7 +111,6 @@ enum ShowerProfileFiles {
     // MARK: Derived state (what the views read)
 
     var configured: Bool { binding != nil }
-    var display: ShowerDisplay { ShowerDisplay(state) }
     /// The build has no usable profile (neither bundled nor imported).
     var platformMissing: Bool { binding != nil && profile == nil }
     var mayStart: Bool {
@@ -195,9 +190,7 @@ enum ShowerProfileFiles {
         }
         do {
             let engine = try ShowerEngine(transport:bluetooth, gateway:gateway, vault:AppEnvironment.showerVault,
-                                          configuration:.init(bleName:bleName,
-                                                              reminderMinutes:UserDefaults.standard.integer(forKey:ReminderKey.unsettledMinutes)),
-                                          hooks:ShowerModelHooks(), resetMarker:AppResetter.marker)
+                                          configuration:.init(bleName:bleName), resetMarker:AppResetter.marker)
             self.engine = engine
             observer = Task { [weak self] in
                 let blocked = await engine.storageBlocked
@@ -283,7 +276,7 @@ enum ShowerProfileFiles {
         let access = url.startAccessingSecurityScopedResource()
         defer { if access { url.stopAccessingSecurityScopedResource() } }
         let data = try Data(contentsOf:url)
-        _ = try ShowerConfigFile.parse(data, source:.imported(fileName:"imported.waterconfig"))
+        _ = try ShowerConfigFile.parse(data, source:.imported(fileName:ShowerProfileLoader.importedFileName))
         let target = ShowerProfileFiles.importedURL
         // The copy holds the platform secret: its folder is kept out of backups before it is written.
         try ShowerImportFolder.prepare(for:target)
@@ -323,7 +316,8 @@ enum ShowerProfileFiles {
             throw failure
         } catch {
             storageBlocked = await engine.storageBlocked
-            throw Self.actionFailure(error)
+            // A start the engine turned down says what waits, from the record it holds now.
+            throw ShowerActionFailure.thrown(error, failure:await engine.state.failure, other:AppErrorText.text)
         }
     }
 
@@ -344,13 +338,6 @@ enum ShowerProfileFiles {
         if inspecting { return "正在核对水控，等一下再开始。" }
         if !state.canStart { return ShowerActionFailure.blockedText(state.failure) }
         return "现在开始不了，打开校日常看看。"
-    }
-
-    nonisolated static func actionFailure(_ error: Error) -> ShowerActionFailure {
-        if let e = error as? ShowerActionFailure { return e }
-        if let e = error as? ShowerEngineError { return ShowerActionFailure(e) }
-        if let e = error as? ShowerDeviceError { return ShowerActionFailure(e.userText) }
-        return ShowerActionFailure(AppErrorText.text(error))
     }
 
     /// Read-only state probe of the session's controller (Settings › 高级 › 检查水控状态).

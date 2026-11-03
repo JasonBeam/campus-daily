@@ -4,9 +4,6 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
-import android.content.Intent
-import androidx.core.content.FileProvider
-import java.io.File
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.*
 import androidx.activity.enableEdgeToEdge
@@ -68,19 +65,6 @@ private fun CampusApp(activity:ComponentActivity,vm:CampusViewModel=viewModel())
         if(permissions.any { ContextCompat.checkSelfPermission(activity,it)!=PackageManager.PERMISSION_GRANTED }) { pendingBle=action;bleLauncher.launch(permissions) }
         else when(action) {"scan"->vm.scanWater();"inspect"->vm.inspectConfiguredWater();"review"->vm.reviewWater();"start"->vm.operateWater(false);"finish"->vm.operateWater(true)}
     }
-    fun exportDiagnostics() {scope.launch {
-        try {
-            val report=vm.waterDiagnosticReport()
-            val uri=withContext(Dispatchers.IO) {
-                val directory=File(activity.cacheDir,"water-diagnostics").apply{mkdirs()}
-                val file=File(directory,"CampusDaily-water-diagnostics.json").apply{writeText(report)}
-                FileProvider.getUriForFile(activity,"${BuildConfig.APPLICATION_ID}.fileprovider",file)
-            }
-            val send=Intent(Intent.ACTION_SEND).setType("application/json").putExtra(Intent.EXTRA_STREAM,uri)
-                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            activity.startActivity(Intent.createChooser(send,"分享热水诊断"))
-        } catch(_:Exception){vm.notice("诊断文件暂时无法分享，请稍后重试")}
-    }}
     val cameraLauncher=rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { if(it)page="scanner" else vm.notice("需要相机权限才能扫描机身二维码，也可以粘贴二维码链接") }
     fun scan() {
         if(state.account==null) {page="laundryLogin";return}
@@ -145,7 +129,7 @@ private fun CampusApp(activity:ComponentActivity,vm:CampusViewModel=viewModel())
                 1->OrdersScreen(state,padding,::navigate,{vm.refreshOrder()},vm::cancelOrder,::payOrder)
                 else->DevicesScreen(state,padding,::navigate,glassEnabled,onGlassChange={enabled ->
                     glassEnabled=enabled;appearance.edit().putBoolean("glass",enabled).apply();mode=glassMode(activity,enabled)
-                },refresh={vm.refresh(true)},exportDiagnostics=::exportDiagnostics,review={navigate("water");withBle("review")})
+                },refresh={vm.refresh(true)},review={navigate("water");withBle("review")})
             }
         }
         }

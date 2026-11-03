@@ -3,7 +3,6 @@ private/
 artifacts/
 .build/
 .swiftpm/
-.playwright-cli/
 output/
 build/
 /.DerivedData/
@@ -26,6 +25,7 @@ xcuserdata/
 *.mobileprovision
 *.p12
 *.ipa
+*.apk
 *.xcarchive
 *.xcresult
 *.log

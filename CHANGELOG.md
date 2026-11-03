@@ -24,9 +24,23 @@
 - When several apartments (or campuses) hold a building of the dorm's name, walk each down to the rooms: the one with the dorm's room is bound without asking; when several have it, the lookup stops with those rooms to choose from, each with its full location.
 - When one of those apartments could not be read (the school too slow, no connection), do not take it for one without the room: the lookup ends with 「有个公寓没读完，还分不出是哪间。」 and 「再找一次电表」 (plus 「电表先跳过，之后在设置 › 电表里选。」 in the first-run guide), binding nothing; the 电表 page shows no list then.
 - Do not take an apartment whose walk stopped before its rooms (floors not matched, two buildings of the dorm's name, more rooms of its name than are read) for one without the room: nothing is bound, and the lookup stops at the apartments asking 「3 栋 108 在哪个公寓？」 (「校区」 at the campuses), the found rooms binding at a tap and each stopped apartment as a row 「这边没对上，点进去自己选」 with a chevron (no check circle in the first-run guide) that opens the 电表 page where it stopped. A room read without a meter still counts as without the room.
+- Title same-named dorm and meter rows by the location level that tells them apart (校区, 公寓, 楼栋 or 房间).
+- List 电表 first in Settings › 设备.
+- Redesign the first-run guide: one layout on every step, four page dots, and 不用 on the laundry question continues to the dorm.
+- Redesign the home screen: the date, the card balance and electricity as two numbers (昨天花了 / 够用约 N 天 underneath, red when running low), an update line, one shower button, the 洗衣 row and 最近. The hero sentence and the bottom dock are gone.
+- Read the balance and electricity without waiting for the card records; the records get 6 seconds and arrive in a second write.
+- Reorganize the repository by feature: `App/` (Application, Interface, Services, Resources), `Shared/`, `Widget/`, one `Packages/Core` package, `Android/`, `Configuration/`, `Scripts/`. The Xcode project is committed (`XiaoRiChang.xcworkspace`), and routine commands run through `mise`.
+- Name the hot-water feature "Shower" throughout the code. User-facing text is unchanged.
+- Fold the release notes from `docs/release-*.md` into this file.
+- Upgrade note: if you built the app from source with your own `APP_BUNDLE_IDENTIFIER` before this version, you are signed out of the school account once after upgrading and need to type the saved password again; builds with the default bundle id are not affected.
 
 ### Fixed
 
+- Say what a start waits for when the hot-water engine itself turns it down (the record changed in another process after the app's own check), as the app's own refusal does: for an unclear authorize 「水没开。学校提示：…打开校日常核对一下再开始。」 instead of 「上次结算还没确认」.
+- Leave out 最近 on home until its rows are measured, instead of drawing three rows first; a new record not measured yet no longer makes the whole section disappear for a moment.
+- Say 「这台手机现在存不了洗衣订单，重启 App 再登录 U净。」 when the U净 login can't read the laundry order record, instead of 「这台手机暂时存不了洗衣订单，重启 App 后再试。」.
+- When turning 保存密码 off can't go through (the phone not unlocked since it started, say), keep the switch on and say 「密码还存着，没关掉。再试一次。」 in Settings › 学校账号, instead of removing the password where a widget refresh could write it back.
+- Count 昨天花了 by the same rule as each day's total in 校园卡记录: a record of another day whose time can't be read no longer hides it, and a record whose day can't be read hides both, since it may be of that day.
 - Show a canteen meal paid with WeChat once, as a canteen expense tagged 「微信支付」, in 校园卡记录 and 最近, and count it once in the day's 花了 and in 昨天花了. The school sends it as two records with one voucher (WeChat's money in and the canteen's payment); they showed as 「−¥」 and an unsigned 「¥」 and hid the day's total. The money-in half is not shown or counted while its partner may still be on a page not read yet; once its day is read through, a lone one shows as money in with 「+¥」. Two alike meals with their own vouchers stay two.
 - Do not let pages waiting for the settings sheet to close replace a page opened after them directly.
 - Do not let a page asked for while the settings sheet was up (a tapped 「衣服洗好了」) come up after a later widget link (home, 学校账号, login), an account-switch alert or a reset.
@@ -71,29 +85,24 @@
 - Do not fail 结束 or a retry at once with 「和水控的连接断了」 because of a notification the controller sent between operations, or because the previous link's disconnect arrived late, and do not fail a reconnect with 「水控没回应」 when the old link is already down but its disconnect never arrived.
 - Siri, Shortcuts and the Live Activity say why a start or an end did not go through (for example 「蓝牙没开，打开后再试。」 or 「这次没能结束，打开校日常再试一次。」), and the start no longer says the water is ready when the controller did not confirm it.
 - Let sign-in, recharge and the shower hand-off run in a build signed without the App Group instead of failing as busy (they still take turns with the app's refresh, through a lease file in the app's own container; the widget leaves every school read to the app there), and take the App Group, keychain groups and background refresh id from `APP_BUNDLE_IDENTIFIER`; the default bundle id keeps the values earlier builds used.
+- In an IPA re-signed under another bundle id, the app and the widget share school data: the shared keychain group follows the group the signature makes the default (the app's plus `.shared`; the widget's own, or, when a wildcard entitlement makes that the widget's bundle id, the app's `.shared` group) instead of the id in Info.plist, and when the App Group in Info.plist has no container, `group.` plus the bundle id the app runs under (the widget's without `.balances`) is tried. The lease file kept in the app's own container is excluded from backup.
 - `Scripts/check-widget-signature.py` also fails a signed build when the app or the widget is not entitled to the App Group named in its Info.plist (`AppGroupIdentifier`), which would leave the widget without fresh numbers.
-- If you built the app from source with your own `APP_BUNDLE_IDENTIFIER` before this version, you are signed out of the school account once after upgrading and need to type the saved password again; builds with the default bundle id are not affected.
 - Scan a picked washer photo off the main thread, say 「照片里没找到二维码，换一张拍清楚的。」 when it has no code, and give each refusal on the common-washer page its own text instead of 「机器名称最多 40 个字。」.
 - Forget the last laundry order's result and note when the U净 account that placed it signs out or another account signs in.
 - Read the laundry order as soon as the Alipay SDK reports back, also when Alipay pays in its own web page, instead of after 10 s.
 - Show only the 最近 rows that fit on home, and leave out 最近 when not even one fits under its header, instead of three rows that made home scroll.
+- Draw the tick of a chosen location in the label colour on the accent, so it stays readable in dark mode.
+- Show the last shower's amount on the hot-water screen as 「¥1.32」, as everywhere else, instead of 「CN¥1.32」 on some region settings.
+- The reset confirmation no longer lists 「选的主题」: the app has no theme setting.
+- The sign-in sheet's close button takes taps in a 44 pt square around its circle.
+- Read the laundry order once when the app comes back, not twice.
 
 ### Removed
 
 - Remove 「导出热水诊断」 (Settings › 高级 › 热水排查) and every diagnostic record behind it: the hot-water event file, the school credential-lifetime lines in the shared Keychain and the Bluetooth scan note. The app deletes what older builds left at launch.
+- Remove 「导出热水诊断」 from the Android app too, with its event file and file provider; a file an older build left is deleted at launch.
 - Remove the self-hosted hot-water access service (`services/access`), its client in the iOS app and its preparation script. The Android app in `Android/` still contains its client and is unchanged. Hot-water platform parameters now come only from the bundled `CampusWaterPlatform.json` or a user import. Users who were connected only through the access service see the "platform missing" message and need a build with the bundled parameters or an import.
 - Remove the process documents, promotional images and the old project generator; their history stays in Git.
-
-### Changed
-
-- Title same-named dorm and meter rows by the location level that tells them apart (校区, 公寓, 楼栋 or 房间).
-- List 电表 first in Settings › 设备.
-- Redesign the first-run guide: one layout on every step, four page dots, and 不用 on the laundry question continues to the dorm.
-- Redesign the home screen: the date, the card balance and electricity as two numbers (昨天花了 / 够用约 N 天 underneath, red when running low), an update line, one shower button, the 洗衣 row and 最近. The hero sentence and the bottom dock are gone.
-- Read the balance and electricity without waiting for the card records; the records get 6 seconds and arrive in a second write.
-- Reorganize the repository by feature: `App/` (Application, Interface, Services, Resources), `Shared/`, `Widget/`, one `Packages/Core` package, `Android/`, `Configuration/`, `Scripts/`. The Xcode project is committed (`XiaoRiChang.xcworkspace`), and routine commands run through `mise`.
-- Name the hot-water feature "Shower" throughout the code. User-facing text is unchanged.
-- Fold the release notes from `docs/release-*.md` into this file.
 
 ## [0.8.0] - 2026-10-29
 

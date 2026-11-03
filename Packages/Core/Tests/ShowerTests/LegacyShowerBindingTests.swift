@@ -12,8 +12,6 @@ final class CountingSecureStore: SecureStore, @unchecked Sendable {
         lock.withLock { counts[key, default: 0] += 1 }
     }
     func delete(_ key: StoreKey) throws { try inner.delete(key) }
-    func create(_ data: Data, for key: StoreKey) throws -> Bool { try inner.create(data, for: key) }
-    func replace(_ data: Data, for key: StoreKey) throws -> Bool { try inner.replace(data, for: key) }
     func writes(_ key: StoreKey) -> Int { lock.withLock { counts[key, default: 0] } }
 }
 

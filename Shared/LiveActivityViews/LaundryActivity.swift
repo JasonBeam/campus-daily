@@ -13,8 +13,6 @@ struct LaundryActivityAttributes: ActivityAttributes {
         var startedAt: Date
         /// Expected end, from the order's remaining time at the last read.
         var endsAt: Date
-        /// Whole minutes left at the last read; updated by the app on each order re-read / foreground.
-        var minutesLeft: Int
     }
     /// U净 order id, to match later reads to this activity.
     var orderId: String

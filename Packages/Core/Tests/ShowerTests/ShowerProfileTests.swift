@@ -31,30 +31,26 @@ final class ShowerProfileTests: XCTestCase {
             }
         }
         XCTAssertThrowsError(try ShowerConfigFile.parse(Data(count: ShowerConfigFile.maxBytes + 1), source: src))
-        XCTAssertEqual(try ShowerProfileResolver.decodeProfile(Data(valid.utf8), source: .bundled).typeId, "1", "typeID key accepted")
+        XCTAssertFalse("\(p)".contains("fixture-secret"), "the secret is never printed")
     }
 
-    func testLoaderResolvesBothSources() async throws {
-        let validData = Data(valid.utf8)
-        let loader = ShowerProfileLoader(bundled: { validData }, imported: { $0 == "mine.waterconfig" ? validData : nil })
-        guard case .local(let p, .bundled) = try await loader.resolve(.bundled) else { return XCTFail() }
-        XCTAssertEqual(p.bleName, "fixture-ble")
-        guard case .local(_, .imported) = try await loader.resolve(.imported(fileName: "mine.waterconfig")) else { return XCTFail() }
-        let missing = ShowerProfileSource.imported(fileName: "other")
-        await assertProfileError(.missing(missing)) { _ = try await loader.resolve(missing) }
+    /// The imported file when it reads as a profile, else the bundled one; nil when neither does.
+    func testTheImportedProfileComesFirstThenTheBundledOne() throws {
+        let bundled = try ShowerConfigFile.parse(Data(valid.utf8), source: .bundled)
+        let mine = #"{"secret":"fixture-mine","sid":"fixture-sid=2","bleName":"fixture-ble","typeID":1,"version":4}"#
         struct Boom: Error {}
-        let broken = ShowerProfileLoader(bundled: { throw Boom() }, imported: { _ in nil })
-        await assertProfileError(.unreadable(.bundled)) { _ = try await broken.resolve(.bundled) }
-
-        let empty = ShowerProfileLoader(bundled: { nil }, imported: { _ in validData })
-        let first = await ShowerProfileResolver.firstUsable([.bundled, .imported(fileName: "x")], provider: empty)
-        guard case .success(.local(_, .imported)) = first else { return XCTFail("\(first)") }
-    }
-
-    func assertProfileError(_ expected: ShowerProfileError, file: StaticString = #filePath, line: UInt = #line,
-                            _ body: () async throws -> Void) async {
-        do { try await body(); XCTFail("expected \(expected)", file: file, line: line) }
-        catch { XCTAssertEqual(error as? ShowerProfileError, expected, file: file, line: line) }
+        XCTAssertEqual(ShowerProfileLoader.localProfile(imported: { Data(mine.utf8) }, bundled: { Data(self.valid.utf8) })?.version, "4")
+        XCTAssertEqual(ShowerProfileLoader.localProfile(imported: { nil }, bundled: { Data(self.valid.utf8) }), bundled)
+        XCTAssertEqual(ShowerProfileLoader.localProfile(imported: { throw Boom() }, bundled: { Data(self.valid.utf8) }), bundled,
+                       "an unreadable import falls back")
+        XCTAssertEqual(ShowerProfileLoader.localProfile(imported: { Data("not json".utf8) }, bundled: { Data(self.valid.utf8) }), bundled,
+                       "an import that is not a profile falls back")
+        let blank = #"{"secret":" ","sid":"x","bleName":"b","typeID":1,"version":3}"#
+        XCTAssertEqual(ShowerProfileLoader.localProfile(imported: { Data(blank.utf8) }, bundled: { Data(self.valid.utf8) }), bundled,
+                       "an incomplete import falls back")
+        XCTAssertNil(ShowerProfileLoader.localProfile(imported: { nil }, bundled: { nil }))
+        XCTAssertNil(ShowerProfileLoader.localProfile(imported: { nil }, bundled: { throw Boom() }))
+        XCTAssertNil(ShowerProfileLoader.localProfile(imported: { nil }, bundled: { Data(blank.utf8) }))
     }
 
     func testVaultRoundTripAndFailClosedWrites() throws {

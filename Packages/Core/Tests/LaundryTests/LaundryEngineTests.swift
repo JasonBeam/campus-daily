@@ -49,14 +49,6 @@ final class FakeLauncher: PaymentLauncher, @unchecked Sendable {
     func open(_ launch: PayLaunch) async -> Bool { lock.withLock { _opened.append(launch); return result } }
 }
 
-final class RecordingHooks: LaundryHooks, @unchecked Sendable {
-    private let lock = NSLock()
-    private var _events: [String] = []
-    var events: [String] { lock.withLock { _events } }
-    func updateActivity(_ plan: LaundryActivityPlan) async { lock.withLock { _events.append("update:\(plan.endsAt != nil)") } }
-    func endActivity() async { lock.withLock { _events.append("end") } }
-    func diagnostic(_ event: String) async { lock.withLock { _events.append(event) } }
-}
 
 /// Vault whose checkout writes fail when `failWhen` matches.
 final class FlakyLaundryVault: LaundryVault, @unchecked Sendable {
@@ -84,7 +76,6 @@ final class LaundryEngineTests: XCTestCase {
     var vault: StoredLaundryVault!
     var api: FakeLaundryAPI!
     var launcher: FakeLauncher!
-    var hooks: RecordingHooks!
     var sleeps: Sleeps!
 
     override func setUp() {
@@ -92,14 +83,13 @@ final class LaundryEngineTests: XCTestCase {
         vault = StoredLaundryVault(store: store)
         api = FakeLaundryAPI()
         launcher = FakeLauncher()
-        hooks = RecordingHooks()
         sleeps = Sleeps()
     }
 
     func engine(vault v: LaundryVault? = nil, at offset: TimeInterval = 10) throws -> LaundryEngine {
         let sleeps = self.sleeps!
         let t = L.t0.addingTimeInterval(offset)
-        return try LaundryEngine(api: api, vault: v ?? vault, launcher: launcher, hooks: hooks,
+        return try LaundryEngine(api: api, vault: v ?? vault, launcher: launcher,
                                  now: { t }, sleep: { sleeps.record($0) })
     }
 
@@ -126,7 +116,7 @@ final class LaundryEngineTests: XCTestCase {
         let t = L.t0.addingTimeInterval(10)
         try marker.begin(at: t)
         let sleeps = self.sleeps!
-        let e = try LaundryEngine(api: api, vault: vault, launcher: launcher, hooks: hooks, resetMarker: marker,
+        let e = try LaundryEngine(api: api, vault: vault, launcher: launcher, resetMarker: marker,
                                   now: { t }, sleep: { sleeps.record($0) })
         do { _ = try await e.confirmOrder(L.snapshot(), program: L.standard); XCTFail("expected the refusal") }
         catch { XCTAssertEqual(error as? AppReset.InProgress, AppReset.InProgress()) }
@@ -156,7 +146,7 @@ final class LaundryEngineTests: XCTestCase {
         api.orders = [.ok(L.order("10"))]
         let sleeps = self.sleeps!
         let t = L.t0.addingTimeInterval(10)
-        let e = try LaundryEngine(api: api, vault: vault, launcher: launcher, hooks: hooks, accountID: "acct-1",
+        let e = try LaundryEngine(api: api, vault: vault, launcher: launcher, accountID: "acct-1",
                                   now: { t }, sleep: { sleeps.record($0) })
         _ = try await e.confirmOrder(L.snapshot(at: L.t0.addingTimeInterval(5)), program: L.standard)
         XCTAssertEqual(try vault.checkout()?.accountID, "acct-1")
@@ -223,14 +213,12 @@ final class LaundryEngineTests: XCTestCase {
         XCTAssertEqual(sleeps.delays, [2, 4])
         s = try await e.refresh()
         XCTAssertEqual(s.phase, .active)
-        XCTAssertEqual(hooks.events, ["update:true"])
         XCTAssertEqual(api.count("arguments"), 1)
 
         api.orders = [.ok(L.order("50"))]
         s = try await e.refresh()
         XCTAssertEqual(s.phase, .none)
         XCTAssertEqual(s.lastOutcome?.status.code, "50")
-        XCTAssertEqual(hooks.events.last, "end")
         XCTAssertEqual(try vault.checkout()?.lastOutcome?.status.code, "50")
     }
 
@@ -243,7 +231,6 @@ final class LaundryEngineTests: XCTestCase {
         XCTAssertEqual(s.phase, .created)
         XCTAssertEqual(s.notice, .launchRefused(.amountMismatch))
         XCTAssertTrue(launcher.opened.isEmpty)
-        XCTAssertEqual(hooks.events, ["pay.launchRefused.amountMismatch"])
         do { _ = try await e.pay(); XCTFail() } catch { XCTAssertEqual(error as? LaundryEngineError, .notAllowed) }
         XCTAssertEqual(api.count("arguments"), 1)
     }

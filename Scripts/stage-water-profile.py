@@ -19,12 +19,14 @@ import hashlib
 import io
 import json
 import os
+import unicodedata
 import urllib.request
 import zipfile
 from pathlib import Path
 
 
 def validate_profile(raw: bytes) -> dict:
+    # Text fields: as the app's parser (ShowerConfigFile), no control or format characters (Cc, Cf).
     if len(raw) > 8192:
         raise ValueError('Platform profile exceeds 8192 bytes')
     value = json.loads(raw)
@@ -32,7 +34,7 @@ def validate_profile(raw: bytes) -> dict:
         raise ValueError('Use only platform fields; account, dorm and device fields are forbidden')
     for name, maximum in [('secret', 256), ('sid', 128), ('bleName', 64)]:
         text = value[name]
-        if not isinstance(text, str) or not text.strip() or len(text.encode()) > maximum or any(ord(c) < 32 or 127 <= ord(c) <= 159 for c in text):
+        if not isinstance(text, str) or not text.strip() or len(text.encode()) > maximum or any(unicodedata.category(c) in ('Cc', 'Cf') for c in text):
             raise ValueError('Invalid platform text field')
     for name, minimum in [('typeID', 0), ('version', 1)]:
         if type(value[name]) is not int or not minimum <= value[name] <= 2147483647:

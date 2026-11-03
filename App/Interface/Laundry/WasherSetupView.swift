@@ -61,7 +61,7 @@ struct WasherSetupView: View {
                 }
             }
             if let text = issue ?? laundry.issue { Section { Text(text).font(.footnote).foregroundStyle(.orange) } }
-        }.scrollContentBackground(.hidden).background(NothingTheme.background).tint(NativeTheme.tint)
+        }.scrollContentBackground(.hidden).background(NativeTheme.background).tint(NativeTheme.tint)
             .navigationTitle("常用洗衣机").navigationBarTitleDisplayMode(.inline)
             .sheet(isPresented:$login) { UjingLoginView() }
             .sheet(isPresented:$camera) {

@@ -101,7 +101,7 @@ final class LoginLostLeaseTests: XCTestCase {
             guard r.url.path.hasSuffix("/getSysBindCustInfo") else { return }
             Self.widgetTakesOver(harness)
         }
-        let state = try XCTUnwrap(try FixtureLoader.loadRaw("ecykt/localStorage-elecampus_state-csaLogin")["value"]).encoded()
+        let state = try FixtureLoader.csaLoginState().encoded()
         let session = h.session()
         await expectBusy("web sign-in") {
             _ = try await self.app(h, session).holdingLease { owning in

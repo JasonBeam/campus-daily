@@ -9,15 +9,9 @@ enum LaundryActivityStyle {
     static let background = Color(white:0.07).opacity(0.82)
     static let glyph = "washer.fill"
     static func rounded(_ size: CGFloat) -> Font { .system(size:size, weight:.semibold, design:.rounded) }
-    static func clock(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier:"en_US_POSIX"); formatter.dateFormat = "HH:mm"
-        return formatter.string(from:date)
-    }
 }
 
 extension LaundryActivityAttributes.ContentState {
-    var minutes: Int { max(0, minutesLeft) }
     var interval: ClosedRange<Date> { min(startedAt, endsAt)...endsAt }
     /// Done rendering: the app said so, the system marked the content stale (staleDate = end),
     /// or the end has passed without an update.
@@ -71,7 +65,7 @@ struct LaundryActivityLockView: View {
                 Text(attributes.machine).font(.system(size:13)).foregroundStyle(.white.opacity(0.55)).padding(.top,2)
             } else {
                 LaundryActivityCountdown(end:state.endsAt).padding(.top,6)
-                Text(LaundryActivityStyle.clock(state.endsAt) + " 洗完")
+                Text(CampusFormat.clock(state.endsAt) + " 洗完")
                     .font(.system(size:13)).foregroundStyle(.white.opacity(0.55))
                 LaundryActivityProgress(state:state).padding(.top,12)
             }
@@ -111,7 +105,7 @@ struct LaundryIslandBottom: View {
                 Text("去拿衣服吧").font(.system(size:26, weight:.bold)).foregroundStyle(.white)
             } else {
                 LaundryActivityCountdown(end:state.endsAt, size:36)
-                Text(LaundryActivityStyle.clock(state.endsAt) + " 洗完")
+                Text(CampusFormat.clock(state.endsAt) + " 洗完")
                     .font(.system(size:13)).foregroundStyle(.white.opacity(0.55))
                 LaundryActivityProgress(state:state).padding(.top,8)
             }

@@ -2,6 +2,7 @@ import SwiftUI
 import WidgetKit
 import ActivityKit
 import AppIntents
+import Core
 
 private enum ShowerStyle {
     static let accent = Color(red:1, green:138 / 255, blue:69 / 255) // #FF8A45
@@ -38,7 +39,7 @@ private struct ShowerUnconfirmedLine: View {
     var body: some View {
         HStack(spacing:4) {
             Image(systemName:"exclamationmark.circle").font(.system(size:13)).accessibilityHidden(true)
-            Text(ShowerCopy.writeUnconfirmed).font(.footnote)
+            Text(ShowerDisplay.writeUnconfirmedHint).font(.footnote)
         }
         .foregroundStyle(.white.opacity(0.55)).lineLimit(1).minimumScaleFactor(0.8)
         .transition(.opacity)

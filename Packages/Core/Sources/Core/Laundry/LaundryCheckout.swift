@@ -89,17 +89,6 @@ public enum LaundryNotice: Sendable, Codable, Equatable {
     case cancelNotAllowed
 }
 
-/// Live Activity / done-notification plan for a washing order (status 40).
-public struct LaundryActivityPlan: Sendable, Equatable, Codable {
-    public var orderID: String
-    public var machineName: String
-    public var programName: String
-    public var endsAt: Date?
-    public init(orderID: String, machineName: String, programName: String, endsAt: Date?) {
-        self.orderID = orderID; self.machineName = machineName; self.programName = programName; self.endsAt = endsAt
-    }
-}
-
 /// Keychain `laundry.checkout` (one record at a time).
 public struct LaundryCheckout: Sendable, Equatable, Codable {
     public var phase: LaundryPhase
@@ -259,9 +248,6 @@ public enum LaundryEffect: Sendable, Equatable {
     /// Open Alipay (checked launch) → `.launched`.
     case launch(PayLaunch)
     case cancelOrder(id: String)
-    case updateActivity(LaundryActivityPlan)
-    case endActivity
-    case diagnostic(String)
 }
 
 public enum LaundryReducer {
@@ -291,7 +277,7 @@ public enum LaundryReducer {
         case (.creating, .created(let id)):
             guard UjingInput.isOrderID(id) else {
                 s.phase = .reconcile
-                return (s, [.diagnostic("create.badOrderId")] + findActive(s))
+                return (s, findActive(s))
             }
             s.phase = .created
             s.orderID = id
@@ -338,7 +324,7 @@ public enum LaundryReducer {
             return apply(order, at: at, to: s)
 
         case (.reconcile, .resolveManually) where state.canResolveManually:
-            return (state.cleared(outcome: nil), [.diagnostic("laundry.resolvedManually")])
+            return (state.cleared(outcome: nil), [])
 
         // MARK: reads in order phases
         case (.created, .orderRead(let order, let at)), (.active, .orderRead(let order, let at)),
@@ -385,7 +371,7 @@ public enum LaundryReducer {
 
         case (.created, .confirmRepay(let at)) where state.repayArmed && state.canRepay(at: at):
             guard let id = state.orderID else { return (state, []) }
-            return (s, [.diagnostic("pay.repay"), .loadPaymentMethods(orderID: id)])
+            return (s, [.loadPaymentMethods(orderID: id)])
 
         case (.created, .paymentMethods(let channels, let at)) where state.canPay || (state.repayArmed && state.canRepay(at: at)):
             guard let id = state.orderID else { return (state, []) }
@@ -412,7 +398,7 @@ public enum LaundryReducer {
                 let refusal = (error as? PaymentLaunchRefusal) ?? .unavailable
                 s.phase = .created
                 s.notice = .launchRefused(refusal)
-                return (s, [.diagnostic("pay.launchRefused.\(refusal.rawValue)")])
+                return (s, [])
             }
 
         case (.paying, .paymentFailed(let e)):
@@ -571,9 +557,9 @@ public enum LaundryReducer {
             if order.status.isFailedStart {
                 s.phase = .attention
                 s.cancelSent = false
-                return (s, [.endActivity])
+                return (s, [])
             }
-            return (s.cleared(outcome: LaundryOutcome(orderID: id, status: order.status, at: at)), [.endActivity])
+            return (s.cleared(outcome: LaundryOutcome(orderID: id, status: order.status, at: at)), [])
         }
 
         if !order.isUnpaid {
@@ -585,10 +571,7 @@ public enum LaundryReducer {
             if s.paidAt == nil { s.paidAt = at }
             if order.status.isWashing, let left = order.remainSeconds, left > 0 { s.waitingSince = nil }
             else if s.waitingSince == nil { s.waitingSince = at }
-            guard order.status.isWashing, let d = s.draft else { return (s, []) }
-            let ends = order.remainSeconds.flatMap { $0 > 0 ? at.addingTimeInterval(TimeInterval($0)) : nil }
-            return (s, [.updateActivity(LaundryActivityPlan(orderID: id, machineName: d.machineName,
-                                                            programName: d.program.name, endsAt: ends))])
+            return (s, [])
         }
 
         // Unpaid (10/17).

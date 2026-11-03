@@ -34,7 +34,7 @@ public enum ShowerActionOutcome: Sendable, Equatable {
             switch result.phase {
             case .running: return .success(.started)
             case .writePending: return .success(.startUnconfirmed)
-            default: return .failure(ShowerActionFailure(notice ?? ShowerDisplay(result).title))
+            default: return .failure(ShowerActionFailure(notice ?? ShowerDisplay.title(result)))
             }
         }
         if result.phase == .done { return .success(.settled) }

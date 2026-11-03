@@ -205,7 +205,7 @@ public struct UjingClient: LaundryOrdering {
             guard let value = price, value.fen >= 0 else { throw ServiceError.malformed(.ujing, "data.payPrice") }
         }
         return LaundryOrder(id: id, deviceID: device, status: LaundryOrderStatus(status), paid: paid,
-                            statusRemark: d["statusRemark"]?.text, remainSeconds: d["remainTime"]?.intValue,
+                            remainSeconds: d["remainTime"]?.intValue,
                             programID: d["deviceWashModelId"]?.intValue, createdAt: d["createAt"]?.text, price: price,
                             countDown: d["countDown"]?.intValue)
     }

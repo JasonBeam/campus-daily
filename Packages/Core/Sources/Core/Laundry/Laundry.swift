@@ -152,8 +152,6 @@ public struct LaundryOrderStatus: Sendable, Equatable, Hashable, Codable, Custom
     public var isAwaitingPayment: Bool { code == "10" || code == "17" }
     /// 50 done, 51 payment timed out, 52 machine didn't start, 53 cancelled.
     public var isTerminal: Bool { ["50", "51", "52", "53"].contains(code) }
-    /// Starting / washing (existing app's list).
-    public var isRunning: Bool { ["21", "22", "24", "29", "30", "35", "40"].contains(code) }
     public var isWashing: Bool { code == "40" }
     public var isDone: Bool { code == "50" }
     public var isFailedStart: Bool { code == "52" }
@@ -181,7 +179,6 @@ public struct LaundryOrder: Sendable, Equatable, Codable {
     public var status: LaundryOrderStatus
     /// `payFlag` 1 = paid, 0 = unpaid, nil = not sent.
     public var paid: Bool?
-    public var statusRemark: String?
     /// Seconds left while washing.
     public var remainSeconds: Int?
     public var programID: Int?
@@ -192,9 +189,9 @@ public struct LaundryOrder: Sendable, Equatable, Codable {
     /// Seconds until an unpaid reservation is cancelled by U净 (`countDown`).
     public var countDown: Int?
 
-    public init(id: String, deviceID: String, status: LaundryOrderStatus, paid: Bool? = nil, statusRemark: String? = nil,
+    public init(id: String, deviceID: String, status: LaundryOrderStatus, paid: Bool? = nil,
                 remainSeconds: Int? = nil, programID: Int? = nil, createdAt: String? = nil, price: Money? = nil, countDown: Int? = nil) {
-        self.id = id; self.deviceID = deviceID; self.status = status; self.paid = paid; self.statusRemark = statusRemark
+        self.id = id; self.deviceID = deviceID; self.status = status; self.paid = paid
         self.remainSeconds = remainSeconds; self.programID = programID; self.createdAt = createdAt; self.price = price
         self.countDown = countDown
     }

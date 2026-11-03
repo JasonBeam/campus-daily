@@ -7,37 +7,13 @@ struct OnboardingView: View {
     /// Steps with a page dot (好了 has none).
     static let dotted = 4
 
-    /// DEBUG demo values; when set, no real login or picker is opened.
-    struct Preview {
-        var dorm: String?
-        /// The dorm's full directory location under the room (nil: the line is left out).
-        var dormLocation: String?
-        var laundryConnected = false
-        /// Same-name meter locations for the dorm step's picker.
-        var powerChoices: [LocationChoice] = []
-        /// The same-name row already picked (design `ob-dorm-picked`).
-        var picked: String?
-        /// Login step: what the form starts with.
-        var account = ""
-        var password = ""
-        var savePassword = false
-        /// Login step: the account saved on this phone (prefilled; 保存密码 follows it).
-        var saved: SchoolAccount?
-        var loginState = SchoolLoginState.idle
-        /// Controller step: checking, or what the check found.
-        var waterChecking = false
-        var waterOutcome: ShowerModel.InspectionOutcome?
-        /// Controller step: why the check can't run now.
-        var waterBlocked: String?
-        /// Dorm step: what the meter lookup shows under the dorm (nil: nothing).
-        var meter: DormStepMeter?
-        /// Dorm step: the question's row already picked.
-        var meterPicked: String?
-    }
-
+    #if DEBUG
+    /// DEBUG demo values (`App/Demo`); when set, no real login or picker is opened.
     var preview: Preview?
+    #endif
     var close: () -> Void
 
+    #if DEBUG
     init(start: Step = .login, preview: Preview? = nil, close: @escaping () -> Void) {
         self.preview = preview; self.close = close
         _step = State(initialValue:start)
@@ -51,6 +27,19 @@ struct OnboardingView: View {
         _meterPick = State(initialValue:preview?.meterPicked)
         _waterChecked = State(initialValue:preview?.waterOutcome != nil)
     }
+    #else
+    init(start: Step = .login, close: @escaping () -> Void) {
+        self.close = close
+        _step = State(initialValue:start)
+        _account = State(initialValue:"")
+        _password = State(initialValue:"")
+        _savePassword = State(initialValue:false)
+        _loginState = State(initialValue:.idle)
+        _apartment = State(initialValue:nil)
+        _meterPick = State(initialValue:nil)
+        _waterChecked = State(initialValue:false)
+    }
+    #endif
 
     @EnvironmentObject private var campus: CampusModel
     @EnvironmentObject private var laundry: LaundryModel
@@ -95,16 +84,38 @@ struct OnboardingView: View {
         !account.trimmingCharacters(in:.whitespaces).isEmpty && !password.isEmpty
     }
 
+    // What the steps show: the DEBUG demo's values when previewing, the models' otherwise.
+    // Release has no demo: `previewing` is false and every value is the model's.
+    #if DEBUG
+    private var previewing: Bool { preview != nil }
     /// The account saved on this phone (the demo's own when previewing).
-    private var savedAccount: SchoolAccount? { preview != nil ? preview?.saved : campus.account }
+    private var savedAccount: SchoolAccount? { previewing ? preview?.saved : campus.account }
+    private var dorm: String? { previewing ? preview?.dorm : Theme.dorm(campus.room) }
+    private var dormLocation: String? { previewing ? preview?.dormLocation : campus.profile?.directoryDormLocation }
+    private var laundryConnected: Bool { preview?.laundryConnected ?? laundry.accountConnected }
+    private var waterChecking: Bool { preview?.waterChecking ?? water.inspecting }
+    /// A shower is open or waits for its check: no check now, the step can be skipped.
+    private var waterBlocked: String? { previewing ? preview?.waterBlocked : water.inspectionBlockedText }
+    private var lastInspection: ShowerModel.InspectionOutcome? { previewing ? preview?.waterOutcome : water.inspectionOutcome }
+    /// The demo's meter line under the dorm (nil: the lookup's).
+    private var previewMeter: DormStepMeter? { preview.map { $0.meter ?? .hidden } }
+    /// The demo's same-name apartments (nil: the lookup's).
+    private var previewChoices: [LocationChoice]? { preview?.powerChoices }
+    #else
+    private var previewing: Bool { false }
+    private var savedAccount: SchoolAccount? { campus.account }
+    private var dorm: String? { Theme.dorm(campus.room) }
+    private var dormLocation: String? { campus.profile?.directoryDormLocation }
+    private var laundryConnected: Bool { laundry.accountConnected }
+    private var waterChecking: Bool { water.inspecting }
+    private var waterBlocked: String? { water.inspectionBlockedText }
+    private var lastInspection: ShowerModel.InspectionOutcome? { water.inspectionOutcome }
+    private var previewMeter: DormStepMeter? { nil }
+    private var previewChoices: [LocationChoice]? { nil }
+    #endif
 
-    private var dorm: String? { preview != nil ? preview?.dorm : Theme.dorm(campus.room) }
-    private var dormLocation: String? {
-        preview != nil ? preview?.dormLocation : campus.profile?.directoryDormLocation
-    }
     /// Footnote under the dorm: where it came from.
     static let dormSource = "学校账号里登记的"
-    private var laundryConnected: Bool { preview?.laundryConnected ?? laundry.accountConnected }
 
     var body: some View {
         NavigationStack {
@@ -146,7 +157,7 @@ struct OnboardingView: View {
         .onAppear {
             // The saved account is filled in, and its saved password stays saved on a new
             // sign-in unless the box is unticked.
-            guard preview == nil else { return }
+            guard !previewing else { return }
             campus.reloadAccount()
             if account.isEmpty { account = campus.account?.account ?? "" }
             savePassword = SchoolAccount.savesPasswordByDefault(campus.account, typed:account)
@@ -156,7 +167,7 @@ struct OnboardingView: View {
             savePassword = SchoolAccount.savePassword(savePassword, afterEditFrom:old, to:new, saved:savedAccount)
         }
         .onChange(of:laundry.savedMachines.count) { old, new in
-            if preview == nil, step == .washer, new > old { advance() }
+            if !previewing, step == .washer, new > old { advance() }
         }
     }
 
@@ -204,9 +215,9 @@ struct OnboardingView: View {
                                 state:loginState, focus:$loginFocus, submit:submitLogin)
                     .padding(.top,keyboardUp ? 20 : 28)
             }
-            if step == .dorm, preview == nil, !campus.powerChoices.isEmpty {
+            if step == .dorm, !previewing, !campus.powerChoices.isEmpty {
                 powerApartment.padding(.top,30)
-            } else if step == .dorm, let choices = preview?.powerChoices, !choices.isEmpty {
+            } else if step == .dorm, let choices = previewChoices, !choices.isEmpty {
                 previewApartment(choices).padding(.top,30)
             }
             if let issue {
@@ -262,12 +273,9 @@ struct OnboardingView: View {
 
     // MARK: Controller check
 
-    private var waterChecking: Bool { preview?.waterChecking ?? water.inspecting }
-    /// A shower is open or waits for its check: no check now, the step can be skipped.
-    private var waterBlocked: String? { preview != nil ? preview?.waterBlocked : water.inspectionBlockedText }
     private var waterOutcome: ShowerModel.InspectionOutcome? {
         guard waterChecked, !waterChecking, waterBlocked == nil else { return nil }
-        return preview != nil ? preview?.waterOutcome : water.inspectionOutcome
+        return lastInspection
     }
 
     /// 28 pt under the body: nothing before the first check, a spinner while it runs, then
@@ -333,14 +341,14 @@ struct OnboardingView: View {
     /// What the meter lookup shows under the dorm: still looking, the apartment question (kept
     /// after a pick), or the school too slow. Nothing for a match or a plain stop.
     private var meterLine: DormStepMeter {
-        if let preview { return preview.meter ?? .hidden }
+        if let previewMeter { return previewMeter }
         let now = campus.dormStepMeter
         if now == .hidden, campus.powerConfigured, meterPick != nil, let meterAsked { return .ask(meterAsked) }
         return now
     }
 
     private func keepQuestion(_ now: DormStepMeter) {
-        guard preview == nil, case .ask(let question) = now else { return }
+        guard !previewing, case .ask(let question) = now else { return }
         if question != meterAsked { meterPick = nil }
         meterAsked = question
         meterAskedStamp = campus.powerQuestionStamp
@@ -364,7 +372,7 @@ struct OnboardingView: View {
                                    selection:Binding(get:{ meterPick }, set:{ id in pickMeter(id, in:question) }), compact:true)
                     .padding(.top,10)
                     .sensoryFeedback(.selection, trigger:meterPick)
-                if preview == nil, let issue = campus.powerMatchIssue, issue != MeterPageText.stoppedIssue {
+                if !previewing, let issue = campus.powerMatchIssue, issue != MeterPageText.stoppedIssue {
                     Text(MeterPageText.issue(issue)).scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
                         .fixedSize(horizontal:false, vertical:true).padding(.top,8)
                 }
@@ -374,7 +382,7 @@ struct OnboardingView: View {
             VStack(alignment:.leading, spacing:0) {
                 Text(text).scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.ink2)
                     .fixedSize(horizontal:false, vertical:true)
-                Button(DormStepMeter.retry) { if preview == nil { campus.matchPowerAutomatically() } }
+                Button(DormStepMeter.retry) { if !previewing { campus.matchPowerAutomatically() } }
                     .scaledFont(15, .semibold, relativeTo:.subheadline).foregroundStyle(Theme.accentText)
                     // 44 pt to tap; the text sits 8 pt under the line above and the note 6 pt under it.
                     .frame(minHeight:44)
@@ -398,21 +406,21 @@ struct OnboardingView: View {
         guard let candidate = row.candidate else { return }
         let before = meterPick
         meterPick = id
-        guard preview == nil else { return }
+        guard !previewing else { return }
         let stamp = meterAskedStamp
         Task {
             if !(await campus.choosePower(PowerChoice(candidate:candidate, stamp:stamp))), meterPick == id { meterPick = before }
         }
     }
 
-    private var apartmentChoices: [LocationChoice] { preview?.powerChoices ?? campus.powerChoices.map(\.choice) }
+    private var apartmentChoices: [LocationChoice] { previewChoices ?? campus.powerChoices.map(\.choice) }
 
     private var waitingForApartment: Bool { choosingApartment && apartment == nil }
 
     /// The dorm step lists same-name apartments; 「就是这间」 waits for a choice.
     private var choosingApartment: Bool {
         guard step == .dorm else { return false }
-        if let choices = preview?.powerChoices { return !choices.isEmpty }
+        if let choices = previewChoices { return !choices.isEmpty }
         return !campus.powerChoices.isEmpty
     }
 
@@ -534,7 +542,7 @@ struct OnboardingView: View {
         case .dorm:
             if choosingApartment {
                 guard let apartment else { return }
-                if preview != nil { bindWaterThenAdvance(); return }
+                if previewing { bindWaterThenAdvance(); return }
                 // Only on once the meter is saved: a pick that is gone from the list, or a save
                 // that failed (said on this page), stays here.
                 guard let candidate = campus.powerChoices.first(where:{ $0.id == apartment }) else { self.apartment = nil; return }
@@ -542,12 +550,12 @@ struct OnboardingView: View {
             } else if dorm != nil { bindWaterThenAdvance() } else { openDormPicker() }
         case .washer:
             // 用，接着设置: the U净 login / scan flow as before.
-            if preview != nil { advance(); return }
+            if previewing { advance(); return }
             laundry.setSchoolEnabled(true)
             if laundryConnected { washer = true }
             else { ujing = true }
         case .water:
-            if waterOutcome == .verified || waterBlocked != nil || preview != nil { advance(); return }
+            if waterOutcome == .verified || waterBlocked != nil || previewing { advance(); return }
             waterChecked = true
             Task { await water.inspectBluetooth() }
         case .done: close()
@@ -557,7 +565,7 @@ struct OnboardingView: View {
     /// The dorm is confirmed: bind its hot-water controller too (one room, one controller), or open
     /// the dorm screen once when that needs a choice. Never blocks the guide.
     private func bindWaterThenAdvance() {
-        guard preview == nil, !bindTried, !water.configured else { advance(); return }
+        guard !previewing, !bindTried, !water.configured else { advance(); return }
         guard !bindingWater else { return }
         bindingWater = true
         Task {
@@ -572,7 +580,7 @@ struct OnboardingView: View {
 
     /// 不用: laundry hidden everywhere (changeable in 设置); on to the dorm.
     private func skipLaundry() {
-        if preview == nil { laundry.setSchoolEnabled(false) }
+        if !previewing { laundry.setSchoolEnabled(false) }
         advance()
     }
 
@@ -581,45 +589,35 @@ struct OnboardingView: View {
     /// way → the primary button becomes the web login.
     private func submitLogin() {
         guard step == .login, loginReady, loginState != .loading else { return }
-        if preview != nil { advance(); return }
+        if previewing { advance(); return }
         loginFocus = nil
         loginState = .loading
-        let name = account.trimmingCharacters(in:.whitespaces), secret = password, save = savePassword
+        let name = account, secret = password, save = savePassword
         Task {
-            do {
-                try await campus.signIn(account:name, password:secret, savePassword:save)
-                password = ""
-                await campus.refresh(force:true)
-                loginState = .idle
-                if step == .login { advance() }
-            } catch SchoolLoginFailure.wrongCredentials {
-                password = ""
-                loginState = .wrong
-                loginFocus = .password
-            } catch SchoolLoginFailure.cannotLoginDirectly {
-                loginState = .cannotDirect
-            } catch {
-                loginState = .failed(SchoolLoginText.text(error))
-            }
+            let next = await campus.submitLogin(account:name, password:secret, savePassword:save)
+            if next == .idle || next == .wrong { password = "" }
+            loginState = next
+            if next == .wrong { loginFocus = .password }
+            if next == .idle, step == .login { advance() }
         }
     }
 
     /// The school's own page (behind the loading cover); nothing to save on that path.
     private func openWebLogin() {
-        if preview != nil { advance(); return }
+        if previewing { advance(); return }
         loginFocus = nil
         login = true
     }
 
     private func openDormPicker() {
-        guard preview == nil else { return }
+        guard !previewing else { return }
         dormPicker = true
     }
 
     private func advance() {
         guard var next = Step(rawValue:step.rawValue + 1) else { close(); return }
         // No controller bound (no water platform, or left for Settings): nothing to check.
-        if next == .water, preview == nil, !water.configured { next = .done }
+        if next == .water, !previewing, !water.configured { next = .done }
         issue = nil
         withAnimation(reduceMotion ? .easeInOut(duration:0.2) : Theme.spring) { step = next }
     }

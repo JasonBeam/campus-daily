@@ -70,8 +70,6 @@ final class RecordingHooks: ShowerHooks, @unchecked Sendable {
     private let lock = NSLock()
     private var _events: [String] = []
     var events: [String] { lock.withLock { _events } }
-    func scheduleUnsettledReminder(after seconds: TimeInterval) async { lock.withLock { _events.append("schedule:\(Int(seconds))") } }
-    func cancelUnsettledReminder() async { lock.withLock { _events.append("cancel") } }
     func diagnostic(_ event: String) async { lock.withLock { _events.append(event) } }
 }
 
@@ -108,7 +106,7 @@ final class ShowerEngineTests: XCTestCase {
 
     func engine(_ v: ShowerVault? = nil) throws -> ShowerEngine {
         try ShowerEngine(transport: transport, gateway: gateway, vault: v ?? vault,
-                         configuration: .init(bleName: "fixture-ble", reminderMinutes: 30), hooks: hooks,
+                         configuration: .init(bleName: "fixture-ble"), hooks: hooks,
                          now: { Date(timeIntervalSince1970: 1_800_000_000) })
     }
 
@@ -143,13 +141,13 @@ final class ShowerEngineTests: XCTestCase {
         let done = try await e.finish(binding)
         XCTAssertEqual(done.phase, .done)
         XCTAssertEqual(done.receipt, receipt)
-        let title = await e.display.title
+        let title = await ShowerDisplay.title(e.state)
         XCTAssertEqual(title, "本次 ¥1.63")
         XCTAssertEqual(transport.writes, [ShowerFrames.probeCommand, auth.payload, ShowerFrames.probeCommand, close])
         XCTAssertEqual(transport.connects.last, FakeShowerTransport.Connect(required: "PERIPHERAL-A", preferred: nil),
                        "finish talks to the session's controller only")
         XCTAssertEqual(gateway.settleFrames, [consumption])
-        XCTAssertEqual(hooks.events, ["schedule:1800", "cancel"])
+        XCTAssertEqual(hooks.events, [], "nothing to note on a plain start and finish")
         XCTAssertEqual(try vault.showerState()?.phase, .done)
 
         let idle = try await e.dismiss()
@@ -252,7 +250,7 @@ final class ShowerEngineTests: XCTestCase {
         let t = Date(timeIntervalSince1970: 1_800_000_000)
         try marker.begin(at: t)
         let e = try ShowerEngine(transport: transport, gateway: gateway, vault: vault,
-                                 configuration: .init(bleName: "fixture-ble", reminderMinutes: 30), hooks: hooks,
+                                 configuration: .init(bleName: "fixture-ble"), hooks: hooks,
                                  resetMarker: marker, now: { t })
         do { _ = try await e.start(binding); XCTFail("expected the refusal") }
         catch { XCTAssertEqual(error as? AppReset.InProgress, AppReset.InProgress()); XCTAssertEqual(error.localizedDescription, "正在重置") }
@@ -260,7 +258,7 @@ final class ShowerEngineTests: XCTestCase {
         XCTAssertNil(try vault.showerState(), "nothing recorded")
 
         let stale = try ShowerEngine(transport: transport, gateway: gateway, vault: vault,
-                                     configuration: .init(bleName: "fixture-ble", reminderMinutes: 30), hooks: hooks,
+                                     configuration: .init(bleName: "fixture-ble"), hooks: hooks,
                                      resetMarker: marker, now: { t.addingTimeInterval(ResetMarker.staleAfter + 1) })
         try await startRunning(stale)
     }
@@ -271,7 +269,7 @@ final class ShowerEngineTests: XCTestCase {
         gateway.scriptAuthorize(.fail(.badRequest(.lxt6)))
         let s = try await e.start(binding)
         XCTAssertEqual(s.failure?.reason, .authorizeRefused)
-        let title = await e.display.title
+        let title = await ShowerDisplay.title(e.state)
         XCTAssertEqual(title, "水没开成")
         XCTAssertEqual(try vault.showerState()?.phase, .idle)
         XCTAssertEqual(transport.writes, [ShowerFrames.probeCommand], "nothing written to the controller")
@@ -318,9 +316,7 @@ final class ShowerEngineTests: XCTestCase {
         let s = try await e.start(binding)
         XCTAssertEqual(s.phase, .writePending)
         XCTAssertEqual(s.notice, .device(.timedOut))
-        let d = await e.display
-        XCTAssertEqual(d.phase, .running)
-        XCTAssertTrue(d.writeUnconfirmed)
+        XCTAssertEqual(ShowerDisplay.title(s), "洗澡中", "shown as running")
 
         // The close is sent; without the acknowledgement the frame waits for the user.
         transport.script(.frame(FakeFrames.active), .frame(consumption))
@@ -544,7 +540,7 @@ final class ShowerEngineTests: XCTestCase {
         XCTAssertEqual(s.notice, .notActive)
         let resolved = try await e.resolveManually()
         XCTAssertEqual(resolved.phase, .idle)
-        XCTAssertTrue(hooks.events.contains("cancel"))
+        XCTAssertTrue(hooks.events.contains { $0.hasPrefix("resolvedManually.") })
     }
 
     /// A probe that never went out because the task was cancelled stops the search like any
