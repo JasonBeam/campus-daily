@@ -3,87 +3,141 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#f3f5f8">
-  <title>校日常 · 下载与安装</title>
+  <meta name="description" content="广东工商职业技术大学的非官方校园工具。电量、校园卡、热水、洗衣，打开就能看。">
+  <meta name="theme-color" content="#F5F5F4" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0E0E0E" media="(prefers-color-scheme: dark)">
+  <title>校日常 · 下载</title>
+  <link rel="icon" href="site/favicon.png" type="image/png">
   <style>
-    :root { color-scheme: light dark; --bg:#f3f5f8; --card:#fff; --ink:#17202d; --muted:#667184; --line:#e2e7ee; --blue:#2767d8; --soft:#edf3ff; --amber:#8c5b00; --amber-bg:#fff4da; }
-    @media (prefers-color-scheme: dark) { :root { --bg:#11151b; --card:#1a2029; --ink:#eef2f7; --muted:#a0aaba; --line:#303a48; --blue:#8ab4ff; --soft:#202d43; --amber:#ffd178; --amber-bg:#382b15; } }
-    * { box-sizing:border-box; }
-    body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.55 -apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Microsoft YaHei",sans-serif; }
-    main { width:min(100% - 32px, 760px); margin:0 auto; padding: max(clamp(28px,7vw,64px),env(safe-area-inset-top)) 0 max(40px,env(safe-area-inset-bottom)); }
-    .eyebrow { color:var(--muted); font:600 12px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace; letter-spacing:.11em; text-transform:uppercase; }
-    h1 { margin:10px 0 8px; font-size:clamp(30px,8vw,46px); line-height:1.12; letter-spacing:-.045em; }
-    .intro { max-width:600px; margin:0; color:var(--muted); }
-    .platforms { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin:28px 0 18px; }
-    .card { min-width:0; padding:20px; border:1px solid var(--line); border-radius:18px; background:var(--card); box-shadow:0 8px 24px #15233b0b; }
-    .card[data-recommended="true"] { border-color:var(--blue); box-shadow:0 0 0 2px color-mix(in srgb,var(--blue) 14%,transparent); }
-    .card h2 { margin:0 0 4px; font-size:20px; letter-spacing:-.02em; }
-    .state { display:flex; align-items:center; gap:8px; margin:0 0 16px; color:var(--muted); font-size:13px; }
-    .dot { width:8px; height:8px; border-radius:50%; background:#d78b12; flex:none; }
-    .copy { min-height:128px; color:var(--muted); font-size:14px; }
-    .copy p { margin:0 0 10px; }
-    .button { display:flex; min-height:46px; align-items:center; justify-content:center; padding:10px 14px; border:1px solid var(--line); border-radius:12px; color:var(--ink); text-decoration:none; font-weight:650; text-align:center; }
-    .button.primary { border-color:var(--blue); background:var(--blue); color:#fff; }
-    .button.disabled { color:var(--muted); background:var(--bg); cursor:not-allowed; }
-    .note { margin-top:14px; padding:15px 17px; border:1px solid #efdcae; border-radius:14px; background:var(--amber-bg); color:var(--amber); font-size:14px; }
-    .note strong { display:block; margin-bottom:3px; }
-    .links { display:flex; flex-wrap:wrap; gap:10px 18px; margin-top:18px; color:var(--muted); font-size:13px; }
-    a { color:var(--blue); }
-    footer { margin-top:28px; padding-top:16px; border-top:1px solid var(--line); color:var(--muted); font-size:12px; }
-    @media (max-width:620px) { .platforms { grid-template-columns:1fr; } .copy { min-height:0; } }
-    @media (prefers-reduced-motion:no-preference) { .card { transition:border-color .16s ease, transform .16s ease, box-shadow .16s ease; } .card:hover { transform:translateY(-2px); border-color:color-mix(in srgb,var(--blue) 35%,var(--line)); box-shadow:0 12px 28px #15233b12; } }
-    @media (prefers-reduced-motion:reduce) { *,*::before,*::after { scroll-behavior:auto !important; transition:none !important; } }
+    :root {
+      color-scheme: light dark;
+      --bg: #F5F5F4;
+      --group: #FFFFFF;
+      --ink: #111111;
+      --gray: #6E6E6E;
+      --icon-line: rgba(0, 0, 0, .08);
+      --on-primary: #FFFFFF;
+      --secondary-bg: rgba(0, 0, 0, .05);
+      --line: rgba(0, 0, 0, .08);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0E0E0E;
+        --group: #1C1C1E;
+        --ink: #F5F5F5;
+        --gray: #8C8C8C;
+        --icon-line: rgba(255, 255, 255, .12);
+        --on-primary: #111111;
+        --secondary-bg: rgba(255, 255, 255, .08);
+        --line: rgba(255, 255, 255, .08);
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 16px/1.6 -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+      overflow-wrap: anywhere;
+      -webkit-text-size-adjust: 100%;
+    }
+    main {
+      width: min(100% - 40px, 560px);
+      min-width: 0;
+      margin-inline: auto;
+      padding-block: max(64px, env(safe-area-inset-top)) max(64px, env(safe-area-inset-bottom));
+    }
+    h1, h2, p { margin: 0; }
+    h1 { margin-top: 16px; font-size: clamp(44px, 7vw, 64px); font-weight: 700; line-height: 1.15; letter-spacing: -.04em; }
+    h2 { min-width: 0; font-size: 22px; line-height: 1.4; font-weight: 650; }
+    a { color: var(--ink); text-underline-offset: 4px; }
+    a:hover { text-decoration-thickness: 2px; }
+    :focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+    .app-icon { display: block; width: 64px; height: 64px; border: .5px solid var(--icon-line); border-radius: 14px; object-fit: cover; }
+    .hero-sentence { margin-top: 12px; font-size: 22px; line-height: 1.6; font-weight: 600; }
+    .hero-description { margin-top: 8px; color: var(--gray); font-size: 13px; }
+    .download-list { display: flex; flex-direction: column; margin-top: 40px; border-radius: 16px; background: var(--group); }
+    .download-row { min-width: 0; padding: 24px; }
+    .download-row + .download-row { border-top: 1px solid var(--line); }
+    .platform-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; min-width: 0; }
+    .requirements { margin-top: 12px; color: var(--gray); font-size: 13px; }
+    .no-wrap { white-space: nowrap; }
+    .install-help { display: inline-flex; align-items: center; min-height: 28px; max-width: 100%; margin-top: 4px; font-size: 13px; }
+    .button {
+      display: inline-flex;
+      min-width: 0;
+      min-height: 44px;
+      max-width: 100%;
+      align-items: center;
+      justify-content: center;
+      padding: 10px 18px;
+      border: 0;
+      border-radius: 999px;
+      background: var(--secondary-bg);
+      color: var(--ink);
+      font: inherit;
+      font-size: 14px;
+      font-weight: 600;
+      line-height: 1.5;
+      text-align: center;
+      text-decoration: none;
+      white-space: normal;
+      overflow-wrap: anywhere;
+      cursor: pointer;
+    }
+    .button.primary { background: var(--ink); color: var(--on-primary); }
+    .beta-note { margin-top: 24px; color: var(--gray); font-size: 15px; }
+    footer { margin-top: 48px; color: var(--gray); font-size: 13px; }
+    @media (max-width: 359px) {
+      .download-row { padding: 20px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+    }
   </style>
 </head>
 <body>
   <main>
-    <div class="eyebrow">CAMPUS DAILY / DOWNLOAD</div>
-    <h1>校日常，按设备下载</h1>
-    <p class="intro">校日常是面向广东工商职业技术大学的非官方校园生活工具。请选择你的设备，查看对应的安装方式。</p>
+    <header>
+      <img class="app-icon" src="site/app-icon.png" alt="校日常 App 图标" width="64" height="64" decoding="async">
+      <h1>校日常</h1>
+      <p class="hero-sentence">宿舍电量、校园卡、热水、洗衣，打开就能看。</p>
+      <p class="hero-description">广东工商职业技术大学 · 非官方</p>
+    </header>
 
-    <section class="platforms" aria-label="按设备选择安装方式">
-      <article class="card" id="android">
-        <h2>Android</h2>
-        <p class="state"><span class="dot" aria-hidden="true"></span>0.2.0-alpha23 · Android 测试包</p>
-        <div class="copy">
-          <p>下载 APK 并打开文件，按手机提示完成安装。无需自己的开发者证书。</p>
-          <p>登录本人校园账号后读取校园卡与登记宿舍，并自动匹配电表；同名公寓需确认一次位置。</p>
+    <div class="download-list" id="download" role="group" aria-label="下载校日常">
+      <article class="download-row" id="ios" aria-labelledby="ios-title">
+        <div class="platform-heading">
+          <h2 id="ios-title">iPhone</h2>
+          <a class="button" href="https://github.com/JasonBeam/campus-daily/releases/latest" aria-label="下载 iPhone 版">下载 iPhone 版</a>
         </div>
-        <a class="button primary" href="https://github.com/JasonBeam/campus-daily/releases/download/v0.8.0/CampusDaily-0.2.0-alpha23-debug.apk">下载 Android 测试版</a>
-        <p style="font-size:13px;color:var(--muted)">支持 Android 6.0 及以上；鸿蒙 6.0–7.0 可通过卓易通安装使用。鸿蒙设备有无法跳转支付宝的反馈。</p>
+        <p class="requirements">在 GitHub 发布页里下载 .ipa 文件。需要 iOS 17 或更新。要用自己的 Apple 账号签名才能装，免费账号大约 7 天重签一次。</p>
+        <a class="install-help" href="https://github.com/JasonBeam/campus-daily#安装">怎么签名安装 ›</a>
       </article>
-
-      <article class="card" id="ios">
-        <h2>iPhone</h2>
-        <p class="state"><span class="dot" aria-hidden="true"></span>0.8.0 build 38 · iPhone</p>
-        <div class="copy">
-          <p>下载后需使用自己的 Apple 账号签名才能安装。免费个人签名通常约 7 天后需要重新签名。</p>
-          <p>iOS 17 或更新版本。Safari 下载 IPA 不会直接安装 App；需自行签名。</p>
+      <article class="download-row" id="android" aria-labelledby="android-title">
+        <div class="platform-heading">
+          <h2 id="android-title">Android</h2>
+          <a class="button" href="https://github.com/JasonBeam/campus-daily/releases/latest" aria-label="下载 Android 版">下载 Android 版</a>
         </div>
-        <a class="button primary" href="https://github.com/JasonBeam/campus-daily/releases/download/v0.8.0/CampusDaily-0.8.0-build38-unsigned.ipa">下载 iPhone IPA（需自行签名）</a>
+        <p class="requirements">在 GitHub 发布页里下载 .apk 文件。需要 Android 6.0 或更新，下载后按提示装就行。鸿蒙 6.0–7.0 可以用卓易通装，但可能跳不到<span class="no-wrap">支付宝</span>。</p>
       </article>
-    </section>
+    </div>
+    <p class="beta-note">现在还是测试版，热水可能还用不了。</p>
 
-    <aside class="note">
-      <strong>当前版本的已知限制</strong>
-      宿舍目录出现同名公寓时请按提示确认位置；完整热水授权、出水和结算尚未完成本轮验收。项目只面向广东工商职业技术大学环境，不代表学校或相关服务方。
-    </aside>
-
-    <nav class="links" aria-label="项目资料">
-      <a href="https://github.com/JasonBeam/campus-daily#readme">项目介绍</a>
-      <a href="https://github.com/JasonBeam/campus-daily/blob/v0.8.0/docs/download.md">安装说明</a>
-      <a href="https://github.com/JasonBeam/campus-daily/blob/v0.8.0/docs/configuration.md">配置教程</a>
-      <a href="https://github.com/JasonBeam/campus-daily/blob/v0.8.0/docs/ai-guide.md">AI 上手教程</a>
-      <a href="https://github.com/JasonBeam/campus-daily/releases">全部版本</a>
-      <a href="https://github.com/JasonBeam/campus-daily/blob/v0.8.0/docs/release-0.8.0.md">0.8.0 版本说明</a>
-    </nav>
-
-    <footer>非学校官方应用。请只使用本人账号，不要公开分享密码、校园令牌、学号、宿舍信息或设备二维码。</footer>
+    <footer>
+      <p>校日常不是学校的官方应用。只用自己的账号，密码和学号别发给别人。</p>
+    </footer>
   </main>
   <script>
-    const ua = navigator.userAgent;
-    const target = /iPhone|iPad|iPod/i.test(ua) ? "ios" : /Android/i.test(ua) ? "android" : null;
-    if (target) document.getElementById(target).setAttribute("data-recommended", "true");
+    (() => {
+      const ua = navigator.userAgent;
+      const isIOS = /iPhone|iPad|iPod/i.test(ua) || (/Macintosh/i.test(ua) && navigator.maxTouchPoints > 1);
+      const platform = isIOS ? 'ios' : /Android/i.test(ua) ? 'android' : null;
+      if (!platform) return;
+      const preferred = document.getElementById(platform);
+      document.getElementById('download').prepend(preferred);
+      preferred.querySelector('a.button').classList.add('primary');
+    })();
   </script>
 </body>
 </html>
