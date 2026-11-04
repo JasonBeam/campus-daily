@@ -2,7 +2,7 @@ import SwiftUI
 import Core
 
 /// 设置 tab: 首次设置 on top, then 暖橙's settings groups (我的, 设备, 提醒, 外观), 快捷指令, and
-/// 高级 with the version last. Rows push their pages on this tab; 热水 opens the shower page on 日常.
+/// 反馈问题 and 高级 with the version last. Rows push their pages on this tab; 热水 opens the shower page on 日常.
 struct ClearSettingsTab: View {
     @Environment(ClearNavigator.self) private var navigator
     @EnvironmentObject private var shower: ShowerModel
@@ -31,6 +31,7 @@ struct ClearSettingsTab: View {
             SettingsAppearanceSection(link:link)
             ShortcutsSection(header:"快捷指令")
             Section {
+                FeedbackRow()
                 NavigationLink(value:ClearRoute.advanced) {
                     SettingsRow(symbol:"wrench.and.screwdriver", title:"高级")
                 }

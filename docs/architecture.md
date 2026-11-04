@@ -33,7 +33,8 @@ App/
                       Shared pages (meter, top-ups, 常用洗衣机, 学校账号, 高级, 主题) are 暖橙's views drawn in
                       清爽's tokens.
   Services/           Bluetooth (CoreBluetooth ShowerTransport), CampusWebLogin (official-page WKWebView + login script),
-                      BackgroundRefresh (BGAppRefreshTask), Alipay, LiveActivities, Intents, Reminders
+                      BackgroundRefresh (BGAppRefreshTask), Alipay, LiveActivities, Intents, Reminders,
+                      Feedback (sends 反馈问题; endpoint and key from Info.plist)
   Resources/          Assets, Fonts, Info.plist, App.entitlements
   Demo/               DEBUG-only demo screens and data behind campusdaily://demo/… (not in Release)
 Shared/               compiled into App and Widget
@@ -54,6 +55,8 @@ Packages/Core/        one library product `Core` (swift-tools 6.0, iOS 17 / macO
     Snapshot/         the home snapshot ("latest data") and reminder lines shared with the widget, their store,
                       and the refresher (the only writer of the snapshot); the home's two numbers and
                       their low rules (HomeFigures) and the 最近 merge (RecentFeed)
+    Feedback/         Settings › 反馈问题: what a report may hold (FeedbackDraft), the request to
+                      AirFeedback (FeedbackSender) and its fixed lines (FeedbackText)
     Networking/       HTTPClient protocol + URLSession implementation, envelopes, redacting logger
     Storage/          generic Keychain and UserDefaults access only: SecureStore, StoreKey, SharedKeychain
                       (app-private and widget-shared access groups), PreferenceStorage, StorageError
@@ -61,7 +64,7 @@ Packages/Core/        one library product `Core` (swift-tools 6.0, iOS 17 / macO
     Theme/            the chosen theme (AppTheme, ThemePreference in the App Group's preferences) and
                       when the 主题 options are greyed out (ThemeLock, from the shower and laundry states)
   Tests/
-    CampusTests/ ShowerTests/ LaundryTests/ SnapshotTests/ NetworkingTests/ StorageTests/ CommonTests/ ThemeTests/
+    CampusTests/ ShowerTests/ LaundryTests/ SnapshotTests/ NetworkingTests/ StorageTests/ CommonTests/ ThemeTests/ FeedbackTests/
     Support/          StubServer, FixtureLoader, FakeShowerTransport
     Fixtures/         synthetic/redacted API samples, one folder per service
 Scripts/              fetch-alipay-sdk, stage-water-profile, check-widget-signature, package-ipa, privacy-check

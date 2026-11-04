@@ -12,6 +12,13 @@ enum AppEnvironment {
     static let schoolHTTP: HTTPClient = SchoolRefreshStack.schoolHTTP()
     static let showerHTTP: HTTPClient = URLSessionHTTPClient(allowedHosts:AllowedHosts.hotWater)
     static let laundryHTTP: HTTPClient = URLSessionHTTPClient(allowedHosts:AllowedHosts.laundry)
+    /// Settings › 反馈问题: only the feedback host, with a longer resource timeout for screenshots.
+    /// nil in a build without the feedback key.
+    static let feedbackHTTP: HTTPClient? = FeedbackReporter.endpoint.map { endpoint in
+        let configuration = URLSessionHTTPClient.makeConfiguration()
+        configuration.timeoutIntervalForResource = FeedbackSender.resourceTimeout
+        return URLSessionHTTPClient(allowedHosts:endpoint.allowedHosts, configuration:configuration)
+    }
 
     static let schoolVault = StoredSchoolVault(store:store)
     static let showerVault = StoredShowerVault(store:store)

@@ -6,6 +6,7 @@
 
 ### Added
 
+- Add Settings › 反馈问题 (both themes): a form for what went wrong or what you would like, with up to four screenshots you pick yourself (none by default). It sends the text, the screenshots, the app version and build, the phone model, the system version and the language setting to AirFeedback, and nothing from the school, hot-water or U净 accounts. A failed send says 「没发出去，检查一下网络再试一次。」. Builds without the feedback key (private/distribution/Feedback.xcconfig) have no such row.
 - Add 「U净 账号」 at the bottom of 常用洗衣机 while signed in to U净: the phone number as 138****5678 and 「退出 U净」 behind 「退出 U净？」. Signing out keeps the saved machines. While a laundry order is unfinished the button is greyed out with 「还有一笔洗衣订单没处理完，处理完才能退出。」.
 - Say 「U净 登录过期了。」 with a 「重新登录 U净」 button on the laundry page (both themes) and on 常用洗衣机 when U净 says the login ran out, on a machine read or an order step.
 - Add Settings › 外观 › 主题 with two themes: 暖橙 (the current look, the default) and 清爽 (blue and white on the system grouped look, with the 0.8.0 page layout). Both themes run on the same logic; only the pages differ. A tap switches at once and returns to home; the home-screen widget follows at its next reload and the Live Activities at their next update. While a shower is under way (from 开始洗澡, while it connects and authorizes, until the settlement) or a laundry order is unfinished the options are greyed out with the reason above the footer, and they grey out as soon as one starts with the page open.

@@ -2,7 +2,7 @@ import Foundation
 
 /// The remote systems the app talks to.
 public enum Service: String, Sendable, Codable, CaseIterable {
-    case cas, portal, ecykt, lxt6, ujing
+    case cas, portal, ecykt, lxt6, ujing, feedback
 }
 
 /// One error vocabulary for every client. Values never carry tokens, ids or bodies:

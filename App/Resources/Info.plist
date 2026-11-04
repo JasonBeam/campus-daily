@@ -45,6 +45,10 @@
 	<array>
 		<string>$(APP_BUNDLE_IDENTIFIER).refresh</string>
 	</array>
+	<key>FeedbackEndpoint</key>
+	<string>$(FEEDBACK_ENDPOINT)</string>
+	<key>FeedbackAppKey</key>
+	<string>$(FEEDBACK_APP_KEY)</string>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
 </dict>

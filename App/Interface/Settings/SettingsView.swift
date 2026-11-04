@@ -46,6 +46,7 @@ struct SettingsView: View {
                 SettingsReminderSection(laundryOn:laundrySwitch.isOn)
                 SettingsAppearanceSection(link:link)
                 Section {
+                    FeedbackRow()
                     NavigationLink { advanced } label: {
                         SettingsRow(symbol:"wrench.and.screwdriver", title:"高级")
                     }

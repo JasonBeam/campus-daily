@@ -14,5 +14,15 @@ IPHONEOS_DEPLOYMENT_TARGET = 17.0
 
 CODE_SIGN_STYLE = Automatic
 
+// Settings › 反馈问题 (AirFeedback). The endpoint and public ingestion key come from
+// `workers app-key` and live in the untracked private/distribution/Feedback.xcconfig, next to
+// the hot-water profile:
+//   FEEDBACK_ENDPOINT = https:/$()/apps.air.build/v1/ingest/feedback
+//   FEEDBACK_APP_KEY = ak_...
+// Without them the build has no 反馈问题 row.
+FEEDBACK_ENDPOINT =
+FEEDBACK_APP_KEY =
+#include? "../private/distribution/Feedback.xcconfig"
+
 // Local signing (untracked), last so it overrides the values above.
 #include? "Developer.xcconfig"
