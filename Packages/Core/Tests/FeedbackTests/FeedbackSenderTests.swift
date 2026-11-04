@@ -1,5 +1,6 @@
 import XCTest
 import Core
+import CoreTestSupport
 
 /// What a report carries and how a failed send reads.
 final class FeedbackSenderTests: XCTestCase {
@@ -52,6 +53,24 @@ final class FeedbackSenderTests: XCTestCase {
         let upper = FeedbackEndpoint(url: URL(string: "https://Feedback.Example.TEST/v1/ingest/feedback")!, appKey: "ak_synthetic")
         XCTAssertEqual(upper.allowedHosts, ["feedback.example.test"])
         XCTAssertEqual(FeedbackSender.resourceTimeout, 60, "four screenshots outlast the usual 20 s")
+    }
+
+    /// The feedback request waits the feedback client's own time, not the other clients' 15 s.
+    func testTheFeedbackRequestWaitsTheFeedbackClientsTime() async throws {
+        let server = StubServer()
+        server.respond("POST", endpoint.url.absoluteString, status: 201, body: Data("{}".utf8))
+        let http = server.makeClient(allowedHosts: endpoint.allowedHosts, configuration: FeedbackSender.configuration())
+        try await FeedbackSender(endpoint: endpoint, http: http).send(message: "反馈", images: [], metadata: metadata)
+        XCTAssertEqual(server.requests.map(\.timeout), [FeedbackSender.requestTimeout])
+        XCTAssertGreaterThan(FeedbackSender.requestTimeout, URLSessionHTTPClient.requestTimeout)
+        XCTAssertTrue(server.unmatched.isEmpty)
+    }
+
+    func testTheReportIsSentOnceAsAWrite() async throws {
+        let http = RecordingHTTP(reply: .success(HTTPResponse(status: 201)))
+        try await FeedbackSender(endpoint: endpoint, http: http).send(message: "反馈", images: [], metadata: metadata)
+        XCTAssertEqual(http.requests.map(\.isStateChanging), [true])
+        XCTAssertNil(http.requests.first?.headers["Idempotency-Key"])
     }
 
     func testServerTextIsNeverShown() async {

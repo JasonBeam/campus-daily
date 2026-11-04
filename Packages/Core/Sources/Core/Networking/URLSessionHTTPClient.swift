@@ -23,6 +23,8 @@ public final class URLSessionHTTPClient: HTTPClient, @unchecked Sendable {
     private let allowedHosts: Set<String>
     private let log: HTTPLogSink
     private let now: @Sendable () -> Date
+    /// This client's wait for each request, from its configuration.
+    private let requestWait: TimeInterval
 
     public static let requestTimeout: TimeInterval = 15
     public static let resourceTimeout: TimeInterval = 20
@@ -47,14 +49,15 @@ public final class URLSessionHTTPClient: HTTPClient, @unchecked Sendable {
         self.allowedHosts = allowedHosts
         self.log = log
         self.now = now
+        self.requestWait = configuration.timeoutIntervalForRequest
         self.session = URLSession(configuration: configuration, delegate: NoRedirectDelegate(), delegateQueue: nil)
     }
 
     deinit { session.finishTasksAndInvalidate() }
 
     /// The wait set on the request itself: the client's own, or a shorter one asked for.
-    static func wait(_ timeout: TimeInterval?) -> TimeInterval {
-        min(timeout ?? requestTimeout, requestTimeout)
+    static func wait(_ timeout: TimeInterval?, cap: TimeInterval = requestTimeout) -> TimeInterval {
+        min(timeout ?? cap, cap)
     }
 
     public func send(_ request: HTTPRequest) async throws -> HTTPResponse {
@@ -79,7 +82,7 @@ public final class URLSessionHTTPClient: HTTPClient, @unchecked Sendable {
         urlRequest.httpMethod = request.method.rawValue
         urlRequest.httpBody = request.body
         urlRequest.httpShouldHandleCookies = false
-        urlRequest.timeoutInterval = Self.wait(request.timeout)
+        urlRequest.timeoutInterval = Self.wait(request.timeout, cap: requestWait)
         for (k, v) in request.headers { urlRequest.setValue(v, forHTTPHeaderField: k) }
 
         let data: Data

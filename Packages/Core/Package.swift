@@ -20,7 +20,7 @@ let package = Package(
         .testTarget(name: "StorageTests", dependencies: ["Core"]),
         .testTarget(name: "CommonTests", dependencies: ["Core", "CoreTestSupport"]),
         .testTarget(name: "ThemeTests", dependencies: ["Core", "CoreTestSupport"]),
-        .testTarget(name: "FeedbackTests", dependencies: ["Core"]),
+        .testTarget(name: "FeedbackTests", dependencies: ["Core", "CoreTestSupport"]),
     ],
     swiftLanguageModes: [.v6]
 )

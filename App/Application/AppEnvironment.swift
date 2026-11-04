@@ -15,9 +15,7 @@ enum AppEnvironment {
     /// Settings › 反馈问题: only the feedback host, with a longer resource timeout for screenshots.
     /// nil in a build without the feedback key.
     static let feedbackHTTP: HTTPClient? = FeedbackReporter.endpoint.map { endpoint in
-        let configuration = URLSessionHTTPClient.makeConfiguration()
-        configuration.timeoutIntervalForResource = FeedbackSender.resourceTimeout
-        return URLSessionHTTPClient(allowedHosts:endpoint.allowedHosts, configuration:configuration)
+        URLSessionHTTPClient(allowedHosts:endpoint.allowedHosts, configuration:FeedbackSender.configuration())
     }
 
     static let schoolVault = StoredSchoolVault(store:store)

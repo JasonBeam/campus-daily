@@ -114,7 +114,8 @@ targets all build in Swift 6 language mode.
 ### Networking
 
 - `ephemeral` sessions, no cookies/cache, redirects **not followed** (a 302 is a response, see
-  `getPowerUrl`), timeouts 15 s request / 20 s resource, body cap 64 KiB (1 MiB for campus-wide
+  `getPowerUrl`), timeouts 15 s request / 20 s resource (the feedback client 30 s / 60 s; a
+  client's request wait comes from its configuration), body cap 64 KiB (1 MiB for campus-wide
   `getMeterStatus`). HTTPS only, default TLS, per-client host allow-list (school hosts,
   `isv.lxt6.cn`, `phoenix.ujing.online`).
 - Logging: `os.Logger` with method, host, path, status, latency, decoded `code` only. Query

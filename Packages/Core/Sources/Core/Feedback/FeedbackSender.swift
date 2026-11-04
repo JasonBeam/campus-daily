@@ -35,6 +35,17 @@ public struct FeedbackSender: Sendable {
     /// The feedback client's resource timeout: four screenshots take longer than the clients'
     /// usual 20 s on a slow connection.
     public static let resourceTimeout: TimeInterval = 60
+    /// The feedback client's wait for each request: the first connection of an app run to the
+    /// feedback host can take longer than the clients' usual 15 s to set up.
+    public static let requestTimeout: TimeInterval = 30
+
+    /// The feedback client's session configuration (`AppEnvironment.feedbackHTTP`).
+    public static func configuration(protocolClasses: [AnyClass]? = nil) -> URLSessionConfiguration {
+        let c = URLSessionHTTPClient.makeConfiguration(protocolClasses: protocolClasses)
+        c.timeoutIntervalForRequest = requestTimeout
+        c.timeoutIntervalForResource = resourceTimeout
+        return c
+    }
 
     private let endpoint: FeedbackEndpoint
     private let http: HTTPClient
@@ -47,7 +58,7 @@ public struct FeedbackSender: Sendable {
         let request = HTTPRequest.postJSON(service: .feedback, url: endpoint.url,
                                            headers: ["Authorization": "Bearer \(endpoint.appKey)"],
                                            json: body(message: message, images: images, metadata: metadata),
-                                           logName: "feedback")
+                                           isStateChanging: true, logName: "feedback")
         let response: HTTPResponse
         do { response = try await http.send(request) } catch { throw FeedbackFailure() }
         guard (200 ..< 300).contains(response.status) else { throw FeedbackFailure() }

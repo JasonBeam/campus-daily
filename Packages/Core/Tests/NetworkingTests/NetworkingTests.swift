@@ -165,6 +165,21 @@ final class URLSessionHTTPClientTests: XCTestCase {
         XCTAssertEqual(server.requests.map(\.timeout), [own, own, 5, own])
     }
 
+    func testAClientsOwnWaitComesFromItsConfiguration() async throws {
+        let server = StubServer()
+        let url = URL(string: "https://ecykt.gdbtu.edu.cn/ykt-mini/slow")!
+        server.respond("POST", url.absoluteString, body: Data("{}".utf8))
+        let config = URLSessionHTTPClient.makeConfiguration()
+        config.timeoutIntervalForRequest = 30
+        let client = server.makeClient(configuration: config)
+        for asked in [45, 5, nil] as [TimeInterval?] {
+            var request = HTTPRequest.postJSON(service: .ecykt, url: url, json: [:])
+            request.timeout = asked
+            _ = try await client.send(request)
+        }
+        XCTAssertEqual(server.requests.map(\.timeout), [30, 5, 30])
+    }
+
     func testResponseDecodingStatusesAndJSONInString() throws {
         XCTAssertThrowsError(try ResponseDecoding.json(HTTPResponse(status: 401), service: .ujing)) {
             XCTAssertEqual($0 as? ServiceError, .sessionExpired(.ujing))

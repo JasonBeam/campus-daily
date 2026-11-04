@@ -80,8 +80,11 @@ public final class StubServer: @unchecked Sendable {
     public var unmatched: [RecordedRequest] { lock.withLock { _unmatched } }
     public func requests(path suffix: String) -> [RecordedRequest] { requests.filter { $0.url.path.hasSuffix(suffix) } }
 
-    public func makeClient(allowedHosts: Set<String> = AllowedHosts.school, log: HTTPLogSink = RecordingLogSink()) -> URLSessionHTTPClient {
-        let config = URLSessionHTTPClient.makeConfiguration(protocolClasses: [StubURLProtocol.self])
+    /// `configuration` replaces the default one (the stub protocol and routing header are added to it).
+    public func makeClient(allowedHosts: Set<String> = AllowedHosts.school, configuration: URLSessionConfiguration? = nil,
+                           log: HTTPLogSink = RecordingLogSink()) -> URLSessionHTTPClient {
+        let config = configuration ?? URLSessionHTTPClient.makeConfiguration()
+        config.protocolClasses = [StubURLProtocol.self] + (config.protocolClasses ?? [])
         var headers = config.httpAdditionalHeaders ?? [:]
         headers[StubURLProtocol.routingHeader] = id
         config.httpAdditionalHeaders = headers

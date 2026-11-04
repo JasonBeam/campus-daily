@@ -50,6 +50,7 @@ struct UjingLoginView: View {
                 Section {
                     TextField("U净 绑定手机号",text:$mobile).keyboardType(.phonePad).textContentType(.telephoneNumber)
                         .accessibilityIdentifier("ujingMobile")
+                    // The button holds the row's only Text, so the line under it would start there.
                     HStack {
                         TextField("短信验证码",text:$code).keyboardType(.numberPad).textContentType(.oneTimeCode)
                             .focused($codeFocused)
@@ -60,7 +61,7 @@ struct UjingLoginView: View {
                                 .disabled(login.busy || !consent || !UjingInput.isMobile(mobile) || remaining > 0)
                                 .accessibilityIdentifier("sendUjingSMS")
                         }
-                    }
+                    }.alignmentGuide(.listRowSeparatorLeading) { $0[.leading] }
                     Toggle("我已阅读并同意 U净 服务协议和隐私政策",isOn:$consent).font(.footnote)
                     HStack(spacing:20) {
                         Link("服务协议",destination:URL(string:"https://wx.zhinengxiyifang.cn/about_us/service_agreement.html")!)

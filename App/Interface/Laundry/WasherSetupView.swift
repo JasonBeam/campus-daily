@@ -44,6 +44,8 @@ struct WasherSetupView: View {
         #endif
         return laundry.selectedMachineID
     }
+    /// A scanned code or a picked photo being read (or the machine re-read after a switch).
+    private var reading: Bool { laundry.loading || photoBusy }
     private var addDisabled: Bool { WasherSetupFlow.addDisabled(mayImport:laundry.mayImport, busy:photoBusy) }
     private var isPreview: Bool {
         #if DEBUG
@@ -87,7 +89,7 @@ struct WasherSetupView: View {
                 Button { add(.photo) } label: { Label("从照片识别",systemImage:"photo") }
                     .disabled(addDisabled).accessibilityIdentifier("washerQRPhoto")
             } header: { Text("添加机器") } footer: { Text("只读取机器信息，不下单或启动。已有未结束订单时不能切换机器。") }
-            if laundry.loading || photoBusy { Section { HStack { ProgressView(); Text("正在识别机器…") } } }
+            if reading { Section { HStack { ProgressView(); Text("正在识别机器…") } } }
             if let value = laundry.candidate {
                 Section("核对并保存") {
                     LabeledContent("机器",value:"\(value.deviceNo)号 · \(value.storeName)")
@@ -111,6 +113,10 @@ struct WasherSetupView: View {
             }
             if signedIn { accountSection }
         }.scrollContentBackground(.hidden).background(NativeTheme.background).tint(NativeTheme.tint)
+            // The reading row and the machine to check come in while the scanner sheet goes down:
+            // animated, so the rows below slide instead of jumping.
+            .animation(.default, value:reading)
+            .animation(.default, value:laundry.candidate)
             .navigationTitle("常用洗衣机").navigationBarTitleDisplayMode(.inline)
             .sheet(isPresented:$login, onDismiss:continueAfterLogin) { UjingLoginView() }
             .photosPicker(isPresented:$photoPicker, selection:$photo, matching:.images)
