@@ -86,9 +86,9 @@ struct LaundryDetail: View {
             .refreshable { await laundry.refresh(force:true); await laundry.refreshOrder() }
             .sheet(isPresented:$review) {
                 if let draft, let value = laundry.snapshot {
-                    LaundryReviewSheet(program:draft,machine:"\(value.storeName) · \(value.deviceNo)号") {
+                    LaundryReviewSheet(program:draft,machine:"\(value.storeName) · \(value.deviceNo)号") { immediate in
                         review = false
-                        Task { await laundry.createAndPay(draft) }
+                        Task { await laundry.createAndPay(draft,immediateStart:immediate) }
                     }.presentationDetents([.medium,.large]).presentationDragIndicator(.visible)
                 }
             }
@@ -103,6 +103,9 @@ struct LaundryDetail: View {
                     confirmCancellation = false
                     Task { await laundry.cancelOrder() }
                 }.presentationDetents([.medium,.large]).presentationDragIndicator(.visible)
+            }
+            .onChange(of:phase) { _, value in
+                if value == .active { Task { await laundry.refreshOrder() } }
             }
     }
     private func deviceCard(_ value: LaundrySnapshot) -> some View {
@@ -149,6 +152,14 @@ struct LaundryDetail: View {
                 .font(.system(.largeTitle,design:.rounded).weight(.semibold)).monospacedDigit()
             Text("实际金额以支付宝收银台为准").font(.caption).foregroundStyle(.secondary)
             LabeledContent("洗衣程序",value:record.programName).font(.subheadline)
+            if record.immediateStart == true {
+                Label("立刻洗衣 · 本单已开启",systemImage:"bolt.fill").font(.subheadline)
+                if record.startAttempt == nil, record.order?.running != true, record.stage != .completed {
+                    Text("付款后请返回校日常，核对已付款后自动发送启动指令。超过下单后10分钟请在U净手动启动。")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
+            }
+            if let message = record.startMessage { Text(message).font(.footnote).foregroundStyle(.orange) }
             if record.order?.payFlag?.text == "0" { Text("未支付").font(.caption).foregroundStyle(.secondary) }
             if let issue = laundry.checkoutIssue { Text(issue).font(.footnote).foregroundStyle(.orange) }
             if let progress = laundry.checkoutProgress {
@@ -165,8 +176,12 @@ struct LaundryDetail: View {
                         .font(.subheadline).monospacedDigit().foregroundStyle(.secondary)
                 }
             }
-            if let order = record.order, order.running, let seconds = order.remainTime, seconds > 0 {
-                Text("剩余约 \((seconds + 59) / 60)分钟").font(.subheadline)
+            if let order = record.order, order.running, let seconds = order.remainTime, seconds >= 0 {
+                TimelineView(.periodic(from:.now,by:1)) { context in
+                    let left = max(0,seconds - Int(context.date.timeIntervalSince(record.orderUpdatedAt ?? record.createdAt)))
+                    Text(left > 0 ? String(format:"剩余 %02d:%02d",left / 60,left % 60) : "倒计时已结束，请查看机器")
+                        .font(.subheadline).monospacedDigit()
+                }
             }
             if record.stage == .created, let order = record.order,
                ["10","17"].contains(order.status.text), order.payFlag?.text == "0" {
@@ -225,9 +240,10 @@ private struct LaundryCancellationSheet: View {
 private struct LaundryReviewSheet: View {
     let program: LaundryProgram
     let machine: String
-    let confirm: () -> Void
+    let confirm: (Bool) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var submitted = false
+    @State private var immediateStart = false
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -241,9 +257,17 @@ private struct LaundryReviewSheet: View {
                         Spacer()
                         Text(program.price,format:.currency(code:"CNY")).font(.largeTitle.weight(.semibold)).monospacedDigit()
                     }
+                    Picker("洗衣方式",selection:$immediateStart) {
+                        Text("正常洗衣").tag(false)
+                        Text("立刻洗衣（试用）").tag(true)
+                    }.pickerStyle(.segmented).accessibilityIdentifier("laundryStartMode")
+                    if immediateStart {
+                        Text("请先放好衣物、投放洗衣液并关紧门盖。付款后返回校日常，确认已付款且机器可启动后，会为本单发送一次启动指令。试用失败请到U净启动。")
+                            .font(.subheadline).foregroundStyle(.secondary)
+                    }
                     Text("确认后将预约这台机器并前往支付宝。付款可能扣款并启动设备，请提前放好衣物，实际金额以收银台为准。")
                         .font(.subheadline).foregroundStyle(.secondary)
-                    Button { submitted = true; confirm() } label: {
+                    Button { submitted = true; confirm(immediateStart) } label: {
                         Text("下单并前往支付宝").frame(maxWidth:.infinity,minHeight:52)
                     }.buttonStyle(WaterButtonStyle(primary:true,accent:Color.primary))
                         .disabled(submitted).accessibilityIdentifier("submitLaundryOrder")

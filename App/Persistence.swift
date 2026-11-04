@@ -1,5 +1,6 @@
 import Foundation
 import Security
+import CryptoKit
 import WaterCore
 
 enum WaterPlatformStore {
@@ -67,6 +68,7 @@ enum PrivateConfigStore {
 
 @MainActor final class FileSessionStore: SessionStore {
     private let path: URL
+    private let archiveDirectory: URL
     init() throws {
         var root = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask,
                                                appropriateFor: nil, create: true)
@@ -76,6 +78,7 @@ enum PrivateConfigStore {
         var values = URLResourceValues(); values.isExcludedFromBackup = true
         try root.setResourceValues(values)
         path = root.appendingPathComponent("session-v1.json")
+        archiveDirectory = root.appendingPathComponent("history-v1",isDirectory:true)
     }
     func load() throws -> WaterSession? {
         guard FileManager.default.fileExists(atPath: path.path) else { return nil }
@@ -83,5 +86,26 @@ enum PrivateConfigStore {
     }
     func save(_ session: WaterSession) throws {
         try JSONEncoder().encode(session).write(to: path, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+    }
+    func archive(_ session: WaterSession) throws {
+        try FileManager.default.createDirectory(at:archiveDirectory,withIntermediateDirectories:true,
+            attributes:[.protectionKey:FileProtectionType.completeUntilFirstUserAuthentication])
+        let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
+        let bytes = try encoder.encode(session)
+        let name = SHA256.hash(data:bytes).map { String(format:"%02x",$0) }.joined()
+        let destination = archiveDirectory.appendingPathComponent(name + ".json")
+        // A crash between archive and current-session save may repeat the same archival request.
+        if FileManager.default.fileExists(atPath:destination.path) {
+            guard try Data(contentsOf:destination) == bytes else { throw WaterError.storage }
+            return
+        }
+        try bytes.write(to:destination,options:[.atomic,.completeFileProtectionUntilFirstUserAuthentication])
+    }
+    func loadArchive() throws -> [WaterSession] {
+        guard FileManager.default.fileExists(atPath:archiveDirectory.path) else { return [] }
+        return try FileManager.default.contentsOfDirectory(at:archiveDirectory,includingPropertiesForKeys:nil)
+            .filter { $0.pathExtension == "json" }
+            .map { try JSONDecoder().decode(WaterSession.self,from:Data(contentsOf:$0)) }
+            .sorted { $0.startedAt < $1.startedAt }
     }
 }

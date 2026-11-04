@@ -35,9 +35,10 @@ android {
         // support API 23+, so Android 6.0 is the broadest supported baseline.
         minSdk = 23
         targetSdk = 35
-        versionCode = 25
-        versionName = "0.2.0-alpha23"
+        versionCode = 27
+        versionName = "0.3.0-alpha25"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField("boolean", "WATER_PASSIVE_DIAGNOSTICS", providers.gradleProperty("waterPassiveDiagnostics").orElse("false").get().toBoolean().toString())
     }
     buildFeatures { compose = true; buildConfig = true }
     sourceSets["main"].assets.srcDir(syncCampusAutomation.map{it.destinationDir})

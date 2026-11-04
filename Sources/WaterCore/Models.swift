@@ -4,10 +4,14 @@ public enum WaterError: String, Error, LocalizedError {
     case invalidConfig = "个人配置不完整或格式不正确"
     case busy = "正在处理上一项操作，请稍候"
     case unresolved = "有未确认或未结算的记录，已阻止再次开水"
+    case officialUnfinishedOrder = "学校仍有未完成热水订单，请到官方热水小程序核对后重试"
+    case controllerInUse = "水控仍在忙，已断开连接；确认停水后请稍后再试"
     case noSession = "没有本 App 创建的待结束记录"
     case wrongDevice = "水控编号不匹配，操作已停止"
     case malformedFrame = "水控回复格式异常，操作未确认"
     case notActive = "水控未返回使用中状态，未发送结束指令"
+    case stateChanged = "水控数据已变化，请重新核对；尚未提交结算"
+    case deviceBusy = "水控仍在忙，尚未收到结束数据；请稍后核对结束结果"
     case provider = "服务器未确认成功，请先核对校园热水记录"
     case networkUncertain = "网络结果未确认，请勿重复提交；先核对校园热水记录"
     case storage = "无法安全保存操作记录，已阻止后续操作"
@@ -62,6 +66,7 @@ public enum SessionStage: String, Codable, Sendable {
     case authorizationPending, authorizationIssued, authorizationWritePending, active
     case closeWritePending, settlementPending, settled
     public var mayClose: Bool { self == .active || self == .authorizationWritePending }
+    public var mayReview: Bool { mayClose || self == .closeWritePending }
     public var label: String {
         switch self {
         case .authorizationPending: return "授权请求待核对"
@@ -86,7 +91,14 @@ public struct WaterSession: Codable, Equatable, Sendable {
     public var receipt: SettlementReceipt?
     /// Persist an observed mismatch so relaunch cannot present a stale authorization as current.
     public var stateReviewRequired: Bool?
+    /// Last validated read-only reply. Kept locally for reconciliation, never treated as a receipt.
+    public var observedStateFrame: Data?
+    public var observedStateAt: Date?
+    /// User requested a new use but the shared controller still reported A5.
+    /// Keep the Bluetooth link released until the user explicitly retries.
+    public var waitingForRelease: Bool?
     public var requiresStateReview: Bool { stateReviewRequired == true }
+    public var isWaitingForRelease: Bool { waitingForRelease == true }
     public init(stage: SessionStage, machineID: String, peripheralID: String) {
         self.stage = stage; self.machineID = machineID; self.peripheralID = peripheralID
         startedAt = Date()

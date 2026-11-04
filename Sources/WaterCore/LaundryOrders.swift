@@ -149,10 +149,14 @@ public protocol LaundryOrdering: Sendable {
     func payment(config: LaundryConfig, id: String) async throws -> LaundryPayment
     func cancel(config: LaundryConfig, id: String) async throws
     func preparePayment(config: LaundryConfig, id: String) async
+    func startDetails(config: LaundryConfig, id: String) async throws -> LaundryStartDetails
+    func startWasher(config: LaundryConfig, id: String) async throws
 }
 
 extension LaundryOrdering {
     public func preparePayment(config: LaundryConfig, id: String) async {}
+    public func startDetails(config: LaundryConfig, id: String) async throws -> LaundryStartDetails { throw LaundryError.response }
+    public func startWasher(config: LaundryConfig, id: String) async throws { throw LaundryError.response }
 }
 
 struct LaundryPaymentMethods: Decodable, Sendable {
@@ -263,6 +267,9 @@ public struct LaundryCheckoutRecord: Codable, Sendable {
     public var order: LaundryOrder?
     public var orderUpdatedAt: Date? = nil
     public var credentialIdentity: String? = nil
+    public var immediateStart: Bool? = nil
+    public var startAttempt: LaundryStartAttempt? = nil
+    public var startMessage: String? = nil
     public func belongs(to config: LaundryConfig) -> Bool {
         deviceId == config.deviceId && (credentialIdentity == nil || credentialIdentity == config.credentialIdentity)
     }
@@ -297,7 +304,7 @@ public enum LaundryCheckoutError: String, Error, LocalizedError {
         next.credentialIdentity = new.credentialIdentity
         try store.save(next); record = next
     }
-    public func create(config: LaundryConfig, snapshot: LaundrySnapshot, program: LaundryProgram) async throws {
+    public func create(config: LaundryConfig, snapshot: LaundrySnapshot, program: LaundryProgram, immediateStart: Bool = false) async throws {
         guard !busy, record == nil || record?.stage == .completed else { throw LaundryCheckoutError.pending }
         guard snapshot.deviceId == config.deviceId, snapshot.moduleType == 7,
               snapshot.status == 0, snapshot.createOrderEnabled, snapshot.activeOrderId == nil,
@@ -307,6 +314,7 @@ public enum LaundryCheckoutError: String, Error, LocalizedError {
         var next = LaundryCheckoutRecord(deviceId:config.deviceId,programId:program.id,programName:program.workModelName,
             expectedPrice:program.price,createdAt:Date(),stage:.creating)
         next.credentialIdentity = config.credentialIdentity
+        next.immediateStart = immediateStart
         try store.save(next); record = next
         // A timeout/crash leaves 'creating' durable. Never automatically retry creation.
         let receipt = try await api.create(config:config,snapshot:snapshot,program:program)
@@ -334,12 +342,68 @@ public enum LaundryCheckoutError: String, Error, LocalizedError {
     public func refresh(config: LaundryConfig) async throws {
         guard !busy, var next = record, next.belongs(to:config), let id = next.orderId else { throw LaundryCheckoutError.uncertain }
         busy = true; defer { busy = false }
-        let order = try await api.order(config:config,id:id)
+        // The full start detail already includes paid/order/device/program state.
+        // Use that one fresh response instead of two serial reads before starting.
+        let details: LaundryStartDetails?
+        let order: LaundryOrder
+        if next.immediateStart == true, next.startAttempt == nil, next.stage != .completed,
+           Date().timeIntervalSince(next.createdAt) <= 600 {
+            let fresh = try await api.startDetails(config:config,id:id)
+            details = fresh; order = fresh.order
+        } else {
+            details = nil
+            order = try await api.order(config:config,id:id)
+        }
         guard order.id == id, order.deviceId == next.deviceId,
               order.deviceWashModelId == next.programId else { throw LaundryCheckoutError.uncertain }
         next.order = order; next.orderUpdatedAt = Date()
         if order.terminal { next.stage = .completed }
         else if next.stage == .creating { next.stage = .created }
+        try store.save(next); record = next
+        if order.running, next.startAttempt != nil {
+            next.startAttempt = .confirmed; next.startMessage = nil
+            try store.save(next); record = next
+        }
+        guard next.immediateStart == true, next.startAttempt == nil, order.paid, order.status.text == "20" else { return }
+        try await startConfirmedOrder(config:config,details:details)
+    }
+    private func startConfirmedOrder(config: LaundryConfig, details: LaundryStartDetails?) async throws {
+        guard var next = record, next.immediateStart == true, next.startAttempt == nil,
+              next.credentialIdentity == config.credentialIdentity, next.belongs(to:config), let id = next.orderId else { return }
+        let age = Date().timeIntervalSince(next.createdAt)
+        guard age >= 0, age <= 600 else {
+            next.startAttempt = .blocked; next.startMessage = "本单自动启动已过期，请在U净核对后手动启动"
+            try store.save(next); record = next; return
+        }
+        guard let details else { throw LaundryCheckoutError.uncertain }
+        guard details.order.id == id, details.order.deviceId == next.deviceId,
+              details.order.deviceWashModelId == next.programId else { throw LaundryCheckoutError.uncertain }
+        next.order = details.order; next.orderUpdatedAt = Date()
+        guard details.order.paid, details.order.status.text == "20" else {
+            if details.order.terminal { next.stage = .completed }
+            try store.save(next); record = next; return
+        }
+        guard details.moduleType == 7, details.online != false, !details.requiresSelfClean else {
+            next.startAttempt = .blocked; next.startMessage = "这台机器需在U净完成启动前检查，请使用官方订单"
+            try store.save(next); record = next; return
+        }
+        try Task.checkCancellation()
+        // Durable before the physical side effect. A timeout or relaunch never resends it.
+        next.startAttempt = .requested; next.startMessage = "启动指令结果待核对，请勿重复启动"
+        try store.save(next); record = next
+        do {
+            try Task.checkCancellation()
+            try await api.startWasher(config:config,id:id)
+            next.startAttempt = .accepted; next.startMessage = "启动指令已提交，等待机器响应；若未启动请到U净核对"
+        } catch {
+            next.startMessage = "启动结果尚未确认，请刷新或到U净核对；不会重复发送"
+        }
+        try store.save(next); record = next
+        let fresh = try await api.order(config:config,id:id)
+        guard fresh.id == id, fresh.deviceId == next.deviceId, fresh.deviceWashModelId == next.programId else { throw LaundryCheckoutError.uncertain }
+        next.order = fresh; next.orderUpdatedAt = Date()
+        if fresh.running { next.startAttempt = .confirmed; next.startMessage = nil }
+        if fresh.terminal { next.stage = .completed }
         try store.save(next); record = next
     }
     public func recover(config: LaundryConfig, candidateOrderId: String) async throws {

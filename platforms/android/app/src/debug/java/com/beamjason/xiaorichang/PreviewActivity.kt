@@ -44,9 +44,9 @@ fun PreviewLayout(initial:String,mode:GlassMode=GlassMode.LIQUID,refined:Boolean
     var page by rememberSaveable(initial) {mutableStateOf(initial)}
     val s=remember(page){previewFixture(page=="laundry-running")}
     val backdrop=rememberLayerBackdrop()
-    val tab=when(page){"orders"->1;"devices","setup","setup-complete","washerSetup","dorm-matched"->2;else->0}
+    val tab=when(page){"orders"->1;"devices","reminders","updates","advanced","setup","setup-complete","washerSetup","dorm-matched"->2;else->0}
     val root=page in setOf("home","orders","devices")
-    val title=when(page){"dorm-matched"->"校园登录与宿舍";"water"->"热水洗澡";"laundry","laundry-running"->"洗衣机";"setup","setup-complete"->"首次配置";"orders"->"最近订单";"devices"->"设备与设置";else->"校园生活"}
+    val title=when(page){"reminders"->"洗衣提醒";"updates"->"版本与更新";"recharge"->"校园充值";"advanced"->"故障排查";"dorm-matched"->"校园登录与宿舍";"water"->"热水洗澡";"laundry","laundry-running"->"洗衣机";"setup","setup-complete"->"首次配置";"orders"->"最近订单";"devices"->"设备与设置";else->"校园生活"}
     Scaffold(containerColor=MaterialTheme.colorScheme.background,contentWindowInsets=WindowInsets.safeDrawing,
         topBar={CampusHeader(title,large=root && page!="devices",back=if(!root)({page="home"})else null,settings=if(page=="home")({page="devices"})else null,refresh=if(page in setOf("laundry","laundry-running"))({})else null)},
         bottomBar={if(refined)RefinedTabBar(tab,{page=listOf("home","orders","devices")[it]},backdrop,mode) else CampusTabBar(tab,{page=listOf("home","orders","devices")[it]},backdrop,mode)}) {padding->
@@ -59,6 +59,10 @@ fun PreviewLayout(initial:String,mode:GlassMode=GlassMode.LIQUID,refined:Boolean
                     "setup-complete"->SetupScreen(s,padding,{page=it})
                     "orders"->OrdersScreen(s,padding,{page=it},{},{},{})
                     "devices"->DevicesScreen(s,padding,{page=it})
+                    "reminders"->ReminderSettingsScreen(padding,true,{},{})
+                    "updates"->UpdateSettingsScreen(padding,com.beamjason.xiaorichang.data.UpdateState(),{},{},{})
+                    "recharge"->RechargeMenuScreen(padding,{})
+                    "advanced"->AdvancedSettingsScreen(s,padding,{page=it},true,{},{},{},{})
                     else->HomeScreen(s,padding,{page=it},{})
                 }
         }

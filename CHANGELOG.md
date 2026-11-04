@@ -2,6 +2,26 @@
 
 版本记录采用 Keep a Changelog 格式。源码仓库不保存个人签名证书或个人配置；测试安装包通过 GitHub Release 单独分发。
 
+## [0.9.0] - 2026-11-04
+
+### Added
+
+- Offer normal and immediate laundry modes. Immediate mode verifies the server-side paid order and supported machine before sending one start request.
+- Add laundry countdown and completion reminders, notification testing, and version checks in Settings on both platforms.
+- Add the shared official campus recharge entry for campus cards and electricity.
+
+### Changed
+
+- Organize Settings into account and device setup, daily use, and help pages.
+- Preserve unresolved hot-water records when starting a later session; disconnect and wait when the remembered controller is busy.
+- Synchronize Android as 0.3.0-alpha25 (versionCode 27), distributed as a debug test APK.
+
+### Fixed
+
+- Reduce foreground polling delays after payment and remove a duplicate start-preflight read.
+- Persist uncertain laundry start attempts so relaunching or a timeout does not send another start command.
+- Remind when a tracked laundry countdown reaches zero and reconcile completion after returning to the app.
+
 ## [0.8.0] - 2026-10-29
 
 ### Fixed
@@ -104,3 +124,5 @@ The reported brief dispensing followed by stopping is not yet diagnosed. Physica
 [0.7.0]: https://github.com/JasonBeam/campus-daily/tree/v0.7.0
 [0.8.0-beta.1]: https://github.com/JasonBeam/campus-daily/tree/v0.8.0-beta.1
 [0.8.0-beta.2]: https://github.com/JasonBeam/campus-daily/releases/tag/v0.8.0-beta.2
+
+[0.9.0]: https://github.com/JasonBeam/campus-daily/compare/v0.8.0...v0.9.0

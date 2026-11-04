@@ -3,14 +3,46 @@ import UniformTypeIdentifiers
 import WaterCore
 
 @main struct CampusHotWaterApp: App {
+    @Environment(\.scenePhase) private var phase
     @StateObject private var water = WaterModel.shared
     @StateObject private var campus = CampusModel()
     @StateObject private var laundry = LaundryModel()
+    @StateObject private var updates = AppUpdateModel.shared
     var body: some Scene {
         WindowGroup {
             CampusRootView().environmentObject(water).environmentObject(campus).environmentObject(laundry)
+                .task(id:phase) {
+                    guard phase == .active else { return }
+                    while !Task.isCancelled {
+                        await water.reviewAutomaticallyIfNeeded()
+                        do { try await Task.sleep(for:.seconds(5)) } catch { return }
+                    }
+                }
+                .task(id:"\(phase)-\(laundry.immediatePollingKey)") {
+                    guard phase == .active else { return }
+                    laundry.beginForegroundPolling()
+                    while !Task.isCancelled {
+                        if laundry.remindersEnabled || laundry.needsImmediateStartRefresh { await laundry.refreshOrder() }
+                        do { try await Task.sleep(for:.seconds(laundry.orderRefreshInterval)) } catch { return }
+                    }
+                }
+                .task(id:phase) {
+                    if phase == .active { await updates.check() }
+                }
+                .alert("发现新版本",isPresented:$updates.showPrompt) {
+                    if let url = updates.available?.releaseURL { Button("查看更新") { UIApplication.shared.open(url) } }
+                    Button("稍后再说",role:.cancel) {}
+                } message: { Text(updates.message) }
                 .task {
+                    if ProcessInfo.processInfo.arguments.contains("--check-laundry-start-readonly") {
+                        await laundry.checkImmediateStartAccess()
+                        return
+                    }
                     #if CAMPUS_ACCESS_DIAGNOSTICS
+                    if ProcessInfo.processInfo.arguments.contains("--check-water-billing") {
+                        await AccessDiagnostics.waterBilling(campus:campus)
+                        return
+                    }
                     if ProcessInfo.processInfo.arguments.contains("--check-water-access") {
                         await AccessDiagnostics.run(campus:campus)
                         return
@@ -50,13 +82,13 @@ struct WaterHome: View {
                         if campus.loading { ProgressView().controlSize(.small).accessibilityLabel("更新余额") }
                     }
                     balances
-                    if !campus.configured || !water.configured || !laundry.configured {
+                    if !campus.configured || !water.configured {
                         NavigationLink { QuickSetupView() } label: {
                             HStack(spacing:12) {
                                 Image(systemName:"slider.horizontal.3").foregroundStyle(NativeTheme.tint)
                                 VStack(alignment:.leading,spacing:5) {
                                     Text("继续完成设置").font(.subheadline.weight(.medium))
-                                    Text("账号、宿舍和常用洗衣机").font(.caption).foregroundStyle(.secondary)
+                                    Text("学校账号与宿舍，洗衣机可稍后添加").font(.caption).foregroundStyle(.secondary)
                                 }
                                 Spacer(); Image(systemName:"chevron.right").font(.caption).foregroundStyle(.secondary)
                             }.foregroundStyle(.primary).padding(16).background(NativeTheme.surface,in:RoundedRectangle(cornerRadius:16))
@@ -102,7 +134,7 @@ struct WaterHome: View {
                         ToolbarItem(placement:.confirmationAction) { Button("稍后设置") { firstRun = false } }
                     } }
                 }
-                .task { if !didSeeQuickSetup && !campus.configured && !water.configured && !laundry.configured { firstRun = true } }
+                .task { if !didSeeQuickSetup && (!campus.configured || !water.configured) { firstRun = true } }
                 .onChange(of:phase) { _,value in if value == .active { Task { await campus.refresh(); await laundry.refresh(); await laundry.refreshOrder() } } }
                 .onChange(of:water.stage) { old,value in if old != .settled, value == .settled { Task { await campus.refresh(force:true) } } }
         }.tint(NativeTheme.tint)
@@ -136,6 +168,10 @@ struct WaterHome: View {
                     VStack(alignment:.leading,spacing:18) { powerMetric; Divider(); cardMetric }
                 }
             }
+            NavigationLink { OfficialCampusRechargeView() } label: {
+                Label("校园充值 · 微信",systemImage:"arrow.up.forward.app")
+                    .font(.subheadline).frame(maxWidth:.infinity,minHeight:44,alignment:.leading)
+            }.accessibilityIdentifier("campusRechargeEntry")
             if let issue = campus.issue { Text(issue).font(.footnote).foregroundStyle(.orange).fixedSize(horizontal:false,vertical:true) }
             if let error = campus.snapshot?.powerError { Text("电费：" + error.rawValue).font(.footnote).foregroundStyle(.orange).fixedSize(horizontal:false,vertical:true) }
         }.padding(.horizontal,16).padding(.bottom,16).padding(.top,6)
@@ -152,7 +188,6 @@ struct WaterHome: View {
             if let stamp = campus.snapshot?.powerFetchedAt {
                 Text((campus.snapshot?.powerIsStale() == true ? "上次 " : "查询 ") + stamp.formatted(date:.omitted,time:.shortened)).font(.caption2).foregroundStyle(.secondary)
             }
-            NavigationLink { CampusRechargeView(kind:.power) } label: { Text("充电费 ↗").font(.subheadline).frame(minHeight:44) }
         }.frame(maxWidth:.infinity,alignment:.leading)
     }
     private var cardMetric: some View {
@@ -164,7 +199,6 @@ struct WaterHome: View {
                 Text(campus.freshness)
             }.font(.caption).foregroundStyle(.secondary)
             if let stamp = campus.snapshot?.balanceFetchedAt { Text("查询 " + stamp.formatted(date:.omitted,time:.shortened)).font(.caption2).foregroundStyle(.secondary) }
-            NavigationLink { CampusRechargeView(kind:.card) } label: { Text("充校园卡 ↗").font(.subheadline).frame(minHeight:44) }
         }.frame(maxWidth:.infinity,alignment:.leading)
     }
     private func metricValue(_ value: String,unit: String) -> some View {
@@ -181,6 +215,7 @@ struct WaterHome: View {
 }
 
 struct WaterDetail: View {
+    @State private var confirmStoppedSettlement = false
     @EnvironmentObject private var water: WaterModel
     @EnvironmentObject private var campus: CampusModel
     @Environment(\.scenePhase) private var phase
@@ -222,6 +257,31 @@ struct WaterDetail: View {
                 if !water.configured {
                     NavigationLink("设置校园账号与宿舍") { CampusOnboardingView() }.frame(minHeight:44)
                 }
+                if water.stage?.mayReview == true {
+                    Button("核对关水后的状态") { Task { await water.reviewCurrentSession() } }
+                        .disabled(!water.mayReview)
+                        .accessibilityIdentifier("reviewWaterState")
+                    Text("仅查询水控，不会开水。停水与费用结算分别核对。")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                if water.stage != nil && water.stage != .settled {
+                    Button("已按机身键停水？开始下一次洗澡") { perform(start:true) }
+                        .disabled(!water.mayStartNext)
+                        .accessibilityIdentifier("startNextShower")
+                    Text("先检查水控是否可用，再向学校申请本次授权。上一笔费用记录会保留，到账以学校为准。")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                if water.pendingHistoryCount > 0 {
+                    Text("已保留 \(water.pendingHistoryCount) 笔费用待核对记录。可在学校官方热水消费明细中核对。")
+                        .font(.footnote).foregroundStyle(.secondary)
+                        .accessibilityIdentifier("waterPendingHistory")
+                }
+                if water.maySettleStopped {
+                    Button("补交停水结算（待验证）") { confirmStoppedSettlement = true }
+                        .accessibilityIdentifier("settleStoppedWater")
+                    Text("仅在本人本次用水已经停水时使用。将尝试补交保存的数据，可能扣除本次费用；不会重新开水。")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 if water.configured {
                     DisclosureGroup("连接检查与设备信息") {
                         Button { Task { await water.inspectBluetooth() } } label: {
@@ -250,16 +310,20 @@ struct WaterDetail: View {
             .navigationTitle("热水洗澡").navigationBarTitleDisplayMode(.inline)
             .safeAreaInset(edge:.bottom) {
                 VStack(spacing:10) {
-                    Button { perform(start:!closing) } label: {
+                    Button {
+                        if water.maySettleStopped { confirmStoppedSettlement = true }
+                        else if nextUse { perform(start:true) }
+                        else { perform(start:!closing) }
+                    } label: {
                         HStack {
                             if water.busy { ProgressView().tint(.white).controlSize(.small) }
-                            Text(water.busy ? "正在处理…" : closing ? "结束并结算" : "开始洗澡")
-                            Spacer(); Image(systemName:closing ? "stop.circle" : "arrow.up.right")
+                            Text(water.busy ? "正在处理…" : water.maySettleStopped ? "补交停水结算（待验证）" : nextUse ? "开始下一次洗澡" : closing ? "结束并结算" : "开始洗澡")
+                            Spacer(); Image(systemName:closing && !nextUse ? "stop.circle" : "arrow.up.right")
                         }.padding(.horizontal,18).frame(minHeight:52)
                     }.buttonStyle(WaterButtonStyle(primary:true,accent:NativeTheme.tint))
-                        .disabled(closing ? !water.mayFinish : !water.mayStart)
-                        .accessibilityIdentifier(closing ? "finishWater" : "startWater")
-                    Text(closing ? "结算完成前，请留在水控附近。" : "授权后，按水控上的出水键。")
+                        .disabled(nextUse ? !water.mayStartNext : closing ? !water.mayFinish : !water.mayStart)
+                        .accessibilityIdentifier(nextUse ? "startNextWater" : closing ? "finishWater" : "startWater")
+                    Text(nextUse ? "上一笔费用继续保留；确认机身已停水后，可重新检查并开始。" : closing ? "结算完成前，请留在水控附近。" : "授权后，按水控上的出水键。")
                         .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
                 }.padding(.horizontal,20).padding(.top,12).padding(.bottom,12).background(NativeTheme.background)
             }
@@ -288,10 +352,18 @@ struct WaterDetail: View {
                         .toolbar { ToolbarItem(placement:.cancellationAction) { Button("取消") { water.cancelDeviceSelection() } } }
                 }
             }
+            .alert("补交本次热水结算？",isPresented:$confirmStoppedSettlement) {
+                Button("确认已停水，提交结算") { Task { await water.settleStoppedSession() } }
+                Button("暂不提交",role:.cancel) {}
+            } message: {
+                Text("此恢复流程尚待实机验证。请确认是你本次用水且水已停止；提交可能扣除本次费用。结果未确认时会保留记录，不自动重复提交。")
+            }
             .onChange(of:phase) { _,value in if value == .background { water.cancelDeviceSelection() } }
             .onDisappear { water.cancelDeviceSelection() }
     }
     private var closing: Bool { water.stage?.mayClose == true }
+    private var pendingClose: Bool { water.stage == .closeWritePending }
+    private var nextUse: Bool { water.stage != nil && water.stage != .settled && (!closing || water.previousAuthorizationEnded || water.waitingForRelease) }
     private var headline: String {
         if water.inspecting { return "正在核对设备" }
         if water.busy { return "正在处理" }
@@ -319,6 +391,7 @@ struct WaterButtonStyle: ButtonStyle {
 
 private enum ConfigImport { case water, campus, laundry }
 struct SettingsView: View {
+    @ObservedObject private var updates = AppUpdateModel.shared
     var showsDone = true
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var water: WaterModel
@@ -331,55 +404,86 @@ struct SettingsView: View {
     @State private var diagnosticFailed = false
     private var version: String {
         (Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? "—") + " (" +
-        (Bundle.main.object(forInfoDictionaryKey:"CFBundleVersion") as? String ?? "—") + ") · 内测"
+        (Bundle.main.object(forInfoDictionaryKey:"CFBundleVersion") as? String ?? "—") + ")"
+    }
+    private var reminderSettings: some View {
+        Form {
+            Section {
+                Toggle("洗衣结束提醒",isOn:Binding(get:{ laundry.remindersEnabled },set:{ value in Task { await laundry.setReminders(value) } }))
+                    .disabled(laundry.settingReminders).accessibilityIdentifier("laundryReminders")
+                Text(laundry.reminderIssue ?? laundry.reminderStatus).font(.footnote).foregroundStyle(.secondary)
+                Button("测试提醒（10 秒）") { Task { await laundry.testReminder() } }.accessibilityIdentifier("testLaundryReminder")
+            } footer: { Text("付款后返回 App 更新订单。预计结束提醒按剩余时间安排，实际完成以机器和订单为准。") }
+        }.navigationTitle("洗衣提醒").navigationBarTitleDisplayMode(.inline)
+    }
+    private var updateSettings: some View {
+        Form {
+            Section { LabeledContent("当前版本",value:version) }
+            Section {
+                Toggle("版本更新提醒",isOn:$updates.enabled).accessibilityIdentifier("updateReminders")
+                    .onChange(of:updates.enabled) { _,enabled in if enabled { Task { await updates.check(manual:true) } } }
+                Button(updates.checking ? "正在检查…" : "检查更新") { Task { await updates.check(manual:true) } }
+                    .disabled(updates.checking).accessibilityIdentifier("checkAppUpdate")
+                Text(updates.message).font(.footnote).foregroundStyle(.secondary)
+                if let url = updates.available?.releaseURL { Link("查看更新说明与安装包",destination:url) }
+            } footer: { Text("仅检查 GitHub 正式版，不会自动安装。") }
+        }.navigationTitle("版本与更新").navigationBarTitleDisplayMode(.inline)
+    }
+    private var shortcutSettings: some View {
+        Form { Section("iPhone 快捷指令") {
+            Text("在快捷指令 App 搜索“校日常”，添加“开始洗澡”或“结束结算”，放到主屏幕。")
+            Text("使用前请先完成校园账号与宿舍设置。").font(.footnote).foregroundStyle(.secondary)
+        }}.navigationTitle("快捷使用").navigationBarTitleDisplayMode(.inline)
+    }
+    private var advancedSettings: some View {
+        Form {
+            Section("热水核对") {
+                Button("只读检查本次水控状态") { Task { await water.reviewCurrentSession() } }.disabled(!water.mayReview)
+                Button("导出热水诊断") {
+                    do { diagnosticURL = try water.exportDiagnostics(); sharingDiagnostics = true } catch { diagnosticFailed = true }
+                }
+                Text("仅检查已保存会话。诊断包含版本、时间和回复类型，不含账号、密钥或设备编号。")
+                    .font(.footnote).foregroundStyle(.secondary)
+                #if WATER_PASSIVE_DIAGNOSTICS
+                Button("导出机身关水原始记录") {
+                    do { diagnosticURL = try WaterPassiveCapture.export(); sharingDiagnostics = true } catch { diagnosticFailed = true }
+                }
+                Text("原始记录可能含设备标识，仅供本人现场诊断。").font(.footnote).foregroundStyle(.secondary)
+                #endif
+            }
+            Section {
+                Button("导入校园卡配置") { importKind = .campus; importing = true }.disabled(campus.loading)
+                Button("导入热水配置") { importKind = .water; importing = true }.disabled(!water.mayImport)
+                Button("导入 U净配置") { importKind = .laundry; importing = true }.disabled(!laundry.mayImport)
+            } header: { Text("手动配置") } footer: { Text("通常使用账号与设备设置即可。有未确认交易时，请先核对官方记录，保留本机数据。") }
+        }.navigationTitle("故障排查").navigationBarTitleDisplayMode(.inline)
     }
     var body: some View {
         NavigationStack {
             Form {
-                Section {
-                    NavigationLink { QuickSetupView() } label: {
-                        VStack(alignment:.leading,spacing:8) {
-                            Text("首次配置").font(.caption).foregroundStyle(.secondary)
-                            Text("账号与设备设置").font(.headline)
-                            Text("跟着步骤登录、选宿舍、扫机器").font(.footnote).foregroundStyle(.secondary)
-                        }.padding(.vertical,10)
-                    }.accessibilityIdentifier("quickSetupEntry")
-                }
-                Section("我的信息") {
+                Section("账号与设备") {
                     NavigationLink { CampusOnboardingView() } label: {
-                        LabeledContent("校园账号与宿舍",value:campus.configured ? campus.room : "去登录")
+                        LabeledContent { Text(campus.configured ? campus.room : "去登录").foregroundStyle(.secondary) } label: { Label("校园账号与宿舍",systemImage:"person.crop.circle") }
                     }.accessibilityIdentifier("campusOnboardingEntry")
                     NavigationLink { WasherSetupView() } label: {
-                        LabeledContent("常用洗衣机",value:laundry.accountConnected ? "已登录 · \(laundry.savedMachines.count) 台" : "去设置")
+                        LabeledContent { Text(laundry.accountConnected ? "\(laundry.savedMachines.count) 台" : "去设置").foregroundStyle(.secondary) } label: { Label("常用洗衣机",systemImage:"washer") }
                     }.accessibilityIdentifier("washerSetupEntry")
-                    Button { Task { await campus.refresh(force:true) } } label: { Text(campus.loading ? "正在更新余额…" : "更新校园卡余额") }
-                        .disabled(!campus.configured || campus.loading)
+                    NavigationLink { QuickSetupView() } label: { Label("设置向导",systemImage:"list.number") }
+                        .accessibilityIdentifier("quickSetupEntry")
                 }
-                Section("快捷使用") {
-                    Text("在快捷指令 App 搜索“校日常”，添加“开始洗澡”或“结束结算”，放到主屏幕。")
-                        .font(.footnote).foregroundStyle(.secondary)
+                Section("日常使用") {
+                    NavigationLink { reminderSettings } label: {
+                        LabeledContent { Text(laundry.remindersEnabled ? "已开启" : "已关闭").foregroundStyle(.secondary) } label: { Label("洗衣提醒",systemImage:"bell") }
+                    }
+                    NavigationLink { updateSettings } label: {
+                        LabeledContent { Text(updates.available == nil ? "" : "有新版本").foregroundStyle(.secondary) } label: { Label("版本与更新",systemImage:"arrow.triangle.2.circlepath") }
+                    }
+                    NavigationLink { shortcutSettings } label: { Label("快捷使用",systemImage:"bolt") }
                 }
                 Section {
-                    DisclosureGroup("高级设置与故障排查") {
-                        Button("只读检查本次水控状态") { Task { await water.reviewCurrentSession() } }
-                            .disabled(!water.mayFinish)
-                        Text("仅查询已保存会话的设备，不开水、不关水、不结算。")
-                            .font(.footnote).foregroundStyle(.secondary)
-                        Button("导出热水诊断") {
-                            do { diagnosticURL = try water.exportDiagnostics(); sharingDiagnostics = true }
-                            catch { diagnosticFailed = true }
-                        }
-                        Text("包含版本、操作时间和设备回复类型，不含账号、密钥或设备编号。仅记录更新后的操作。")
-                            .font(.footnote).foregroundStyle(.secondary)
-                        Text("通常无需导入文件。请优先使用上方账号与设备设置。")
-                            .font(.footnote).foregroundStyle(.secondary)
-                        Button("导入校园卡配置") { importKind = .campus; importing = true }.disabled(campus.loading)
-                        Button("导入热水配置") { importKind = .water; importing = true }.disabled(!water.mayImport)
-                        Button("导入 U净配置") { importKind = .laundry; importing = true }.disabled(!laundry.mayImport)
-                        Text("有未结算记录时请勿卸载或更换配置。操作未确认时，先核对现场及官方记录。")
-                            .font(.footnote).foregroundStyle(.secondary)
-                    }
-                    LabeledContent("版本",value:version).font(.footnote).foregroundStyle(.secondary)
+                    NavigationLink { advancedSettings } label: { Label("高级设置与故障排查",systemImage:"wrench.and.screwdriver") }
+                } header: { Text("帮助") } footer: {
+                    Text("校日常 \(version)").frame(maxWidth:.infinity).padding(.top,12)
                 }
             }.scrollContentBackground(.hidden).background(NativeTheme.background).tint(NativeTheme.tint)
                 .navigationTitle(showsDone ? "设置" : "设备与设置").navigationBarTitleDisplayMode(.inline)

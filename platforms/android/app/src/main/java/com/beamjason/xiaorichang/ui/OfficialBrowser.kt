@@ -255,17 +255,20 @@ fun OfficialBrowser(session:CampusWebSession?=null,power:Boolean=false,onLogin:(
     }
 }
 
-suspend fun launchPayment(activity:Activity,destination:PaymentDestination):String = when(destination) {
-    PaymentDestination.Query -> "请刷新订单，以服务器状态为准"
+data class PaymentLaunchResult(val message:String,val noHandler:Boolean=false)
+suspend fun launchPayment(activity:Activity,destination:PaymentDestination,browser:Boolean=false):PaymentLaunchResult = when(destination) {
+    PaymentDestination.Query -> PaymentLaunchResult("请刷新订单，以服务器状态为准")
     is PaymentDestination.Checkout -> {
         require(PaymentPolicy.allowedCheckout(destination.url))
-        try { activity.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(destination.url))); "已打开付款页面，返回后核对订单状态" }
-        catch(_:android.content.ActivityNotFoundException) { "未找到支付宝，请先安装并在 U净核对订单" }
+        val target=if(browser)PaymentPolicy.browserCheckout(destination.url) else destination.url
+        try { activity.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(target))); PaymentLaunchResult("已尝试打开付款页面，请在支付宝和 U净核对订单") }
+        catch(_:android.content.ActivityNotFoundException) { PaymentLaunchResult("系统无法打开该付款入口，可尝试其他方式或在官方 U净核对订单",true) }
+        catch(_:SecurityException) { PaymentLaunchResult("系统阻止打开付款入口，可尝试其他方式或在官方 U净核对订单",true) }
     }
     is PaymentDestination.Signed -> {
         // Use the official SDK on its required worker thread. Its callback is a hint,
         // never proof of payment: the order is always queried again on return.
         val result=withContext(Dispatchers.IO) { PayTask(activity).payV2(destination.value,true) }
-        when(result["resultStatus"]) { "9000" -> "支付宝已返回，请刷新确认订单"; "6001" -> "已退出付款，请核对订单"; else -> "付款结果待核对，请查看支付宝和订单状态" }
+        PaymentLaunchResult(when(result["resultStatus"]) { "9000" -> "支付宝已返回，请刷新确认订单"; "6001" -> "已退出付款，请核对订单"; else -> "付款结果待核对，请查看支付宝和订单状态" })
     }
 }

@@ -12,6 +12,7 @@ import WaterCore
     @Published private(set) var lastEnded: Date?
     @Published private(set) var lastCost: Decimal?
     @Published private(set) var hasReceipt = false
+    @Published private(set) var pendingHistoryCount = 0
     private var controller: WaterController?
     private var config: WaterConfig?
     @Published private var importedPlatform: WaterPlatformProfile?
@@ -23,6 +24,7 @@ import WaterCore
     @Published private(set) var deviceCandidates: [WaterDeviceCandidate] = []
     private var deviceChoice: CheckedContinuation<String, Error>?
     private var selectionAllowed = false
+    private var lastAutomaticReview: Date?
     private let bluetooth = BluetoothTransport()
     private init() {
         bluetooth.targetPicker = { [weak self] candidates in
@@ -38,7 +40,15 @@ import WaterCore
         } catch { status = WaterError.storage.rawValue; problem = true }
     }
     var mayStart: Bool { configured && !reviewingIdentity && !residenceReviewRequired && config?.access == nil && controller != nil && !busy && (stage == nil || stage == .settled) && controller?.storageBlocked == false }
-    var mayFinish: Bool { configured && !busy && stage?.mayClose == true && controller?.storageBlocked == false }
+    var mayStartNext: Bool { configured && !reviewingIdentity && !residenceReviewRequired && config?.access == nil && controller != nil && !busy && stage != nil && stage != .settled && controller?.storageBlocked == false }
+    var previousAuthorizationEnded: Bool { controller?.session?.requiresStateReview == true }
+    var waitingForRelease: Bool { controller?.session?.isWaitingForRelease == true }
+    var mayFinish: Bool { configured && !busy && stage?.mayClose == true && !previousAuthorizationEnded && !waitingForRelease && controller?.storageBlocked == false }
+    var mayReview: Bool { configured && !busy && stage?.mayReview == true && controller?.storageBlocked == false }
+    var maySettleStopped: Bool {
+        controller?.supportsStoppedSettlement == true && mayReview && (stage == .active || stage == .closeWritePending) && controller?.session?.requiresStateReview == true &&
+        controller?.session?.observedStateFrame != nil && controller?.session?.consumption == nil
+    }
     var mayImport: Bool { controller != nil && !busy && (stage == nil || stage == .settled) && controller?.storageBlocked == false }
     var onboardingSeed: WaterConfig? { config }
     var onboardingProfile: WaterPlatformProfile? {
@@ -144,9 +154,13 @@ import WaterCore
         lastEnded = controller?.session?.endedAt
         lastCost = controller?.session?.receipt?.amountYuan
         hasReceipt = controller?.session?.receipt != nil
-        if controller?.session?.requiresStateReview == true {
+        pendingHistoryCount = controller?.archivedSessions.filter { $0.stage != .settled }.count ?? 0
+        if waitingForRelease {
             problem = true
-            status = WaterError.notActive.rawValue + "；请核对现场及官方用水记录"
+            status = "水控仍在忙，已断开连接；确认停水后请稍后再试"
+        } else if controller?.session?.requiresStateReview == true {
+            problem = true
+            status = "水控未保留本次授权，结算尚未确认；请核对官方用水记录"
         } else if residenceReviewRequired && (stage == nil || stage == .settled) {
             status = "学校宿舍已变更，请先重新确认宿舍水控";problem = true
         } else if let stage { status = stage.label }
@@ -210,13 +224,28 @@ import WaterCore
         try WaterDiagnosticReport.export(stage: stage, needsReview: controller?.session?.requiresStateReview == true)
     }
     func reviewCurrentSession() async {
-        guard mayFinish, let controller, let config else { return }
+        guard mayReview, let controller, let config else { return }
         busy = true; status = "正在只读检查水控状态…"
         defer { busy = false }
         do {
             _ = try await controller.review(config: config)
             problem = false; refresh()
         } catch { show(error) }
+    }
+    func settleStoppedSession() async {
+        guard maySettleStopped, let controller, let config else { return }
+        busy = true; problem = false; status = "正在核对并补交本次结算…"
+        defer { busy = false }
+        do { try await controller.settleStopped(config:config); refresh() }
+        catch { show(error) }
+    }
+    /// Foreground only. An idle reply is evidence for reconciliation, not permission to settle.
+    func reviewAutomaticallyIfNeeded() async {
+        guard !Task.isCancelled, !busy, controller?.mayReviewAutomatically == true else { return }
+        let now = Date()
+        guard lastAutomaticReview.map({ now.timeIntervalSince($0) >= 30 }) ?? true else { return }
+        lastAutomaticReview = now
+        await reviewCurrentSession()
     }
     func inspectBluetooth() async {
         guard mayImport, let config, let controller else { return }
@@ -242,7 +271,12 @@ import WaterCore
         defer { busy = false; selectionAllowed = false }
         do {
             if start {
-                try await controller.start(config:config,preferredPeripheral:UserDefaults.standard.string(forKey:deviceKey(config)))
+                let preferred = UserDefaults.standard.string(forKey:deviceKey(config))
+                if controller.session != nil && controller.session?.stage != .settled {
+                    try await controller.startNext(config:config,preferredPeripheral:preferred)
+                } else {
+                    try await controller.start(config:config,preferredPeripheral:preferred)
+                }
                 if let id = controller.session?.peripheralID { UserDefaults.standard.set(id,forKey:deviceKey(config)) }
             }
             else { try await controller.finish(config: config) }
