@@ -147,10 +147,12 @@ struct WasherSetupView: View {
         if let preview {
             UjingAccountSection(mobile:preview.mobile, refusal:preview.orderOpen ? .orderOpen : nil, signOut:{})
         } else {
-            UjingAccountSection(mobile:laundry.ujingMobile, refusal:laundry.signOutRefusal, signOut:laundry.signOut)
+            UjingAccountSection(mobile:laundry.ujingMobile, refusal:laundry.signOutRefusal, failed:laundry.signOutFailed,
+                            signOut:laundry.signOut)
         }
         #else
-        UjingAccountSection(mobile:laundry.ujingMobile, refusal:laundry.signOutRefusal, signOut:laundry.signOut)
+        UjingAccountSection(mobile:laundry.ujingMobile, refusal:laundry.signOutRefusal, failed:laundry.signOutFailed,
+                            signOut:laundry.signOut)
         #endif
     }
 

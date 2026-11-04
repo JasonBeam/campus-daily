@@ -46,6 +46,7 @@
 
 ### Fixed
 
+- Say 「没退出成功，再试一次。」 under 「退出 U净」 when signing out of U净 does not go through (the login can't be written), instead of nothing; the button stays, and the line goes once a sign-out works.
 - Let 「扫描机身二维码」 and 「从照片识别」 on 常用洗衣机 answer a tap while signed out of U净: the U净 login opens first and, once it goes through, the scanner or the photo picker opens; cancelling the login stays on the page. They were greyed out without saying why.
 - Put the cursor in the code field of the U净 login once the code is sent, so iOS can offer the code from Messages there.
 - Go back after 保存为常用机器 or a tap on a saved machine, with a success tap; opened from home's unbound 洗衣 row, land on the laundry page. In first-run setup (both themes) saving the same machine again, or choosing a saved one, also moves on.

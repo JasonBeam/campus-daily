@@ -111,6 +111,31 @@ final class UjingAccountTests: XCTestCase {
         XCTAssertEqual(try vault.accountItem(), item)
     }
 
+    /// A login that can't be written (a Keychain write failing) is a failed sign-out: it throws,
+    /// the login stays, and the line under 退出 U净 says so until an attempt goes through.
+    func testFailedSignOutKeepsTheLoginAndSaysSo() throws {
+        let store = InMemorySecureStore()
+        let vault = StoredLaundryVault(store: store)
+        let item = UjingAccountItem(mobileID: mobileID, account: signedIn, mobile: "10012345678")
+        try vault.saveAccountItem(item)
+        store.failWrites(to: .laundryAccount)
+
+        XCTAssertThrowsError(try UjingSignOut.perform(vault: vault, preferences: MemoryPreferences(), checkout: nil))
+        XCTAssertEqual(try vault.accountItem(), item, "still signed in")
+        XCTAssertEqual(UjingSignOut.footer(nil, failed: true), "没退出成功，再试一次。")
+        XCTAssertEqual(UjingSignOut.footer(.busy, failed: true), "没退出成功，再试一次。")
+
+        store.failWrites(to: .laundryAccount, false)
+        XCTAssertNoThrow(try UjingSignOut.perform(vault: vault, preferences: MemoryPreferences(), checkout: nil))
+        XCTAssertNil(try vault.accountItem()?.account)
+        XCTAssertNil(UjingSignOut.footer(nil, failed: false), "cleared after a sign-out that went through")
+    }
+
+    /// An open order's reason wins over an earlier failure: that is why the button is greyed.
+    func testOrderLockReasonWinsOverAFailure() {
+        XCTAssertEqual(UjingSignOut.footer(.orderOpen, failed: true), "还有一笔洗衣订单没处理完，处理完才能退出。")
+    }
+
     // MARK: Expired login
 
     /// A U净 call refused for an expired login, from a machine read or an order step, offers

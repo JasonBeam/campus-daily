@@ -29,6 +29,8 @@ enum LaundryLoginRefusal: Error { case otherAccount }
     @Published private(set) var ujingMobile: String?
     /// U净 said the login ran out (a machine read or an order step): 「重新登录 U净」 is offered.
     @Published private(set) var sessionExpired = false
+    /// The last 退出 U净 didn't go through: said under the button until one does.
+    @Published private(set) var signOutFailed = false
     /// 「学校洗衣机」 (Settings / first-run question). Off: laundry hidden everywhere, no reads,
     /// no Live Activity, no reminder; the U净 login and saved machines stay.
     @Published private(set) var schoolEnabled = SchoolLaundryPreference(storage:UserDefaults.standard).isOn
@@ -166,7 +168,7 @@ enum LaundryLoginRefusal: Error { case otherAccount }
         try AppEnvironment.laundryVault.saveAccountItem(item)
         if clearsLastOrder { forgetLastOrder() }
         account = item
-        accountConnected = true; ujingMobile = mobile; sessionExpired = false
+        accountConnected = true; ujingMobile = mobile; sessionExpired = false; signOutFailed = false
         configured = selectedMachine != nil
         issue = nil; lastAttempt = nil
         rebuildEngine()
@@ -189,10 +191,13 @@ enum LaundryLoginRefusal: Error { case otherAccount }
     }
 
     /// 退出 U净 (`UjingSignOut`): the login goes, the saved machines stay. A login that can't be
-    /// written stays signed in rather than coming back at the next launch.
+    /// written stays signed in rather than coming back at the next launch, and says so.
     func signOut() {
-        guard signOutRefusal == nil, !storageBlocked else { return }
-        guard let outcome = try? UjingSignOut.perform(vault:AppEnvironment.laundryVault, preferences:UserDefaults.standard, checkout:checkout) else { return }
+        guard signOutRefusal == nil else { return }
+        guard !storageBlocked,
+              let outcome = try? UjingSignOut.perform(vault:AppEnvironment.laundryVault, preferences:UserDefaults.standard, checkout:checkout)
+        else { signOutFailed = true; return }
+        signOutFailed = false
         account = account.map { UjingAccountItem(mobileID:$0.mobileID) }
         accountConnected = false; configured = false; snapshot = nil
         ujingMobile = nil; sessionExpired = false
@@ -219,7 +224,7 @@ enum LaundryLoginRefusal: Error { case otherAccount }
         startWatch?.task.cancel(); startWatch = nil
         schoolEnabled = SchoolLaundryPreference(storage:UserDefaults.standard).isOn
         lastOrder = nil; snapshot = nil; candidate = nil; checkout = nil
-        issue = nil; checkoutIssue = nil; checkoutProgress = nil; lastAttempt = nil; sessionExpired = false
+        issue = nil; checkoutIssue = nil; checkoutProgress = nil; lastAttempt = nil; sessionExpired = false; signOutFailed = false
         account = nil
         reloadAccount()
         LaundryActivityController.shared.endAll()

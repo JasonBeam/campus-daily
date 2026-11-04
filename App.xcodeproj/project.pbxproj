@@ -394,6 +394,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = App/Resources/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "$(APP_DISPLAY_NAME)";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "连接你选择的校园水控，完成授权、结束并结算。";
 				INFOPLIST_KEY_NSCameraUsageDescription = "扫描洗衣机机身二维码，保存你的常用机器。";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -429,6 +430,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = App/Resources/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "$(APP_DISPLAY_NAME)";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "连接你选择的校园水控，完成授权、结束并结算。";
 				INFOPLIST_KEY_NSCameraUsageDescription = "扫描洗衣机机身二维码，保存你的常用机器。";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;

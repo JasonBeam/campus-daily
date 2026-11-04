@@ -22,10 +22,14 @@ public enum UjingSignOut {
         return busy ? .busy : nil
     }
 
-    /// The line under the section while the button is greyed. A running step needs no reason:
-    /// it is over in a moment.
-    public static func footer(_ refusal: Refusal?) -> String? {
-        refusal == .orderOpen ? "还有一笔洗衣订单没处理完，处理完才能退出。" : nil
+    /// Under the section after a sign-out that didn't go through, until one does.
+    public static let failedFooter = "没退出成功，再试一次。"
+
+    /// The line under the section: why the button is greyed (a running step needs no reason, it
+    /// is over in a moment), else that the last sign-out failed.
+    public static func footer(_ refusal: Refusal?, failed: Bool = false) -> String? {
+        if refusal == .orderOpen { return "还有一笔洗衣订单没处理完，处理完才能退出。" }
+        return failed ? failedFooter : nil
     }
 
     /// Writes the signed-out login. The finished order's outcome and the last-order note go too
