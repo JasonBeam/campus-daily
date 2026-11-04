@@ -47,6 +47,8 @@
 
 ### Fixed
 
+- Draw problem lines in 暖橙 (电费, 充值, U净 登录, first-run setup, the shower status, 反馈问题) in a darker orange, #B25000, in light mode, so they read on white; dark mode keeps the system orange.
+- Say 「有 1 张截图没加上，再选一次试试。」 (with the number) under 「添加截图」 in 反馈问题 when a picked photo can't be downloaded or read, instead of leaving it out silently and still sending the text; the line goes once a pick adds photos or every screenshot is removed.
 - Say 「没退出成功，再试一次。」 under 「退出 U净」 when signing out of U净 does not go through (the login can't be written), instead of nothing; the button stays, and the line goes once a sign-out works.
 - Let 「扫描机身二维码」 and 「从照片识别」 on 常用洗衣机 answer a tap while signed out of U净: the U净 login opens first and, once it goes through, the scanner or the photo picker opens; cancelling the login stays on the page. They were greyed out without saying why.
 - Put the cursor in the code field of the U净 login once the code is sent, so iOS can offer the code from Messages there.

@@ -13,7 +13,7 @@ struct ThemeColor: ShapeStyle {
         case redLarge, redText, pill, pillInk, notice
         /// Line icons: ink2 in 暖橙, accentText in 清爽.
         case icon
-        /// Problems on the system-style pages: the system orange in 暖橙, `notice` in 清爽.
+        /// Problems on the system-style pages, both themes: 清爽's `notice` (#B25000, dark #FF9F0A).
         case nativeNotice
         /// A colour that is the same in both themes, beside tokens in one expression.
         case fixed(Color)
@@ -50,7 +50,7 @@ struct ThemeColor: ShapeStyle {
         case .pillInk: palette.pillInk
         case .notice: palette.notice
         case .icon: theme == .clear ? palette.accentText : palette.ink2
-        case .nativeNotice: theme == .clear ? palette.notice : .orange
+        case .nativeNotice: ClearPalette.notice
         case .fixed(let color): color
         }
         return opacity == 1 ? base : base.opacity(opacity)

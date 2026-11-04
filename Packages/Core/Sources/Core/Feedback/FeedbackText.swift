@@ -1,7 +1,11 @@
+import Foundation
+
 /// The feedback form's fixed lines. The service's own words are never shown.
 public enum FeedbackText {
     public static let failureText = "没发出去，检查一下网络再试一次。"
     public static let tooLongText = "最多 4000 字。"
+    /// `%d`: how many picked photos could not be added.
+    public static let photoFailureFormat = "有 %d 张截图没加上，再选一次试试。"
 
     /// The line under the text for a draft that can't be sent; nil when there is nothing to say.
     public static func issue(_ issue: FeedbackDraft.Issue?) -> String? {
@@ -10,4 +14,9 @@ public enum FeedbackText {
 
     /// Every failed send reads the same.
     public static func failure(_ error: Error) -> String { failureText }
+
+    /// The line under 添加截图 when `count` picked photos could not be added; nil for none.
+    public static func photoFailure(_ count: Int) -> String? {
+        count > 0 ? String(format: photoFailureFormat, count) : nil
+    }
 }

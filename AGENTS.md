@@ -25,6 +25,7 @@ The rules for working in this repo, for people and AI agents alike. The full des
 - Feature names are Campus, Shower, Laundry and Snapshot everywhere. Do not use Water, HotWater or DailyXxx in new names.
 - Comment only what the code cannot say, for example a field order that the platform signs.
 - Logs record event names only. Never log student ids, device ids, tokens or BLE payloads.
+- Problems and errors use the notice colour (`Theme.notice`, `NativeTheme.notice`). Red is only for running out: a low balance or low electricity.
 
 ## Do not change casually
 
@@ -34,6 +35,8 @@ Hot-water signing, BLE commands, and how school and U净 responses are parsed mu
 
 The repo is public. Real student ids, phone numbers, rooms, device ids, keys and raw captures never go in it. Fixtures in `Packages/Core/Tests/Fixtures` are captured replies with every personal value replaced by a fake one, plus synthetic replies for calls that were never captured (redaction rules in docs/architecture.md). `mise scan` checks the staged files. It needs two lists kept outside the repo: your private values (`LEAKCHECK_FILE`, default `private/capture/secrets/leakcheck.txt`) and marker patterns (`MARKER_PATTERNS`, with optional `MARKER_ALLOW` of `path:line` exceptions); a missing list fails.
 
+Settings › 反馈问题 sends only the typed text, the screenshots the user picks (re-encoded as JPEG, so no location or other photo metadata), app version and build, device model, OS version and locale. Never add the account, student id, balances or logs to it; docs/privacy.md says the same to users. Its endpoint and key live in the untracked `private/distribution/Feedback.xcconfig`, which `Configuration/Base.xcconfig` includes if present; without it the build has no 反馈问题 row. Never commit that file.
+
 ## Before committing
 
-Run `mise run check`: Debug and Release builds, all tests, the App.xctestplan on a simulator, and `mise scan`. Deleting a test needs a stated reason in the PR. To build or test on another machine, set `BUILD_CMD` / `TEST_CMD` / `TEST_APP_CMD`. Each commit does one thing; keep pure moves separate from logic changes. Docs are this file, `README.md`, `docs/architecture.md`, `docs/privacy.md` and `CHANGELOG.md`. Do not add process notes.
+Run `mise run check`: Debug and Release builds, all tests, the App.xctestplan on a simulator, and `mise scan`. Deleting a test needs a stated reason in the PR. To build or test on another machine, set `BUILD_CMD` / `TEST_CMD` / `TEST_APP_CMD`. Each commit does one thing, with its tests in the same commit; keep pure moves separate from logic changes. Commit titles follow Conventional Commits, `type(scope): lowercase imperative` in at most 72 characters (`fix(settings): say when a screenshot can't be added`). No merge commits. Docs are this file, `README.md`, `docs/architecture.md`, `docs/privacy.md` and `CHANGELOG.md`. Do not add process notes.

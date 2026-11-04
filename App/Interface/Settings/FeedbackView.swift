@@ -14,6 +14,8 @@ struct FeedbackView: View {
     @State private var images: [UIImage] = []
     /// Picked photos still loading (an iCloud download, say): 发送 waits for them.
     @State private var loadingImages = false
+    /// Picked photos that failed to download or decode, said under 添加截图.
+    @State private var photoFailures = FeedbackPhotoFailures()
     @State private var sending = false
     @State private var failure: String?
     @State private var sent = false
@@ -51,7 +53,12 @@ struct FeedbackView: View {
                     .disabled(sending || loadingImages || images.count >= FeedbackDraft.maximumImages)
                     .accessibilityIdentifier("feedbackAddScreenshot")
                 } footer: {
-                    Text("最多 4 张。会附上 App 版本、手机型号和系统版本，不带账号和余额。")
+                    VStack(alignment:.leading, spacing:6) {
+                        if let line = photoFailures.line {
+                            failureLine(line).accessibilityIdentifier("feedbackPhotoFailure")
+                        }
+                        Text("最多 4 张。会附上 App 版本、手机型号和系统版本，不带账号和余额。")
+                    }
                 }
                 if let failure {
                     Section {
@@ -89,8 +96,8 @@ struct FeedbackView: View {
         .interactiveDismissDisabled(sending)
     }
 
-    /// The failed-send line in `notice`, as each theme shows problems: 清爽's issue line (icon,
-    /// one-line words in `notice`), 暖橙's footnote like 电费's.
+    /// A failed send or photos not added, in `notice` as each theme shows problems: 清爽's issue
+    /// line (icon, one-line words in `notice`), 暖橙's footnote like 电费's.
     @ViewBuilder private func failureLine(_ line: String) -> some View {
         if appTheme == .clear {
             ClearLaundryIssueLines(lines:[line])
@@ -111,6 +118,7 @@ struct FeedbackView: View {
                         .overlay(alignment:.topTrailing) {
                             Button {
                                 images.remove(at:index)
+                                photoFailures.removed(remaining:images.count)
                             } label: {
                                 Image(systemName:"xmark.circle.fill")
                                     .symbolRenderingMode(.palette)
@@ -129,13 +137,15 @@ struct FeedbackView: View {
     private func load(_ items: [PhotosPickerItem]) async {
         guard !items.isEmpty else { return }
         defer { loadingImages = false }
-        for item in items {
-            guard images.count < FeedbackDraft.maximumImages,
-                  let data = try? await item.loadTransferable(type:Data.self),
+        var added = 0, failed = 0
+        for item in items where images.count < FeedbackDraft.maximumImages {
+            guard let data = try? await item.loadTransferable(type:Data.self),
                   let image = UIImage(data:data)
-            else { continue }
+            else { failed += 1; continue }
             images.append(image)
+            added += 1
         }
+        photoFailures.finishedLoading(added:added, failed:failed)
         pickerItems = []
     }
 
