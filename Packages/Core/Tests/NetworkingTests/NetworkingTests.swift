@@ -76,7 +76,8 @@ final class URLSessionHTTPClientTests: XCTestCase {
         XCTAssertEqual(res.status, 200)
         let line = try XCTUnwrap(log.entries.first).line
         XCTAssertEqual(line.contains("SECRET"), false, line)
-        XCTAssertTrue(line.contains("/ykt-mini/scanpay/getUserBalance"))
+        XCTAssertTrue(line.contains("getUserBalance"))
+        XCTAssertFalse(line.contains("/ykt-mini/scanpay"), "the request's log name, not its path")
         XCTAssertTrue(line.contains("code=0"))
         XCTAssertTrue(server.unmatched.isEmpty)
     }

@@ -9,9 +9,9 @@ public enum SchoolLoginFailure: Error, Sendable, Equatable {
     /// Anything else the school put in the way (captcha, lock, extra verification, a page we
     /// don't recognise). The user signs in on the school's own web page instead.
     case cannotLoginDirectly
-    /// No network before the password was sent: the school saw nothing.
+    /// No network, or a school server error (5xx), before the password was sent: nothing was tried.
     case offline
-    /// The password was sent and no answer came back (timeout, lost connection, cancelled).
+    /// The password was sent and no answer came back (timeout, lost connection, cancelled, a 5xx).
     /// The school may have counted it as an attempt, so automatic logins hold off for a while.
     case noAnswer
     /// Saving a password for an account other than the signed-in one: nothing was saved and
@@ -72,7 +72,7 @@ public protocol SchoolPasswordLogin: Sendable {
 /// 3. `POST /cas/login?service=…` with `"__RSA__" + base64(PKCS#1 v1.5(password))`, redirects
 ///    not followed → `Location` carries `ticket`, a JWT whose payload holds the portal `idToken`.
 /// Cookies live only for one login. The password, ticket, idToken and `execution` are never
-/// logged (the HTTP log records host, path and status only).
+/// logged (the HTTP log records host, request name and status only).
 public struct CASLoginClient: SchoolPasswordLogin {
     let http: HTTPClient
     let now: @Sendable () -> Date
@@ -88,12 +88,14 @@ public struct CASLoginClient: SchoolPasswordLogin {
         let page = try await send(HTTPRequest(service: .cas, method: .get, url: loginURL,
                                               headers: ["Accept": "text/html"],
                                               bodyLimit: HTTPRequest.largeBodyLimit, logName: "casLoginPage"), jar: &jar)
+        if (500...599).contains(page.status) { throw SchoolLoginFailure.offline }
         guard page.status == 200, let execution = CASPage.execution(in: page.body) else {
             throw SchoolLoginFailure.cannotLoginDirectly
         }
 
         let keyURL = URL(string: "https://" + SchoolEndpoints.casHost + "/cas/jwt/publicKey")!
         let key = try await send(HTTPRequest(service: .cas, method: .get, url: keyURL, logName: "casPublicKey"), jar: &jar)
+        if (500...599).contains(key.status) { throw SchoolLoginFailure.offline }
         guard key.status == 200, let encrypted = CASPassword.encrypt(password, publicKeyPEM: key.body) else {
             throw SchoolLoginFailure.cannotLoginDirectly
         }
@@ -121,6 +123,9 @@ public struct CASLoginClient: SchoolPasswordLogin {
             return token
         case 200:
             throw CASPage.classify(errors: CASPage.errors(in: post.body))
+        case 500...599:
+            // The school may have counted the attempt before its server failed.
+            throw SchoolLoginFailure.noAnswer
         default:
             throw SchoolLoginFailure.cannotLoginDirectly
         }

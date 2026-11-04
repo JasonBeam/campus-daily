@@ -74,7 +74,7 @@ struct DormStepMeterStatus: View {
                     // 44 pt to tap; the text sits 8 pt under the line above and the note 6 pt under it.
                     .frame(minHeight:44)
                     .padding(.vertical,-12).padding(.top,8)
-                Text(DormStepMeter.skipNote).scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink3)
+                Text(DormStepMeter.skipNote).scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
                     .fixedSize(horizontal:false, vertical:true)
                     .padding(.top,6)
             }

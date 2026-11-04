@@ -1,13 +1,18 @@
 # Routine commands for 校日常. Run `mise tasks` to list them.
-# Xcode, git and python3 come from the Xcode command line tools;
-# `mise test-scripts` also needs node, `mise android` needs JDK 21.
+# Xcode 26, git and python3 come from Xcode and its command line tools; mise
+# installs node (for `mise test-scripts`) from [tools]. `mise android` needs JDK 21.
 #
 # Override defaults with environment variables, for example
 # `SIMULATOR="iPhone 17" mise test-app`. `mise run check` runs every check a
-# commit must pass (build, test, test-app, scan). BUILD_CMD, TEST_CMD and
-# TEST_APP_CMD replace the xcodebuild build, swift test and xcodebuild test
-# commands (to run them on another machine); BUILD_CMD gets the configuration
-# as its last argument. They run through `eval`, like a line typed in the shell.
+# commit must pass (build, test, test-app, scan) and fails without the private
+# scan lists; `mise run check-public` runs the same steps without them and says
+# which scans it skipped. BUILD_CMD, TEST_CMD and TEST_APP_CMD replace the
+# xcodebuild build, swift test and xcodebuild test commands (to run them on
+# another machine); BUILD_CMD gets the configuration as its last argument.
+# They run through `eval`, like a line typed in the shell.
+
+[tools]
+node = "lts"
 
 [task_config]
 dir = "{{config_root}}"
@@ -80,13 +85,40 @@ description = "Privacy checks on staged files: patterns, values in $LEAKCHECK_FI
 run = "sh Scripts/privacy-check.sh"
 
 [tasks.check]
-description = "Every check before a commit: Debug and Release builds, all tests, the App.xctestplan on a simulator, privacy scans"
-depends = ["build", "test", "test-app", "scan"]
-run = "echo 'all checks passed'"
+description = "Every check before a commit, one after another: builds, all tests, the App.xctestplan, the full privacy scan (fails without the private lists)"
+run = [
+    { task = "build" },
+    { task = "test" },
+    { task = "test-app" },
+    { task = "scan" },
+    "echo 'all checks passed'",
+]
 
-[tasks.check-widget-signature]
-description = "Check a signed app and its widget share one keychain group (APP=path/to/XiaoRiChang.app)"
-run = 'python3 Scripts/check-widget-signature.py --app "$APP"'
+[tasks.check-public]
+description = "check for a checkout without the private lists: the same steps, scans whose list is missing are skipped and said so"
+run = [
+    { task = "build" },
+    { task = "test" },
+    { task = "test-app" },
+    { task = "scan-public" },
+]
+
+[tasks.scan-public]
+description = "The privacy scan of `check-public` (--allow-missing); prints what it skipped"
+hide = true
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+out=$(mktemp)
+trap 'rm -f "$out"' EXIT
+sh Scripts/privacy-check.sh --allow-missing | tee "$out"
+skipped=$(sed -n 's/^skipped: \([a-z]* scan\).*/\1/p' "$out" | paste -sd, - | sed 's/,/, /g')
+if [ -n "$skipped" ]; then
+  echo "public checks passed (skipped: $skipped)"
+else
+  echo "public checks passed"
+fi
+'''
 
 [tasks.build-public]
 description = "Build the unsigned Release app for a device that package-ipa takes (needs the hot-water profile)"

@@ -345,6 +345,18 @@ final class UjingClientTests: XCTestCase {
         XCTAssertTrue(line.contains("code=0"))
     }
 
+    /// Order paths carry the order id: the log names the request instead.
+    func testLogsNameTheRequestNotTheOrderPath() async throws {
+        let server = StubServer()
+        let log = RecordingLogSink()
+        try server.serve("ujing/orderDetail-unpaid")
+        _ = try await L.client(server, log: log).order(L.orderID)
+        let line = try XCTUnwrap(log.entries.last?.line)
+        XCTAssertFalse(line.contains(L.orderID), line)
+        XCTAssertFalse(line.contains("/api/v1/orders"), line)
+        XCTAssertTrue(line.contains("orderDetail"), line)
+    }
+
     func testBadMobileIDNeverSends() async throws {
         let server = StubServer()
         let c = UjingClient(http: server.makeClient(allowedHosts: AllowedHosts.laundry),

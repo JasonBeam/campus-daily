@@ -11,7 +11,7 @@ final class MeterPageTextTests: XCTestCase {
     func testASlowSchoolSaysToLookAgainLater() {
         XCTAssertEqual(MeterPageText.issue(ServiceError.timedOut.userMessage), "学校那边太慢了，等一下再找。")
         XCTAssertEqual(MeterPageText.issue(ServiceError.timedOut, otherwise: "x"), "学校那边太慢了，等一下再找。")
-        XCTAssertEqual(ServiceError.timedOut.userMessage, "学校系统响应太慢，稍后再试。")
+        XCTAssertEqual(ServiceError.timedOut.userMessage, "等了半天没回应，再试一次。")
     }
 
     func testOtherIssuesAreAsElsewhere() {

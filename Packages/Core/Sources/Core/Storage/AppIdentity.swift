@@ -13,8 +13,8 @@ public struct AppIdentity: Sendable, Equatable {
 
     /// `group.<bundle id>`, or nil when Info.plist has no such key (tests, previews).
     public let appGroup: String?
-    /// The app's private keychain group without the team prefix: `<bundle id>`.
-    /// `Scripts/check-widget-signature.py` reads it; the code takes the groups from the signature.
+    /// The app's private keychain group without the team prefix: `<bundle id>`. The code
+    /// takes the groups from the signature.
     public let keychainGroup: String?
 
     public init(info: [String: Any]?) {

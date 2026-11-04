@@ -73,7 +73,6 @@
 - Keep the school's answer to an automatic password sign-in when the app was suspended past its turn and nothing else signed in meanwhile, instead of showing 登录过期 for hours.
 - Let a second sign-in started while one is still running wait for it, so the first one ending does not let the widget read in the middle of the second.
 - Count 最近's today and yesterday in the school's time zone, as 昨天花了 does.
-- Bind the campus instead of a room when more same-named rooms exist than are read, or when one meter is found in two of them.
 - Keep a running shower's Live Activity and reminder after a reset that stopped behind the school sign-out.
 - Wait for the widget's refresh before the school web sign-in, and keep a typed password that was not sent.
 - Keep the saved password when the same person signs in with the school's web page, so the widget still signs in by itself; a different person still clears it.
@@ -108,14 +107,13 @@
 - Siri, Shortcuts and the Live Activity say why a start or an end did not go through (for example 「蓝牙没开，打开后再试。」 or 「这次没能结束，打开校日常再试一次。」), and the start no longer says the water is ready when the controller did not confirm it.
 - Let sign-in, recharge and the shower hand-off run in a build signed without the App Group instead of failing as busy (they still take turns with the app's refresh, through a lease file in the app's own container; the widget leaves every school read to the app there), and take the App Group, keychain groups and background refresh id from `APP_BUNDLE_IDENTIFIER`; the default bundle id keeps the values earlier builds used.
 - In an IPA re-signed under another bundle id, the app and the widget share school data: the shared keychain group follows the group the signature makes the default (the app's plus `.shared`; the widget's own, or, when a wildcard entitlement makes that the widget's bundle id, the app's `.shared` group) instead of the id in Info.plist, and when the App Group in Info.plist has no container, `group.` plus the bundle id the app runs under (the widget's without `.balances`) is tried. The lease file kept in the app's own container is excluded from backup.
-- `Scripts/check-widget-signature.py` also fails a signed build when the app or the widget is not entitled to the App Group named in its Info.plist (`AppGroupIdentifier`), which would leave the widget without fresh numbers.
 - Scan a picked washer photo off the main thread, say 「照片里没找到二维码，换一张拍清楚的。」 when it has no code, and give each refusal on the common-washer page its own text instead of 「机器名称最多 40 个字。」.
 - Forget the last laundry order's result and note when the U净 account that placed it signs out or another account signs in.
 - Read the laundry order as soon as the Alipay SDK reports back, also when Alipay pays in its own web page, instead of after 10 s.
 - Show only the 最近 rows that fit on home, and leave out 最近 when not even one fits under its header, instead of three rows that made home scroll.
 - Draw the tick of a chosen location in the label colour on the accent, so it stays readable in dark mode.
 - Show the last shower's amount on the hot-water screen as 「¥1.32」, as everywhere else, instead of 「CN¥1.32」 on some region settings.
-- The reset confirmation no longer lists 「选的主题」: the app has no theme setting.
+- The reset confirmation says the theme goes back to 暖橙: 「…小组件上的数字，还有导入的热水配置，主题也会回到暖橙。」.
 - The sign-in sheet's close button takes taps in a 44 pt square around its circle.
 - Read the laundry order once when the app comes back, not twice.
 

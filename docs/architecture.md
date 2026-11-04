@@ -67,7 +67,7 @@ Packages/Core/        one library product `Core` (swift-tools 6.0, iOS 17 / macO
     CampusTests/ ShowerTests/ LaundryTests/ SnapshotTests/ NetworkingTests/ StorageTests/ CommonTests/ ThemeTests/ FeedbackTests/
     Support/          StubServer, FixtureLoader, FakeShowerTransport
     Fixtures/         synthetic/redacted API samples, one folder per service
-Scripts/              fetch-alipay-sdk, stage-water-profile, check-widget-signature, package-ipa, privacy-check
+Scripts/              fetch-alipay-sdk, stage-water-profile, package-ipa, privacy-check
                       (run through mise.toml)
 ```
 
@@ -77,12 +77,14 @@ Dependency direction (no cycles, nothing imports App):
 App ──→ Shared ──→ Core
 Widget ─→ Shared ──→ Core
 Core: Campus / Shower / Laundry ──→ Networking, Storage, Common
+      Campus ──→ Snapshot (RefreshLease, LeaseOwnership only)
       Snapshot ──→ Campus (balances, electricity), Storage
       Theme ──→ Shower, Laundry (their states, read only), Storage
 ```
 
-Campus never references Snapshot: `SchoolSession.refresh` returns a `SchoolReading` and the
-Snapshot refresher reduces it into the shared snapshot.
+Campus uses only Snapshot's cross-process lease (`RefreshLease`, `LeaseOwnership`, in
+`Snapshot/RefreshLease.swift`) for the writes a sign-in makes; otherwise `SchoolSession.refresh`
+returns a `SchoolReading` and the Snapshot refresher reduces it into the shared snapshot.
 
 - Core imports only Foundation, CryptoKit, Security and os: no SwiftUI, UIKit, WidgetKit,
   ActivityKit or CoreBluetooth. Bluetooth is implemented in `App/Services/Bluetooth` behind the
@@ -115,11 +117,13 @@ targets all build in Swift 6 language mode.
 
 - `ephemeral` sessions, no cookies/cache, redirects **not followed** (a 302 is a response, see
   `getPowerUrl`), timeouts 15 s request / 20 s resource (the feedback client 30 s / 60 s; a
-  client's request wait comes from its configuration), body cap 64 KiB (1 MiB for campus-wide
-  `getMeterStatus`). HTTPS only, default TLS, per-client host allow-list (school hosts,
-  `isv.lxt6.cn`, `phoenix.ujing.online`).
-- Logging: `os.Logger` with method, host, path, status, latency, decoded `code` only. Query
-  strings, bodies and headers are never logged; a `Redactor` masks token/ticket/sign/sid/custid/
+  client's request wait comes from its configuration), body cap 64 KiB (1 MiB for the CAS login
+  page and login reply, U净 requests after sign-in and lxt6 reads). HTTPS only, default TLS, per-client host allow-list (school hosts,
+  `isv.lxt6.cn`, `phoenix.ujing.online`; the feedback client only the host of its configured
+  endpoint).
+- Logging: `os.Logger` with method, host, the request's `logName`, status, latency, decoded
+  `code` only. Paths (U净 order paths carry the order id), query strings, bodies and headers
+  are never logged; a `Redactor` masks token/ticket/sign/sid/custid/
   syscustid keys if a DEBUG body dump is needed.
 - Error classification (`ServiceError`, in Core/Common):
 
@@ -134,7 +138,7 @@ enum ServiceError: Error, Equatable, Sendable {
   case malformed(Service, String)  // unparseable / missing fields; String = field path, never values
   case uncertain(Service)          // a state-changing request whose outcome we cannot know
 }
-enum Service: String, Sendable { case cas, portal, ecykt, lxt6, ujing }
+enum Service: String, Sendable, Codable, CaseIterable { case cas, portal, ecykt, lxt6, ujing, feedback }
 ```
 
 `uncertain` is produced by engines, not by Networking: any transport error or malformed reply to a
@@ -361,7 +365,7 @@ The small stale line keeps one line at full size: 「8:10 · 打开 App 更新�
 (「昨天 · 打开 App 更新」).
 
 **Electricity resolution.** The automatic lookup (`SchoolSession.matchElectricity`,
-`MeterWalk`) walks the directory the manual picker reads, one small `buildings(parent:)` read
+`SchoolSession+Electricity.swift`) walks the directory the manual picker reads, one small `buildings(parent:)` read
 per level: campus → apartment → building → floor (when the building has floors) → room, matching
 each level by name against the dorm address from sign-in (`DormAddress`). The portal names no
 apartment, so the apartment is the one whose buildings include the dorm's. Every level matched
@@ -711,7 +715,8 @@ idle ─tap 充值─► checkingSession ─ok─► webSession ─page loaded�
 | credential-lifetime lines from older builds (deleted at launch, never written) | Keychain `shared.credentialLog` | same | **yes** |
 | refresh lease (`{owner, expiresAt}`, one school read at a time across processes) | file `refresh.lease` in the App Group container | until first unlock | **yes** (the widget takes it for its own read) |
 | reset-in-progress marker (start time) | Keychain `shared.resetMarker` | same | **yes** (any process that can start a shower or a laundry order checks it) |
-| UI prefs, reminder toggles, de-dupe state | UserDefaults (standard), keys prefixed `xrc.` | – | no |
+| UI prefs, reminder toggles, de-dupe state | UserDefaults (standard); most keys prefixed `xrc.`, not `didSeeQuickSetup`, `laundryDoneShownOrder`, `laundryLastProgram.*` | – | no |
+| theme (`暖橙` / `清爽`) | UserDefaults of the App Group (`ThemePreference`, key `xrc.theme`; this process's own when there is no group) | – | **yes** (the widget and Live Activities draw in it) |
 | imported hot-water config | file `Application Support/Water/imported.waterconfig`, folder excluded from backup | until first unlock | no |
 
 Reset (Settings › 重置) is all or nothing. It writes `shared.resetMarker` first; while the
@@ -753,7 +758,8 @@ token (then WhenUnlocked) and the login device id in the private group. At launc
 (`migrateItemGroups()`) and on any read that finds one there, the item is written to its group
 with today's accessibility, read back, and only then deleted from the old group; a failed step
 keeps the original and retries next launch, so nobody is signed out or loses a binding. The App
-Group (`group.$(APP_BUNDLE_IDENTIFIER)`, both targets) holds only the lease file; a re-signed
+Group (`group.$(APP_BUNDLE_IDENTIFIER)`, both targets) holds the lease file and the theme
+choice (its UserDefaults, `xrc.theme`); a re-signed
 build without it keeps working: the app keeps its lease file in its own container
 (`RefreshLease.appFile`, Application Support, excluded from backup), so its reads, logins,
 recharge and hot-water hand-off still take turns, and the widget, which can't open that file,
@@ -798,7 +804,6 @@ and the App Group falls back to `group.` plus the bundle id it runs under (the w
 Distribution is an unsigned IPA the user re-signs (`Scripts/package-ipa.py`); there is no App
 Store/TestFlight record. Paid-team signers register `org.zaxh.xiaorichang` and
 `.balances`; free Personal Teams count them toward the 10 App IDs / 7 days limit.
-`Scripts/check-widget-signature.py` checks a signed build before installing.
 
 **Alipay scheme notes.** (1) AlipaySDK `payOrder(_:fromScheme:)` (laundry signed order) returns
 to `<scheme>://safepay…`; Info.plist declares `$(PRODUCT_BUNDLE_IDENTIFIER).alipay`, so it
@@ -819,7 +824,7 @@ laundry payment.
 `StubServer` (a `URLProtocol`) matches method + host + path (+ body keys like `server`, `buildingID`), replays
 status/headers/body, records requests for assertions (`acc_token` in header and body, `wxcode`
 field order, no `timestamp`), fails on unmatched requests, and can inject `URLError`s (offline,
-timeout, TLS). Plus `FakeBLETransport` (scripted frames, delays, drops), `FakeClock`, in-memory
+timeout, TLS). Plus `FakeShowerTransport` (scripted frames, device errors, hangs), `FakeClock`, in-memory
 stores with injectable write failures.
 
 Every endpoint gets at least: success, expired/unauthorized, refused with message, malformed
@@ -866,7 +871,8 @@ maintainer's device:
 | token lifetime: ecykt at +2/+6/+24 h idle; portal token lifetime | scheduled read-only probes (`getSysBindCustInfo`); no user session needed beyond one sign-in |
 
 Decoder tests for the hot-water authorize/settle and U净 paths use synthetic replies shaped like the existing code expects and are
-marked as such; no release ships a money path whose device check is still open. `swift test`
+marked as such; the hot-water authorize and settlement have not been checked on a device yet
+(0.8.0 ships them with that warning). `swift test`
 touches no network, Bluetooth or host Keychain.
 
 ---
@@ -944,8 +950,8 @@ with an empty body**: treat it as a bad request, never as expiry.
 
 Electricity tree (`areacode 450010`): campuses → apartments (`xx公寓`) → buildings (`N栋`) →
 floors (`N楼`) → rooms (`NNN`) → `[]`. `getMeterStatus` works at any level (a campus returns
-every meter, ≈2.3k rows; a room returns 1). Matching `piplineName == "<栋>栋<room>"` on one
-campus-wide read finds the room meter.
+every meter, ≈2.3k rows; a room returns 1). The app walks the tree level by level and reads
+only the room's meter (see Electricity resolution).
 
 Money/state endpoints in the official JS (never called by the app; recharge stays in the
 school's web page): `/api/business/balRechargeApply`, `/api/business/balRechargeOrder`,

@@ -37,8 +37,8 @@ extension SchoolSession {
     /// `notTried`: no password to send (none saved, paused, held, or no direct login), nothing sent.
     enum PasswordStep { case signedIn((BoundCard, EcyktSession)), offline, failed(ServiceError), notTried, unavailable, retryLater, lostLease, signedOut }
 
-    /// The last step of the refresh: one login with the saved password. Anything but success
-    /// or no network pauses the password, so a wrong or blocked login is never repeated. After
+    /// The last step of the refresh: one login with the saved password. Anything but success,
+    /// no network or a school server error pauses the password, so a wrong or blocked login is never repeated. After
     /// the school accepted it, only a definite refusal of the card login pauses it. A login
     /// that was sent but got no answer holds automatic logins off for a few hours instead, and so
     /// does an accepted one whose card session then could not be made.

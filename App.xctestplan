@@ -65,6 +65,13 @@
         "identifier": "ThemeTests",
         "name": "ThemeTests"
       }
+    },
+    {
+      "target": {
+        "containerPath": "container:Packages/Core",
+        "identifier": "FeedbackTests",
+        "name": "FeedbackTests"
+      }
     }
   ],
   "version": 1

@@ -12,7 +12,8 @@ public struct HTTPRequest: Sendable {
     public var bodyLimit: Int
     /// State-changing requests map every indefinite failure to `uncertain(service)`.
     public var isStateChanging: Bool
-    /// Short endpoint name for logs (no query, no ids), e.g. "getUserBalance".
+    /// Short endpoint name, the only part of the URL the log records (no path, query or
+    /// ids), e.g. "getUserBalance".
     public var logName: String
     /// A shorter wait than the client's own for a request that may be given up early; nil = the client's.
     public var timeout: TimeInterval?

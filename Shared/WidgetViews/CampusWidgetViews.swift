@@ -237,7 +237,7 @@ struct CampusWidgetFace: View {
             .widgetAccentable()
     }
 
-    /// fresh: 「10:32 更新」 ink2; stale: 「昨天 8:10 · 打开 App 更新」 (small: 「昨天 · 打开 App 更新」) (time ink3, action accentText);
+    /// fresh: 「10:32 更新」 ink2; stale: 「昨天 8:10 · 打开 App 更新」 (small: 「昨天 · 打开 App 更新」) (time ink2, action accentText);
     /// expired (medium): 「登录过期了 · 打开 App 重新登录」 (the lead in notice).
     @ViewBuilder private var footer: some View {
         switch model.state {
@@ -246,7 +246,7 @@ struct CampusWidgetFace: View {
             let tail = Text(" · 打开 App 重新登录").foregroundStyle(P.ink2)
             Text("\(lead)\(tail)").font(.system(size:11)).lineLimit(1).minimumScaleFactor(0.8)
         case .stale:
-            let time = Text(model.staleStamp(medium:medium).map { $0 + " · " } ?? "").foregroundStyle(P.ink3)
+            let time = Text(model.staleStamp(medium:medium).map { $0 + " · " } ?? "").foregroundStyle(P.ink2)
             let action = Text("打开 App 更新").fontWeight(.semibold).foregroundStyle(P.accentText)
             // One line at full size: the small face's date-only stamp is short enough not to shrink.
             Text("\(time)\(action)").font(.system(size:11)).monospacedDigit().lineLimit(1)

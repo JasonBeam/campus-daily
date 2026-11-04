@@ -455,7 +455,7 @@ private struct StepBar: View {
         switch mark {
         case .done: return Theme.ink2
         case .current, .failed: return Theme.ink
-        case .future: return Theme.ink3
+        case .future: return Theme.ink2
         }
     }
 }

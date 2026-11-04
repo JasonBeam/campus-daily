@@ -62,11 +62,10 @@ public final class URLSessionHTTPClient: HTTPClient, @unchecked Sendable {
 
     public func send(_ request: HTTPRequest) async throws -> HTTPResponse {
         let host = request.url.host?.lowercased() ?? ""
-        let path = request.url.path
         let started = now()
         func elapsed() -> Int { max(0, Int(now().timeIntervalSince(started) * 1000)) }
         func entry(status: Int?, code: String? = nil, error: String? = nil) -> HTTPLogEntry {
-            HTTPLogEntry(service: request.service, method: request.method.rawValue, host: host, path: path,
+            HTTPLogEntry(service: request.service, method: request.method.rawValue, host: host, name: request.logName,
                          status: status, milliseconds: elapsed(), code: code, error: error)
         }
         func finish(_ e: ServiceError) -> ServiceError {

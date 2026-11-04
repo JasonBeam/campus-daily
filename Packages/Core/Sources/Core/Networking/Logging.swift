@@ -3,20 +3,21 @@ import Foundation
 import os
 #endif
 
-/// One log line per request: method, host, path, status, latency, decoded `code`. Never
-/// query strings, bodies or headers.
+/// One log line per request: method, host, the request's log name, status, latency, decoded
+/// `code`. Never the path (it can hold ids), query strings, bodies or headers.
 public struct HTTPLogEntry: Sendable, Equatable {
     public var service: Service
     public var method: String
     public var host: String
-    public var path: String
+    /// `HTTPRequest.logName`.
+    public var name: String
     public var status: Int?
     public var milliseconds: Int
     public var code: String?
     public var error: String?
 
     public var line: String {
-        var s = "\(service.rawValue) \(method) \(host)\(path)"
+        var s = "\(service.rawValue) \(method) \(host) \(name)"
         s += status.map { " → \($0)" } ?? ""
         s += " \(milliseconds)ms"
         if let code { s += " code=\(code)" }

@@ -64,7 +64,7 @@ struct SchoolLoginForm: View {
         VStack(alignment:.leading, spacing:0) {
             VStack(spacing:0) {
                 row("账号") {
-                    TextField("", text:$account, prompt:Text("输入账号").foregroundStyle(Theme.ink3))
+                    TextField("", text:$account, prompt:Text("输入账号").foregroundStyle(Theme.ink2))
                         .textContentType(.username)
                         .keyboardType(.asciiCapable)
                         .textInputAutocapitalization(.never).autocorrectionDisabled()
@@ -77,9 +77,9 @@ struct SchoolLoginForm: View {
                 row("密码") {
                     Group {
                         if reveal {
-                            TextField("", text:$password, prompt:Text("输入密码").foregroundStyle(Theme.ink3))
+                            TextField("", text:$password, prompt:Text("输入密码").foregroundStyle(Theme.ink2))
                         } else {
-                            SecureField("", text:$password, prompt:Text("输入密码").foregroundStyle(Theme.ink3))
+                            SecureField("", text:$password, prompt:Text("输入密码").foregroundStyle(Theme.ink2))
                         }
                     }
                     .textContentType(.password)

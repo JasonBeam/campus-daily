@@ -21,7 +21,9 @@
 # The value list lives outside Git. Its path comes from LEAKCHECK_FILE
 # (default: private/capture/secrets/leakcheck.txt in the checkout). A missing
 # list is a failure, and so is an unset MARKER_PATTERNS; pass --allow-missing
-# to skip what is missing (reported as skipped).
+# to skip what is missing (printed as "skipped: ..."). A LEAKCHECK_FILE or
+# MARKER_PATTERNS that is set but names no file always fails, even with
+# --allow-missing: a typo must not turn into a skipped scan.
 #
 #   LEAKCHECK_FILE=/path/to/leakcheck.txt MARKER_PATTERNS=/path/to/patterns.txt \
 #   MARKER_ALLOW=/path/to/allow.txt sh Scripts/privacy-check.sh [--allow-missing] [repo]
@@ -38,6 +40,12 @@ fi
 root=$(git rev-parse --show-toplevel) || exit 2
 cd "$root" || exit 2
 list=${LEAKCHECK_FILE:-$root/private/capture/secrets/leakcheck.txt}
+if [ -n "${LEAKCHECK_FILE:-}" ] && [ ! -f "$LEAKCHECK_FILE" ]; then
+  echo "privacy-check: LEAKCHECK_FILE is set but no file is there" >&2; exit 2
+fi
+if [ -n "${MARKER_PATTERNS:-}" ] && [ ! -f "$MARKER_PATTERNS" ]; then
+  echo "privacy-check: MARKER_PATTERNS is set but no file is there" >&2; exit 2
+fi
 hits=0
 tmp=$(mktemp -d) || { echo "privacy-check: mktemp failed" >&2; exit 2; }
 [ -n "$tmp" ] && [ -d "$tmp" ] || { echo "privacy-check: no temp dir" >&2; exit 2; }
@@ -164,7 +172,7 @@ if [ -f "$list" ]; then
   [ "$n" -gt 0 ] && head -50 "$tmp/leaks"
   hits=$((hits+n))
 elif [ "$allow_missing" -eq 1 ]; then
-  echo "value scan: skipped (no list at LEAKCHECK_FILE; --allow-missing)"
+  echo "skipped: value scan (no list at private/capture/secrets/leakcheck.txt, LEAKCHECK_FILE not set)"
 else
   echo "value scan: list not found (set LEAKCHECK_FILE, or pass --allow-missing)" >&2
   exit 2
@@ -191,7 +199,7 @@ elif [ -n "$markers" ]; then
   echo "marker scan: pattern list not found at MARKER_PATTERNS" >&2
   exit 2
 elif [ "$allow_missing" -eq 1 ]; then
-  echo "marker scan: skipped (MARKER_PATTERNS not set; --allow-missing)"
+  echo "skipped: marker scan (MARKER_PATTERNS not set)"
 else
   echo "marker scan: MARKER_PATTERNS not set (set it, or pass --allow-missing)" >&2
   exit 2

@@ -95,7 +95,7 @@ struct AdvancedSettingsView: View {
             Button("取消", role:.cancel) {}
             Button("重置", role:.destructive) { runReset() }
         } message: {
-            Text("会清掉学校账号和保存的密码、宿舍和电表、记住的水控、U净 登录、洗澡和洗衣记录、小组件上的数字，还有导入的热水配置。学校那边的余额和消费记录不受影响。")
+            Text("会清掉学校账号和保存的密码、宿舍和电表、记住的水控、U净 登录、洗澡和洗衣记录、小组件上的数字，还有导入的热水配置，主题也会回到暖橙。学校那边的余额和消费记录不受影响。")
         }
         .alert(ResetLockText.blockedTitle(resetBlocked), isPresented:Binding(get:{ resetBlocked != nil }, set:{ if !$0 { resetBlocked = nil } })) {
             Button("好", role:.cancel) {}

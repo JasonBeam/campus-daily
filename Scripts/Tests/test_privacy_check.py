@@ -33,7 +33,7 @@ class PrivacyCheckTests(unittest.TestCase):
 
     def check(self, *extra, env=None):
         # Never the caller's own lists: no value list, no marker patterns unless a test sets them.
-        base = dict(os.environ, LEAKCHECK_FILE=str(Path(self.tmp.name) / 'absent.txt'), MARKER_PATTERNS='')
+        base = {k: v for k, v in os.environ.items() if k not in ('LEAKCHECK_FILE', 'MARKER_PATTERNS')}
         return subprocess.run(['sh', str(SCRIPT), *extra, str(self.repo)], capture_output=True, text=True,
                               env=dict(base, **(env or {})))
 
@@ -82,6 +82,27 @@ class PrivacyCheckTests(unittest.TestCase):
     def test_a_missing_value_list_fails_without_allow_missing(self):
         result = self.check()
         self.assertEqual(result.returncode, 2)
+
+    def test_missing_lists_are_printed_as_skipped_with_allow_missing(self):
+        result = self.check('--allow-missing')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('skipped: value scan', result.stdout)
+        self.assertIn('skipped: marker scan', result.stdout)
+
+    def test_a_value_list_set_to_a_missing_file_fails_even_with_allow_missing(self):
+        absent = str(Path(self.tmp.name) / 'absent.txt')
+        for extra in ((), ('--allow-missing',)):
+            result = self.check(*extra, env=dict(LEAKCHECK_FILE=absent))
+            self.assertEqual(result.returncode, 2, extra)
+            self.assertIn('LEAKCHECK_FILE', result.stderr)
+            self.assertNotIn('skipped', result.stdout)
+
+    def test_marker_patterns_set_to_a_missing_file_fails_even_with_allow_missing(self):
+        absent = str(Path(self.tmp.name) / 'absent-patterns.txt')
+        for extra in ((), ('--allow-missing',)):
+            result = self.check(*extra, env=dict(MARKER_PATTERNS=absent))
+            self.assertEqual(result.returncode, 2, extra)
+            self.assertIn('MARKER_PATTERNS', result.stderr)
 
 
 if __name__ == '__main__':
