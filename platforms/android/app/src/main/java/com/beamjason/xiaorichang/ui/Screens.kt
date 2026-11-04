@@ -248,13 +248,14 @@ fun ReminderSettingsScreen(padding:PaddingValues,enabled:Boolean,onChange:(Boole
 }
 
 @Composable
-fun UpdateSettingsScreen(padding:PaddingValues,s:UpdateState,onChange:(Boolean)->Unit,check:()->Unit,open:()->Unit) = Page(padding) {
+fun UpdateSettingsScreen(padding:PaddingValues,s:UpdateState,onChange:(Boolean)->Unit,check:()->Unit,open:()->Unit,download:()->Unit={}) = Page(padding) {
     Group {NativeText("当前版本");Hint("${com.beamjason.xiaorichang.BuildConfig.VERSION_NAME} (${com.beamjason.xiaorichang.BuildConfig.VERSION_CODE})")}
     Group {
         Row(verticalAlignment=Alignment.CenterVertically){NativeText("版本更新提醒",Modifier.weight(1f));Switch(s.enabled,onChange)}
         TextButton(check,enabled=!s.checking){NativeText(if(s.checking)"正在检查…" else "检查更新")}
         if(s.message!="仅检查 GitHub 正式版，不会自动安装。")Hint(s.message)
         if(s.url!=null)TextButton(open){NativeText("查看更新说明与安装包")}
+        if(s.failed)TextButton(download){NativeText("直接打开下载页")}
         Hint("仅检查 GitHub 正式版，不会自动安装。")
     }
 }

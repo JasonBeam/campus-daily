@@ -1,7 +1,7 @@
 import Foundation
 
-public struct AppRelease: Decodable, Sendable {
-    public struct Asset: Decodable, Sendable { public let name: String }
+public struct AppRelease: Codable, Sendable {
+    public struct Asset: Codable, Sendable { public let name: String }
     public let tag_name: String
     public let html_url: String
     public let prerelease: Bool
@@ -32,5 +32,30 @@ public struct AppRelease: Decodable, Sendable {
               let local = parts(currentVersion), let latestBuild = iosBuild else { return false }
         if remote != local { return local.lexicographicallyPrecedes(remote) }
         return latestBuild > build
+    }
+}
+
+
+/// Public metadata only. No account token is sent to either update source.
+public enum AppUpdateFeed {
+    public static let sources = [
+        URL(string:"https://api.github.com/repos/JasonBeam/campus-daily/releases/latest")!,
+        URL(string:"https://jasonbeam.github.io/campus-daily/updates.json")!
+    ]
+    public static func load(fetch: (URL) async throws -> Data) async throws -> AppRelease {
+        var failure: Error = URLError(.cannotLoadFromNetwork)
+        for url in sources {
+            try Task.checkCancellation()
+            do {
+                let data = try await fetch(url)
+                guard data.count <= 524288 else { throw URLError(.dataLengthExceedsMaximum) }
+                let release = try JSONDecoder().decode(AppRelease.self,from:data)
+                guard !release.draft, !release.prerelease, release.releaseURL != nil,
+                      release.iosBuild != nil, release.isNewer(than:"0.0.0",build:0) else { throw URLError(.cannotParseResponse) }
+                return release
+            } catch is CancellationError { throw CancellationError() }
+              catch { failure = error }
+        }
+        throw failure
     }
 }
