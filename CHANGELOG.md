@@ -39,6 +39,7 @@
 - Reorganize the repository by feature: `App/` (Application, Interface, Services, Resources), `Shared/`, `Widget/`, one `Packages/Core` package, `Android/`, `Configuration/`, `Scripts/`. The Xcode project is committed (`XiaoRiChang.xcworkspace`), and routine commands run through `mise`.
 - Name the hot-water feature "Shower" throughout the code. User-facing text is unchanged.
 - Fold the release notes from `docs/release-*.md` into this file.
+- Move the screenshots, flow demos, social images and Android previews from `docs/screenshots`, `docs/media`, `docs/social`, `docs/social-0.7.0.md` and `docs/previews` to `docs/media/0.7.0/` and `docs/media/android-0.2.0-alpha12/`, one folder per version.
 - Upgrade note: if you built the app from source with your own `APP_BUNDLE_IDENTIFIER` before this version, you are signed out of the school account once after upgrading and need to type the saved password again; builds with the default bundle id are not affected.
 - Hide the guide card on 常用洗衣机 once signed in to U净 with a machine saved, and take 「更新 U净 登录」 out of it.
 - Show Settings › 版本 as 「0.8.0 Beta（48）」 on TestFlight and development builds and 「0.8.0（48）」 from the App Store, instead of 「0.8.0（48）· 测试版」 everywhere.
@@ -119,7 +120,7 @@
 - Remove 「导出热水诊断」 (Settings › 高级 › 热水排查) and every diagnostic record behind it: the hot-water event file, the school credential-lifetime lines in the shared Keychain and the Bluetooth scan note. The app deletes what older builds left at launch.
 - Remove 「导出热水诊断」 from the Android app too, with its event file and file provider; a file an older build left is deleted at launch.
 - Remove the self-hosted hot-water access service (`services/access`), its client in the iOS app and its preparation script. The Android app in `Android/` still contains its client and is unchanged. Hot-water platform parameters now come only from the bundled `CampusWaterPlatform.json` or a user import. Users who were connected only through the access service see the "platform missing" message and need a build with the bundled parameters or an import.
-- Remove the process documents, promotional images and the old project generator; their history stays in Git.
+- Remove the process documents and the old project generator; their history stays in Git.
 
 ## [0.8.0] - 2026-10-29
 
