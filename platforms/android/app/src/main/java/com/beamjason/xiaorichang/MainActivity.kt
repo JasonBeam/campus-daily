@@ -213,7 +213,7 @@ private fun CampusApp(activity:ComponentActivity,vm:CampusViewModel=viewModel())
         Box(contentModifier.background(MaterialTheme.colorScheme.background)) {
         when(page) {
             "reminders"->ReminderSettingsScreen(padding,remindersEnabled,::setLaundryReminders){runCatching{laundryReminders.test()}.onSuccess{vm.notice("已安排10秒测试提醒，请切到后台查看")}.onFailure{vm.notice(message(it))}}
-            "updates"->UpdateSettingsScreen(padding,updateState,{updates.setEnabled(it)},{scope.launch{updates.check(true)}},::openUpdate)
+            "updates"->UpdateSettingsScreen(padding,updateState,{updates.setEnabled(it)},{scope.launch{updates.check(true)}},::openUpdate,{activity.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://jasonbeam.github.io/campus-daily/")))})
             "advanced"->AdvancedSettingsScreen(state,padding,::navigate,glassEnabled,{enabled->glassEnabled=enabled;appearance.edit().putBoolean("glass",enabled).apply();mode=glassMode(activity,enabled)},::exportDiagnostics,{navigate("water");withBle("review")},::exportPassive)
             "usage"->Page(padding){Group{NativeText("在日常页打开热水或洗衣机，使用已保存的配置。");Hint("更换宿舍、重新登录或添加机器，可进入账号与设备设置。")}}
             "recharge"->RechargeMenuScreen(padding){browser->

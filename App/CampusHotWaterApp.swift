@@ -426,6 +426,7 @@ struct SettingsView: View {
                     .disabled(updates.checking).accessibilityIdentifier("checkAppUpdate")
                 Text(updates.message).font(.footnote).foregroundStyle(.secondary)
                 if let url = updates.available?.releaseURL { Link("查看更新说明与安装包",destination:url) }
+                if updates.failed { Link("直接打开下载页",destination:URL(string:"https://jasonbeam.github.io/campus-daily/")!) }
             } footer: { Text("仅检查 GitHub 正式版，不会自动安装。") }
         }.navigationTitle("版本与更新").navigationBarTitleDisplayMode(.inline)
     }

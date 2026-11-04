@@ -31,4 +31,41 @@ struct AppUpdateTests {
             #expect(try !release("0.9.0",url:url).isNewer(than:"0.8.0",build:38))
         }
     }
+    @Test func rateLimitFallsBackToPublicFeedAndFindsUpdateForBuild50() async throws {
+        let data = try JSONEncoder().encode(release("0.9.0",build:52))
+        var calls: [URL] = []
+        let found = try await AppUpdateFeed.load { url in
+            calls.append(url)
+            if calls.count == 1 { throw URLError(.badServerResponse) }
+            return data
+        }
+        #expect(calls == AppUpdateFeed.sources)
+        #expect(found.isNewer(than:"0.8.0",build:50))
+    }
+    @Test func invalidPrimaryResponseCannotHideValidFallback() async throws {
+        let data = try JSONEncoder().encode(release("0.9.0",build:52))
+        var count = 0
+        let found = try await AppUpdateFeed.load { _ in
+            count += 1
+            return count == 1 ? Data("{\"message\":\"API rate limit exceeded\"}".utf8) : data
+        }
+        #expect(count == 2); #expect(found.iosBuild == 52)
+    }
+    @Test func cancellationNeverStartsAnotherNetworkRequest() async throws {
+        var count = 0
+        do {
+            _ = try await AppUpdateFeed.load { _ in count += 1; throw CancellationError() }
+            Issue.record("Cancellation must propagate")
+        } catch is CancellationError { }
+        #expect(count == 1)
+    }
+    @Test func unavailableSourcesFailWithoutInventingLatestVersion() async {
+        var count = 0
+        do {
+            _ = try await AppUpdateFeed.load { _ in count += 1; throw URLError(.notConnectedToInternet) }
+            Issue.record("Offline checks must fail")
+        } catch { }
+        #expect(count == 2)
+    }
+
 }
