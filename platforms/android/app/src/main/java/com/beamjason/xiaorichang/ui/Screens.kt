@@ -75,7 +75,6 @@ fun HomeScreen(s:CampusUiState,padding:PaddingValues,navigate:(String)->Unit,ref
                             Hint("昨日 "+(s.cache.power?.yesterday?.let {"${money(it)} 度"} ?: "未返回"))
                         }
                         Hint(if("power" in s.busy)"正在更新…" else if(s.cache.powerAt>0)"${if(s.powerError!=null)"上次" else "查询"} ${clock(s.cache.powerAt)}" else "尚未查询")
-                        PlainAction("充电费 ↗"){navigate(if(!s.campus.configured)"login" else if(s.campus.buildingId.isBlank())"powerSetup" else "rechargePower")}
                         s.powerError?.let {Hint(it,true)}
                     } }
                     val card:@Composable (Modifier)->Unit={m -> Column(m,verticalArrangement=Arrangement.spacedBy(10.dp)) {
@@ -83,14 +82,14 @@ fun HomeScreen(s:CampusUiState,padding:PaddingValues,navigate:(String)->Unit,ref
                         MetricValue(s.cache.card?.let(::money) ?: "—","元")
                         Column(verticalArrangement=Arrangement.spacedBy(5.dp)) {Hint("校园消费余额");Hint(if(s.cardError!=null)"上次数据" else if("card" in s.busy)"正在更新…" else if(s.cache.cardAt>0)"已更新" else "等待查询")}
                         Hint(if(s.cache.cardAt>0)"查询 ${clock(s.cache.cardAt)}" else "尚未查询")
-                        PlainAction("充校园卡 ↗"){navigate(if(s.campus.configured)"rechargeCard" else "login")}
                         s.cardError?.let {Hint(it,true)}
                     } }
                     if(maxWidth<286.dp || LocalDensity.current.fontScale>1.3f)Column(verticalArrangement=Arrangement.spacedBy(18.dp)){power(Modifier.fillMaxWidth());HorizontalDivider();card(Modifier.fillMaxWidth())}
                     else Row(horizontalArrangement=Arrangement.spacedBy(16.dp)){power(Modifier.weight(1f));card(Modifier.weight(1f))}
                 }
+                PlainAction("校园充值 ↗"){navigate("recharge")}
             }
-            if(s.setupCount<3) Group {NavRow("继续完成设置","账号、宿舍和常用洗衣机",Icons.Outlined.Tune){navigate("setup")}}
+            if(s.setupCount<2) Group {NavRow("继续完成设置","学校账号与宿舍，洗衣机可稍后添加",Icons.Outlined.Tune){navigate("setup")}}
             BoxWithConstraints {
                 val water:@Composable (Modifier)->Unit={m->ServiceFeature(m,"热水洗澡",s.water.room.ifBlank {s.campus.dorm},if(!s.water.configured)"待配置" else if(s.unresolvedWater)waterLabel(s) else "可连接",CampusSymbols.Drop){navigate("water")}}
                 val laundry:@Composable (Modifier)->Unit={m->ServiceFeature(m,"洗衣机",s.washer?.let {"常用 · ${it.number}号"} ?: "登录与扫码绑定",s.washer?.label ?: "待配置",CampusSymbols.Washer){navigate("laundry")}}
@@ -106,6 +105,18 @@ fun HomeScreen(s:CampusUiState,padding:PaddingValues,navigate:(String)->Unit,ref
             }}
             Hint("下拉刷新余额")
         }
+    }
+}
+
+@Composable
+fun RechargeMenuScreen(padding:PaddingValues,open:(Boolean)->Unit) = Page(padding,spacing=16.dp) {
+    Group {
+        NativeText("前往学校官方微信服务",style=MaterialTheme.typography.titleMedium)
+        NativeText("进入“e广工商大办事大厅”后，选择校园卡或电费充值；充值电费时请核对宿舍和金额。")
+        Hint("校日常只负责打开学校入口。付款和到账以学校官方结果为准；返回后可刷新余额。")
+        ActionButton("打开学校微信入口"){open(false)}
+        TextButton({open(true)}){NativeText("使用学校官方中转页")}
+        Hint("若入口失效，可在微信搜索“e广工商大办事大厅”，或使用学校官方小程序码。")
     }
 }
 
@@ -128,7 +139,7 @@ private fun ServiceFeature(modifier:Modifier,title:String,detail:String,status:S
     }
 }
 
-fun waterLabel(s:CampusUiState):String = if(s.waterSession?.stateReviewRequired==true)"本次待核对" else when(s.waterSession?.stage) {
+fun waterLabel(s:CampusUiState):String = if(s.waterSession?.waitingForRelease==true)"等待水控释放" else if(s.waterSession?.stateReviewRequired==true)"本次待核对" else when(s.waterSession?.stage) {
     null -> if(s.water.configured) "已就绪" else "先选择宿舍与水控"
     ShowerStage.ACTIVE -> "已授权 · 可用水"
     ShowerStage.SETTLED -> "结算完成"
@@ -139,7 +150,7 @@ fun waterLabel(s:CampusUiState):String = if(s.waterSession?.stateReviewRequired=
 @Composable
 fun WaterScreen(s:CampusUiState,padding:PaddingValues,navigate:(String)->Unit,inspect:()->Unit={},review:()->Unit={},operate:(Boolean)->Unit) {
     val stage=s.waterSession?.stage
-    val finish=stage in setOf(ShowerStage.ACTIVE,ShowerStage.AUTHORIZATION_WRITE_PENDING)
+    val finish=stage in setOf(ShowerStage.ACTIVE,ShowerStage.AUTHORIZATION_WRITE_PENDING) && s.waterSession?.stateReviewRequired!=true && s.waterSession?.waitingForRelease!=true
     val start=stage==null || stage==ShowerStage.SETTLED
     var expanded by rememberSaveable {mutableStateOf(false)}
     Column(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
@@ -151,7 +162,7 @@ fun WaterScreen(s:CampusUiState,padding:PaddingValues,navigate:(String)->Unit,in
                     else Box(Modifier.size(7.dp).background(MaterialTheme.colorScheme.primary,RoundedCornerShape(50)))
                     NativeText(if("water" in s.busy)"正在连接水控…" else waterLabel(s),style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)
                 }
-                NativeText(when{s.waterSession?.stateReviewRequired==true->"水控未返回使用中状态，未发送结束指令；请核对现场及官方记录。";finish->"水控已确认授权。结束后请确认现场停水。";stage==ShowerStage.SETTLED->"服务器已确认结算";start->"靠近水控并打开蓝牙，即可开始本次用水。";else->"操作结果待核对，请查看现场和学校记录，暂不可再次开始。"},style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                NativeText(when{s.waterSession?.stateReviewRequired==true->"上一笔费用待核对。确认机身已停水后，可检查并开始下一次洗澡。";finish->"水控已确认授权。结束后请确认现场停水。";stage==ShowerStage.SETTLED->"服务器已确认结算";start->"靠近水控并打开蓝牙，即可开始本次用水。";else->"上一笔记录已保留。下一次使用会重新检查水控并向学校申请授权。"},style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Group {Row(verticalAlignment=Alignment.CenterVertically) {
                 NativeText("本次费用",Modifier.weight(1f),color=MaterialTheme.colorScheme.onSurfaceVariant)
@@ -183,9 +194,14 @@ fun WaterScreen(s:CampusUiState,padding:PaddingValues,navigate:(String)->Unit,in
                     Hint(if(s.water.address!=null)"已保存核对结果；开始洗澡时会再次连接。" else "已保存宿舍配置，连接时仍需核对设备编号。")
                 }
             }
+            if(!start) {
+                OutlinedButton({operate(false)},enabled=!s.storageIssue && !s.transactionBusy,modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)) {NativeText("已按机身键停水？开始下一次洗澡")}
+                Hint("先检查水控是否可用，再向学校申请本次授权。上一笔费用记录会保留，到账以学校为准。")
+            }
+            if(s.pendingWaterHistory>0)Hint("已保留 ${s.pendingWaterHistory} 笔费用待核对记录，可到学校官方热水消费明细核对。")
         }
         Column(Modifier.widthIn(max=560.dp).fillMaxWidth().align(Alignment.CenterHorizontally).padding(horizontal=20.dp,vertical=12.dp),verticalArrangement=Arrangement.spacedBy(10.dp),horizontalAlignment=Alignment.CenterHorizontally) {
-            ActionButton(if(!s.water.configured)"配置宿舍与水控" else if(finish)"结束并结算" else if(start)"开始洗澡" else "等待核对",enabled=!s.storageIssue && !s.transactionBusy && (start || finish),busy="water" in s.busy,aligned=true) {if(!s.water.configured)navigate("dorm") else operate(finish)}
+            ActionButton(if(!s.water.configured)"配置宿舍与水控" else if(finish)"结束并结算" else if(start)"开始洗澡" else "开始下一次洗澡",enabled=!s.storageIssue && !s.transactionBusy,busy="water" in s.busy,aligned=true) {if(!s.water.configured)navigate("dorm") else operate(finish)}
             Hint(if(finish)"结算完成前，请留在水控附近。" else "授权后，按水控上的出水键。")
         }
     }
@@ -204,57 +220,81 @@ private fun FormRow(title:String,value:String?=null,action:(()->Unit)?=null,blue
 }
 
 @Composable
-fun DevicesScreen(s:CampusUiState,padding:PaddingValues,navigate:(String)->Unit,glassEnabled:Boolean=true,onGlassChange:(Boolean)->Unit={},refresh:()->Unit={},exportDiagnostics:()->Unit={},review:()->Unit={}) = Page(padding,spacing=0.dp,top=35.dp) {
-    var advanced by rememberSaveable {mutableStateOf(false)}
-    Surface(onClick={navigate("setup")},shape=RoundedCornerShape(26.dp),color=MaterialTheme.colorScheme.surface){
-        Row(Modifier.fillMaxWidth().padding(horizontal=20.dp,vertical=24.dp),verticalAlignment=Alignment.CenterVertically) {
-            Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(8.dp)){Hint("首次配置");NativeText("账号与设备设置",style=MaterialTheme.typography.titleMedium);NativeText("跟着步骤登录、选宿舍、扫机器",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
-            Icon(CampusSymbols.ChevronForward,null,Modifier.size(12.dp),tint=MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
-    Spacer(Modifier.height(17.dp));FormLabel("我的信息")
+fun DevicesScreen(s:CampusUiState,padding:PaddingValues,navigate:(String)->Unit,remindersEnabled:Boolean=false,hasUpdate:Boolean=false) = Page(padding,spacing=0.dp,top=20.dp) {
+    FormLabel("账号与设备")
     Surface(shape=RoundedCornerShape(26.dp),color=MaterialTheme.colorScheme.surface){Column {
         FormRow("校园账号与宿舍",s.campus.dorm.ifBlank {"去登录"},{navigate(if(s.campus.configured)"dorm" else "login")})
-        HorizontalDivider(Modifier.padding(horizontal=20.dp));FormRow("常用洗衣机",if(s.account!=null)"已登录 · ${s.washers.size} 台" else "去设置",{navigate(if(s.account==null)"laundryLogin" else "washerSetup")})
-        HorizontalDivider(Modifier.padding(horizontal=20.dp));FormRow("更新校园卡余额",action=refresh,blue=true)
+        HorizontalDivider(Modifier.padding(horizontal=20.dp));FormRow("常用洗衣机",if(s.account!=null)"${s.washers.size} 台" else "去设置",{navigate(if(s.account==null)"laundryLogin" else "washerSetup")})
+        HorizontalDivider(Modifier.padding(horizontal=20.dp));FormRow("设置向导",action={navigate("setup")})
     }}
-    Spacer(Modifier.height(17.dp));FormLabel("快捷使用")
-    Surface(shape=RoundedCornerShape(26.dp),color=MaterialTheme.colorScheme.surface){NativeText("在「日常」页打开热水或洗衣机，使用已保存的配置。\n更换宿舍、重新登录或添加机器，可进入账号与设备设置。",Modifier.fillMaxWidth().padding(horizontal=20.dp,vertical=16.dp),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
-    Spacer(Modifier.height(34.dp))
+    Spacer(Modifier.height(17.dp));FormLabel("日常使用")
     Surface(shape=RoundedCornerShape(26.dp),color=MaterialTheme.colorScheme.surface){Column {
-        FormRow("高级设置与故障排查",action={advanced=!advanced})
-        if(advanced){
-            FormRow("只读检查本次水控状态",action=review,blue=true,enabled=!s.storageIssue && !s.transactionBusy && s.waterSession?.stage in setOf(ShowerStage.ACTIVE,ShowerStage.AUTHORIZATION_WRITE_PENDING))
-            FormRow("导出热水诊断",action=exportDiagnostics,blue=true)
-            Hint("仅含版本、时间、操作阶段及设备回复类型，不含账号、密钥或设备编号。")
-            Hint("通常优先使用上方账号与设备设置。")
-            FormRow("重新登录学校账号",action={navigate("login")},blue=true)
-            FormRow("导入内测热水配置",action={navigate("import")},blue=true)
-            FormRow("宿舍电表",action={navigate("powerSetup")},blue=true)
-            Row(Modifier.padding(horizontal=20.dp),verticalAlignment=Alignment.CenterVertically){NativeText("液态玻璃",Modifier.weight(1f));Switch(glassEnabled,onGlassChange)}
-            NativeText("省电模式或低内存设备自动简化效果。个人配置通过 Android Keystore 加密保存在本机。",Modifier.padding(20.dp),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        HorizontalDivider(Modifier.padding(horizontal=20.dp));Row(Modifier.fillMaxWidth().heightIn(min=52.dp).padding(horizontal=20.dp),verticalAlignment=Alignment.CenterVertically){Hint("版本");Spacer(Modifier.weight(1f));Hint("${com.beamjason.xiaorichang.BuildConfig.VERSION_NAME} (${com.beamjason.xiaorichang.BuildConfig.VERSION_CODE})")}
+        FormRow("洗衣提醒",if(remindersEnabled)"已开启" else "已关闭",{navigate("reminders")})
+        HorizontalDivider(Modifier.padding(horizontal=20.dp));FormRow("版本与更新",if(hasUpdate)"有新版本" else "",{navigate("updates")})
+        HorizontalDivider(Modifier.padding(horizontal=20.dp));FormRow("快捷使用",action={navigate("usage")})
     }}
+    Spacer(Modifier.height(17.dp));FormLabel("帮助")
+    Surface(shape=RoundedCornerShape(26.dp),color=MaterialTheme.colorScheme.surface){FormRow("高级设置与故障排查",action={navigate("advanced")})}
+    Spacer(Modifier.height(24.dp));Box(Modifier.fillMaxWidth(),contentAlignment=Alignment.Center){Hint("校日常 ${com.beamjason.xiaorichang.BuildConfig.VERSION_NAME} (${com.beamjason.xiaorichang.BuildConfig.VERSION_CODE})")}
+}
+
+@Composable
+fun ReminderSettingsScreen(padding:PaddingValues,enabled:Boolean,onChange:(Boolean)->Unit,test:()->Unit) = Page(padding) {
+    Group {
+        Row(verticalAlignment=Alignment.CenterVertically){NativeText("洗衣结束提醒",Modifier.weight(1f));Switch(enabled,onChange)}
+        Hint("付款后返回校日常更新订单，按剩余时间安排预计结束提醒。实际完成以机器和订单为准。")
+        TextButton(test,enabled=enabled){NativeText("测试提醒（10 秒）")}
+    }
+}
+
+@Composable
+fun UpdateSettingsScreen(padding:PaddingValues,s:UpdateState,onChange:(Boolean)->Unit,check:()->Unit,open:()->Unit) = Page(padding) {
+    Group {NativeText("当前版本");Hint("${com.beamjason.xiaorichang.BuildConfig.VERSION_NAME} (${com.beamjason.xiaorichang.BuildConfig.VERSION_CODE})")}
+    Group {
+        Row(verticalAlignment=Alignment.CenterVertically){NativeText("版本更新提醒",Modifier.weight(1f));Switch(s.enabled,onChange)}
+        TextButton(check,enabled=!s.checking){NativeText(if(s.checking)"正在检查…" else "检查更新")}
+        if(s.message!="仅检查 GitHub 正式版，不会自动安装。")Hint(s.message)
+        if(s.url!=null)TextButton(open){NativeText("查看更新说明与安装包")}
+        Hint("仅检查 GitHub 正式版，不会自动安装。")
+    }
+}
+
+@Composable
+fun AdvancedSettingsScreen(s:CampusUiState,padding:PaddingValues,navigate:(String)->Unit,glassEnabled:Boolean,onGlassChange:(Boolean)->Unit,exportDiagnostics:()->Unit,review:()->Unit,exportPassive:()->Unit) = Page(padding) {
+    Group {
+        NativeText("热水核对",style=MaterialTheme.typography.titleMedium)
+        FormRow("只读检查本次水控状态",action=review,blue=true,enabled=!s.storageIssue && !s.transactionBusy && s.waterSession?.stage in setOf(ShowerStage.ACTIVE,ShowerStage.AUTHORIZATION_WRITE_PENDING))
+        FormRow("导出热水诊断",action=exportDiagnostics,blue=true)
+        Hint("仅含版本、时间、操作阶段及设备回复类型，不含账号、密钥或设备编号。")
+        if(com.beamjason.xiaorichang.BuildConfig.WATER_PASSIVE_DIAGNOSTICS){FormRow("导出机身关水原始记录",action=exportPassive,blue=true);Hint("原始记录可能含设备标识，仅供本人现场诊断。")}
+    }
+    Group {
+        NativeText("手动配置",style=MaterialTheme.typography.titleMedium)
+        FormRow("重新登录学校账号",action={navigate("login")},blue=true)
+        FormRow("导入内测热水配置",action={navigate("import")},blue=true)
+        FormRow("宿舍电表",action={navigate("powerSetup")},blue=true)
+        Hint("通常使用账号与设备设置即可。有未确认交易时，请先核对官方记录，保留本机数据。")
+    }
+    Group {Row(verticalAlignment=Alignment.CenterVertically){NativeText("液态玻璃",Modifier.weight(1f));Switch(glassEnabled,onGlassChange)};Hint("省电或低内存设备会自动简化显示效果。")}
 }
 
 @Composable
 fun SetupScreen(s:CampusUiState,padding:PaddingValues,navigate:(String)->Unit) = Page(padding,spacing=24.dp) {
     Column(verticalArrangement=Arrangement.spacedBy(11.dp)) {
-        NativeText("已完成 ${s.setupCount} / 3",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
-        NativeText(if(s.setupCount==3)"都准备好了" else "完成首次设置",fontSize=26.sp,lineHeight=34.sp,fontWeight=FontWeight.Bold)
-        NativeText(if(!s.campus.configured)"先登录学校账号，再选择宿舍和常用洗衣机。" else if(!s.water.configured)"学校账号已登录，接着选择你的宿舍。" else "宿舍已保存，接着绑定常用洗衣机。",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
-        LinearProgressIndicator(progress={s.setupCount/3f},modifier=Modifier.fillMaxWidth(),trackColor=MaterialTheme.colorScheme.primary.copy(alpha=.12f))
+        NativeText("已完成 ${s.setupCount} / 2",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
+        NativeText(if(s.setupCount==2)"都准备好了" else "完成首次设置",fontSize=26.sp,lineHeight=34.sp,fontWeight=FontWeight.Bold)
+        NativeText(if(!s.campus.configured)"先登录学校账号，再选择宿舍。洗衣机可以稍后添加。" else if(!s.water.configured)"学校账号已登录，接着选择你的宿舍。" else "宿舍已保存，可以开始使用；洗衣机按需添加。",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
+        LinearProgressIndicator(progress={s.setupCount/2f},modifier=Modifier.fillMaxWidth(),trackColor=MaterialTheme.colorScheme.primary.copy(alpha=.12f))
     }
     Group(padding=PaddingValues(horizontal=16.dp),spacing=0.dp) {
         NavRow("学校账号",if(s.campus.configured)"已登录，可查询校园卡余额" else "登录后自动同步校园卡余额",Icons.Outlined.AccountCircle,s.campus.configured){navigate("login")}
         HorizontalDivider(Modifier.padding(start=40.dp))
         NavRow("选择宿舍与水控",s.water.room.ifBlank {"选择楼栋房间，确认自己的设备"},Icons.Outlined.Apartment,s.water.configured){navigate("dorm")}
         HorizontalDivider(Modifier.padding(start=40.dp))
-        NavRow("绑定洗衣机",if(s.washers.isEmpty())"登录 U净，扫码保存常用机器" else "已保存 ${s.washers.size} 台机器",CampusSymbols.Washer,s.account!=null && s.washers.isNotEmpty()){navigate(if(s.account==null)"laundryLogin" else "washerSetup")}
+        NavRow("洗衣机（可选）",if(s.washers.isEmpty())"可以跳过，需要时再登录 U净并扫码添加" else "已保存 ${s.washers.size} 台机器",CampusSymbols.Washer,s.account!=null && s.washers.isNotEmpty()){navigate(if(s.account==null)"laundryLogin" else "washerSetup")}
     }
-    ActionButton(if(s.setupCount==3)"完成设置" else if(!s.campus.configured)"登录并连接校园卡" else if(!s.water.configured)"继续选择宿舍" else if(s.account==null)"登录 U净" else "扫描洗衣机二维码") {
-        navigate(if(s.setupCount==3)"" else if(!s.campus.configured)"login" else if(!s.water.configured)"dorm" else if(s.account==null)"laundryLogin" else "washerSetup")
+    ActionButton(if(s.setupCount==2) {if(s.washers.isEmpty())"完成设置，暂不绑定洗衣机" else "完成设置"} else if(!s.campus.configured)"登录并连接校园卡" else "继续选择宿舍") {
+        navigate(if(s.setupCount==2)"" else if(!s.campus.configured)"login" else "dorm")
     }
     Surface(onClick={navigate("powerSetup")},shape=RoundedCornerShape(16.dp),color=MaterialTheme.colorScheme.surface){
         Row(Modifier.fillMaxWidth().padding(16.dp),verticalAlignment=Alignment.CenterVertically){
@@ -411,6 +451,7 @@ fun LaundryScreen(s:CampusUiState,padding:PaddingValues,actions:LaundryActions,n
     var qr by remember {mutableStateOf("")}
     var selectedProgram by rememberSaveable(s.washer?.id) {mutableIntStateOf(-1)}
     var confirm by remember {mutableStateOf<WasherProgram?>(null)}
+    var immediate by rememberSaveable {mutableStateOf(false)}
     var manage by rememberSaveable {mutableStateOf(false)}
     val w=s.washer;val busy=s.transactionBusy || "washer" in s.busy
     val program=w?.programs?.firstOrNull {it.id==selectedProgram} ?: w?.programs?.firstOrNull()
@@ -468,10 +509,15 @@ fun LaundryScreen(s:CampusUiState,padding:PaddingValues,actions:LaundryActions,n
             ActionButton(if(program!=null)"确认程序" else "选择洗衣程序",aligned=true,trailing=program?.let {"¥${moneyFen(it.priceFen.toLong())}"},enabled=!s.storageIssue && !busy && w.available && program!=null && s.washerError==null,busy="order" in s.busy){confirm=program}
         }
     }
-    confirm?.let {p->AlertDialog(onDismissRequest={confirm=null},title={NativeText("确认预约这台洗衣机？")},text={NativeText("${w?.store} · ${w?.number}号\n${p.name} · ¥${moneyFen(p.priceFen.toLong())}\n预约后另行确认付款。")},confirmButton={TextButton({confirm=null;actions.create(p);navigate("laundry")}){NativeText("确认预约")}},dismissButton={TextButton({confirm=null}){NativeText("再看看")}})}
+    confirm?.let {p->AlertDialog(onDismissRequest={confirm=null},title={NativeText("核对订单")},text={Column {
+        NativeText("${w?.store} · ${w?.number}号\n${p.name} · ¥${moneyFen(p.priceFen.toLong())}")
+        ChoiceRow("正常洗衣",!immediate){immediate=false}
+        ChoiceRow("立刻洗衣（试用）",immediate){immediate=true}
+        Hint(if(immediate)"先放好衣物、投放洗衣液并关紧门盖。付款后返回校日常，核对已付款后为本单发送启动指令。" else "预约后另行确认付款。付款可能使机器运行，请先放好衣物。")
+    }},confirmButton={TextButton({confirm=null;if(immediate)actions.createImmediate(p)else actions.create(p);navigate("laundry")}){NativeText("确认预约")}},dismissButton={TextButton({confirm=null}){NativeText("再看看")}})}
 }
 
-data class LaundryActions(val select:(SavedWasher)->Unit={},val read:(String)->Unit={},val refresh:()->Unit={},val create:(WasherProgram)->Unit={},val refreshOrder:()->Unit={},val cancel:()->Unit={},val pay:()->Unit={})
+data class LaundryActions(val select:(SavedWasher)->Unit={},val read:(String)->Unit={},val refresh:()->Unit={},val create:(WasherProgram)->Unit={},val refreshOrder:()->Unit={},val cancel:()->Unit={},val pay:()->Unit={},val createImmediate:(WasherProgram)->Unit={})
 
 @Composable
 fun OrdersScreen(s:CampusUiState,padding:PaddingValues,navigate:(String)->Unit,refresh:()->Unit,cancel:()->Unit,pay:()->Unit) = Page(padding,spacing=0.dp,top=0.dp) {
@@ -528,6 +574,8 @@ private fun LaundryOrderCard(s:CampusUiState,refresh:()->Unit,cancel:()->Unit,pa
         NativeText(r.order?.label ?: "预约结果待核对",style=MaterialTheme.typography.titleLarge)
         NativeText("¥${r.order?.priceYuan?.let(::money) ?: moneyFen(r.priceFen.toLong())}",fontSize=36.sp,fontWeight=FontWeight.SemiBold)
         NativeText(r.programName); Hint("${time(r.createdAt)} · ${r.deviceId.takeLast(8)}")
+        if(r.immediateStart)Hint("立刻洗衣 · 本单已开启。付款后返回校日常，超过下单后10分钟请在U净核对并启动。")
+        r.startMessage?.let{Hint(it,true)}
         r.order?.let { order ->
             val seconds=if(order.running) order.remainSeconds else if(order.unpaid) order.countDown else null
             if(seconds!=null) Countdown(seconds,r.updatedAt,order.running)

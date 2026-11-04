@@ -1,10 +1,10 @@
 # 下载与安装
 
-先在[下载页](https://jasonbeam.github.io/campus-daily/)选择设备，或从 [0.8.0 Release](https://github.com/JasonBeam/campus-daily/releases/tag/v0.8.0)下载对应安装包。Android 安装包仍为 alpha23 测试包。
+先在[下载页](https://jasonbeam.github.io/campus-daily/)选择设备，或从 [0.9.0 Release](https://github.com/JasonBeam/campus-daily/releases/tag/v0.9.0)下载对应安装包。Android 安装包仍为 alpha25 测试包。
 
 ## Android
 
-[下载 Android 0.2.0-alpha23 APK](https://github.com/JasonBeam/campus-daily/releases/download/v0.8.0/CampusDaily-0.2.0-alpha23-debug.apk) · [SHA-256 校验文件](https://github.com/JasonBeam/campus-daily/releases/download/v0.8.0/SHA256SUMS.txt)
+[下载 Android 0.3.0-alpha25 APK](https://github.com/JasonBeam/campus-daily/releases/download/v0.9.0/CampusDaily-0.3.0-alpha25-code27-debug.apk) · [SHA-256 校验文件](https://github.com/JasonBeam/campus-daily/releases/download/v0.9.0/SHA256SUMS.txt)
 
 1. 下载 APK 并打开文件。
 2. 如果系统提示，允许当前浏览器或文件管理器安装应用，然后确认安装。
@@ -14,7 +14,7 @@
 
 ## iPhone
 
-[下载 iPhone 0.8.0 build 38 无签名 IPA](https://github.com/JasonBeam/campus-daily/releases/download/v0.8.0/CampusDaily-0.8.0-build38-unsigned.ipa) · [SHA-256 校验文件](https://github.com/JasonBeam/campus-daily/releases/download/v0.8.0/SHA256SUMS.txt)
+[下载 iPhone 0.9.0 build 52 无签名 IPA](https://github.com/JasonBeam/campus-daily/releases/download/v0.9.0/CampusDaily-0.9.0-build52-unsigned.ipa) · [SHA-256 校验文件](https://github.com/JasonBeam/campus-daily/releases/download/v0.9.0/SHA256SUMS.txt)
 
 IPA 需要使用你自己的 Apple 账号签名后才能安装。**Safari 下载 IPA 不会直接安装 App**，当前版本没有 TestFlight 或网页直装。免费 Personal Team 签名通常约 7 天后需要重新签名。具体步骤见[构建与签名](build-and-signing.md)。
 
@@ -28,6 +28,6 @@ IPA 需要使用你自己的 Apple 账号签名后才能安装。**Safari 下载
 4. 热水配置会核验本人身份与宿舍。Android 可在“连接检查与设备信息”只读核对附近水控编号。
 5. 洗衣功能使用本人的 U 净账号登录，再扫描或从照片识别洗衣机二维码。
 
-真实热水授权、出水、结算尚未完成本轮验收，实际操作可能连接水控并产生费用。请本人到现场核对设备和官方结果；状态不明确时不要重复开始或结算。
+iPhone 已由用户验证热水使用、立刻洗衣和洗衣提醒；本次提速与设置布局、Android 新增功能仍需更多真机验证。实际热水操作可能连接水控并产生费用。请本人到现场核对设备和官方结果；状态不明确时不要重复开始或结算。
 
 更详细的操作见[配置教程](configuration.md)、[首次接入说明](hot-water-access.md)、[AI 使用教程](ai-guide.md)和[故障排查](troubleshooting.md)。不要公开密码、验证码、校园令牌、学号、宿舍信息、设备二维码或交易链接。

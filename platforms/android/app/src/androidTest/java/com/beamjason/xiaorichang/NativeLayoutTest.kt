@@ -43,7 +43,7 @@ class NativeLayoutTest {
             }
         }
         val cases=buildList {
-            for(page in listOf("home","water","laundry","devices","setup-complete","orders"))add(Case(page,440))
+            for(page in listOf("home","water","laundry","devices","reminders","updates","recharge","setup-complete","orders"))add(Case(page,440))
             for(width in listOf(360,393,412))for(dark in listOf(false,true))add(Case("home",width,dark))
             add(Case("home",360,false,1.6f));add(Case("water",360));add(Case("water",360,true,1.6f))
             add(Case("laundry",393));add(Case("laundry",360,true,1.3f));add(Case("laundry-running",393,true));add(Case("home",360,glass=GlassMode.SOLID));add(Case("home",360,glass=GlassMode.FROSTED));add(Case("setup",360));add(Case("devices",393,true));add(Case("orders",393))
@@ -51,11 +51,11 @@ class NativeLayoutTest {
         val dir=File(InstrumentationRegistry.getInstrumentation().targetContext.getExternalFilesDir(null),"ui-previews").apply{mkdirs()}
         for(c in cases) {
             compose.runOnIdle {current=c};compose.waitForIdle()
-            val expected=when(c.page){"home"->"校园卡";"water"->"本次费用";"laundry"->"选择程序";"laundry-running"->"当前洗衣订单";"setup"->"完成首次设置";"devices"->"账号与设备设置";"setup-complete"->"都准备好了";else->"最近洗衣订单"}
+            val expected=when(c.page){"home"->"校园卡";"water"->"本次费用";"laundry"->"选择程序";"laundry-running"->"当前洗衣订单";"setup"->"完成首次设置";"devices"->"账号与设备";"reminders"->"洗衣结束提醒";"updates"->"当前版本";"recharge"->"前往学校官方微信服务";"setup-complete"->"都准备好了";else->"最近洗衣订单"}
             compose.onNodeWithText(expected).assertExists()
             File(dir,c.filename).outputStream().use {compose.onRoot().captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG,100,it)}
             if(c.width==440) {
-                val labels=listOf("校园生活","双余额","宿舍电量","校园卡","热水洗澡","本次费用","最近一次用水","连接检查与设备信息","再次开始洗澡","选择程序","普通洗","设备与设置","账号与设备设置","我的信息","都准备好了","已完成 3 / 3","最近洗衣订单","最近热水结算")
+                val labels=listOf("校园生活","双余额","宿舍电量","校园卡","热水洗澡","本次费用","最近一次用水","连接检查与设备信息","再次开始洗澡","选择程序","普通洗","设备与设置","账号与设备","我的信息","都准备好了","已完成 2 / 2","最近洗衣订单","最近热水结算")
                 val points=JSONObject();val px=InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
                 for(label in labels){val nodes=compose.onAllNodesWithText(label,useUnmergedTree=true).fetchSemanticsNodes();if(nodes.isNotEmpty()){val b=nodes.first().boundsInRoot;points.put(label,JSONArray(listOf(b.left/px,b.top/px,b.width/px,b.height/px)))}}
                 File(dir,c.filename.removeSuffix(".png")+".json").writeText(points.toString(2))

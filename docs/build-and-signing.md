@@ -57,7 +57,7 @@ xcodebuild -project CampusHotWater.xcodeproj -scheme CampusHotWater \
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test --build-system native --scratch-path /tmp/campus-daily-tests
 ```
 
-Swift 核心测试不需要个人配置，不联网发起交易，也不操作蓝牙。本轮 Beta 2 的核心测试为 110 项 XCTest 与 41 项 Swift Testing，共 151 项通过；iPhoneOS Release 构建和静态分析另行核对。离线测试和构建成功不代表真实出水、结算或付款已经验收。
+Swift 核心测试不需要个人配置，不联网发起交易，也不操作蓝牙。0.9.0 的 Swift 核心测试为 133 项 XCTest 与 64 项 Swift Testing，共 197 项通过；iPhoneOS Release 构建和静态分析另行核对。离线测试和构建成功不代表真实出水、结算或付款已经验收。
 
 ## 小组件与重新签名
 
@@ -83,3 +83,16 @@ python3 tools/package_public_ipa.py \
 ```
 
 脚本要求包内通用配置与本次显式指定的文件一致，同时保留小组件、拒绝个人配置和开发签名。不要打包已安装手机的 App 或 Debug 私人沙箱。构建不会自动发布或部署云服务。
+
+
+## 由账号持有人上传 TestFlight
+
+GitHub 的无签名 IPA 用于自行签名安装，不能直接作为 TestFlight 上传包。账号持有人应使用自己的付费开发者团队重新构建：
+
+1. 获取对应 Release 标签的源码，准备上述 SDK 与本地平台配置，再生成 Xcode 项目。
+2. 主 App 的 Bundle Identifier 必须与 App Store Connect 中的记录一致；同步配置小组件标识、两份 entitlements 与共同钥匙串权限。
+3. 主 App 和小组件都选择同一团队，使用 App Store 分发签名与适用描述文件。营销角色没有上传构建权限；可由持有人本人上传，或授予符合要求的开发者权限。
+4. 使用 Release 配置、通用 iOS 设备执行 Archive，再在 Organizer 选择 Distribute App → App Store Connect → Upload。不要上传公开的无签名 IPA，也不要使用免费个人开发签名。
+5. 上传后由持有人在 App Store Connect 核对处理结果、合规资料及测试分发范围，再启用 TestFlight 测试。
+
+证书、私钥、描述文件和平台配置只留在授权的本机或团队安全渠道，不上传到公开仓库。

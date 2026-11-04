@@ -1,12 +1,14 @@
 package com.beamjason.xiaorichang.net
 
 import com.beamjason.xiaorichang.data.text
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
 import org.json.JSONArray
 import java.net.URI
 import java.net.URLDecoder
+import java.net.URLEncoder
 import java.math.BigDecimal
 
 fun validOrderId(id:String) = id.matches(Regex("[A-Za-z0-9]{1,80}"))
@@ -31,11 +33,11 @@ data class LaundryOrder(val id:String,val deviceId:String,val status:String,val 
 enum class CheckoutStage { CREATING, CREATED, PAYMENT_REQUESTED, CANCELLATION_REQUESTED, COMPLETED }
 data class CheckoutRecord(val accountId:String,val deviceId:String,val programId:Int,val programName:String,val priceFen:Int,
     val createdAt:Long = System.currentTimeMillis(),val stage:CheckoutStage = CheckoutStage.CREATING,val orderId:String?=null,
-    val order:LaundryOrder?=null,val updatedAt:Long=0) {
+    val order:LaundryOrder?=null,val updatedAt:Long=0,val immediateStart:Boolean=false,val startAttempt:String?=null,val startMessage:String?=null) {
     fun json() = JSONObject().put("accountId",accountId).put("deviceId",deviceId).put("programId",programId).put("programName",programName)
-        .put("priceFen",priceFen).put("createdAt",createdAt).put("stage",stage.name).put("orderId",orderId).put("order",order?.json()).put("updatedAt",updatedAt)
+        .put("priceFen",priceFen).put("createdAt",createdAt).put("stage",stage.name).put("orderId",orderId).put("order",order?.json()).put("updatedAt",updatedAt).put("immediateStart",immediateStart).put("startAttempt",startAttempt).put("startMessage",startMessage)
     companion object { fun read(j:JSONObject) = CheckoutRecord(j.getString("accountId"),j.getString("deviceId"),j.getInt("programId"),j.getString("programName"),j.getInt("priceFen"),j.getLong("createdAt"),
-        CheckoutStage.valueOf(j.getString("stage")),j.text("orderId").takeIf(String::isNotBlank),j.optJSONObject("order")?.let(LaundryOrder::read),j.optLong("updatedAt")) }
+        CheckoutStage.valueOf(j.getString("stage")),j.text("orderId").takeIf(String::isNotBlank),j.optJSONObject("order")?.let(LaundryOrder::read),j.optLong("updatedAt"),j.optBoolean("immediateStart",false),j.text("startAttempt").takeIf(String::isNotBlank),j.text("startMessage").takeIf(String::isNotBlank)) }
 }
 
 interface LaundryApi {
@@ -43,6 +45,8 @@ interface LaundryApi {
     suspend fun order(account:UjingAccount,id:String):LaundryOrder
     suspend fun payment(account:UjingAccount,id:String):JSONObject
     suspend fun cancel(account:UjingAccount,id:String)
+    suspend fun startDetails(account:UjingAccount,id:String):LaundryStartDetails = error("启动前核对尚不可用")
+    suspend fun startWasher(account:UjingAccount,id:String):Unit = error("启动尚不可用")
 }
 interface CheckoutStorage { fun load():CheckoutRecord?; fun save(record:CheckoutRecord) }
 
@@ -54,10 +58,10 @@ class LaundryCheckout(private val api:LaundryApi,private val storage:CheckoutSto
     private fun persist(value:CheckoutRecord) {
         try { storage.save(value); record=value } catch(e:Exception) { blocked=true; throw IllegalStateException("订单无法安全保存，已暂停操作",e) }
     }
-    suspend fun create(account:UjingAccount,s:WasherSnapshot,p:WasherProgram) = lock.withLock {
+    suspend fun create(account:UjingAccount,s:WasherSnapshot,p:WasherProgram,immediate:Boolean=false) = lock.withLock {
         check(!blocked && (record==null || record?.stage==CheckoutStage.COMPLETED)) { "已有待核对订单，请先查看最近订单" }
         require(s.available && System.currentTimeMillis()-s.fetchedAt in 0..59_999 && s.programs.contains(p) && p.priceFen>=0) { "设备或价格已变化，请刷新后重新确认" }
-        var next=CheckoutRecord(account.id,s.id,p.id,p.name,p.priceFen); persist(next)
+        var next=CheckoutRecord(account.id,s.id,p.id,p.name,p.priceFen,immediateStart=immediate); persist(next)
         val id=api.create(account,s,p); require(validOrderId(id)) { "下单结果不确定，请在 U净核对" }
         next=next.copy(orderId=id); persist(next)
         val detail=api.order(account,id); verify(next,detail)
@@ -65,9 +69,33 @@ class LaundryCheckout(private val api:LaundryApi,private val storage:CheckoutSto
     }
     suspend fun refresh(account:UjingAccount) = lock.withLock {
         val old=owned(account); val id=old.orderId ?: error("下单结果未确认，请到官方 U净查看，勿重复预约")
-        val detail=api.order(account,id); verify(old,detail)
-        persist(old.copy(order=detail,updatedAt=System.currentTimeMillis(),stage=if(detail.terminal) CheckoutStage.COMPLETED else if(old.stage==CheckoutStage.CREATING) CheckoutStage.CREATED else old.stage))
+        val details=if(old.immediateStart && old.startAttempt==null && old.stage!=CheckoutStage.COMPLETED && System.currentTimeMillis()-old.createdAt in 0..600_000) api.startDetails(account,id) else null
+        val detail=details?.order ?: api.order(account,id); verify(old,detail)
+        var next=old.copy(order=detail,updatedAt=System.currentTimeMillis(),stage=if(detail.terminal) CheckoutStage.COMPLETED else if(old.stage==CheckoutStage.CREATING) CheckoutStage.CREATED else old.stage)
+        if(detail.running && next.startAttempt!=null)next=next.copy(startAttempt="confirmed",startMessage=null)
+        persist(next)
+        if(!next.immediateStart || next.startAttempt!=null || detail.payFlag!="1" || detail.status!="20")return@withLock
+        if(System.currentTimeMillis()-next.createdAt !in 0..600_000) {
+            persist(next.copy(startAttempt="blocked",startMessage="本单自动启动已过期，请在U净手动启动"));return@withLock
+        }
+        val checked=details ?: error("启动前核对未完成")
+        if(checked.moduleType!=7 || checked.online==false || checked.requiresPreparation) {
+            persist(next.copy(startAttempt="blocked",startMessage="请在U净完成这台机器的启动前检查"));return@withLock
+        }
+        kotlinx.coroutines.currentCoroutineContext().ensureActive()
+        next=next.copy(startAttempt="requested",startMessage="启动结果待核对，请勿重复启动");persist(next)
+        try {
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+            api.startWasher(account,id)
+            next=next.copy(startAttempt="accepted",startMessage="启动指令已提交，等待机器响应")
+        } catch(e:kotlinx.coroutines.CancellationException) {throw e}
+          catch(_:Exception) {next=next.copy(startMessage="启动结果未确认，请刷新或到U净核对；不会重复发送")}
+        persist(next)
+        val fresh=api.order(account,id);verify(next,fresh)
+        persist(next.copy(order=fresh,updatedAt=System.currentTimeMillis(),startAttempt=if(fresh.running)"confirmed" else next.startAttempt,
+            startMessage=if(fresh.running)null else next.startMessage,stage=if(fresh.terminal)CheckoutStage.COMPLETED else next.stage))
     }
+
     suspend fun payment(account:UjingAccount):PaymentDestination = lock.withLock {
         var old=owned(account); val id=old.orderId ?: error("订单尚未确认")
         check(old.stage==CheckoutStage.CREATED) { "付款结果待核对，请刷新订单或到支付宝查看" }
@@ -97,6 +125,9 @@ class LaundryCheckout(private val api:LaundryApi,private val storage:CheckoutSto
 }
 
 sealed class PaymentDestination { data object Query:PaymentDestination(); data class Checkout(val url:String):PaymentDestination(); data class Signed(val value:String):PaymentDestination() }
+fun mayOpenPendingPayment(record:CheckoutRecord?,account:UjingAccount?,accountId:String,orderId:String):Boolean =
+    account?.id==accountId && record?.accountId==accountId && record.orderId==orderId &&
+        record.stage==CheckoutStage.PAYMENT_REQUESTED && record.order?.unpaid==true
 object PaymentPolicy {
     private fun query(uri:URI):Map<String,String> {
         val pairs=uri.rawQuery.orEmpty().split('&').filter(String::isNotEmpty).map { val p=it.split('=',limit=2); URLDecoder.decode(p[0],"UTF-8") to URLDecoder.decode(p.getOrElse(1){""},"UTF-8") }
@@ -112,6 +143,12 @@ object PaymentPolicy {
         val target=URI(query(auth)["redirect_uri"] ?: error("missing redirect"))
         target.scheme=="https" && target.host=="wx.zhinengxiyifang.cn" && target.path=="/static/commonWasher/index.html" && target.userInfo==null && target.port==-1 && target.fragment==null
     }.getOrDefault(false)
+    /** Keep the original validated service URL intact inside Alipay's HTTPS bridge. */
+    fun browserCheckout(value:String):String {
+        require(allowedCheckout(value)) { "付款入口不可用，请在官方 U净核对订单" }
+        if(URI(value).scheme=="https")return value
+        return "https://ds.alipay.com/?scheme="+URLEncoder.encode(value,"UTF-8")
+    }
     fun validSigned(value:String,maximum:BigDecimal):Boolean = runCatching {
         require(value.length<=65536); val q=query(URI("https://localhost/?$value"))
         require(q["method"]=="alipay.trade.app.pay" && !q["sign"].isNullOrBlank())

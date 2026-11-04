@@ -8,6 +8,8 @@ import com.beamjason.xiaorichang.net.WaterService
 import com.beamjason.xiaorichang.net.WaterReceipt
 import com.beamjason.xiaorichang.security.SecureStore
 import org.json.JSONObject
+import org.json.JSONArray
+import java.security.MessageDigest
 import android.util.Base64
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -18,20 +20,23 @@ enum class ShowerStage { AUTHORIZATION_PENDING, AUTHORIZATION_ISSUED, AUTHORIZAT
     CLOSE_WRITE_PENDING, SETTLEMENT_PENDING, SETTLED }
 data class ShowerSession(val stage:ShowerStage,val machineId:String,val peripheralAddress:String,
                          val authorizationId:String?=null,val consumption:String?=null,val payFen:Long?=null,val endedAt:Long?=null,
-                         val stateReviewRequired:Boolean=false) {
+                         val stateReviewRequired:Boolean=false,val startedAt:Long=System.currentTimeMillis(),val waitingForRelease:Boolean=false) {
     fun json()=JSONObject().put("stage",stage.name).put("machineId",machineId).put("peripheralAddress",peripheralAddress)
         .put("authorizationId",authorizationId).put("consumption",consumption).put("payFen",payFen).put("endedAt",endedAt)
         .put("stateReviewRequired",stateReviewRequired)
+        .put("startedAt",startedAt).put("waitingForRelease",waitingForRelease)
     companion object {
         fun read(j:JSONObject)=ShowerSession(ShowerStage.valueOf(j.getString("stage")),j.getString("machineId"),j.getString("peripheralAddress"),
             j.optString("authorizationId").takeUnless{it.isBlank() || it=="null"},j.optString("consumption").takeUnless{it.isBlank() || it=="null"},
-            (j.opt("payFen") as? Number)?.toLong(),(j.opt("endedAt") as? Number)?.toLong(),j.optBoolean("stateReviewRequired",false))
+            (j.opt("payFen") as? Number)?.toLong(),(j.opt("endedAt") as? Number)?.toLong(),j.optBoolean("stateReviewRequired",false),j.optLong("startedAt",0),j.optBoolean("waitingForRelease",false))
     }
 }
 
 internal interface WaterSessionPersistence {
     fun load():ShowerSession?
     fun save(session:ShowerSession)
+    fun archive(session:ShowerSession) { error("当前存储不能保留历史记录") }
+    fun loadArchive():List<ShowerSession> = emptyList()
 }
 private class ShowerSessionStore(context:Context):WaterSessionPersistence {
     private val storage=SecureStore(context)
@@ -43,30 +48,63 @@ private class ShowerSessionStore(context:Context):WaterSessionPersistence {
     override fun save(session:ShowerSession) {
         storage.put("water.session",session.json().toString().toByteArray())
     }
+    override fun archive(session:ShowerSession) {
+        val bytes=session.json().toString().toByteArray()
+        val digest=MessageDigest.getInstance("SHA-256").digest(bytes).joinToString(""){"%02x".format(it.toInt() and 255)}
+        val key="water.history.$digest"
+        val index=storage.get("water.history.index")?.let{JSONArray(it.toString(Charsets.UTF_8))} ?: JSONArray()
+        storage.put(key,bytes)
+        if((0 until index.length()).none{index.getString(it)==key}) {
+            index.put(key);storage.put("water.history.index",index.toString().toByteArray())
+        }
+    }
+    override fun loadArchive():List<ShowerSession> {
+        val index=storage.get("water.history.index")?.let{JSONArray(it.toString(Charsets.UTF_8))} ?: return emptyList()
+        return (0 until index.length()).map { i->
+            val key=index.getString(i);require(key.matches(Regex("water\\.history\\.[0-9a-f]{64}")))
+            val bytes=storage.get(key) ?: error("历史用水记录不可读取")
+            ShowerSession.read(JSONObject(bytes.toString(Charsets.UTF_8)))
+        }
+    }
 }
 
-/** No retry paths: uncertain remote or BLE results remain persisted and block a second start. */
+/** Next-use requests use fresh hardware data; previous unresolved records are retained. */
 class WaterController internal constructor(private val transport:WaterTransport,private val provider:WaterService,private val store:WaterSessionPersistence,
     private val diagnostics:WaterDiagnostics?=null) {
     constructor(context:Context,transport:WaterTransport,provider:WaterProvider=WaterProvider()):this(transport,provider,ShowerSessionStore(context.applicationContext),WaterDiagnosticStore.trace(context))
     private val mutex=Mutex()
     @Volatile var session:ShowerSession?=runCatching{store.load()}.getOrNull(); private set
     @Volatile var blocked:Boolean=runCatching{store.load()}.isFailure; private set
+    var archivedSessions:List<ShowerSession> = runCatching{store.loadArchive()}.getOrElse{blocked=true;emptyList()};private set
 
     private fun persist(s:ShowerSession) { session=s; try { store.save(s) } catch(t:Throwable) { blocked=true; throw IllegalStateException("操作记录无法安全保存，已阻止后续操作",t) }; diagnostics?.record(WaterDiagnostics.Event.SESSION_SAVED,s.stage) }
 
-    suspend fun start(profile:WaterProfile,verifiedAddress:String?=null) = mutex.withLock {
+    suspend fun start(profile:WaterProfile,verifiedAddress:String?=null) = begin(profile,verifiedAddress,false)
+    suspend fun startNext(profile:WaterProfile,verifiedAddress:String?=null) = begin(profile,verifiedAddress,true)
+    private suspend fun begin(profile:WaterProfile,verifiedAddress:String?,retainPrevious:Boolean) = mutex.withLock {
         check(!blocked) { "操作记录不可读取，请勿重复开水" }
-        check(session==null || session?.stage==ShowerStage.SETTLED) { "已有未确认会话，请先核对水控和校园记录" }
+        check(retainPrevious || session==null || session?.stage==ShowerStage.SETTLED) { "已有未确认会话，请先核对水控和校园记录" }
         profile.validate()
+        if(retainPrevious && session?.stage!=ShowerStage.SETTLED)session?.let{check(it.machineId==profile.machineId.uppercase()){"水控配置与上一笔记录不匹配"}}
         var retainConnection=false
         diagnostics?.record(WaterDiagnostics.Event.START,session?.stage)
         try {
-            val remembered=verifiedAddress ?: session?.takeIf { it.stage==ShowerStage.SETTLED && it.machineId.equals(profile.machineId,true) }?.peripheralAddress
-            val target=transport.connectVerified(profile.bleName,profile.machineId,remembered)
+            val remembered=verifiedAddress ?: session?.takeIf { it.machineId.equals(profile.machineId,true) }?.peripheralAddress
+            val target=try { transport.connectVerified(profile.bleName,profile.machineId,remembered) } catch(e:RememberedWaterControllerBusy) {
+                if(retainPrevious)session?.takeIf{it.stage!=ShowerStage.SETTLED}?.let{persist(it.copy(waitingForRelease=true))}
+                throw e
+            }
+            if(target.identityFrame.contentEquals(byteArrayOf(0xA5.toByte()))) {
+                if(retainPrevious)session?.takeIf{it.stage!=ShowerStage.SETTLED}?.let{persist(it.copy(waitingForRelease=true))}
+                error("水控当前仍在使用中，已断开连接，请稍后手动重试")
+            }
             val machine=WaterProtocol.identity(target.identityFrame)
             check(machine==profile.machineId.uppercase()) { "水控编号不匹配，已停止" }
             currentCoroutineContext().ensureActive()
+            if(retainPrevious)session?.takeIf{it.stage!=ShowerStage.SETTLED}?.let{old->
+                try{store.archive(old)}catch(t:Throwable){blocked=true;throw IllegalStateException("上一笔用水记录未能安全保留",t)}
+                if(old !in archivedSessions)archivedSessions=archivedSessions+old
+            }
             var current=ShowerSession(ShowerStage.AUTHORIZATION_PENDING,machine,target.address); persist(current)
             val auth=provider.authorize(profile,target.identityFrame)
             check(auth.machineId.equals(machine,true)) { "服务器授权的设备编号不匹配" }
@@ -86,7 +124,7 @@ class WaterController internal constructor(private val transport:WaterTransport,
     suspend fun review(profile:WaterProfile):Boolean = mutex.withLock {
         check(!blocked){"操作记录不可读取"}
         val old=session ?: error("没有待核对热水记录")
-        check(old.stage in setOf(ShowerStage.ACTIVE,ShowerStage.AUTHORIZATION_WRITE_PENDING)){"当前记录不可进行只读核对"}
+        check(old.stage in setOf(ShowerStage.ACTIVE,ShowerStage.AUTHORIZATION_WRITE_PENDING,ShowerStage.CLOSE_WRITE_PENDING)){"当前记录不可进行只读核对"}
         profile.validate();check(old.machineId==profile.machineId.uppercase()){"水控配置与本次会话不匹配"}
         var retainConnection=false
         diagnostics?.record(WaterDiagnostics.Event.REVIEW,old.stage)
@@ -97,7 +135,7 @@ class WaterController internal constructor(private val transport:WaterTransport,
             val active=reply.contentEquals(byteArrayOf(0xA5.toByte()))
             if(!active)check(WaterProtocol.identity(reply)==old.machineId){"水控编号不匹配"}
             currentCoroutineContext().ensureActive()
-            persist(old.copy(stateReviewRequired=!active));retainConnection=active
+            persist(old.copy(stateReviewRequired=old.stateReviewRequired || !active));retainConnection=active && !old.stateReviewRequired && !old.waitingForRelease
             active
         } catch(t:Throwable){diagnostics?.record(WaterDiagnostics.Event.FAILED,session?.stage);throw t}
           finally{if(!retainConnection)transport.disconnect()}
@@ -107,6 +145,7 @@ class WaterController internal constructor(private val transport:WaterTransport,
         check(!blocked) { "操作记录不可读取，请勿重复结算" }
         val old=session ?: error("没有本 App 的待结算记录")
         check(old.stage==ShowerStage.ACTIVE || old.stage==ShowerStage.AUTHORIZATION_WRITE_PENDING) { "当前会话状态不允许结束，请先核对校园记录" }
+        check(!old.stateReviewRequired && !old.waitingForRelease){"原授权已不在设备上，请使用开始下一次洗澡；上一笔记录继续保留"}
         profile.validate(); check(old.machineId==profile.machineId.uppercase()) { "水控配置与本次会话不匹配" }
         val id=old.authorizationId ?: error("没有本次授权标识")
         val command=WaterProtocol.closeCommand(id)

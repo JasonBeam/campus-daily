@@ -188,6 +188,7 @@ class BleWaterTransport(private val context:Context):WaterTransport {
     }
 
     private fun onNotification(bytes:ByteArray) {
+        WaterPassiveCapture.receive(context,bytes,exchange!=null)
         try {
             val frames=decoder.append(bytes)
             require(frames.size<=1) { "收到多帧水控通知" }
