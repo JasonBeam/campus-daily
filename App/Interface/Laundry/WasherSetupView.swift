@@ -7,8 +7,8 @@ import Core
 struct WasherSetupView: View {
     @EnvironmentObject private var laundry: LaundryModel
     @Environment(\.dismiss) private var dismiss
-    /// After a machine is saved or switched; nil goes back a page. Home swaps the page for the
-    /// laundry page when it was opened from home (`WasherSetupExit.path`).
+    /// After a machine is saved or switched; nil goes back a page. Home pushes the laundry page
+    /// over it when it was opened from home (`WasherSetupExit.path`).
     var onDone: (() -> Void)?
     #if DEBUG
     /// campusdaily://demo/washer/...: synthetic account and machines; nothing is changed.

@@ -6,9 +6,10 @@ final class WasherSetupExitTests: XCTestCase {
 
     private enum Page: Equatable { case laundry, washerSetup, card }
 
-    /// Opened from home's unbound 洗衣 row: the page is swapped for the laundry page.
-    func testFromHomeLandsOnLaundry() {
-        XCTAssertEqual(WasherSetupExit.path([Page.washerSetup], setup: .washerSetup, laundry: .laundry), [.laundry])
+    /// Opened from home's unbound 洗衣 row: the laundry page is pushed over it. A stack swaps its
+    /// top page for another without a transition, so it is not swapped.
+    func testFromHomePushesLaundry() {
+        XCTAssertEqual(WasherSetupExit.path([Page.washerSetup], setup: .washerSetup, laundry: .laundry), [.washerSetup, .laundry])
     }
 
     /// Opened from the laundry page: back to it.

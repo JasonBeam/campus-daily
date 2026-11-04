@@ -238,7 +238,7 @@ extension HomeView {
             #else
             LaundryDetail()
             #endif
-        // Saved or switched: back a page, or on to 洗衣 when opened from home's unbound row.
+        // Saved or switched: back a page, or on to 洗衣 (pushed) when opened from home's unbound row.
         case .washerSetup:
             #if DEBUG
             WasherSetupView(onDone:washerSetupDone, preview:washerDemo)
