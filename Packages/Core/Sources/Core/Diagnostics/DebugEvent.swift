@@ -25,6 +25,8 @@ public enum DebugEvent: Sendable, Equatable {
     /// U净's order status code, the machine's module type when the read had it, the order's tag.
     case laundryOrder(status: DebugCode, moduleType: Int?, order: DebugTag?)
     case laundryPayLaunch(opened: Bool)
+    /// 立刻洗衣: the choice, the return, the pre-start read, the start and why it was not sent.
+    case laundryStart(DebugLaundryStart)
 
     // MARK: School and U净 logins
     case schoolRefresh(DebugSchoolOutcome)
@@ -202,6 +204,78 @@ public enum DebugSettleStep: Sendable, Equatable {
 
 public enum DebugLaundryRequest: String, Sendable {
     case create, orderDetail, paymentMethods, paymentArguments, cancelOrder, findActive
+    /// 立刻洗衣's pre-start read and `control/start`.
+    case startCheck, startWasher
+}
+
+/// One step of 立刻洗衣 (`LaundryEngine`). No order id (only its tag), no machine, no reply text.
+public enum DebugLaundryStart: Sendable, Equatable {
+    /// The order was confirmed as 立刻洗衣 (`yes`) or 正常洗衣 (`no`).
+    case chosen(immediate: Bool)
+    /// Back from Alipay, or a refresh, on a 立刻洗衣 order not tried yet: whether the app was in front.
+    case returned(inFront: Bool)
+    /// The pre-start read: paid, U净's status code, the price against the confirmed one, the module type.
+    case check(paid: Bool, status: DebugCode, price: DebugPriceCheck, moduleType: Int?, order: DebugTag?)
+    /// The start was stored as sent (before the request).
+    case saved
+    /// `control/start` was handed to the network.
+    case handed
+    case result(DebugStartResult)
+    /// Not sent (this time, or for good).
+    case skipped(DebugStartSkip)
+}
+
+/// The pre-start read's price, in fen, against the confirmed program's.
+public enum DebugPriceCheck: String, Sendable {
+    case ok, mismatch, unreadable
+
+    public init(read: Money?, confirmed: Money?) {
+        guard let read = read?.fen, let confirmed = confirmed?.fen, read > 0 else { self = .unreadable; return }
+        self = read <= confirmed ? .ok : .mismatch
+    }
+}
+
+/// `control/start`'s answer: taken, refused (U净's code only, never its words) or not clear.
+public enum DebugStartResult: Sendable, Equatable {
+    case ok
+    case refused(DebugCode?)
+    case unknown(DebugErrorKind)
+
+    public init(_ error: ServiceError?) {
+        switch error {
+        case nil: self = .ok
+        case .rejected(_, let code, _)?: self = .refused(DebugCode(code))
+        case let e?: self = .unknown(DebugErrorKind(e))
+        }
+    }
+}
+
+/// Why `control/start` was not sent.
+public enum DebugStartSkip: String, Sendable {
+    /// The app was not in front, or the task was cancelled before the request.
+    case notFront, cancelled
+    /// More than 10 minutes after the order was confirmed.
+    case expired
+    /// The signed-in U净 account did not place the order.
+    case account
+    /// The machine is left to the U净 app (`LaundryStartBlock`).
+    case unsupported, offline, selfClean, dispenser
+    /// The pre-start read was another order, not paid 20, or at a price that did not match.
+    case otherOrder, status, price
+    /// The "sent" record could not be stored.
+    case notSaved
+
+    public init(_ block: LaundryStartBlock) {
+        switch block {
+        case .unsupported: self = .unsupported
+        case .offline: self = .offline
+        case .selfClean: self = .selfClean
+        case .dispenser: self = .dispenser
+        case .expired: self = .expired
+        case .account: self = .account
+        case .price: self = .price
+        }
+    }
 }
 
 public enum DebugSchoolOutcome: Sendable, Equatable {
@@ -347,6 +421,7 @@ public enum DebugHTTPName: String, Sendable, CaseIterable {
     case getBuildingInfo, getMeterStatus, service
     case getMyInfo, getMyECard
     case captcha, login, scanWasherCode, programInfo, createOrder, orderDetail, paymentMethods, paymentArguments, cancelOrder
+    case startCheck, startWasher
     case authorize, settle, getUserMsg, getAreaInfoForApplests, getAreaForRoomApplests, getMachineMacAddress
     case feedback
     case other

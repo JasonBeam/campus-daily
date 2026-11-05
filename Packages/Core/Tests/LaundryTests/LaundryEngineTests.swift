@@ -15,6 +15,10 @@ final class FakeLaundryAPI: LaundryOrdering, @unchecked Sendable {
     var methods: [Outcome<[PayChannel]>] = []
     var arguments: [Outcome<PaymentArguments>] = []
     var cancels: [Outcome<Bool>] = []
+    var startChecks: [Outcome<LaundryStartCheck>] = []
+    var starts: [Outcome<Bool>] = []
+    /// The start request leaves and the task is cancelled while it is out (not a `ServiceError`).
+    var startThrowsCancellation = false
     var beforeSend: (@Sendable (String) -> Void)?
 
     var calls: [String] { lock.withLock { _calls } }
@@ -39,6 +43,11 @@ final class FakeLaundryAPI: LaundryOrdering, @unchecked Sendable {
     func paymentMethods(_ id: String) async throws -> [PayChannel] { try take("methods", \.methods) }
     func paymentArguments(_ id: String, channel: PayChannel) async throws -> PaymentArguments { try take("arguments", \.arguments) }
     func cancel(_ id: String) async throws { _ = try take("cancel", \.cancels) }
+    func startCheck(_ id: String) async throws -> LaundryStartCheck { try take("startCheck", \.startChecks) }
+    func startWasher(_ id: String) async throws {
+        _ = try take("start", \.starts)
+        if startThrowsCancellation { throw CancellationError() }
+    }
 }
 
 final class FakeLauncher: PaymentLauncher, @unchecked Sendable {

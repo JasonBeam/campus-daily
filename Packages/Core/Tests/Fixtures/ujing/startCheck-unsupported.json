@@ -1,0 +1,43 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "https://phoenix.ujing.online/api/v1/app/orders/TESTORDER0001/detail?additional=price",
+    "headers": {
+      "Authorization": "Bearer REDACTED_TOKEN_SYNTHETIC",
+      "x-app-code": "BI",
+      "x-app-version": "2.4.18",
+      "x-mobile-id": "00000000-0000-4000-8000-000000000001",
+      "x-mobile-brand": "apple",
+      "User-Agent": "XiaoRiChang/test"
+    },
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "code": 0,
+      "message": "success",
+      "data": {
+        "orderId": "TESTORDER0001",
+        "deviceId": "test-device-0001",
+        "status": 20,
+        "payFlag": 1,
+        "statusRemark": "",
+        "deviceWashModelId": 1,
+        "createAt": "2026-10-30T12:00:05+08:00",
+        "payPrice": 4,
+        "moduleType": 1,
+        "online": 1,
+        "selfCleanEnable": 0,
+        "selfCleanPrice": 0
+      }
+    }
+  },
+  "_fixture": {
+    "synthetic": true,
+    "note": "Synthetic reply for 立刻洗衣, shaped after the author's reference decoder (upstream b525a9a LaundryImmediateStart.swift); no capture of this call exists yet, to be checked on a device. All ids/tokens are fake."
+  }
+}

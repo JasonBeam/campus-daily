@@ -8,14 +8,16 @@ import Foundation
 public enum LaundryFollowUp {
     /// Seconds between re-reads.
     public static let interval: TimeInterval = 45
-    /// Re-reads stop this long after the order was first seen waiting.
+    /// Re-reads stop this long after the order was first seen waiting (or after a 立刻洗衣 start request).
     public static let window: TimeInterval = 5 * 60
 
     /// Seconds until the next re-read (0 = now), or nil when none is due: not a waiting paid
     /// order, or the window is used up. `lastAttempt` is the app's last try (a failed read leaves
     /// `orderReadAt` unchanged).
     public static func nextRead(_ c: LaundryCheckout, lastAttempt: Date?, now: Date) -> TimeInterval? {
-        guard c.phase == .active, let since = c.waitingSince else { return nil }
+        guard c.phase == .active, let waiting = c.waitingSince else { return nil }
+        // 立刻洗衣: the window runs again from the start request.
+        let since = max(waiting, c.start?.requestedAt ?? waiting)
         let last = [c.orderReadAt, lastAttempt].compactMap { $0 }.max() ?? since
         let next = max(last, since).addingTimeInterval(interval)
         guard next.timeIntervalSince(since) <= window else { return nil }

@@ -130,7 +130,9 @@ enum LaundryLoginRefusal: Error { case otherAccount }
         do {
             let engine = try LaundryEngine(api:client, vault:vault, launcher:launcher,
                                            accountID:account?.account?.id,
-                                           resetMarker:services.resetMarker, debugLog:services.debugLog)
+                                           resetMarker:services.resetMarker,
+                                           inFront:services.laundryInFront(live:Self.appInFront),
+                                           debugLog:services.debugLog)
             self.engine = engine
             observer = Task { [weak self] in
                 let blocked = await engine.storageBlocked
@@ -340,10 +342,18 @@ enum LaundryLoginRefusal: Error { case otherAccount }
     }
     var mayCancel: Bool { !checkoutBusy && checkout?.canCancel == true }
 
+    /// Whether the app is in front, asked on the main actor right before a 立刻洗衣 pre-start read.
+    @Sendable nonisolated static func appInFront() async -> Bool {
+        await MainActor.run { UIApplication.shared.applicationState == .active }
+    }
+
     /// 下单 confirmed in the sheet: create, then pay (each sent once by the engine).
-    func createAndPay(_ program: WasherProgram) async {
+    /// `immediate`: 立刻洗衣 was chosen for this order (the engine starts it once after it is paid).
+    func createAndPay(_ program: WasherProgram, immediate: Bool = false) async {
         guard mayCreate, let engine, let snapshot else { return }
-        let created = await perform(progress:"正在下单…") { try await engine.confirmOrder(snapshot, program:program) }
+        let created = await perform(progress:"正在下单…") {
+            try await engine.confirmOrder(snapshot, program:program, immediate:immediate)
+        }
         guard created, checkout?.canPay == true else {
             if checkout?.notice == .washerChanged { await refresh(force:true) }
             return

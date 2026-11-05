@@ -10,6 +10,10 @@ public protocol LaundryOrdering: Sendable {
     func paymentMethods(_ id: String) async throws -> [PayChannel]
     func paymentArguments(_ id: String, channel: PayChannel) async throws -> PaymentArguments
     func cancel(_ id: String) async throws
+    /// 立刻洗衣's pre-start read (read-only).
+    func startCheck(_ id: String) async throws -> LaundryStartCheck
+    /// 立刻洗衣's `control/start` (makes the machine move). Not a definite answer → `uncertain`.
+    func startWasher(_ id: String) async throws
 }
 
 public enum UjingEndpoints {
@@ -23,6 +27,9 @@ public enum UjingEndpoints {
     public static let arguments = "/api/v1/payment/arguments"
     public static func detail(_ id: String) -> String { "/api/v1/orders/\(id)/detail" }
     public static func cancel(_ id: String) -> String { "/api/v1/orders/\(id)/cancel" }
+    /// The order as U净's own app reads it before starting (not `detail(_:)`).
+    public static func startCheck(_ id: String) -> String { "/api/v1/app/orders/\(id)/detail" }
+    public static func startWasher(_ id: String) -> String { "/api/v1/app/orders/\(id)/control/start" }
 
     /// `x-app-code` as the existing iOS and Android clients send it: `ZI` on the SMS
     /// captcha/login calls, `BI` on every authenticated call.
@@ -240,6 +247,52 @@ public struct UjingClient: LaundryOrdering {
     public func cancel(_ id: String) async throws {
         guard UjingInput.isOrderID(id) else { throw ServiceError.badRequest(.ujing) }
         _ = try await call(.post, UjingEndpoints.cancel(id), json: ["orderId": .string(id)], stateChanging: true, name: "cancelOrder")
+    }
+
+    // MARK: 立刻洗衣
+
+    /// `GET app/orders/{id}/detail?additional=price` (read-only): the order plus the machine
+    /// fields U净's own app checks before a remote start (shape from the author's 0.9 decoder).
+    public func startCheck(_ id: String) async throws -> LaundryStartCheck {
+        guard UjingInput.isOrderID(id) else { throw ServiceError.badRequest(.ujing) }
+        let data = try await call(.get, UjingEndpoints.startCheck(id), query: [("additional", "price")], name: "startCheck")
+        let order = try Self.order(data)
+        guard let d = data else { throw ServiceError.malformed(.ujing, "data") }
+        let cleanEnd = d["cleanSelfEndTime"]?.text?.trimmingCharacters(in: .whitespaces) ?? ""
+        let cleanPrice = d["selfCleanPrice"].flatMap { v -> Double? in
+            if case .string(let s) = v { return Double(s.trimmingCharacters(in: .whitespaces)) }
+            return v.doubleValue
+        } ?? 0
+        let selfCleanDue = cleanEnd.isEmpty && Self.flag(d["selfCleanEnable"]) == true && cleanPrice > 0
+        let dispenser = d["wp_order"].map { !$0.isNull } ?? false
+        return LaundryStartCheck(order: order, moduleType: d["moduleType"]?.intValue, online: Self.flag(d["online"]),
+                                 selfCleanDue: selfCleanDue, dispenser: dispenser)
+    }
+
+    /// `GET app/orders/{id}/control/start` (STATE: the machine starts). Sent once, never
+    /// retried; anything but a clear answer is `uncertain`. A non-empty `data.errorMessage` is
+    /// U净 saying no.
+    public func startWasher(_ id: String) async throws {
+        guard UjingInput.isOrderID(id) else { throw ServiceError.badRequest(.ujing) }
+        let data = try await call(.get, UjingEndpoints.startWasher(id), stateChanging: true, name: "startWasher")
+        if let message = data?["errorMessage"]?.text, !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            throw ServiceError.rejection(.ujing, code: "errorMessage", message: message)
+        }
+    }
+
+    /// Bool, 0/1, or "0"/"1"/"true"/"false"; anything else nil.
+    static func flag(_ v: JSONValue?) -> Bool? {
+        switch v {
+        case .bool(let b)?: return b
+        case .int(let i)? where i == 0 || i == 1: return i == 1
+        case .string(let s)?:
+            switch s.trimmingCharacters(in: .whitespaces).lowercased() {
+            case "1", "true": return true
+            case "0", "false": return false
+            default: return nil
+            }
+        default: return nil
+        }
     }
 
     // MARK: Plumbing

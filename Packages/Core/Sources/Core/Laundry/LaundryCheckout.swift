@@ -116,17 +116,49 @@ public struct LaundryCheckout: Sendable, Equatable, Codable {
     public var paidAt: Date?
     /// Paid but not washing with a known end since this read (`LaundryFollowUp`); nil once a washing read gives the end.
     public var waitingSince: Date?
+    /// 立刻洗衣: the user asked, at confirmation, for the app to start the machine after payment.
+    /// Old records decode as false.
+    public var immediate: Bool
+    /// 立刻洗衣's start attempt; once set, `control/start` is never sent again.
+    public var start: LaundryStart?
+    /// The pre-start read is running (not stored).
+    public var checkingStart: Bool
+    /// Step of the reads that follow a start request (not stored; nil = none running).
+    public var startPollAttempt: Int?
 
     public init(phase: LaundryPhase = .none, draft: LaundryDraft? = nil, createdAt: Date? = nil, orderID: String? = nil,
                 order: LaundryOrder? = nil, orderReadAt: Date? = nil, candidateOrderID: String? = nil,
                 paymentRequestedAt: Date? = nil, repayArmed: Bool = false, cancelSent: Bool = false, pollAttempt: Int = 0,
                 lastOutcome: LaundryOutcome? = nil, notice: LaundryNotice? = nil, accountID: String? = nil,
-                paidAt: Date? = nil, waitingSince: Date? = nil) {
+                paidAt: Date? = nil, waitingSince: Date? = nil, immediate: Bool = false, start: LaundryStart? = nil) {
         self.phase = phase; self.draft = draft; self.createdAt = createdAt; self.orderID = orderID; self.order = order
         self.orderReadAt = orderReadAt; self.candidateOrderID = candidateOrderID; self.paymentRequestedAt = paymentRequestedAt
         self.repayArmed = repayArmed; self.cancelSent = cancelSent; self.pollAttempt = pollAttempt
         self.lastOutcome = lastOutcome; self.notice = notice; self.accountID = accountID
         self.paidAt = paidAt; self.waitingSince = waitingSince
+        self.immediate = immediate; self.start = start; self.checkingStart = false; self.startPollAttempt = nil
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(phase: try c.decode(LaundryPhase.self, forKey: .phase),
+                  draft: try c.decodeIfPresent(LaundryDraft.self, forKey: .draft),
+                  createdAt: try c.decodeIfPresent(Date.self, forKey: .createdAt),
+                  orderID: try c.decodeIfPresent(String.self, forKey: .orderID),
+                  order: try c.decodeIfPresent(LaundryOrder.self, forKey: .order),
+                  orderReadAt: try c.decodeIfPresent(Date.self, forKey: .orderReadAt),
+                  candidateOrderID: try c.decodeIfPresent(String.self, forKey: .candidateOrderID),
+                  paymentRequestedAt: try c.decodeIfPresent(Date.self, forKey: .paymentRequestedAt),
+                  repayArmed: try c.decode(Bool.self, forKey: .repayArmed),
+                  cancelSent: try c.decode(Bool.self, forKey: .cancelSent),
+                  pollAttempt: try c.decode(Int.self, forKey: .pollAttempt),
+                  lastOutcome: try c.decodeIfPresent(LaundryOutcome.self, forKey: .lastOutcome),
+                  notice: try c.decodeIfPresent(LaundryNotice.self, forKey: .notice),
+                  accountID: try c.decodeIfPresent(String.self, forKey: .accountID),
+                  paidAt: try c.decodeIfPresent(Date.self, forKey: .paidAt),
+                  waitingSince: try c.decodeIfPresent(Date.self, forKey: .waitingSince),
+                  immediate: try c.decodeIfPresent(Bool.self, forKey: .immediate) ?? false,
+                  start: try c.decodeIfPresent(LaundryStart.self, forKey: .start))
     }
 
     public static let empty = LaundryCheckout()
@@ -139,6 +171,8 @@ public struct LaundryCheckout: Sendable, Equatable, Codable {
     public static let repayReadMaxAge: TimeInterval = 300
     /// Reconcile adopts an order created within this many seconds of our confirmation.
     public static let adoptWindow: TimeInterval = 120
+    /// 立刻洗衣 starts only this long after the order was confirmed.
+    public static let startWindow: TimeInterval = 600
 
     /// A new order may be confirmed.
     public var canCreate: Bool { phase == .none }
@@ -196,6 +230,8 @@ public struct LaundryCheckout: Sendable, Equatable, Codable {
         var c = self
         c.notice = nil
         c.repayArmed = false
+        c.checkingStart = false
+        c.startPollAttempt = nil
         return c
     }
 
@@ -206,7 +242,7 @@ public struct LaundryCheckout: Sendable, Equatable, Codable {
 
 public enum LaundryEvent: Sendable, Equatable {
     /// The user confirmed machine, program and price, signed in as `account` (`UjingAccount.id`).
-    case confirm(LaundryDraft, at: Date, account: String? = nil)
+    case confirm(LaundryDraft, at: Date, account: String? = nil, immediate: Bool = false)
     case created(orderID: String)
     case createFailed(ServiceError)
     /// `scanWasherCode` during reconcile: the account's unfinished order on the machine.
@@ -235,6 +271,17 @@ public enum LaundryEvent: Sendable, Equatable {
     case cancelledBeforeSend
     case acknowledge
     case resolveManually
+    /// 立刻洗衣's pre-start read.
+    case startCheckRead(LaundryStartCheck, at: Date)
+    case startCheckFailed(ServiceError)
+    /// `control/start` answered without an error.
+    case startSent(at: Date)
+    /// `control/start` failed (after it was handed to the network).
+    case startFailed(ServiceError, at: Date)
+    /// The app is not in front (or the task was cancelled): nothing was sent.
+    case startNotNow
+    /// The engine won't start this order (another account): nothing was sent.
+    case startBlocked(LaundryStartBlock)
 }
 
 public enum LaundryEffect: Sendable, Equatable {
@@ -248,6 +295,10 @@ public enum LaundryEffect: Sendable, Equatable {
     /// Open Alipay (checked launch) → `.launched`.
     case launch(PayLaunch)
     case cancelOrder(id: String)
+    /// 立刻洗衣's pre-start read, only while the app is in front → `.startCheckRead`/`.startCheckFailed`/`.startNotNow`.
+    case readStartCheck(id: String)
+    /// `control/start`, only while the app is in front → `.startSent`/`.startFailed`/`.startNotNow`.
+    case startWasher(id: String)
 }
 
 public enum LaundryReducer {
@@ -267,11 +318,13 @@ public enum LaundryReducer {
     public static func reduce(_ state: LaundryCheckout, _ event: LaundryEvent) -> (LaundryCheckout, [LaundryEffect]) {
         var s = state
         s.notice = nil
+        s.checkingStart = false
         switch (state.phase, event) {
 
         // MARK: create
-        case (.none, .confirm(let draft, let at, let account)):
-            let n = LaundryCheckout(phase: .creating, draft: draft, createdAt: at, lastOutcome: state.lastOutcome, accountID: account)
+        case (.none, .confirm(let draft, let at, let account, let immediate)):
+            let n = LaundryCheckout(phase: .creating, draft: draft, createdAt: at, lastOutcome: state.lastOutcome, accountID: account,
+                                    immediate: immediate)
             return (n, [.create(draft.request)])
 
         case (.creating, .created(let id)):
@@ -331,13 +384,15 @@ public enum LaundryReducer {
              (.verifying, .orderRead(let order, let at)), (.cancelling, .orderRead(let order, let at)):
             guard order.id == state.orderID, belongs(order, state) else {
                 s.notice = .orderMismatch
-                return (s, [])
+                return continueStartPoll(s, [])
             }
-            return apply(order, at: at, to: s)
+            let (n, effects) = apply(order, at: at, to: s)
+            return continueStartPoll(n, effects)
 
         case (.created, .orderReadFailed(let e)), (.active, .orderReadFailed(let e)):
             s.notice = notice(for: e, read: true)
-            return (s, [])
+            if e.isSessionExpired { s.startPollAttempt = nil; return (s, []) }
+            return continueStartPoll(s, [])
 
         case (.verifying, .orderReadFailed(let e)), (.cancelling, .orderReadFailed(let e)):
             if e.isSessionExpired {
@@ -353,7 +408,40 @@ public enum LaundryReducer {
 
         case (.created, .refresh), (.active, .refresh):
             guard let id = state.orderID else { return (state, []) }
+            s.startPollAttempt = nil
+            if state.phase == .active, state.wantsStartCheck {
+                s.checkingStart = true
+                return (s, [.readStartCheck(id: id)])
+            }
             return (s, [.readOrder(id: id, after: 0)])
+
+        // MARK: 立刻洗衣
+        case (.active, .startCheckRead(let check, let at)):
+            return startCheckRead(check, at: at, state: s)
+
+        case (.active, .startCheckFailed(let e)):
+            s.notice = notice(for: e, read: true)
+            return (s, [])
+
+        case (.active, .startNotNow):
+            if case .sent? = state.start { s.start = nil }
+            return (s, [])
+
+        case (.active, .startBlocked(let reason)):
+            if state.start == nil { s.start = .blocked(reason) }
+            else if case .sent? = state.start { s.start = .blocked(reason) }
+            return (s, [])
+
+        case (.active, .startSent(let at)):
+            guard case .sent? = state.start else { return (s, []) }
+            s.start = .accepted(at: at)
+            return startPoll(s)
+
+        case (.active, .startFailed(let e, let at)):
+            guard case .sent? = state.start else { return (s, []) }
+            if case .rejected(_, _, let message) = e { s.start = .refused(message: message, at: at) }
+            else { s.start = .pending(at: at) }
+            return startPoll(s)
 
         case (.verifying, .refresh), (.cancelling, .refresh):
             guard let id = state.orderID, state.phase == .verifying || state.cancelSent else { return (state, []) }
@@ -469,6 +557,8 @@ public enum LaundryReducer {
         guard var s = persisted else { return .empty }
         s.notice = nil
         s.repayArmed = false
+        s.checkingStart = false
+        s.startPollAttempt = nil
         switch s.phase {
         case .none, .reconcile, .created, .active, .attention, .verifying:
             return s
@@ -547,7 +637,9 @@ public enum LaundryReducer {
     }
 
     /// Applies a matching order read to the current phase.
-    static func apply(_ order: LaundryOrder, at: Date, to state: LaundryCheckout) -> (LaundryCheckout, [LaundryEffect]) {
+    /// `checkStart`: a paid 立刻洗衣 order asks for the pre-start read (not when this read is that one).
+    static func apply(_ order: LaundryOrder, at: Date, to state: LaundryCheckout,
+                      checkStart: Bool = true) -> (LaundryCheckout, [LaundryEffect]) {
         var s = state
         s.order = order
         s.orderReadAt = at
@@ -571,7 +663,8 @@ public enum LaundryReducer {
             if s.paidAt == nil { s.paidAt = at }
             if order.status.isWashing, let left = order.remainSeconds, left > 0 { s.waitingSince = nil }
             else if s.waitingSince == nil { s.waitingSince = at }
-            return (s, [])
+            if order.status.isWashing, s.start?.requestedAt != nil { s.start = .started }
+            return checkStart ? startIfDue(s, at: at) : (s, [])
         }
 
         // Unpaid (10/17).
@@ -597,8 +690,11 @@ public enum LaundryReducer {
 public struct LaundryDisplay: Sendable, Equatable {
     public var title: String
     public var hint: String?
+    /// 立刻洗衣's line on the order card (nil for normal orders).
+    public var startLine: LaundryStartLine?
     public init(_ c: LaundryCheckout) {
         hint = nil
+        startLine = LaundryStartLine.make(c)
         switch c.phase {
         case .none: title = "空闲"
         case .creating: title = "正在下单…"

@@ -19,6 +19,7 @@ extension DebugEvent {
         case .laundryRequest: return "laundry.request"
         case .laundryOrder: return "laundry.order"
         case .laundryPayLaunch: return "laundry.payLaunch"
+        case .laundryStart: return "laundry.start"
         case .schoolRefresh: return "school.refresh"
         case .schoolCredentialExpired: return "school.credentialExpired"
         case .schoolPasswordLogin: return "school.passwordLogin"
@@ -92,6 +93,21 @@ extension DebugEvent {
             if let order { f["order"] = tag(order) }
         case .laundryPayLaunch(let opened):
             f.flag("opened", opened)
+        case .laundryStart(let step):
+            switch step {
+            case .chosen(let immediate): f.word("chosen"); f.flag("immediate", immediate)
+            case .returned(let inFront): f.word("returned"); f.flag("inFront", inFront)
+            case .check(let paid, let status, let price, let module, let order):
+                f.word("check"); f.flag("paid", paid); f["status"] = status.text; f["price"] = price.rawValue
+                if let module { f["moduleType"] = String(module) }
+                if let order { f["order"] = tag(order) }
+            case .saved: f.word("saved")
+            case .handed: f.word("handed")
+            case .result(.ok): f["result"] = "ok"
+            case .result(.refused(let code)): f["result"] = "refused"; if let code { f["code"] = code.text }
+            case .result(.unknown(let kind)): f["result"] = "unknown"; f["kind"] = kind.rawValue
+            case .skipped(let reason): f.word("skipped"); f["reason"] = reason.rawValue
+            }
         case .schoolRefresh(let o), .schoolRenew(let o):
             f.school(o)
         case .schoolCredentialExpired(let kind, let age, let alive):

@@ -34,6 +34,14 @@ enum L {
                      createdAt: createdAt, price: price.map { Money(fen: $0) })
     }
 
+    /// A 立刻洗衣 pre-start read (`app/orders/{id}/detail`): the order plus the machine fields.
+    static func check(_ status: String = "20", paid: Bool? = nil, price: Int? = 400, id: String = orderID, device: String = device,
+                      program: Int? = 1, remain: Int? = nil, module: Int? = 7, online: Bool? = true, selfClean: Bool = false,
+                      dispenser: Bool = false) -> LaundryStartCheck {
+        LaundryStartCheck(order: order(status, paid: paid, price: price, id: id, device: device, program: program, remain: remain),
+                          moduleType: module, online: online, selfCleanDue: selfClean, dispenser: dispenser)
+    }
+
     static func client(_ server: StubServer, token: String? = token, log: HTTPLogSink = RecordingLogSink()) -> UjingClient {
         UjingClient(http: server.makeClient(allowedHosts: AllowedHosts.laundry, log: log),
                     device: UjingDevice(mobileID: mobileID, userAgent: "XiaoRiChang/test"), token: token)

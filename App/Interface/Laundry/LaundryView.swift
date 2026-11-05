@@ -242,7 +242,10 @@ struct LaundryDetail: View {
                                           amount:nil, source:.app),
                           accentWord:"待核对")
             }
-        case .unpaid, .empty, .unknown:
+        case .unpaid:
+            // 立刻洗衣: the order group shows its line (「付完款回到这里，就帮你启动机器。」).
+            if facts.startLine != nil { orderRows(facts, phase:phase) }
+        case .empty, .unknown:
             EmptyView()
         }
     }
@@ -286,6 +289,12 @@ struct LaundryDetail: View {
                     StatusRow(symbol:"creditcard", title:"已付款", value:facts.amount.map { .amount(Theme.yuan($0)) })
                         .accessibilityElement(children:.ignore)
                         .accessibilityLabel(["已付款", facts.amount.map(LaundryFormat.spokenYuan)].compactMap { $0 }.joined(separator:"，"))
+                }
+                if let line = facts.startLine {
+                    RowSeparator()
+                    ImmediateStartLine(line:line, style:.warm)
+                        .padding(.vertical,10).frame(minHeight:66)
+                        .padding(.horizontal,24)
                 }
             }
         }
@@ -427,9 +436,10 @@ struct LaundryDetail: View {
             let machine = facts.snapshot.map { LaundryFormat.machine($0.deviceNo) }
             let line = [machine, program.map(LaundryFormat.program) ?? programLine(facts)].compactMap { $0 }.joined(separator:" · ")
             LaundryPaySheet(title:newOrder ? "下单并去支付宝付款？" : "去支付宝付款？", line:line,
-                            amount:program?.price.yuan ?? facts.amount) {
+                            amount:program?.price.yuan ?? facts.amount, newOrder:newOrder,
+                            initialImmediate:demo?.immediate ?? false) { immediate in
                 sheet = nil
-                if newOrder, let program { submit(program) } else { payExisting() }
+                if newOrder, let program { submit(program, immediate:immediate) } else { payExisting() }
             }
         case .cancel:
             LaundryCancelSheet {
@@ -444,11 +454,11 @@ struct LaundryDetail: View {
         }
     }
 
-    private func submit(_ program: WasherProgram) {
+    private func submit(_ program: WasherProgram, immediate: Bool) {
         if demo != nil { runDemoBusy(); return }
         if let device = laundry.snapshot?.deviceID { laundry.services.defaults.set(program.id, forKey:Self.lastProgramKey(device)) }
         submitting = true
-        Task { await laundry.createAndPay(program); submitting = false }
+        Task { await laundry.createAndPay(program, immediate:immediate); submitting = false }
     }
 
     private func payExisting() {
@@ -614,11 +624,20 @@ private struct LaundryPaySheet: View {
     let title: String
     let line: String
     let amount: Decimal?
-    let confirm: () -> Void
+    /// A new order: 「洗衣方式」 is asked (paying an existing order keeps its choice).
+    let newOrder: Bool
+    let confirm: (_ immediate: Bool) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var submitted = false
+    /// 正常洗衣 every time the sheet opens. Demo screenshots may open on 立刻洗衣.
+    @State private var immediate: Bool
+    init(title: String, line: String, amount: Decimal?, newOrder: Bool, initialImmediate: Bool = false,
+         confirm: @escaping (_ immediate: Bool) -> Void) {
+        self.title = title; self.line = line; self.amount = amount; self.newOrder = newOrder; self.confirm = confirm
+        _immediate = State(initialValue:newOrder && initialImmediate)
+    }
     var body: some View {
-        LaundrySheetBody(height:360) {
+        LaundrySheetBody(height:360, large:newOrder) {
             Text(title).scaledFont(24, .bold, relativeTo:.title2).foregroundStyle(Theme.ink)
                 .fixedSize(horizontal:false, vertical:true)
             Text(line).scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.ink2).padding(.top,14)
@@ -626,10 +645,14 @@ private struct LaundryPaySheet: View {
                 Text(Theme.yuan(amount)).scaledFont(44, .semibold, design:appTheme.numberDesign, relativeTo:.largeTitle)
                     .monospacedDigit().tracking(-1).foregroundStyle(Theme.ink).padding(.top,2)
             }
-            Text("付完款机器可能马上开始洗，先把衣服放好。实际金额以支付宝里显示的为准。")
+            if newOrder {
+                LaundryStartModePicker(style:.warm, immediate:$immediate, disabled:submitted).padding(.top,24)
+            }
+            // 立刻洗衣's three lines take the caution's place; the amount sentence stays.
+            Text(newOrder && immediate ? LaundryStartCopy.amountNote : ClearLaundryCopy.caution)
                 .scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.ink2).lineSpacing(4)
                 .fixedSize(horizontal:false, vertical:true).padding(.top,14)
-            Button { submitted = true; confirm() } label: { DockPillLabel(title:"去付款") }
+            Button { submitted = true; confirm(newOrder && immediate) } label: { DockPillLabel(title:"去付款") }
                 .buttonStyle(PressScaleStyle()).disabled(submitted)
                 .padding(.top,24)
                 .accessibilityIdentifier("submitLaundryOrder")
@@ -690,6 +713,8 @@ private struct LaundryResolveSheet: View {
 /// Sheet chrome: `group` background, drag indicator, ≈height detent + large, scrolls at large text.
 private struct LaundrySheetBody<Content: View>: View {
     let height: CGFloat
+    /// Taller content (the new-order sheet with 「洗衣方式」): the large detent only.
+    var large = false
     @ViewBuilder var content: Content
     var body: some View {
         ScrollView {
@@ -698,7 +723,7 @@ private struct LaundrySheetBody<Content: View>: View {
                 .frame(maxWidth:.infinity, alignment:.leading)
         }
         .scrollBounceBehavior(.basedOnSize)
-        .presentationDetents([.height(height), .large])
+        .presentationDetents(large ? [.large] : [.height(height), .large])
         .presentationDragIndicator(.visible)
         .presentationBackground(Theme.group)
     }

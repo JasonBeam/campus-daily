@@ -61,6 +61,13 @@ public final class CampusServices: @unchecked Sendable {
                                   debugLog: role == "widget" ? NoDebugLog() : debugLog)
     }
 
+    /// Whether the laundry engine may treat the app as in front (立刻洗衣 starts only then):
+    /// `live` for the live app; never for a sample, so a sample order can't reach a start.
+    public func laundryInFront(live: @escaping @Sendable () async -> Bool) -> @Sendable () async -> Bool {
+        guard kind == .live else { return { @Sendable in false } }
+        return live
+    }
+
     /// The hot-water engine as the app builds it, on these services: their vault, Bluetooth and
     /// the platform gateway `gateway` (over `showerHTTP`).
     public func showerEngine(gateway: any ShowerGateway, bleName: String) throws -> ShowerEngine {

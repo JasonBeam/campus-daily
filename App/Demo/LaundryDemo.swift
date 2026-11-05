@@ -7,12 +7,19 @@ import Core
 struct LaundryDemo {
     enum Kind: String {
         case idle, busy, unpaid, run, check, inuse, offline, broken, disabled, empty, done, confirm, cancel
+        // 立刻洗衣 (fake records; nothing is started).
+        case confirmNow = "confirm-now", nowUnpaid = "now-unpaid", nowReady = "now-ready", nowChecking = "now-checking"
+        case nowSent = "now-sent", nowUncertain = "now-uncertain", nowUnsupported = "now-unsupported"
+        case nowExpired = "now-expired", nowRefused = "now-refused"
+        case nowAccount = "now-account", nowPrice = "now-price"
     }
     enum InitialSheet { case confirm, cancel }
     var facts: LaundryFacts
     var sheet: InitialSheet?
     var panel: SettlementResult?
     var notify = true
+    /// The pay sheet opens on 立刻洗衣 (screenshots only; the live sheet always opens on 正常洗衣).
+    var immediate = false
 
     #if DEBUG
     static func handle(_ url: URL) -> LaundryDemo? {
@@ -54,6 +61,35 @@ struct LaundryDemo {
         case .done:
             demo.facts.record = record(stage:.none, status:"50", paid:true, remain:nil, created:now.addingTimeInterval(-50 * 60), now:now)
             demo.panel = .laundryDone(amount:Decimal(string:"4.00"), detail:"标准洗 · 45 分钟 · 3 号机")
+        case .confirmNow:
+            demo.sheet = .confirm; demo.immediate = true
+        case .nowUnpaid:
+            demo.facts.snapshot = snapshot(status:11, active:"demo1")
+            var r = record(stage:.created, status:"10", paid:false, remain:nil, created:now.addingTimeInterval(-60), now:now)
+            r.immediate = true
+            demo.facts.record = r
+            demo.facts.mayCreate = false; demo.facts.mayCancel = true
+        case .nowReady, .nowChecking, .nowSent, .nowUncertain, .nowUnsupported, .nowExpired, .nowRefused, .nowAccount, .nowPrice:
+            demo.facts.snapshot = snapshot(status:11, active:"demo1")
+            var r = record(stage:.active, status:"20", paid:true, remain:nil, created:now.addingTimeInterval(-2 * 60), now:now)
+            r.immediate = true
+            let at = now.addingTimeInterval(-20)
+            switch kind {
+            case .nowChecking: r.checkingStart = true
+            case .nowSent: r.start = .accepted(at:at)
+            case .nowUncertain: r.start = .pending(at:at)
+            case .nowUnsupported: r.start = .blocked(.unsupported)
+            case .nowAccount: r.start = .blocked(.account)
+            case .nowPrice: r.start = .blocked(.price)
+            case .nowExpired:
+                r = record(stage:.active, status:"20", paid:true, remain:nil, created:now.addingTimeInterval(-14 * 60), now:now)
+                r.immediate = true; r.start = .blocked(.expired)
+            // A made-up refusal, two lines long (synthetic; not U净's words).
+            case .nowRefused: r.start = .refused(message:"示例：设备正在自检，请稍后在 U净 App 内重新操作启动", at:at)
+            default: break
+            }
+            demo.facts.record = r
+            demo.facts.mayCreate = false
         }
         return demo
     }

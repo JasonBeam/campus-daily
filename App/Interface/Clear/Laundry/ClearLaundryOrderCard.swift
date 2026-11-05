@@ -27,6 +27,9 @@ struct ClearLaundryOrderCard: View {
                 .font(.caption)
                 .fixedSize(horizontal:false, vertical:true)
             }
+            if let line = facts.startLine {
+                ImmediateStartLine(line:line, style:.clear).padding(.top,2)
+            }
             if facts.record?.order?.paid == true {
                 LabeledContent("已付款") {
                     Text(facts.amount.map(Theme.yuan) ?? "").monospacedDigit().foregroundStyle(Theme.ink)

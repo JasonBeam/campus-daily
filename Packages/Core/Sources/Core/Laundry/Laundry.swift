@@ -204,6 +204,32 @@ public struct LaundryOrder: Sendable, Equatable, Codable {
     public var isUnpaid: Bool { status.isAwaitingPayment && paid != true }
 }
 
+/// `app/orders/{id}/detail?additional=price` → `data`: the order plus what decides whether the
+/// app may start the machine itself (立刻洗衣).
+public struct LaundryStartCheck: Sendable, Equatable {
+    public var order: LaundryOrder
+    public var moduleType: Int?
+    /// `online`; nil = not sent.
+    public var online: Bool?
+    /// Self-clean on, charged, and not done yet (`selfCleanEnable`, `selfCleanPrice`, `cleanSelfEndTime`).
+    public var selfCleanDue: Bool
+    /// A non-null `wp_order` (detergent dispenser).
+    public var dispenser: Bool
+    public init(order: LaundryOrder, moduleType: Int?, online: Bool?, selfCleanDue: Bool, dispenser: Bool) {
+        self.order = order; self.moduleType = moduleType; self.online = online
+        self.selfCleanDue = selfCleanDue; self.dispenser = dispenser
+    }
+
+    /// Why this machine is left to the U净 app, or nil when the app may start it.
+    public var block: LaundryStartBlock? {
+        if moduleType != WasherSnapshot.orderableModuleType { return .unsupported }
+        if online == false { return .offline }
+        if dispenser { return .dispenser }
+        if selfCleanDue { return .selfClean }
+        return nil
+    }
+}
+
 // MARK: - Payment
 
 /// `payment/methods` → `data.channels[]`. Only `alipay` and `alipayF2F` are used.

@@ -233,9 +233,10 @@ struct ClearLaundryPage: View {
             ClearLaundryPaySheet(title:newOrder ? "下单并去支付宝付款？" : "去支付宝付款？",
                                  machine:ClearLaundryCopy.machineLine(facts),
                                  program:program.map(LaundryFormat.program) ?? ClearLaundryCopy.programLine(facts),
-                                 amount:program?.price.yuan ?? facts.amount) {
+                                 amount:program?.price.yuan ?? facts.amount, newOrder:newOrder,
+                                 initialImmediate:navigator.laundryDemo?.immediate ?? false) { immediate in
                 sheet = nil
-                if newOrder, let program { submit(program) } else { payExisting() }
+                if newOrder, let program { submit(program, immediate:immediate) } else { payExisting() }
             }
         case .cancel:
             ClearLaundryConfirmSheet.cancel(order:ClearLaundryCopy.orderTitle(facts)) {
@@ -280,13 +281,13 @@ struct ClearLaundryPage: View {
         }
     }
 
-    private func submit(_ program: WasherProgram) {
+    private func submit(_ program: WasherProgram, immediate: Bool) {
         if isDemo { runDemoBusy(); return }
         if let device = laundry.snapshot?.deviceID {
             laundry.services.defaults.set(program.id, forKey:LaundryDetail.lastProgramKey(device))
         }
         submitting = true
-        Task { await laundry.createAndPay(program); submitting = false }
+        Task { await laundry.createAndPay(program, immediate:immediate); submitting = false }
     }
 
     private func payExisting() {
