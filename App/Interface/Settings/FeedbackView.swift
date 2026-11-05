@@ -9,6 +9,7 @@ struct FeedbackView: View {
     let http: HTTPClient
     @Environment(\.dismiss) private var dismiss
     @Environment(\.appTheme) private var appTheme
+    @Environment(SampleMode.self) private var sample
     @State private var message = ""
     @State private var pickerItems: [PhotosPickerItem] = []
     @State private var images: [UIImage] = []
@@ -151,6 +152,8 @@ struct FeedbackView: View {
 
     private func send() {
         guard canSend else { return }
+        // The sample sends nothing: the form stays as it is.
+        guard !sample.isActive else { sample.perform(.sendFeedback) {}; return }
         sending = true
         failure = nil
         Task {

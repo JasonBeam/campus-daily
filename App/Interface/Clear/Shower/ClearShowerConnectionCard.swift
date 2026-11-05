@@ -5,6 +5,7 @@ import Core
 /// into a card, as on his detail page. 热水排查 stays in 设置 › 高级.
 struct ClearShowerConnectionCard: View {
     @EnvironmentObject private var shower: ShowerModel
+    @Environment(SampleMode.self) private var sample
     /// False on a DEBUG demo: the button does nothing there.
     let live: Bool
     @State private var expanded = false
@@ -12,7 +13,11 @@ struct ClearShowerConnectionCard: View {
     var body: some View {
         DisclosureGroup("连接检查与水控信息", isExpanded:$expanded) {
             VStack(alignment:.leading, spacing:12) {
-                Button { if live { Task { await shower.inspectBluetooth() } } } label: {
+                Button {
+                    // Bluetooth: never in the sample.
+                    if sample.isActive { sample.perform(.checkController) {}; return }
+                    if live { Task { await shower.inspectBluetooth() } }
+                } label: {
                     Label(shower.inspecting ? "正在核对…" : (shower.inspectionFoundBusy ? "再试一次" : "核对宿舍的水控"),
                           systemImage:"antenna.radiowaves.left.and.right")
                         .frame(maxWidth:.infinity, minHeight:44, alignment:.leading)

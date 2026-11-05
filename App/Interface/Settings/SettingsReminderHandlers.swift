@@ -11,7 +11,7 @@ struct SettingsReminderHandlers: ViewModifier {
     @AppStorage(ReminderKey.laundryDone) private var laundryAlert = true
     @AppStorage(ReminderKey.powerLine) private var powerLine = 10
     @AppStorage(ReminderKey.cardLine) private var cardLine = 20
-    @ObservedObject private var reminders = Reminders.shared
+    @EnvironmentObject private var reminders: Reminders
 
     func body(content: Content) -> some View {
         content

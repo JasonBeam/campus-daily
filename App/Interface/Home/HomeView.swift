@@ -12,6 +12,9 @@ struct HomeView: View {
     @EnvironmentObject var laundry: LaundryModel
     @Environment(\.scenePhase) var phase
     @Environment(ThemeStore.self) var themeStore
+    @Environment(SampleMode.self) var sample
+    /// The graph's services (`CampusScene`): `@AppStorage` here is on their preferences.
+    @Environment(\.campusServices) var services
     @Environment(\.accessibilityReduceMotion) var reduceMotion
     @Environment(\.dynamicTypeSize) var typeSize
     @State var path: [HomeRoute] = []
@@ -28,6 +31,8 @@ struct HomeView: View {
     nonisolated static let contentSpace = "homeContent"
     /// Pages to push once the settings sheet has gone (`open(_:)`).
     @State var pathAfterSettings: [HomeRoute]?
+    /// The newest link or login-after-the-sample: an older one still waiting for a sheet is dropped.
+    @State var destination = RootDestination()
     @State var panel: SettlementResult?
     @State var startTick = 0
     /// The shower page's cover. Follows `shower.page.presented`, but only once no sheet is up:
@@ -40,29 +45,31 @@ struct HomeView: View {
     @State var pageCoverAsked = Date.distantPast
     @State var successTick = 0
     @State var errorTick = 0
-    @ObservedObject var reminders = Reminders.shared
-    @AppStorage("didSeeQuickSetup") var didSeeQuickSetup = false
+    @EnvironmentObject var reminders: Reminders
     /// Last laundry order whose done panel was shown (once per order).
     @AppStorage("laundryDoneShownOrder") var laundryDoneShown = ""
     /// Negative top inset that lifts the date block into the navigation-bar row.
     let dateLift: CGFloat = -48
-    #if DEBUG
+    /// Synthetic data on screen instead of the live models: a DEBUG demo, or the sample mode's
+    /// (「先看看示例」, also in Release). Nil = live models.
     @State var demo: HomeData?
     @State var laundryDemo: LaundryDemo?
+    /// campusdaily://demo/recharge-blocked: the top-up page when its web view can't be allowed to load.
+    @State var rechargeBlockedDemo = false
+    /// campusdaily://demo/records/<state> and the sample: 校园卡记录 on synthetic pages.
+    @State var recordsDemo: RecordsDemo?
+    #if DEBUG
     @State var activityPreview: LaundryActivityPreview.Kind?
     @State var widgetPreview: WidgetPreview.Page?
     /// campusdaily://demo/login-loading: the sign-in sheet's opening state, nothing loaded.
     @State var loginDemo = false
-    /// campusdaily://demo/recharge-blocked: the top-up page when its web view can't be allowed to load.
-    @State var rechargeBlockedDemo = false
-    /// campusdaily://demo/records/<state>: 校园卡记录 on synthetic pages.
-    @State var recordsDemo: RecordsDemo?
     /// campusdaily://demo/washer/<state>: 常用洗衣机 on synthetic values.
     @State var washerDemo: WasherSetupDemo?
     #endif
 
     func openOnboarding() {
-        onboarding = OnboardingRequest(step:.login)
+        // Already up (first-run, then 去登录 or a login link just after the sample): kept.
+        onboarding = OnboardingRequest.asking(.login, over:onboarding)
     }
 
     /// Shows these pages over home. With the settings sheet up, it is closed first and the pages
@@ -90,9 +97,7 @@ struct HomeView: View {
     /// Reset finished: back to the first-run guide as on a fresh install, no toast.
     func afterReset() {
         settings = false; path = []; pathAfterSettings = nil; panel = nil
-        #if DEBUG
         demo = nil; laundryDemo = nil
-        #endif
         successTick += 1
         // Let the settings sheet go first, otherwise the cover is not presented.
         Task { try? await Task.sleep(for:.milliseconds(600)); openOnboarding() }
@@ -136,18 +141,10 @@ struct HomeView: View {
         return clear
     }
 
-    var settingsSheet: SettingsView {
-        #if DEBUG
-        SettingsView(preview:demo)
-        #else
-        SettingsView()
-        #endif
-    }
+    var settingsSheet: SettingsView { SettingsView(preview:demo) }
 
     var data: HomeData {
-        #if DEBUG
         if let demo { return demo }
-        #endif
         return HomeData(campus:campus, shower:shower, laundry:laundry)
     }
 
@@ -189,7 +186,7 @@ struct HomeView: View {
         .accountSwitchAlert { pathAfterSettings = nil; campus.hotWaterSetupRequested = true; settings = true }
         .sheet(isPresented:$settings, onDismiss:{
             if let routes = pathAfterSettings { pathAfterSettings = nil; path = routes }
-        }) { settingsSheet.typesettingLanguage(Theme.typesetting) }
+        }) { settingsSheet.sampleChrome().typesettingLanguage(Theme.typesetting) }
         .sheet(isPresented:$relogin) { SchoolReloginSheet().typesettingLanguage(Theme.typesetting) }
         // The shower page: down only by its own buttons, or a swipe while water runs (收起).
         .fullScreenCover(isPresented:Binding(get:{ pageCover },
@@ -198,18 +195,21 @@ struct HomeView: View {
             ShowerPageView(room:demo?.dorm ?? campus.room).environmentObject(shower).onOpenURL { handleDemo($0) }
                 .onAppear { pageShown = true }.onDisappear { pageShown = false }
             #else
-            ShowerPageView(room:campus.room).environmentObject(shower)
+            ShowerPageView(room:demo?.dorm ?? campus.room).environmentObject(shower)
                 .onAppear { pageShown = true }.onDisappear { pageShown = false }
             #endif
         }
-        .fullScreenCover(item:$onboarding, onDismiss:{ didSeeQuickSetup = true }) { request in
-            // .id: a new request must reset the cover's @State (step), not reuse it.
+        // Closed into the sample: not seen, so the next launch opens on the login step again (`QuickSetupSeen`).
+        .fullScreenCover(item:$onboarding, onDismiss:{ QuickSetupSeen.closed(in:services.defaults, coveredBySample:sample.isActive) }) { request in
+            // .id: a new request (or a new step on this one) must reset the cover's @State, not reuse it.
             // Own device chooser: a sheet from the home root can't show above this cover.
             #if DEBUG
-            OnboardingView(start:request.step, preview:request.preview) { onboarding = nil }.id(request.id)
+            OnboardingView(start:request.step, preview:request.preview) { onboarding = nil }
+                .onStep { onboarding?.guide.moved(to:$0) }.id(request.guide.contentID)
                 .onOpenURL { handleDemo($0) }
             #else
-            OnboardingView(start:request.step) { onboarding = nil }.id(request.id)
+            OnboardingView(start:request.step) { onboarding = nil }
+                .onStep { onboarding?.guide.moved(to:$0) }.id(request.guide.contentID)
             #endif
         }
         #if DEBUG
@@ -224,6 +224,9 @@ struct HomeView: View {
         }
         #endif
         .modifier(CampusRootHooks(demo:isDemo, root:.warm, firstRun:openOnboarding, afterReset:afterReset))
+        .sampleChrome()
+        .onChange(of:sample.isActive, initial:true) { _, active in followSample(active) }
+        .onChange(of:sample.loginDue, initial:true) { _, due in openLoginAfterSample(due) }
         // 校园卡记录 shows one person's records: it closes when they sign out or someone else signs in.
         .onChange(of:campus.personChanges) { _, _ in
             if let index = path.firstIndex(of:.records) { path.removeSubrange(index...) }
@@ -240,47 +243,53 @@ struct HomeView: View {
         // A done panel that arrived while another panel was up is shown once that one closes.
         .onChange(of:panel == nil) { _, clear in if clear { presentLaundryDone(data.laundryDone) } }
         .modifier(ReminderHooks(open:{ follow($0 == .laundry ? [.laundry] : []) }, homeClear:homeClear))
-        .onOpenURL { url in
-            if let link = RootLink(url) {
-                // Never closes a top-up page or a laundry order being paid.
-                guard mayClosePages else { return }
-                // Newer than pages still waiting for the settings sheet to close: those are dropped.
-                pathAfterSettings = nil
-                switch link {
-                case .home: settings = false; path = []; return
-                // A paused automatic login (widget): Settings › 学校账号, where the pause is explained.
-                case .settings(account:true):
-                    path = []; campus.accountPageRequested = true; settings = true
-                    return
-                case .login:
-                    let sheetUp = settings
-                    settings = false; path = []
-                    // As after a reset: let the settings sheet go first, or the cover is not presented.
-                    Task { if sheetUp { try? await Task.sleep(for:.milliseconds(600)) }; openOnboarding() }
-                    return
-                case .settings(account:false): break
-                }
-            }
-            #if DEBUG
-            handleDemo(url)
-            #endif
+        // The widget's links, dispatched by the app (`SampleMode.open`): this root opens them
+        // only when it is the live one.
+        .onChange(of:sample.pendingLink, initial:true) { _, _ in
+            guard let link = sample.takePendingLink() else { return }
+            open(link)
+        }
+        #if DEBUG
+        .onOpenURL { if RootLink($0) == nil { handleDemo($0) } }
+        #endif
+    }
+
+    /// The widget's link (`SampleMode.takePendingLink`: never while the sample is on, so never
+    /// on a sample's root).
+    func open(_ link: RootLink) {
+        // The newest destination: an older one still waiting (below, `openLoginAfterSample`) is dropped.
+        destination.supersede()
+        // Never closes a top-up page or a laundry order being paid.
+        guard mayClosePages else { return }
+        // Newer than pages still waiting for the settings sheet to close: those are dropped.
+        pathAfterSettings = nil
+        switch link {
+        case .home: settings = false; path = []
+        // A paused automatic login (widget): Settings › 学校账号, where the pause is explained.
+        case .settings(account:true):
+            path = []; campus.accountPageRequested = true; settings = true
+        case .login:
+            let sheetUp = settings
+            settings = false; path = []
+            // As after a reset or the sample: let a sheet go first, or the cover is not presented.
+            destination.after(sheetUp ? 600 : 300) { openOnboarding() }
+        case .settings(account:false):
+            path = []
+            // Just after the sample left (or a cover went), its sheet goes first.
+            if !settings { destination.after(600) { settings = true } }
         }
     }
 
-    /// DEBUG demo data is on screen (never in Release).
-    var isDemo: Bool {
-        #if DEBUG
-        demo != nil
-        #else
-        false
-        #endif
-    }
+    /// Synthetic data is on screen (a DEBUG demo, or the sample in Release too).
+    var isDemo: Bool { demo != nil || sample.isActive }
 
     // MARK: Actions
 
     /// 开始洗澡 opens the shower page and starts connecting; a shower going on opens the page as
     /// it stands; a record to check opens the 核对 screen.
     func tap(_ kind: HomeShowerButton.Kind) {
+        // The sample's 热水: its page, where 开始洗澡 is blocked; nothing connects.
+        if sample.isActive { path.append(.shower); return }
         #if DEBUG
         if demo != nil { demoTap(kind); return }
         #endif
@@ -301,15 +310,15 @@ struct HomeView: View {
 
     /// Pull to refresh: joins a running refresh. Only a pull the user made buzzes on failure.
     func pull() async {
+        // The sample reads nothing: the pull only shows.
+        if sample.isActive { try? await Task.sleep(for:.milliseconds(700)); return }
         await campus.refresh(force:true)
         await laundry.refresh(force:true)
         if case .failed = HomeData(campus:campus, shower:shower, laundry:laundry).updateLine { errorTick += 1 }
     }
 
     func presentLaundryDone(_ done: HomeData.LaundryDone?) {
-        #if DEBUG
         if demo != nil { return }
-        #endif
         guard let done, done.id != laundryDoneShown, panel == nil else { return }
         laundryDoneShown = done.id
         successTick += 1

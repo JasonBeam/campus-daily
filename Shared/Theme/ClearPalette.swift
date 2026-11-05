@@ -18,6 +18,8 @@ enum ClearPalette {
     static let ink = dynamic(0x000000, dark:0xFFFFFF)
     static let ink2 = dynamic(0x3C3C43, 0.6, dark:0xEBEBF5, 0.6)
     static let ink3 = dynamic(0x3C3C43, 0.3, dark:0xEBEBF5, 0.3)
+    /// A shut text entry: opaque, 4.69:1 on `bg` (5.23 on `group`), dark 9.50 (7.69).
+    static let disabledText = dynamic(0x6C6C70, dark:0xAEAEB2)
     static let separator = dynamic(0x3C3C43, 0.29, dark:0x545458, 0.65)
     static let fill = dynamic(0x175EC9, 0.10, dark:0x8ABAFF, 0.14)
     static let accent = dynamic(0x175EC9, dark:0x175EC9)

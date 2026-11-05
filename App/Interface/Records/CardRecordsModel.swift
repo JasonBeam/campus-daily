@@ -2,13 +2,14 @@ import Foundation
 import Core
 
 extension CardRecordsSource {
-    /// The school session: pages for the person signed in when the list was read from today.
-    @MainActor static var live: CardRecordsSource {
-        let session = AppEnvironment.school
+    /// `campus`'s school session (the live one, or a sample's, which reads nothing): pages for
+    /// the person signed in when the list was read from today.
+    @MainActor static func school(_ campus: CampusModel) -> CardRecordsSource {
+        let session = campus.schoolSession
         return CardRecordsSource(stamp:{ await session.personStamp() },
                                  page:{ query, stamp in try await session.cardHistoryPage(query, since:stamp) },
                                  samePerson:{ await session.isSamePerson(since:$0) },
-                                 renew:{ await CampusModel.shared.renewCardSession() })
+                                 renew:{ [weak campus] in await campus?.renewCardSession() ?? false })
     }
 }
 

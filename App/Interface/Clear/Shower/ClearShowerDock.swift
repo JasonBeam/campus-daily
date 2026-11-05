@@ -9,6 +9,7 @@ import Core
 struct ClearShowerDock: View {
     @EnvironmentObject private var shower: ShowerModel
     @Environment(\.dismiss) private var dismiss
+    @Environment(SampleMode.self) private var sample
     /// Nil: no session to show (ready to start).
     let phase: ShowerPagePhase?
     let live: Bool
@@ -70,13 +71,13 @@ struct ClearShowerDock: View {
     private var platformMissing: Bool { live && shower.platformMissing }
 
     private var mayStart: Bool {
-        #if DEBUG
         if !live { return true }
-        #endif
         return shower.mayStart
     }
 
     private func start() {
+        // The sample's 开始洗澡: the message only; nothing connects.
+        if sample.isActive { sample.perform(.startShower) {}; return }
         #if DEBUG
         if !live { shower.showDemoPage(HomeView.ShowerPageDemo.record("sh-connect")); return }
         #endif

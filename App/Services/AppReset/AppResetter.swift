@@ -1,11 +1,25 @@
 import Foundation
-import WidgetKit
 import Core
 
 /// Settings › 高级 › 重置校日常. The clear list itself is `AppReset` in Core; this
 /// puts the running models in step before and after it, and tells the home screen to start over.
+/// Clears the `CampusServices` it is given: the live app's (`shared`), or a sample's (which never
+/// resets: 重置校日常 is blocked there, and it would clear only the sample's memory).
 @MainActor final class AppResetter: ObservableObject {
-    static let shared = AppResetter()
+    static let shared = AppResetter(services:AppEnvironment.live, reminders:.shared, activities:.shared,
+                                    sharedPreferences:AppEnvironment.sharedPreferences)
+    private let services: CampusServices
+    private let reminders: Reminders
+    private let activities: ShowerActivityController?
+    private let sharedPreferences: AppReset.SharedPreferences?
+
+    init(services: CampusServices, reminders: Reminders, activities: ShowerActivityController?,
+         sharedPreferences: AppReset.SharedPreferences?) {
+        self.services = services
+        self.reminders = reminders
+        self.activities = activities
+        self.sharedPreferences = sharedPreferences
+    }
     /// Bumped after each completed reset: the home screen closes settings and opens the guide.
     @Published private(set) var completed = 0
     @Published private(set) var running = false
@@ -31,8 +45,8 @@ import Core
     /// Files the app wrote (the imported hot-water file, the laundry cache, what older builds left:
     /// the hot-water diagnostics and their export, the Bluetooth scan note). The bundled hot-water
     /// parameters are app resources and stay.
-    static var files: [URL] {
-        let support = FileManager.default.urls(for:.applicationSupportDirectory, in:.userDomainMask)[0]
+    private var files: [URL] {
+        guard let support = services.applicationSupport else { return [] }
         return ["Water", "LaundryCache", "WaterSession"].map { support.appendingPathComponent($0, isDirectory:true) }
             + [RetiredDiagnostics.exportFolder(in:FileManager.default.temporaryDirectory)]
     }
@@ -48,11 +62,11 @@ import Core
     /// A reset killed long enough ago that it was dropped, not finished, at launch.
     static let abandonedText = "上次重置没做完，再试一次。"
 
-    static var marker: ResetMarker { ResetMarker(store:AppEnvironment.store) }
+    private var marker: ResetMarker { services.resetMarker }
 
     /// The models' locks, then the stored records (the models may still be loading at launch).
-    static func anyLock(shower: ShowerModel, laundry: LaundryModel) -> AppReset.Lock? {
-        lock(shower:shower, laundry:laundry) ?? AppReset.storedLock(store:AppEnvironment.store)
+    private func anyLock(shower: ShowerModel, laundry: LaundryModel) -> AppReset.Lock? {
+        Self.lock(shower:shower, laundry:laundry) ?? AppReset.storedLock(store:services.secureStore)
     }
 
     /// `AppReset.run`: marker, lock, sign out, clear, reload. Returns the lock that stopped it
@@ -62,11 +76,11 @@ import Core
         guard !running else { return nil }
         running = true
         defer { running = false }
-        let stopped = try await AppReset.run(marker:Self.marker, now:Date(),
-                                             lock:{ Self.anyLock(shower:shower, laundry:laundry) },
+        let stopped = try await AppReset.run(marker:marker, now:Date(),
+                                             lock:{ self.anyLock(shower:shower, laundry:laundry) },
                                              signOut:{ await campus.signOutForReset() },
-                                             clear:Self.clear, reload:{ await Self.reload(campus:campus, shower:shower, laundry:laundry, theme:theme) },
-                                             resync:{ Self.resync(campus:campus, shower:shower) })
+                                             clear:clear, reload:{ await self.reload(campus:campus, shower:shower, laundry:laundry, theme:theme) },
+                                             resync:{ self.resync(campus:campus, shower:shower) })
         if stopped == nil { finished() }
         return stopped
     }
@@ -78,11 +92,11 @@ import Core
         defer { running = false }
         let resumed: AppReset.Resumed?
         do {
-            resumed = try await AppReset.resume(marker:Self.marker, now:Date(),
-                                                lock:{ Self.anyLock(shower:shower, laundry:laundry) },
+            resumed = try await AppReset.resume(marker:marker, now:Date(),
+                                                lock:{ self.anyLock(shower:shower, laundry:laundry) },
                                                 signOut:{ await campus.signOutForReset() },
-                                                clear:Self.clear, reload:{ await Self.reload(campus:campus, shower:shower, laundry:laundry, theme:theme) },
-                                                resync:{ Self.resync(campus:campus, shower:shower) })
+                                                clear:clear, reload:{ await self.reload(campus:campus, shower:shower, laundry:laundry, theme:theme) },
+                                                resync:{ self.resync(campus:campus, shower:shower) })
         } catch {
             resumeFailed = AppErrorText.text(error)
             return
@@ -100,31 +114,31 @@ import Core
         setupDue.resetFinished()
     }
 
-    private static func clear() throws {
-        try AppReset.clear(store:AppEnvironment.store, preferences:.standard,
+    private func clear() throws {
+        try AppReset.clear(store:services.secureStore, preferences:services.defaults,
                            preferencesDomain:Bundle.main.bundleIdentifier ?? "",
-                           shared:AppEnvironment.sharedPreferences, files:files)
+                           shared:sharedPreferences, files:files)
     }
 
-    private static func reload(campus: CampusModel, shower: ShowerModel, laundry: LaundryModel, theme: ThemeStore) async {
+    private func reload(campus: CampusModel, shower: ShowerModel, laundry: LaundryModel, theme: ThemeStore) async {
         campus.reload()
         theme.reload()
         await shower.reloadAfterReset()
         laundry.reloadAfterReset()
-        Reminders.shared.clearAfterReset()
-        ShowerActivityController.shared.endAll()
-        WidgetCenter.shared.reloadAllTimelines()
+        reminders.clearAfterReset()
+        activities?.endAll()
+        services.sharedDidChange()
     }
 
     /// Stopped after the sign-out: only the school side changed. The shower may be running, so
     /// its Live Activity and 「还没结束洗澡？」 follow its record; laundry reminders stay.
-    private static func resync(campus: CampusModel, shower: ShowerModel) {
+    private func resync(campus: CampusModel, shower: ShowerModel) {
         campus.reload()
         let state = shower.state
         let plan = AppReset.Resync(shower:state, now:Date())
-        ShowerActivityController.shared.apply(plan.showerActivity)
-        Reminders.shared.syncShower(started:plan.showerReminderStart)
-        WidgetCenter.shared.reloadAllTimelines()
+        activities?.apply(plan.showerActivity)
+        reminders.syncShower(started:plan.showerReminderStart)
+        services.sharedDidChange()
     }
 
     #if DEBUG

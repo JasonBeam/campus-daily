@@ -7,8 +7,9 @@ import Core
 struct LaundryDetail: View {
     @Environment(\.appTheme) private var appTheme
     @EnvironmentObject private var laundry: LaundryModel
+    @Environment(SampleMode.self) private var sample
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @ObservedObject private var reminders = Reminders.shared
+    @EnvironmentObject private var reminders: Reminders
     @State private var selectedId: Int?
     @State private var sheet: LaundrySheet?
     /// 重新登录 U净, from an expired login.
@@ -17,25 +18,16 @@ struct LaundryDetail: View {
     @State private var submitting = false
     /// Re-reading the machine right before the confirmation sheet.
     @State private var preparing = false
-    #if DEBUG
     @State private var demo: LaundryDemo?
     init(demo: LaundryDemo? = nil) { _demo = State(initialValue:demo) }
     private var isDemo: Bool { demo != nil }
-    #else
-    init() {}
-    private var isDemo: Bool { false }
-    #endif
 
     private var facts: LaundryFacts {
-        #if DEBUG
         if let demo { return demo.facts }
-        #endif
         return LaundryFacts(model:laundry)
     }
     private var notifiesWhenDone: Bool {
-        #if DEBUG
         if let demo { return demo.notify }
-        #endif
         // Only promise 洗好了会通知你 when the reminder is on and notifications are allowed.
         return reminders.laundryDoneWillNotify
     }
@@ -59,7 +51,9 @@ struct LaundryDetail: View {
         .toolbar {
             if Self.scanInToolbar(phase) {
                 ToolbarItem(placement:.topBarTrailing) {
-                    NavigationLink(value:HomeRoute.washerSetup) { Image(systemName:"qrcode.viewfinder") }
+                    SampleGatedRow(action:.bindWasher) {
+                        NavigationLink(value:HomeRoute.washerSetup) { Image(systemName:"qrcode.viewfinder") }
+                    } label: { Image(systemName:"qrcode.viewfinder") }
                         .accessibilityLabel("扫洗衣机")
                         .accessibilityIdentifier("laundryScan")
                 }
@@ -70,13 +64,11 @@ struct LaundryDetail: View {
         // starting does): the read runs on its own and the pull waits for it.
         .refreshable { await Task { await reload() }.value }
         .task {
-            #if DEBUG
             if let initial = demo?.sheet {
                 try? await Task.sleep(for:.milliseconds(450))
                 sheet = initial == .cancel ? .cancel : confirmSheet(facts, newOrder:true)
                 return
             }
-            #endif
             guard !isDemo else { return }
             await laundry.refresh(); await laundry.refreshOrder()
         }
@@ -259,7 +251,7 @@ struct LaundryDetail: View {
         guard let programs = facts.snapshot?.programs else { return nil }
         if let selectedId, let match = programs.first(where:{ $0.id == selectedId }) { return match }
         if let device = facts.snapshot?.deviceID {
-            let last = UserDefaults.standard.integer(forKey:Self.lastProgramKey(device))
+            let last = laundry.services.defaults.integer(forKey:Self.lastProgramKey(device))
             if let match = programs.first(where:{ $0.id == last }) { return match }
         }
         return programs.first
@@ -362,13 +354,17 @@ struct LaundryDetail: View {
             DockBar {
                 DockPillLabel(title:unavailableTitle(phase), style:.disabled)
                     .accessibilityElement(children:.combine).accessibilityAddTraits(.isStaticText)
-                NavigationLink(value:HomeRoute.washerSetup) { DockRoundLabel(symbol:"qrcode.viewfinder") }
+                SampleGatedRow(action:.bindWasher) {
+                    NavigationLink(value:HomeRoute.washerSetup) { DockRoundLabel(symbol:"qrcode.viewfinder") }
+                } label: { DockRoundLabel(symbol:"qrcode.viewfinder") }
                     .buttonStyle(PressScaleStyle())
                     .accessibilityLabel("扫另一台洗衣机")
             }
         case .empty:
             DockBar {
-                NavigationLink(value:HomeRoute.washerSetup) { DockPillLabel(title:"扫洗衣机", symbol:"qrcode.viewfinder") }
+                SampleGatedRow(action:.bindWasher) {
+                    NavigationLink(value:HomeRoute.washerSetup) { DockPillLabel(title:"扫洗衣机", symbol:"qrcode.viewfinder") }
+                } label: { DockPillLabel(title:"扫洗衣机", symbol:"qrcode.viewfinder") }
                     .buttonStyle(PressScaleStyle())
             }
         }
@@ -386,9 +382,7 @@ struct LaundryDetail: View {
     private func checkButton(_ facts: LaundryFacts, failedStart: Bool) -> some View {
         Button {
             Task {
-                #if DEBUG
                 if demo != nil { await reload(); return }
-                #endif
                 // Order 52: the model records 「已核对」 only when this re-check actually succeeded.
                 if failedStart { await laundry.checkFailedOrder() } else { await reload() }
             }
@@ -400,17 +394,15 @@ struct LaundryDetail: View {
     // MARK: Actions
 
     private func reload() async {
-        #if DEBUG
         if demo != nil { try? await Task.sleep(for:.milliseconds(700)); return }
-        #endif
         await laundry.refresh(force:true); await laundry.refreshOrder()
     }
 
     /// Same sequence as before: re-read the machine, then ask for one explicit confirmation.
     private func order() {
-        #if DEBUG
+        // The sample's 下单: the message only, no confirmation, nothing paid.
+        guard !sample.isActive else { sample.perform(.startWash) {}; return }
         if demo != nil { sheet = confirmSheet(facts, newOrder:true); return }
-        #endif
         preparing = true
         Task {
             await laundry.refresh(force:true)
@@ -453,30 +445,25 @@ struct LaundryDetail: View {
     }
 
     private func submit(_ program: WasherProgram) {
-        #if DEBUG
         if demo != nil { runDemoBusy(); return }
-        #endif
-        if let device = laundry.snapshot?.deviceID { UserDefaults.standard.set(program.id, forKey:Self.lastProgramKey(device)) }
+        if let device = laundry.snapshot?.deviceID { laundry.services.defaults.set(program.id, forKey:Self.lastProgramKey(device)) }
         submitting = true
         Task { await laundry.createAndPay(program); submitting = false }
     }
 
     private func payExisting() {
-        #if DEBUG
+        guard !sample.isActive else { sample.perform(.payLaundry) {}; return }
         if demo != nil { runDemoBusy(); return }
-        #endif
         submitting = true
         Task { await laundry.pay(); submitting = false }
     }
 
     private func cancel() {
-        #if DEBUG
+        guard !sample.isActive else { sample.perform(.cancelLaundry) {}; return }
         if demo != nil { withAnimation(Theme.spring) { demo = LaundryDemo.make(.idle) }; return }
-        #endif
         Task { await laundry.cancelOrder() }
     }
 
-    #if DEBUG
     /// Fake progress only — never places an order.
     private func runDemoBusy() {
         let previous = demo
@@ -491,7 +478,6 @@ struct LaundryDetail: View {
             demo = previous
         }
     }
-    #endif
 }
 
 enum LaundrySheet: Identifiable, Equatable {

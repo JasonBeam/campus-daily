@@ -8,7 +8,15 @@ import Core
 /// Another U净 account tried to sign in while an order placed with the stored one is open.
 enum LaundryLoginRefusal: Error { case otherAccount }
 
+/// Runs on the `CampusServices` it is given: the live app's, or a sample's (whose U净 client
+/// sends nothing and whose payments open nothing).
 @MainActor final class LaundryModel: ObservableObject {
+    let services: CampusServices
+    private let reminders: Reminders
+    /// The lock screen's laundry activity; nil for a sample's.
+    private let activities: LaundryActivityController?
+    private var defaults: UserDefaults { services.defaults }
+    private var vault: StoredLaundryVault { services.laundryVault }
     @Published private(set) var configured = false
     @Published private(set) var accountConnected = false
     @Published private(set) var loading = false
@@ -33,10 +41,8 @@ enum LaundryLoginRefusal: Error { case otherAccount }
     @Published private(set) var signOutFailed = false
     /// 「学校洗衣机」 (Settings / first-run question). Off: laundry hidden everywhere, no reads,
     /// no Live Activity, no reminder; the U净 login and saved machines stay.
-    @Published private(set) var schoolEnabled = SchoolLaundryPreference(storage:UserDefaults.standard).isOn
-    @Published private(set) var lastOrder: LaundryLastOrder? = {
-        UserDefaults.standard.data(forKey:LaundryModel.lastOrderKey).flatMap { try? JSONDecoder().decode(LaundryLastOrder.self, from:$0) }
-    }()
+    @Published private(set) var schoolEnabled: Bool
+    @Published private(set) var lastOrder: LaundryLastOrder?
 
     private var account: UjingAccountItem?
     private var engine: LaundryEngine?
@@ -49,7 +55,12 @@ enum LaundryLoginRefusal: Error { case otherAccount }
     private static let selectedKey = PreferenceKey.laundrySelected
     nonisolated static let lastOrderKey = PreferenceKey.laundryLastOrder
 
-    init() {
+    init(services: CampusServices, reminders: Reminders, activities: LaundryActivityController?) {
+        self.services = services
+        self.reminders = reminders
+        self.activities = activities
+        schoolEnabled = SchoolLaundryPreference(storage:services.defaults).isOn
+        lastOrder = services.defaults.data(forKey:LaundryModel.lastOrderKey).flatMap { try? JSONDecoder().decode(LaundryLastOrder.self, from:$0) }
         reloadAccount()
         // Live Activity + reminder follow every change of the order or machine reading.
         activitySync = $checkout.combineLatest($snapshot, $configured, $schoolEnabled)
@@ -68,7 +79,7 @@ enum LaundryLoginRefusal: Error { case otherAccount }
     func setSchoolEnabled(_ on: Bool) {
         guard on != schoolEnabled else { return }
         if !on, !SchoolLaundryPreference.mayTurnOff(checkout:checkout?.phase, busy:checkoutBusy) { return }
-        SchoolLaundryPreference(storage:UserDefaults.standard).set(on)
+        SchoolLaundryPreference(storage:defaults).set(on)
         schoolEnabled = on
         if on { Task { await refresh(force:true) } } else { snapshot = nil; issue = nil; lastAttempt = nil }
         syncActivity()
@@ -79,21 +90,21 @@ enum LaundryLoginRefusal: Error { case otherAccount }
     /// The install's `x-mobile-id`: a dashed UUID (the client rejects anything else), created once
     /// and saved so the SMS request and the login send the same id.
     private var device: UjingDevice {
-        if account == nil, let id = try? AppEnvironment.laundryVault.mobileID() { account = UjingAccountItem(mobileID:id) }
+        if account == nil, let id = try? vault.mobileID() { account = UjingAccountItem(mobileID:id) }
         return UjingDevice(mobileID:account?.mobileID ?? UUID().uuidString, userAgent:AppEnvironment.userAgent)
     }
 
     private func reloadAccount() {
         do {
-            account = try AppEnvironment.laundryVault.accountItem()
+            account = try vault.accountItem()
             issue = nil
         } catch {
             issue = "解锁手机后再打开校日常。"
         }
         accountConnected = account?.account != nil
         ujingMobile = account?.account != nil ? account?.mobile : nil
-        savedMachines = Self.loadMachines()
-        selectedMachineID = UserDefaults.standard.string(forKey:Self.selectedKey).flatMap { id in
+        savedMachines = Self.loadMachines(from:defaults)
+        selectedMachineID = defaults.string(forKey:Self.selectedKey).flatMap { id in
             savedMachines.contains { $0.id == id } ? id : nil
         } ?? savedMachines.first?.id
         configured = accountConnected && selectedMachine != nil
@@ -103,17 +114,23 @@ enum LaundryLoginRefusal: Error { case otherAccount }
     private var selectedMachine: SavedWasher? { savedMachines.first { $0.id == selectedMachineID } }
 
     private var client: UjingClient {
-        if let signedIn = account?.account { return UjingClient(http:AppEnvironment.laundryHTTP, device:device, account:signedIn) }
-        return UjingClient(http:AppEnvironment.laundryHTTP, device:device)
+        if let signedIn = account?.account { return UjingClient(http:services.laundryHTTP, device:device, account:signedIn) }
+        return UjingClient(http:services.laundryHTTP, device:device)
+    }
+
+    /// Alipay for the live app; a sample's opens nothing (`SamplePaymentLauncher`).
+    private var launcher: any PaymentLauncher {
+        guard services.kind == .live else { return SamplePaymentLauncher() }
+        return AlipayPaymentLauncher(returned:{ [weak self] in Task { await self?.refreshOrder() } })
     }
 
     private func rebuildEngine() {
         guard !checkoutBusy else { return }
         observer?.cancel(); observer = nil; engine = nil
         do {
-            let engine = try LaundryEngine(api:client, vault:AppEnvironment.laundryVault, launcher:AlipayPaymentLauncher(returned:{ [weak self] in Task { await self?.refreshOrder() } }),
+            let engine = try LaundryEngine(api:client, vault:vault, launcher:launcher,
                                            accountID:account?.account?.id,
-                                           resetMarker:AppResetter.marker)
+                                           resetMarker:services.resetMarker)
             self.engine = engine
             observer = Task { [weak self] in
                 let blocked = await engine.storageBlocked
@@ -126,7 +143,7 @@ enum LaundryLoginRefusal: Error { case otherAccount }
             }
         } catch {
             storageBlocked = true
-            checkout = (try? AppEnvironment.laundryVault.checkout()) ?? nil
+            checkout = (try? vault.checkout()) ?? nil
         }
     }
 
@@ -135,7 +152,7 @@ enum LaundryLoginRefusal: Error { case otherAccount }
             let note = LaundryLastOrder(orderID:id, program:draft.program, machineName:draft.machineName, amount:next.order?.price)
             if note != lastOrder {
                 lastOrder = note
-                UserDefaults.standard.set(try? JSONEncoder().encode(note), forKey:Self.lastOrderKey)
+                defaults.set(try? JSONEncoder().encode(note), forKey:Self.lastOrderKey)
             }
         }
         if checkout != next { checkout = next }
@@ -156,7 +173,7 @@ enum LaundryLoginRefusal: Error { case otherAccount }
         guard mayLogin else { throw LaundryEngineError.busy }
         guard !storageBlocked else { throw LaundryEngineError.storage }
         let device = device
-        let signedIn = try await UjingClient(http:AppEnvironment.laundryHTTP, device:device).login(mobile:mobile, code:code)
+        let signedIn = try await UjingClient(http:services.laundryHTTP, device:device).login(mobile:mobile, code:code)
         guard !loading, !checkoutBusy else { throw LaundryEngineError.busy }
         guard !storageBlocked else { throw LaundryEngineError.storage }
         if let record = checkout, !record.allowsLogin(as:signedIn.id, stored:account?.account?.id) {
@@ -165,7 +182,7 @@ enum LaundryLoginRefusal: Error { case otherAccount }
         let reread = checkout.map { $0.phase != .none } ?? false
         let clearsLastOrder = LaundryCheckout.clearsLastOrder(record:checkout, signedInAs:signedIn.id, stored:account?.account?.id)
         let item = UjingAccountItem(mobileID:device.mobileID, account:signedIn, mobile:mobile)
-        try AppEnvironment.laundryVault.saveAccountItem(item)
+        try vault.saveAccountItem(item)
         if clearsLastOrder { forgetLastOrder() }
         account = item
         accountConnected = true; ujingMobile = mobile; sessionExpired = false; signOutFailed = false
@@ -195,7 +212,7 @@ enum LaundryLoginRefusal: Error { case otherAccount }
     func signOut() {
         guard signOutRefusal == nil else { return }
         guard !storageBlocked,
-              let outcome = try? UjingSignOut.perform(vault:AppEnvironment.laundryVault, preferences:UserDefaults.standard, checkout:checkout)
+              let outcome = try? UjingSignOut.perform(vault:vault, preferences:defaults, checkout:checkout)
         else { signOutFailed = true; return }
         signOutFailed = false
         account = account.map { UjingAccountItem(mobileID:$0.mobileID) }
@@ -211,33 +228,33 @@ enum LaundryLoginRefusal: Error { case otherAccount }
     /// it: they go before the engine is rebuilt from the stored record. Only called with no order
     /// open (`LaundryCheckout.clearsLastOrder`), when the record holds nothing but that outcome.
     private func forgetLastOrder() {
-        if checkout?.lastOutcome != nil, (try? AppEnvironment.laundryVault.saveCheckout(nil)) != nil {
+        if checkout?.lastOutcome != nil, (try? vault.saveCheckout(nil)) != nil {
             checkout = nil
         }
         lastOrder = nil
-        UserDefaults.standard.removeObject(forKey:Self.lastOrderKey)
+        defaults.removeObject(forKey:Self.lastOrderKey)
     }
 
     /// After a reset cleared the stores: no U净 login, machines or order; the switch back on.
     func reloadAfterReset() {
         endCheck?.task.cancel(); endCheck = nil
         startWatch?.task.cancel(); startWatch = nil
-        schoolEnabled = SchoolLaundryPreference(storage:UserDefaults.standard).isOn
+        schoolEnabled = SchoolLaundryPreference(storage:defaults).isOn
         lastOrder = nil; snapshot = nil; candidate = nil; checkout = nil
         issue = nil; checkoutIssue = nil; checkoutProgress = nil; lastAttempt = nil; sessionExpired = false; signOutFailed = false
         account = nil
         reloadAccount()
-        LaundryActivityController.shared.endAll()
+        activities?.endAll()
     }
 
     // MARK: Machines (WasherSetupView)
 
-    private static func loadMachines() -> [SavedWasher] {
-        guard let data = UserDefaults.standard.data(forKey:machinesKey) else { return [] }
+    private static func loadMachines(from defaults: UserDefaults) -> [SavedWasher] {
+        guard let data = defaults.data(forKey:machinesKey) else { return [] }
         return (try? JSONDecoder().decode([SavedWasher].self, from:data)) ?? []
     }
     private func storeMachines(_ list: [SavedWasher]) {
-        UserDefaults.standard.set(try? JSONEncoder().encode(list), forKey:Self.machinesKey)
+        defaults.set(try? JSONEncoder().encode(list), forKey:Self.machinesKey)
         savedMachines = list
     }
 
@@ -275,7 +292,7 @@ enum LaundryLoginRefusal: Error { case otherAccount }
 
     private func select(_ id: String) {
         selectedMachineID = id
-        UserDefaults.standard.set(id, forKey:Self.selectedKey)
+        defaults.set(id, forKey:Self.selectedKey)
         configured = accountConnected
     }
 
@@ -386,9 +403,9 @@ enum LaundryLoginRefusal: Error { case otherAccount }
     func syncActivity() {
         // Off: nothing on the lock screen and no laundry reminder (empty facts end / cancel them).
         let facts = schoolEnabled ? LaundryFacts(model:self) : LaundryFacts()
-        if !schoolEnabled { LaundryActivityController.shared.endAll() }
-        LaundryActivityController.shared.sync(facts:facts)
-        Reminders.shared.syncLaundry(facts:facts)
+        if !schoolEnabled { activities?.endAll() }
+        activities?.sync(facts:facts)
+        reminders.syncLaundry(facts:facts)
         syncStartWatch()
         var end: Date?
         if case .running(let value) = facts.phase() { end = value }

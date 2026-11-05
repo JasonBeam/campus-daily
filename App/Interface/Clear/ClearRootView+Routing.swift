@@ -99,9 +99,7 @@ extension ClearRootView {
     /// Reset finished: back to the first-run checklist as on a fresh install, no toast.
     func afterReset() {
         navigator.setup = nil; navigator.relogin = false; navigator.panel = nil
-        #if DEBUG
         navigator.demo = nil; navigator.laundryDemo = nil; navigator.recordsDemo = nil
-        #endif
         popAll()
         successTick += 1
         // Let a closing sheet go first, otherwise the new one is not presented.
@@ -109,9 +107,7 @@ extension ClearRootView {
     }
 
     func presentLaundryDone(_ done: HomeData.LaundryDone?) {
-        #if DEBUG
         if navigator.demo != nil { return }
-        #endif
         guard let done, done.id != laundryDoneShown, navigator.panel == nil else { return }
         laundryDoneShown = done.id
         successTick += 1
@@ -120,23 +116,27 @@ extension ClearRootView {
 
     // MARK: Links
 
-    /// The widget's links (`RootLink`); anything else is a DEBUG demo.
-    func open(_ url: URL) {
-        if let link = RootLink(url) {
-            guard mayClosePages else { return }
-            switch link {
-            case .home: popAll(); return
-            // A paused automatic login (widget): 设置 › 学校账号, where the pause is explained.
-            case .settings(account:true): show([.account], in:.settings); return
-            case .login:
-                popAll()
-                navigator.openSetup(at:.account)
-                return
-            case .settings(account:false): break
-            }
+    /// The widget's link (`SampleMode.takePendingLink`: never while the sample is on, so never
+    /// on a sample's root), once. Just after the sample left, its sheets go first; a newer
+    /// link in the meantime wins (`destination`).
+    func takePendingLink() {
+        guard let link = sample.takePendingLink() else { return }
+        if link == .login { destination.after(600) { open(link) } } else { open(link) }
+    }
+
+    /// The widget's links (`RootLink`).
+    func open(_ link: RootLink) {
+        // The newest destination: an older one still waiting (`openLoginAfterSample`) is dropped.
+        destination.supersede()
+        guard mayClosePages else { return }
+        switch link {
+        case .home: popAll()
+        // A paused automatic login (widget): 设置 › 学校账号, where the pause is explained.
+        case .settings(account:true): show([.account], in:.settings)
+        case .login:
+            popAll()
+            navigator.openSetup(at:.account)
+        case .settings(account:false): show([], in:.settings)
         }
-        #if DEBUG
-        handleDemo(url)
-        #endif
     }
 }

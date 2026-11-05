@@ -25,6 +25,8 @@ enum Theme {
     static let notice = ThemeColor(.notice)
     /// Line icons at the start of rows and beside labels: ink2 in 暖橙, accentText in 清爽.
     static let icon = ThemeColor(.icon)
+    /// A shut text entry (「先看看示例」 refused): ink2 in 暖橙, #6C6C70 / #AEAEB2 in 清爽.
+    static let disabledText = ThemeColor(.disabledText)
 
     /// UI copy language for `.typesettingLanguage(_:)`.
     static let typesetting = Locale.Language(identifier:"zh-Hans")

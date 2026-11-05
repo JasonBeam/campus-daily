@@ -13,6 +13,7 @@ struct ClearHomeView: View {
     @EnvironmentObject var campus: CampusModel
     @EnvironmentObject var laundry: LaundryModel
     @Environment(ClearNavigator.self) var navigator
+    @Environment(SampleMode.self) var sample
     @Environment(\.appTheme) var appTheme
     @Environment(\.dynamicTypeSize) var typeSize
     /// The dorm confirmed on the checklist (a dorm may have no controller to bind).
@@ -103,6 +104,8 @@ struct ClearHomeView: View {
 
     /// Pull to refresh: the school's numbers, then the washer.
     func pull() async {
+        // The sample reads nothing: the pull only shows.
+        if sample.isActive { try? await Task.sleep(for:.milliseconds(700)); return }
         await campus.refresh(force:true)
         await laundry.refresh(force:true)
     }

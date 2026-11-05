@@ -4,12 +4,9 @@ import Core
 /// 高级 → 「连接检查」 and 「热水排查」: read-only Bluetooth check of the dorm controller and the
 /// session review. Shown inline in AdvancedSettingsView's list.
 struct ShowerTroubleshootingSections: View {
-    #if DEBUG
     /// DEBUG demo data from the settings sheet; nil = live model. Keeps 「热水」 here in step with the main page.
     var preview: HomeData? = nil
-    #else
-    private var preview: HomeData? { nil }
-    #endif
+    @Environment(SampleMode.self) private var sample
     @EnvironmentObject private var water: ShowerModel
     /// Same source as the main page's 「热水」 row: a dorm controller is bound (HomeData.shower != .unconfigured).
     private var waterConfigured: Bool { preview.map { $0.shower != .unconfigured } ?? water.configured }
@@ -19,7 +16,11 @@ struct ShowerTroubleshootingSections: View {
         Group {
             Section {
                 if waterConfigured {
-                    Button { if preview == nil { Task { await water.inspectBluetooth() } } } label: {
+                    Button {
+                        // Bluetooth: never in the sample.
+                        if sample.isActive { sample.perform(.checkController) {}; return }
+                        if preview == nil { Task { await water.inspectBluetooth() } }
+                    } label: {
                         Label(water.inspecting ? "正在核对…" : (water.inspectionFoundBusy ? "再试一次" : "核对宿舍的水控"), systemImage:"antenna.radiowaves.left.and.right")
                     }.disabled(preview == nil && !water.mayImport).accessibilityIdentifier("inspectWaterBluetooth")
                     if let message = water.inspectionStatus {
@@ -41,7 +42,10 @@ struct ShowerTroubleshootingSections: View {
                 Text("只读水控编号，不会开水。读完就断开，洗澡时再连。")
             }.listRowBackground(Theme.group)
             Section {
-                Button { if preview == nil { Task { await water.reviewCurrentSession() } } } label: { ChevronRow(title:"检查水控状态") }
+                Button {
+                    if sample.isActive { sample.perform(.checkController) {}; return }
+                    if preview == nil { Task { await water.reviewCurrentSession() } }
+                } label: { ChevronRow(title:"检查水控状态") }
                     .disabled(!mayReview).accessibilityIdentifier("reviewWaterSession")
             } header: { Text("热水排查") } footer: {
                 Text("只看状态，不会开水，也不会结算。")

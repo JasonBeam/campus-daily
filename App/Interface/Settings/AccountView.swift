@@ -37,15 +37,10 @@ enum AccountText {
 /// 学校账号 detail: account, status, 保存密码 (and 重新输入密码 while paused),
 /// re-login, sign out.
 struct AccountView: View {
-    #if DEBUG
     /// DEBUG demo data; nil = live model.
     var preview: HomeData? = nil
     /// DEBUG demo: the switch flips locally (seeded from the demo data).
     @State private var previewSaved: Bool?
-    #else
-    private var preview: HomeData? { nil }
-    private var previewSaved: Bool? { get { nil } nonmutating set {} }
-    #endif
     @EnvironmentObject private var campus: CampusModel
     @State private var confirmSignOut = false
     @State private var askPassword = false

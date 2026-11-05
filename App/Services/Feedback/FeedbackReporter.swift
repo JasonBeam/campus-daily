@@ -15,7 +15,7 @@ enum FeedbackReporter {
         return FeedbackEndpoint(url:url, appKey:key)
     }()
 
-    /// Throws `FeedbackFailure`. `http` is the injected client (`AppEnvironment.feedbackHTTP`).
+    /// Throws `FeedbackFailure`. `http` is the injected client (the graph's `CampusServices.feedbackHTTP`).
     @MainActor
     static func send(message: String, images: [UIImage], to endpoint: FeedbackEndpoint, http: HTTPClient) async throws {
         let info = Bundle.main.infoDictionary ?? [:]

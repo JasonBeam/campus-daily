@@ -6,16 +6,13 @@ import Core
 struct AdvancedSettingsView: View {
     @Environment(ThemeStore.self) private var themeStore
     @Environment(\.appTheme) private var appTheme
-    #if DEBUG
+    @Environment(SampleMode.self) private var sample
     /// DEBUG demo data from the settings sheet; nil = live model. Keeps 「热水」 here in step with the main page.
     var preview: HomeData? = nil
-    #else
-    private var preview: HomeData? { nil }
-    #endif
     @EnvironmentObject private var shower: ShowerModel
     @EnvironmentObject private var campus: CampusModel
     @EnvironmentObject private var laundry: LaundryModel
-    @ObservedObject private var resetter = AppResetter.shared
+    @EnvironmentObject private var resetter: AppResetter
     @State private var confirmReset = false
     @State private var resetIssue: String?
     /// Set when a lock stopped the reset (nothing was cleared).
@@ -24,7 +21,10 @@ struct AdvancedSettingsView: View {
     /// Last import failure, shown under the import rows (the models' own issue lines live elsewhere).
     @State private var importIssue: String?
     private func importRow(_ title: String) -> some View {
-        Button { if preview == nil { importing = true } } label: { ChevronRow(title:title) }
+        Button {
+            if sample.isActive { sample.perform(.importShowerProfile) {}; return }
+            if preview == nil { importing = true }
+        } label: { ChevronRow(title:title) }
     }
     /// Why reset is not offered now (DEBUG demo data, or the live shower).
     private var resetLock: AppReset.Lock? { preview != nil ? preview?.resetLock : AppResetter.lock(shower:shower, laundry:laundry) }
@@ -33,7 +33,11 @@ struct AdvancedSettingsView: View {
     private var resetSection: some View {
         let lock = resetLock
         return Section {
-            Button("重置校日常", role:.destructive) { resetIssue = nil; confirmReset = true }
+            Button("重置校日常", role:.destructive) {
+                // The sample has nothing of its own to clear, and must not clear what is stored.
+                if sample.isActive { sample.perform(.resetApp) {}; return }
+                resetIssue = nil; confirmReset = true
+            }
                 .frame(maxWidth:.infinity)
                 .disabled(lock != nil || resetter.running)
                 .accessibilityHint("会清掉登录、宿舍和记录")
@@ -73,11 +77,7 @@ struct AdvancedSettingsView: View {
                     Text("一般不用导入。有没结算的记录时，别卸载 App，也别换配置。")
                 }
             }.listRowBackground(Theme.group)
-            #if DEBUG
             ShowerTroubleshootingSections(preview:preview)
-            #else
-            ShowerTroubleshootingSections()
-            #endif
             if appTheme != .clear {
                 // 清爽's 设置 tab shows these two itself.
                 ShortcutsSection()

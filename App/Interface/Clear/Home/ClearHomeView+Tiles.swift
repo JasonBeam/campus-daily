@@ -43,10 +43,8 @@ extension ClearHomeView {
     /// pushed; signed out, the first-run checklist.
     func openShower(_ status: ShowerTileStatus, data: HomeData) {
         if status.opensSetup { navigator.openSetup(); return }
-        #if DEBUG
         // Demo states have no shower behind them: the page as it is.
         if navigator.demo != nil { navigator.push(.shower); return }
-        #endif
         switch data.shower {
         case .starting, .showering, .settling, .needsCheck:
             shower.pageEvent(.reopen)

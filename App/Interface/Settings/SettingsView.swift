@@ -3,7 +3,6 @@ import Core
 
 /// Settings sheet.
 struct SettingsView: View {
-    #if DEBUG
     /// DEBUG demo data; nil = live models.
     var preview: HomeData? = nil
     /// DEBUG demo: the switch flips locally (seeded from the demo data).
@@ -11,15 +10,9 @@ struct SettingsView: View {
     private var account: AccountView { AccountView(preview:preview) }
     private var advanced: AdvancedSettingsView { AdvancedSettingsView(preview:preview) }
     private var themePage: ThemeSettingsView { ThemeSettingsView(preview:preview) }
-    #else
-    private var preview: HomeData? { nil }
-    private var previewLaundry: Bool? { get { nil } nonmutating set {} }
-    private var account: AccountView { AccountView() }
-    private var advanced: AdvancedSettingsView { AdvancedSettingsView() }
-    private var themePage: ThemeSettingsView { ThemeSettingsView() }
-    #endif
     @Environment(\.dismiss) private var dismiss
     @Environment(\.appTheme) private var appTheme
+    @Environment(SampleMode.self) private var sample
     @EnvironmentObject private var shower: ShowerModel
     @EnvironmentObject private var campus: CampusModel
     @EnvironmentObject private var laundry: LaundryModel
@@ -92,16 +85,24 @@ extension SettingsView {
     }
 
     /// A row pushing its page.
-    private func link(_ page: SettingsLink, _ row: SettingsRow) -> some View {
-        NavigationLink { destination(page) } label: { row }
+    @ViewBuilder private func link(_ page: SettingsLink, _ row: SettingsRow) -> some View {
+        switch page {
+        // These need a real account or device: blocked in the sample.
+        case .account, .dorm:
+            SampleGatedRow(action:.schoolAccount) { NavigationLink { destination(page) } label: { row } } label: { SampleRowLabel(row:row) }
+        case .washer:
+            SampleGatedRow(action:.bindWasher) { NavigationLink { destination(page) } label: { row } } label: { SampleRowLabel(row:row) }
+        default:
+            NavigationLink { destination(page) } label: { row }
+        }
     }
 
     @ViewBuilder private func destination(_ page: SettingsLink) -> some View {
         switch page {
         case .account: account
         case .dorm: CampusOnboardingView()
-        case .meter: CampusPowerSetupView()
-        case .hotWater: ShowerDetail()
+        case .meter: if sample.isActive, let preview { SamplePowerPage(data:preview) } else { CampusPowerSetupView() }
+        case .hotWater: ShowerDetail(preview:sample.isActive ? preview : nil)
         case .washer: WasherSetupView()
         case .theme: themePage
         }

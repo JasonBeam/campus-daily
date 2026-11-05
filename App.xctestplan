@@ -72,6 +72,20 @@
         "identifier": "FeedbackTests",
         "name": "FeedbackTests"
       }
+    },
+    {
+      "target": {
+        "containerPath": "container:Packages/Core",
+        "identifier": "SampleTests",
+        "name": "SampleTests"
+      }
+    },
+    {
+      "target": {
+        "containerPath": "container:App.xcodeproj",
+        "identifier": "C0DA00500000000000000000",
+        "name": "AppTests"
+      }
     }
   ],
   "version": 1

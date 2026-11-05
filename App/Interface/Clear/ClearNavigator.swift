@@ -23,14 +23,24 @@ import Core
 @MainActor @Observable final class ClearNavigator {
     enum Tab: Hashable { case home, records, settings }
 
-    /// One presentation of the first-run checklist; a new id replaces the current one.
+    /// One presentation of the first-run checklist; a new id replaces the current one. Asked
+    /// for while one is up (`openSetup`), the same one is kept (`GuideRequest`).
     struct SetupRequest: Identifiable {
-        let id = UUID()
-        /// The row pushed when it opens (campusdaily://login: 学校账号).
-        var start: ClearSetupRow?
+        var guide: GuideRequest<ClearSetupRow>
         #if DEBUG
         /// campusdaily://demo/onboard/...: the step pages show these values and send nothing.
         var preview: OnboardingView.Preview?
+        #endif
+        var id: UUID { guide.id }
+        /// The row pushed when it opens (campusdaily://login: 学校账号).
+        var start: ClearSetupRow? { guide.start }
+
+        #if DEBUG
+        init(start: ClearSetupRow?, preview: OnboardingView.Preview? = nil) {
+            guide = GuideRequest(start:start); self.preview = preview
+        }
+        #else
+        init(start: ClearSetupRow?) { guide = GuideRequest(start:start) }
         #endif
     }
 
@@ -45,14 +55,12 @@ import Core
     /// The laundry-done sheet (`ClearLaundryDonePanel` reads it).
     var panel: SettlementResult?
 
-    #if DEBUG
     /// DEBUG demo data (campusdaily://demo/...); nil = live models.
     var demo: HomeData?
     var laundryDemo: LaundryDemo?
     var recordsDemo: RecordsDemo?
     /// campusdaily://demo/recharge-blocked.
     var rechargeBlockedDemo = false
-    #endif
 
     func path(_ tab: Tab) -> [ClearRoute] {
         switch tab {
@@ -115,7 +123,13 @@ import Core
         if route == .shower { showShowerPage(laundry:laundry) } else { open(route, in:.home, laundry:laundry) }
     }
 
-    func openSetup(at row: ClearSetupRow? = nil) { setup = SetupRequest(start:row) }
+    /// The checklist, at `row`. Already up (first-run, then a login link just after the sample):
+    /// kept, with `row` pushed on it, not presented again.
+    func openSetup(at row: ClearSetupRow? = nil) {
+        guard var request = setup else { setup = SetupRequest(start:row); return }
+        request.guide = GuideRequest.ask(row, over:request.guide)
+        setup = request
+    }
 
     /// The expired-login line: the sign-in sheet, or Settings › 学校账号 when the saved password
     /// is paused there.
@@ -128,9 +142,7 @@ import Core
 
     /// What home shows: the DEBUG demo when one is up, otherwise the live models.
     func data(campus: CampusModel, shower: ShowerModel, laundry: LaundryModel) -> HomeData {
-        #if DEBUG
         if let demo { return demo }
-        #endif
         return HomeData(campus:campus, shower:shower, laundry:laundry)
     }
 }

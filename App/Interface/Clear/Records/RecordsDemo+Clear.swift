@@ -1,4 +1,3 @@
-#if DEBUG
 import Foundation
 
 extension RecordsDemo {
@@ -18,4 +17,3 @@ extension RecordsDemo {
         return data
     }
 }
-#endif

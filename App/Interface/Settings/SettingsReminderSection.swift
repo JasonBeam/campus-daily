@@ -12,17 +12,18 @@ struct SettingsReminderSection: View {
     @AppStorage(ReminderKey.laundryDone) private var laundryAlert = true
     @AppStorage(ReminderKey.powerLine) private var powerLine = 10
     @AppStorage(ReminderKey.cardLine) private var cardLine = 20
-    @ObservedObject private var reminders = Reminders.shared
+    @EnvironmentObject private var reminders: Reminders
     @Environment(\.openURL) private var openURL
+    @Environment(SampleMode.self) private var sample
 
     var body: some View {
         let off = reminders.denied
         Section {
-            Toggle(isOn:off ? .constant(false) : $powerAlert) {
-                lineLabel("电量低于", value:$powerLine, choices:[5, 10, 15, 20, 30], unit:" 度", off:off)
+            Toggle(isOn:off ? .constant(false) : held($powerAlert)) {
+                lineLabel("电量低于", value:held($powerLine), choices:[5, 10, 15, 20, 30], unit:" 度", off:off)
             }.disabled(off)
-            Toggle(isOn:off ? .constant(false) : $cardAlert) {
-                lineLabel("校园卡低于", value:$cardLine, choices:[10, 20, 30, 50], unit:" 元", off:off)
+            Toggle(isOn:off ? .constant(false) : held($cardAlert)) {
+                lineLabel("校园卡低于", value:held($cardLine), choices:[10, 20, 30, 50], unit:" 元", off:off)
             }.disabled(off)
             if off {
                 // A disabled navigation-link Picker is dimmed by the system on top of ink2, so it read lighter
@@ -36,7 +37,7 @@ struct SettingsReminderSection: View {
                 }
                 .accessibilityElement(children:.combine)
             } else {
-                Picker(selection:$unsettledMinutes) {
+                Picker(selection:held($unsettledMinutes)) {
                     ForEach([15, 30, 60], id:\.self) { Text("\($0) 分钟后").tag($0) }
                     Text("不提醒").tag(0)
                 } label: { Text("洗完澡没结算").foregroundStyle(Theme.ink) }
@@ -44,7 +45,7 @@ struct SettingsReminderSection: View {
             }
             if laundryOn {
                 // Hidden with 学校洗衣机 off; its value is kept.
-                Toggle(isOn:off ? .constant(false) : $laundryAlert) {
+                Toggle(isOn:off ? .constant(false) : held($laundryAlert)) {
                     Text("洗衣洗好时").foregroundStyle(off ? Theme.ink2 : Theme.ink)
                 }.disabled(off)
             }
@@ -54,7 +55,10 @@ struct SettingsReminderSection: View {
                 }
             } else if reminders.notAsked {
                 // Not asked yet: the switches read on; this row explains and asks. Gone once the system has asked.
-                actionRow("打开提醒") { reminders.showPrompt(from:.settings) }
+                actionRow("打开提醒") {
+                    if sample.isActive { sample.perform(.reminders) {}; return }
+                    reminders.showPrompt(from:.settings)
+                }
             }
         } header: {
             Text("提醒")
@@ -64,6 +68,12 @@ struct SettingsReminderSection: View {
         }
         .tint(.green)
         .listRowBackground(Theme.group)
+    }
+
+    /// The stored value; in the sample a change is not stored, it says `SampleCopy.blocked`.
+    private func held<T>(_ binding: Binding<T>) -> Binding<T> {
+        guard sample.isActive else { return binding }
+        return Binding(get:{ binding.wrappedValue }, set:{ _ in sample.perform(.reminders) {} })
     }
 
     /// Accent title + chevron (「去系统设置打开通知」/「打开提醒」).

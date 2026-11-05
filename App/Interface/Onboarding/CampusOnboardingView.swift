@@ -269,7 +269,7 @@ struct CampusOnboardingView: View {
         defer { busy = false }
         do {
             if let profile = water.profile {
-                let client = LxtClient(http:AppEnvironment.showerHTTP, profile:profile)
+                let client = LxtClient(http:campus.services.showerHTTP, profile:profile)
                 let stamp = await campus.personStamp()
                 let user = try await client.userInfo(campus.showerHandoff())
                 identity = user; directory = client; self.campus = campus; personStamp = stamp

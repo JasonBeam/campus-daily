@@ -8,14 +8,9 @@ struct ClearSettingsTab: View {
     @EnvironmentObject private var shower: ShowerModel
     @EnvironmentObject private var campus: CampusModel
     @EnvironmentObject private var laundry: LaundryModel
-    #if DEBUG
     /// DEBUG demo: the 学校洗衣机 switch flips locally (seeded from the demo data).
     @State private var previewLaundry: Bool?
     private var preview: HomeData? { navigator.demo }
-    #else
-    private var previewLaundry: Bool? { get { nil } nonmutating set {} }
-    private var preview: HomeData? { nil }
-    #endif
 
     private var laundrySwitch: SchoolLaundrySwitch {
         SchoolLaundrySwitch(laundry:laundry, preview:preview, previewOn:Binding(get:{ previewLaundry }, set:{ previewLaundry = $0 }))
@@ -63,10 +58,11 @@ struct ClearSettingsTab: View {
                         .accessibilityHidden(true)
                 }
             }
-        case .account: NavigationLink(value:ClearRoute.account) { row }
-        case .dorm: NavigationLink(value:ClearRoute.dorm) { row }
+        // These need a real account or device: blocked in the sample.
+        case .account: SampleGatedRow(action:.schoolAccount) { NavigationLink(value:ClearRoute.account) { row } } label: { SampleRowLabel(row:row) }
+        case .dorm: SampleGatedRow(action:.schoolAccount) { NavigationLink(value:ClearRoute.dorm) { row } } label: { SampleRowLabel(row:row) }
         case .meter: NavigationLink(value:ClearRoute.powerSetup) { row }
-        case .washer: NavigationLink(value:ClearRoute.washerSetup) { row }
+        case .washer: SampleGatedRow(action:.bindWasher) { NavigationLink(value:ClearRoute.washerSetup) { row } } label: { SampleRowLabel(row:row) }
         case .theme: NavigationLink(value:ClearRoute.theme) { row }
         }
     }

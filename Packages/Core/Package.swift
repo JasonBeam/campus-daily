@@ -21,6 +21,7 @@ let package = Package(
         .testTarget(name: "CommonTests", dependencies: ["Core", "CoreTestSupport"]),
         .testTarget(name: "ThemeTests", dependencies: ["Core", "CoreTestSupport"]),
         .testTarget(name: "FeedbackTests", dependencies: ["Core", "CoreTestSupport"]),
+        .testTarget(name: "SampleTests", dependencies: ["Core", "CoreTestSupport"]),
     ],
     swiftLanguageModes: [.v6]
 )

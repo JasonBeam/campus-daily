@@ -1,8 +1,8 @@
-#if DEBUG
 import SwiftUI
 import Core
 
-// MARK: - DEBUG demo (campusdaily://demo/laundry/<state>); fake data, never places an order.
+// MARK: - Demo (campusdaily://demo/laundry/<state>, DEBUG) and the sample mode's washer (`idle`);
+// fake data, never places an order.
 
 struct LaundryDemo {
     enum Kind: String {
@@ -14,11 +14,13 @@ struct LaundryDemo {
     var panel: SettlementResult?
     var notify = true
 
+    #if DEBUG
     static func handle(_ url: URL) -> LaundryDemo? {
         let parts = Array(url.pathComponents.dropFirst())
         guard url.scheme == "campusdaily", url.host == "demo", parts.first == "laundry" else { return nil }
         return make(Kind(rawValue:parts.count > 1 ? parts[1] : "idle") ?? .idle)
     }
+    #endif
 
     static func make(_ kind: Kind, now: Date = Date()) -> LaundryDemo {
         var facts = LaundryFacts()
@@ -56,33 +58,13 @@ struct LaundryDemo {
         return demo
     }
 
-    static let programs: [WasherProgram] = [(1,"标准洗",45,400),(2,"快洗",30,300),(3,"大物洗",60,500),(4,"单脱水",6,100)].map {
-        WasherProgram(id:$0.0, name:$0.1, minutes:$0.2, price:Money(fen:$0.3))
-    }
+    static var programs: [WasherProgram] { SampleData.washerPrograms }
 
     static func snapshot(status: Int, active: String? = nil) -> WasherSnapshot {
-        WasherSnapshot(qrCode:"demo",
-                       scan:WasherScan(deviceID:"demo-washer", moduleType:7, status:status, createOrderEnabled:status == 0, activeOrderID:active),
-                       info:WasherInfo(deviceID:"demo-washer", deviceNo:"3", typeName:"波轮洗衣机", storeName:"4 栋洗衣房",
-                                       storeID:"demo-store", deviceTypeID:1, moduleType:7, programs:programs),
-                       fetchedAt:Date())
+        SampleData.washerSnapshot(status:status, active:active)
     }
 
     static func record(stage: LaundryPhase, status: String?, paid: Bool, remain: Int?, created: Date, now: Date) -> LaundryCheckout {
-        let draft = LaundryDraft(deviceID:"demo-washer", qrCode:"demo", machineName:"3", program:programs[0],
-                                 request:OrderRequest(deviceID:"demo-washer", deviceTypeID:1, storeID:"demo-store", programID:1))
-        var record = LaundryCheckout(phase:stage, draft:draft, createdAt:created)
-        if let status {
-            record.orderID = "demo1"
-            record.order = LaundryOrder(id:"demo1", deviceID:"demo-washer", status:LaundryOrderStatus(status), paid:paid,
-                                        remainSeconds:remain, programID:1, price:Money(fen:400),
-                                        countDown:status == "10" ? 600 : nil)
-            record.orderReadAt = now
-        }
-        if stage == .none, let status {
-            record = LaundryCheckout(lastOutcome:LaundryOutcome(orderID:"demo1", status:LaundryOrderStatus(status), at:now))
-        }
-        return record
+        SampleData.laundryCheckout(stage:stage, status:status, paid:paid, remain:remain, created:created, now:now)
     }
 }
-#endif

@@ -16,8 +16,10 @@ struct PowerChoice: Identifiable, Equatable {
 }
 
 /// UI state over `SchoolSession` (refresh, electricity resolution, sign-in/out). No school logic here.
+/// Runs on the `CampusServices` it is given: the live app's (`shared`), or a sample's.
 @MainActor final class CampusModel: ObservableObject {
-    static let shared = CampusModel()
+    static let shared = CampusModel(services:AppEnvironment.live, stack:AppEnvironment.liveSchoolStack, reminders:.shared,
+                                    hotWater:{ ShowerModel.shared })
     @Published private(set) var configured = false
     @Published private(set) var loading = false
     @Published private(set) var snapshot: HomeSnapshot = .empty
@@ -54,12 +56,27 @@ struct PowerChoice: Identifiable, Equatable {
     private var interruptions = InterruptionStreak()
     /// Bumped by `signOut()`: a refresh that returns afterwards must not put the old values back.
     private var signOutGeneration = 0
-    private let session = AppEnvironment.school
-    private let refresher = AppEnvironment.refresher
+    let services: CampusServices
+    private let session: SchoolSession
+    /// The school session these models read (校园卡记录's pages).
+    var schoolSession: SchoolSession { session }
+    private let refresher: SnapshotRefresher
+    private let reminders: Reminders
+    /// The hot-water model on the same services (its binding goes with an account switch).
+    private let hotWater: () -> ShowerModel?
     /// Sign-outs in order; sign-ins wait for them (`finished()`).
-    private let signOuts = SchoolSignOut(session:AppEnvironment.school, refresher:AppEnvironment.refresher)
+    private let signOuts: SchoolSignOut
+    private var schoolVault: StoredSchoolVault { services.schoolVault }
 
-    init() { reload() }
+    init(services: CampusServices, stack: SchoolRefreshStack, reminders: Reminders, hotWater: @escaping () -> ShowerModel?) {
+        self.services = services
+        session = stack.session
+        refresher = stack.refresher
+        self.reminders = reminders
+        self.hotWater = hotWater
+        signOuts = SchoolSignOut(session:stack.session, refresher:stack.refresher)
+        reload()
+    }
 
     /// Launch, before the launch lookup: a meter an older build bound to the campus node counts
     /// as none, so the lookup walks to the room's own (`SchoolSession.dropCampusWideMeter`).
@@ -70,7 +87,7 @@ struct PowerChoice: Identifiable, Equatable {
     /// Re-read the Keychain (launch, back in the foreground, after sign-in/out). A read that
     /// fails (before the first unlock after a reboot, when the app is pre-warmed) changes nothing.
     func reload() {
-        let shown = SchoolShownItems(signedIn:configured, profile:profile, account:account).reread(from:AppEnvironment.schoolVault)
+        let shown = SchoolShownItems(signedIn:configured, profile:profile, account:account).reread(from:schoolVault)
         configured = shown.signedIn
         profile = shown.profile
         account = shown.account
@@ -80,7 +97,7 @@ struct PowerChoice: Identifiable, Equatable {
     /// Only the saved account: a refresh in this or the widget's process may have paused or
     /// held the password since the last `reload()`.
     func reloadAccount() {
-        let stored = SchoolShownItems(signedIn:configured, profile:profile, account:account).reread(from:AppEnvironment.schoolVault).account
+        let stored = SchoolShownItems(signedIn:configured, profile:profile, account:account).reread(from:schoolVault).account
         if stored != account { account = stored }
     }
 
@@ -162,10 +179,10 @@ struct PowerChoice: Identifiable, Equatable {
         case .notSignedIn: configured = false; issue = nil
         case .interrupted, .leaseLost: issue = nil
         }
-        profile = SchoolShownItems(signedIn:configured, profile:profile, account:account).reread(from:AppEnvironment.schoolVault).profile
-        Reminders.shared.evaluateCampus(snapshot)
+        profile = SchoolShownItems(signedIn:configured, profile:profile, account:account).reread(from:schoolVault).profile
+        reminders.evaluateCampus(snapshot)
         if report.outcome == .ok {
-            Reminders.shared.campusRead(snapshot)
+            reminders.campusRead(snapshot)
         }
     }
 
@@ -203,12 +220,12 @@ struct PowerChoice: Identifiable, Equatable {
         guard started == signOutGeneration else { return }
         let raw = login.dormAddress.trimmingCharacters(in:.whitespacesAndNewlines)
         if !raw.isEmpty {
-            var stored = (try? AppEnvironment.schoolVault.profile()) ?? nil ?? SchoolProfile()
+            var stored = (try? schoolVault.profile()) ?? nil ?? SchoolProfile()
             if stored.residence?.raw != raw {
                 stored.residence = PortalResidence(raw:raw)
                 stored.meter = nil
             }
-            try AppEnvironment.schoolVault.saveProfile(stored)
+            try schoolVault.saveProfile(stored)
         }
         reload(); issue = nil; lastRefresh = nil
         lookup.clear(); powerMatchIssue = nil
@@ -266,7 +283,7 @@ struct PowerChoice: Identifiable, Equatable {
         let refresher = refresher
         let hotWater = await AccountSwitch.clearPreviousPerson(
             snapshot:{ try await refresher.clear() },
-            hotWater:{ ShowerModel.shared.clearBindingForAccountSwitch() })
+            hotWater:{ [hotWater] in hotWater()?.clearBindingForAccountSwitch() ?? AccountSwitch.HotWater.none })
         snapshot = .empty
         switchNotice = AccountSwitchNotice(previousPersonUnconfirmed:unconfirmed, dormAndMeterCleared:dormAndMeterCleared,
                                            hotWaterCleared:hotWater.noticed)
@@ -337,7 +354,7 @@ struct PowerChoice: Identifiable, Equatable {
                 // Someone else signed in after it answered: none of it is theirs, their own runs.
                 if await session.isSamePerson(since:stamp) {
                     // Read again as it lands: a meter picked by hand meanwhile wins over the answer.
-                    let bound = ((try? AppEnvironment.schoolVault.profile()) ?? nil)?.meter != nil
+                    let bound = ((try? schoolVault.profile()) ?? nil)?.meter != nil
                     found = answer
                     if lookup.answered(answer, stamp:stamp, meterBound:bound) {
                         switch answer {
@@ -360,7 +377,7 @@ struct PowerChoice: Identifiable, Equatable {
             let signedInMeanwhile = lookup.ended()
             var bound = false
             if case .matched? = found { bound = true } else if case .alreadyBound? = found { bound = true }
-            if bound { profile = (try? AppEnvironment.schoolVault.profile()) ?? nil }
+            if bound { profile = (try? schoolVault.profile()) ?? nil }
             if again || signedInMeanwhile { matchPowerAutomatically(.signedIn) }
             if bound {
                 await refresher.noteChange()
@@ -383,7 +400,7 @@ struct PowerChoice: Identifiable, Equatable {
         }
         await refresher.noteChange()
         lookup.clear(); powerMatchIssue = nil
-        profile = (try? AppEnvironment.schoolVault.profile()) ?? nil
+        profile = (try? schoolVault.profile()) ?? nil
         Task { await refresh(force:true) }
         return true
     }
@@ -395,7 +412,7 @@ struct PowerChoice: Identifiable, Equatable {
     func chooseMeter(nodeID: String, meter: Meter, path: [String] = [], since stamp: Int) async throws {
         try await session.chooseMeter(nodeID:nodeID, meter:meter, path:path, since:stamp)
         await refresher.noteChange()
-        profile = (try? AppEnvironment.schoolVault.profile()) ?? nil
+        profile = (try? schoolVault.profile()) ?? nil
         lookup.clear(); powerMatchIssue = nil
         await refresh(force:true)
     }

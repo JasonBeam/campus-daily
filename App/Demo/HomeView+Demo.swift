@@ -7,6 +7,10 @@ extension HomeView {
     /// Also called from inside the onboarding cover: while a full-screen cover is up,
     /// the URL is delivered to the cover's hierarchy instead of the home view.
     func handleDemo(_ url: URL) {
+            // No sample page opens a link.
+            guard !sample.isActive else { return }
+            // A synthetic running record in this root's own (live) hot-water vault.
+            if url.host == "demo", url.path == "/seed/shower-running" { shower.demoSeedRunningRecord(); return }
             if let kind = notifyDemo(url) { Task { await reminders.demoNotify(kind) }; return }
             // campusdaily://demo/theme/<warm|clear>: what 主题 would pick, keeping the screen shown.
             if url.host == "demo", url.pathComponents.dropFirst().first == "theme",
@@ -170,28 +174,7 @@ extension HomeView {
     /// detail-check-rechecking (the same record on the 热水洗澡 screen).
     enum ShowerPageDemo {
         static func record(_ name: String, now: Date = Date()) -> ShowerState? {
-            let start = now.addingTimeInterval(-(8 * 60 + 42))
-            func failed(_ reason: ShowerFailureReason, review: Bool) -> ShowerState {
-                // Only a failure after the water carries the timer's start.
-                ShowerState(phase:.failed, startedAt:reason.isBeforeWater ? nil : start,
-                            failure:ShowerFailure(reason:reason, needsReview:review))
-            }
-            switch name {
-            case "sh-connect": return ShowerState(phase:.authorizing)
-            case "sh-run", "sh-endfail": return ShowerState(phase:.running, startedAt:start)
-            case "sh-check", "sh-check-rechecking", "sh-check-stopped", "sh-check-nocon",
-                 "sh-check-bt", "sh-check-busy", "sh-check-failed", "sh-check-unavailable",
-                 "sh-detail-check", "sh-detail-check-rechecking": return ShowerState(phase:.running, startedAt:start, stateReviewRequired:true, notice:.notActive)
-            case "sh-settle": return ShowerState(phase:.settling, startedAt:start)
-            case "sh-done":
-                return ShowerState(phase:.done, startedAt:now.addingTimeInterval(-11 * 60),
-                                   receipt:ShowerReceipt(amount:Money(fen:132)), endedAt:now)
-            case "sh-nocon": return failed(.deviceUnavailable, review:false)
-            case "sh-denied": return failed(.authorizeRefused, review:false)
-            case "sh-busy": return failed(.deviceBusy, review:false)
-            case "sh-unsure": return failed(.settleUncertain, review:true)
-            default: return nil
-            }
+            SampleData.showerRecord(name, now:now)
         }
     }
 

@@ -7,39 +7,37 @@ struct ClearDestination: View {
     let route: ClearRoute
     @EnvironmentObject private var campus: CampusModel
     @Environment(ClearNavigator.self) private var navigator
+    @Environment(SampleMode.self) private var sample
 
     var body: some View {
+        if sample.isActive, let data = navigator.demo { sampleBody(data) } else { liveBody }
+    }
+
+    /// The sample's pages on its data: 余额 and 电量 are its own (the live ones are the school's
+    /// web pages); the rows that need an account or a device are blocked before they push.
+    @ViewBuilder private func sampleBody(_ data: HomeData) -> some View {
+        switch route {
+        case .card: SampleCardPage(data:data)
+        case .power, .powerSetup: SamplePowerPage(data:data)
+        case .theme: ThemeSettingsView(preview:data)
+        case .advanced: AdvancedSettingsView(preview:data)
+        case .laundry, .washerSetup: ClearLaundryPage()
+        case .shower, .account, .dorm, .setupChecklist: ClearShowerPage()
+        }
+    }
+
+    @ViewBuilder private var liveBody: some View {
         switch route {
         case .shower: ClearShowerPage()
         case .laundry: ClearLaundryPage()
         case .washerSetup: WasherSetupView(onDone:washerSetupDone)
         case .power: if campus.powerConfigured { CampusRechargeView(kind:.electricity) } else { CampusPowerSetupView() }
         case .powerSetup: CampusPowerSetupView()
-        case .card:
-            #if DEBUG
-            CampusRechargeView(kind:.card, demoBlocked:navigator.rechargeBlockedDemo)
-            #else
-            CampusRechargeView(kind:.card)
-            #endif
-        case .account:
-            #if DEBUG
-            AccountView(preview:navigator.demo)
-            #else
-            AccountView()
-            #endif
+        case .card: CampusRechargeView(kind:.card, demoBlocked:navigator.rechargeBlockedDemo)
+        case .account: AccountView(preview:navigator.demo)
         case .dorm: CampusOnboardingView()
-        case .theme:
-            #if DEBUG
-            ThemeSettingsView(preview:navigator.demo)
-            #else
-            ThemeSettingsView()
-            #endif
-        case .advanced:
-            #if DEBUG
-            AdvancedSettingsView(preview:navigator.demo)
-            #else
-            AdvancedSettingsView()
-            #endif
+        case .theme: ThemeSettingsView(preview:navigator.demo)
+        case .advanced: AdvancedSettingsView(preview:navigator.demo)
         case .setupChecklist: ClearSetupChecklist(inSheet:false)
         }
     }

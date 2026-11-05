@@ -13,6 +13,14 @@ struct OnboardingView: View {
     var preview: Preview?
     #endif
     var close: () -> Void
+    /// Told each step the guide moves to, so a link asking for another one can send it there
+    /// (`GuideRequest.moved(to:)`).
+    private var moved: (Step) -> Void = { _ in }
+
+    /// `moved` is told each step the guide moves to.
+    func onStep(_ moved: @escaping (Step) -> Void) -> Self {
+        var copy = self; copy.moved = moved; return copy
+    }
 
     #if DEBUG
     init(start: Step = .login, preview: Preview? = nil, close: @escaping () -> Void) {
@@ -45,6 +53,8 @@ struct OnboardingView: View {
     @EnvironmentObject private var campus: CampusModel
     @EnvironmentObject private var laundry: LaundryModel
     @EnvironmentObject private var water: ShowerModel
+    /// 「先看看示例」: the root closes this guide over the sample.
+    @Environment(SampleMode.self) private var sample
     /// Binds the dorm's hot-water controller when 「就是这间」 confirms the dorm.
     @StateObject private var dormFlow = DormSetupFlow()
     @State private var bindingWater = false
@@ -115,6 +125,10 @@ struct OnboardingView: View {
     static let dormSource = "学校账号里登记的"
 
     var body: some View {
+        guide.onChange(of:step) { _, value in moved(value) }
+    }
+
+    private var guide: some View {
         NavigationStack {
             ZStack {
                 Theme.bg.ignoresSafeArea()
@@ -366,10 +380,24 @@ struct OnboardingView: View {
                     secondary("以后再核对") { advance() }
                         .accessibilityIdentifier("waterLater")
                 }
-                if step == .login && !keyboardUp && loginState != .cannotDirect {
-                    secondary(SchoolLoginText.webLogin) { openWebLogin() }
-                        .disabled(loggingIn)
-                        .accessibilityIdentifier("webLogin")
+                if step == .login && !keyboardUp {
+                    VStack(spacing:0) {
+                        if loginState != .cannotDirect {
+                            secondary(SchoolLoginText.webLogin) { openWebLogin() }
+                                .disabled(loggingIn)
+                                .accessibilityIdentifier("webLogin")
+                        }
+                        // For a look without an account (App Review): synthetic data, nothing stored or sent.
+                        // Shut while the real shower is not over or its record not read (`LiveShowerGate`);
+                        // `water` is observed, so the line follows its record.
+                        if sample.gate.sampleAllowed {
+                            secondary(SampleCopy.entry) { sample.enter() }
+                                .disabled(loggingIn)
+                                .accessibilityIdentifier("sampleEntry")
+                        } else {
+                            SampleEntryRefused(minHeight:46) { $0.scaledFont(17, .medium) }
+                        }
+                    }
                 }
             }
             .frame(minHeight:keyboardUp ? 0 : 46, alignment:.top)

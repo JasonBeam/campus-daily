@@ -215,29 +215,32 @@ extension HomeView {
     }
 
     @ViewBuilder func destination(_ route: HomeRoute) -> some View {
+        if sample.isActive { sampleDestination(route) } else { liveDestination(route) }
+    }
+
+    /// The sample's pages: on its data, nothing read, the money and start buttons blocked.
+    @ViewBuilder func sampleDestination(_ route: HomeRoute) -> some View {
+        switch route {
+        case .card, .records: SampleCardPage(data:data)
+        case .power, .powerSetup: SamplePowerPage(data:data)
+        case .shower: ShowerDetail(preview:data)
+        // 常用洗衣机 binds a machine: its links are blocked in the sample (`LaundryDetail`).
+        case .laundry, .washerSetup: LaundryDetail(demo:laundryDemo)
+        }
+    }
+
+    @ViewBuilder func liveDestination(_ route: HomeRoute) -> some View {
         switch route {
         case .power: if campus.powerConfigured { CampusRechargeView(kind:.electricity) } else { CampusPowerSetupView() }
         case .powerSetup: CampusPowerSetupView()
         case .card:
-            #if DEBUG
             CampusRechargeView(kind:.card, demoBlocked:rechargeBlockedDemo)
-            #else
-            CampusRechargeView(kind:.card)
-            #endif
         // Not set up yet: hot water is bound by choosing the dorm.
         case .shower:
-            #if DEBUG
             // Demo records have no binding behind them.
             if shower.configured || demo != nil { ShowerDetail() } else { CampusOnboardingView() }
-            #else
-            if shower.configured { ShowerDetail() } else { CampusOnboardingView() }
-            #endif
         case .laundry:
-            #if DEBUG
             LaundryDetail(demo:laundryDemo)
-            #else
-            LaundryDetail()
-            #endif
         // Saved or switched: back a page, or on to 洗衣 (pushed) when opened from home's unbound row.
         case .washerSetup:
             #if DEBUG
@@ -246,11 +249,7 @@ extension HomeView {
             WasherSetupView(onDone:washerSetupDone)
             #endif
         case .records:
-            #if DEBUG
-            CardRecordsView(app:recordsDemo?.app() ?? data.recentActivities, source:recordsDemo?.source ?? .live)
-            #else
-            CardRecordsView(app:data.recentActivities, source:.live)
-            #endif
+            CardRecordsView(app:recordsDemo?.app() ?? data.recentActivities, source:recordsDemo?.source ?? .school(campus))
         }
     }
 

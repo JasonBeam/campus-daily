@@ -5,12 +5,8 @@ import Core
 /// 开始洗澡 until the settlement) or a laundry order is unfinished both options are greyed out
 /// (`ThemeLock`), and grey out as soon as one starts with the page open.
 struct ThemeSettingsView: View {
-    #if DEBUG
     /// DEBUG demo data from the settings sheet; nil = live models.
     var preview: HomeData? = nil
-    #else
-    private var preview: HomeData? { nil }
-    #endif
     @EnvironmentObject private var shower: ShowerModel
     @EnvironmentObject private var laundry: LaundryModel
     @Environment(ThemeStore.self) private var store

@@ -13,6 +13,9 @@ struct ThemeColor: ShapeStyle {
         case redLarge, redText, pill, pillInk, notice
         /// Line icons: ink2 in 暖橙, accentText in 清爽.
         case icon
+        /// A text entry that is shut (「先看看示例」 refused): ink2 in 暖橙, #6C6C70 (dark #AEAEB2)
+        /// in 清爽, at least 4.5:1 on the page in both.
+        case disabledText
         /// Problems on the system-style pages, both themes: 清爽's `notice` (#B25000, dark #FF9F0A).
         case nativeNotice
         /// A colour that is the same in both themes, beside tokens in one expression.
@@ -50,6 +53,7 @@ struct ThemeColor: ShapeStyle {
         case .pillInk: palette.pillInk
         case .notice: palette.notice
         case .icon: theme == .clear ? palette.accentText : palette.ink2
+        case .disabledText: theme == .clear ? ClearPalette.disabledText : palette.ink2
         case .nativeNotice: ClearPalette.notice
         case .fixed(let color): color
         }

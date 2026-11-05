@@ -133,7 +133,7 @@ extension HomeData {
         findingMeter = campus.matchingPower
         refreshing = campus.loading
         notSaving = campus.notSaving
-        lines = ReminderKey.lines
+        lines = ReminderKey.lines(in:campus.services.defaults)
 
         let state = model.state
         if !model.configured { shower = .unconfigured }

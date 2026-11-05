@@ -24,20 +24,22 @@ enum ReminderKey {
     static let laundryOrder = PreferenceKey.reminder("laundryOrder")
     static let laundryEnd = PreferenceKey.reminder("laundryEnd")
 
-    static func registerDefaults() {
-        UserDefaults.standard.register(defaults:[powerLow:true, cardLow:true, unsettledMinutes:30, laundryDone:true,
+    static func registerDefaults(in defaults: UserDefaults) {
+        defaults.register(defaults:[powerLow:true, cardLow:true, unsettledMinutes:30, laundryDone:true,
                                                  powerLine:10, cardLine:20, powerArmed:true, cardArmed:true])
     }
-    static var lines: ReminderLines {
-        ReminderLines(powerKWh:UserDefaults.standard.integer(forKey:powerLine),
-                      cardYuan:UserDefaults.standard.integer(forKey:cardLine))
+    static func lines(in defaults: UserDefaults) -> ReminderLines {
+        ReminderLines(powerKWh:defaults.integer(forKey:powerLine), cardYuan:defaults.integer(forKey:cardLine))
     }
 }
 
 /// Local notifications and the pre-permission sheet. Never touches orders or payments:
-/// it only reads facts the models already have.
+/// it only reads facts the models already have. The live app's (`shared`) has the notification
+/// center and the app's preferences; a sample's (`sample(defaults:)`) has neither: it schedules,
+/// asks and shows nothing, and keeps its settings in the sample's preferences.
 @MainActor final class Reminders: NSObject, ObservableObject, UNUserNotificationCenterDelegate {
-    static let shared = Reminders()
+    static let shared = Reminders(defaults:.standard, center:.current())
+    static func sample(defaults: UserDefaults) -> Reminders { Reminders(defaults:defaults, center:nil) }
 
     enum PromptOrigin: String, Identifiable { case settings, app; var id: String { rawValue } }
     typealias Route = NotificationRoute
@@ -47,7 +49,8 @@ enum ReminderKey {
     @Published var prompt: PromptOrigin?
     /// Notification tapped: HomeView navigates and clears it.
     @Published var route: Route?
-    /// An app trigger (first paid laundry order, first home read) is waiting for home to be visible.
+    /// An app trigger (first paid laundry order, first home read) is waiting for home to be visible
+    /// (`queue`; held while the sample covers the live app).
     @Published private(set) var appPromptPending = false
     #if DEBUG
     /// Forces the settings 提醒 group into on / notifications-off / not-asked for screenshots.
@@ -56,14 +59,27 @@ enum ReminderKey {
     private var demoForcePrompt = false
     #endif
 
-    private let center = UNUserNotificationCenter.current()
-    private let defaults = UserDefaults.standard
+    /// The notification center; nil for a sample's, which reaches no notification at all.
+    private let center: UNUserNotificationCenter?
+    let defaults: UserDefaults
+    private let queue: ReminderPromptQueue
     private var laundryPlan: LaundryPlan?
     private var showerStart: Date?
+    /// The campus numbers the low-balance reminders judge again (`reevaluateCampus`).
+    var campusSnapshot: () -> HomeSnapshot = { .empty }
+    /// True while the live app is covered by the sample: a queued prompt waits (`ReminderPromptQueue`).
+    var held: () -> Bool {
+        get { queue.held }
+        set { queue.held = newValue }
+    }
 
-    private override init() {
+    private init(defaults: UserDefaults, center: UNUserNotificationCenter?) {
+        self.defaults = defaults
+        self.center = center
+        queue = ReminderPromptQueue(storage:defaults, promptedKey:ReminderKey.prompted)
         super.init()
-        ReminderKey.registerDefaults()
+        ReminderKey.registerDefaults(in:defaults)
+        guard let center else { return }
         center.delegate = self
         shareLines()
         Task { await refreshAuthorization() }
@@ -71,10 +87,10 @@ enum ReminderKey {
 
     /// After a reset: nothing scheduled or shown is about this install's old data any more.
     func clearAfterReset() {
-        center.removeAllPendingNotificationRequests()
-        center.removeAllDeliveredNotifications()
+        center?.removeAllPendingNotificationRequests()
+        center?.removeAllDeliveredNotifications()
         laundryPlan = nil; showerStart = nil
-        appPromptPending = false; prompt = nil; route = nil
+        queue.clear(); appPromptPending = false; prompt = nil; route = nil
     }
 
     var effectiveStatus: UNAuthorizationStatus {
@@ -87,12 +103,13 @@ enum ReminderKey {
     /// The 「洗衣洗好时」 reminder is on and notifications are allowed, so a running wash will notify.
     var laundryDoneWillNotify: Bool {
         let allowed = [.authorized, .provisional, .ephemeral].contains(effectiveStatus)
-        return allowed && defaults.bool(forKey:ReminderKey.laundryDone)
+        return center != nil && allowed && defaults.bool(forKey:ReminderKey.laundryDone)
     }
     /// The system hasn't asked yet: settings shows the 「打开提醒」 row.
     var notAsked: Bool { effectiveStatus == .notDetermined }
 
     func refreshAuthorization() async {
+        guard let center else { return }
         let old = authorization
         authorization = await center.notificationSettings().authorizationStatus
         // Just allowed (here or in system Settings): requests added while not allowed were dropped, add them again.
@@ -107,20 +124,21 @@ enum ReminderKey {
 
     /// Three automatic triggers share one persisted flag: whichever comes first shows the sheet, once ever
     /// (「以后再说」 included). Only while the system hasn't been asked.
+    /// A sample's never asks.
     private var mayAutoPrompt: Bool {
-        authorization == .notDetermined && !defaults.bool(forKey:ReminderKey.prompted)
+        center != nil && authorization == .notDetermined && !queue.prompted
     }
     /// Trigger 1: a reminder toggle switched on in settings (shown inside the settings sheet).
     func maybePrompt(from origin: PromptOrigin) {
         guard mayAutoPrompt, prompt == nil else { return }
-        defaults.set(true, forKey:ReminderKey.prompted)
+        queue.markShown()
         prompt = origin
     }
     /// Triggers 2 and 3 (first paid laundry order, first home read): queued until home is visible
     /// with nothing on top (HomeView calls `presentPendingPrompt`).
     func requestAppPrompt() {
-        guard mayAutoPrompt, !appPromptPending else { return }
-        appPromptPending = true
+        queue.request(notDetermined:center != nil && authorization == .notDetermined)
+        appPromptPending = queue.pending
     }
     /// Trigger 3: home read both the power and the card balance successfully, so the user has seen the numbers.
     func campusRead(_ snapshot: HomeSnapshot) {
@@ -129,27 +147,29 @@ enum ReminderKey {
         requestAppPrompt()
     }
     /// Home is visible and clear: show the queued sheet (re-checks the real status first).
+    /// Held (the sample came up while this waited): still queued, nothing stored or shown.
     func presentPendingPrompt() async {
-        guard appPromptPending else { return }
+        guard queue.pending, !held() else { return }
         await refreshAuthorization()
-        var allowed = mayAutoPrompt
+        var force = false
         #if DEBUG
-        if demoForcePrompt { allowed = true; demoForcePrompt = false }
+        if demoForcePrompt { force = true; demoForcePrompt = false }
         #endif
-        appPromptPending = false
-        guard allowed, prompt == nil else { return }
-        defaults.set(true, forKey:ReminderKey.prompted)
+        let show = queue.take(notDetermined:center != nil && authorization == .notDetermined, showing:prompt != nil, force:force)
+        appPromptPending = queue.pending
+        guard show else { return }
         prompt = .app
     }
     /// Settings 「打开提醒」 row: the user asked, so it shows whatever the flag says.
     func showPrompt(from origin: PromptOrigin) {
-        guard prompt == nil else { return }
-        defaults.set(true, forKey:ReminderKey.prompted)
+        guard center != nil, prompt == nil else { return }
+        queue.markShown()
         prompt = origin
     }
-    /// 「打开提醒」: the only place that asks the system.
+    /// 「打开提醒」: the only place that asks the system; never while held.
     func requestAuthorization() async {
         prompt = nil
+        guard let center, !held() else { return }
         _ = try? await center.requestAuthorization(options:[.alert, .sound, .badge])
         await refreshAuthorization()
     }
@@ -164,12 +184,13 @@ enum ReminderKey {
 
     /// Mirror the lines to the widget and redraw it.
     func shareLines() {
-        let lines = ReminderKey.lines
+        guard center != nil else { return }
+        let lines = ReminderKey.lines(in:defaults)
         if ReminderLines.shared() != lines { lines.share(); WidgetCenter.shared.reloadAllTimelines() }
     }
     /// A line or a low-balance switch changed: judge the last reading again (re-arms when it is back above).
     func reevaluateCampus() {
-        evaluateCampus(CampusModel.shared.snapshot)
+        evaluateCampus(campusSnapshot())
     }
     /// Re-apply scheduled reminders after a setting or the authorization changed.
     func resync() {
@@ -207,6 +228,7 @@ enum ReminderKey {
         return LaundryDoneReminder.Plan(orderID:id, end:end)
     }
     private func applyLaundry(_ plan: LaundryPlan) {
+        guard let center else { return }
         guard defaults.bool(forKey:ReminderKey.laundryDone) else { cancelLaundry(); return }
         // Reschedule only when the order changed or the end moved (the order re-read refines it).
         if LaundryDoneReminder.isScheduled(LaundryDoneReminder.Plan(orderID:plan.orderId, end:plan.end), as:scheduledLaundry) { return }
@@ -220,7 +242,7 @@ enum ReminderKey {
         defaults.set(plan.orderId, forKey:ReminderKey.laundryOrder); defaults.set(plan.end, forKey:ReminderKey.laundryEnd)
     }
     private func cancelLaundry() {
-        guard let id = defaults.string(forKey:ReminderKey.laundryOrder) else { return }
+        guard let center, let id = defaults.string(forKey:ReminderKey.laundryOrder) else { return }
         center.removePendingNotificationRequests(withIdentifiers:["laundry-" + id])
         defaults.removeObject(forKey:ReminderKey.laundryOrder); defaults.removeObject(forKey:ReminderKey.laundryEnd)
     }
@@ -230,6 +252,7 @@ enum ReminderKey {
     /// Called on every session change (ShowerModel). `started` = start of a session that can still be closed.
     func syncShower(started: Date?) {
         showerStart = started
+        guard let center else { return }
         let minutes = defaults.integer(forKey:ReminderKey.unsettledMinutes)
         let wanted = started.flatMap { start -> String? in
             minutes > 0 ? "shower-\(Int(start.timeIntervalSince1970))-\(minutes)" : nil
@@ -256,7 +279,8 @@ enum ReminderKey {
 
     /// After each campus read (foreground, pull to refresh, background refresh). Only fresh, successful values count.
     func evaluateCampus(_ snapshot: HomeSnapshot, now: Date = Date()) {
-        let lines = ReminderKey.lines
+        guard center != nil else { return }
+        let lines = ReminderKey.lines(in:defaults)
         if snapshot.power.error == nil, let meter = snapshot.power.value, let left = meter.remainingKWh {
             evaluate(kind:"power", low:left < lines.power, enabled:ReminderKey.powerLow,
                      armed:ReminderKey.powerArmed, sentDay:ReminderKey.powerSentDay, now:now) {
@@ -274,6 +298,7 @@ enum ReminderKey {
     /// (and at most once a day). Back above: re-armed and the old banner removed from Notification Center.
     private func evaluate(kind: String, low: Bool, enabled: String, armed: String, sentDay: String, now: Date,
                           content: () -> UNMutableNotificationContent) {
+        guard let center else { return }
         guard low else {
             defaults.set(true, forKey:armed)
             center.removeDeliveredNotifications(withIdentifiers:[kind])
@@ -337,10 +362,12 @@ enum ReminderKey {
     /// campusdaily://demo/permission-home: behave as if the first home read just succeeded.
     func demoHomeRead() {
         demoForcePrompt = true
-        appPromptPending = true
+        queue.request(notDetermined:true)
+        appPromptPending = queue.pending
     }
     /// campusdaily://demo/notify/<laundry|shower|power|power-short|card> — the real copy, delivered in 5 s (time to go to the home screen).
     func demoNotify(_ kind: String) async {
+        guard let center else { return }
         if authorization == .notDetermined { await requestAuthorization() }
         let content: UNMutableNotificationContent
         switch kind {
@@ -358,7 +385,7 @@ enum ReminderKey {
 
 /// Pre-permission sheet: group bg, ~300pt detent, padding 24, no mascot.
 struct ReminderPermissionSheet: View {
-    @ObservedObject private var reminders = Reminders.shared
+    @EnvironmentObject private var reminders: Reminders
     @Environment(\.dynamicTypeSize) private var typeSize
     var body: some View {
         VStack(alignment:.leading, spacing:0) {
@@ -396,7 +423,7 @@ struct ReminderHooks: ViewModifier {
     let open: (Reminders.Route) -> Void
     /// Home is visible with nothing on top (no onboarding, sheet, cover, panel or pushed page).
     var homeClear: Bool
-    @ObservedObject private var reminders = Reminders.shared
+    @EnvironmentObject private var reminders: Reminders
     func body(content: Content) -> some View {
         content
             .sheet(item:reminders.promptBinding(.app)) { _ in

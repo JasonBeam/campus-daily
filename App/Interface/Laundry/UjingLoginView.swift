@@ -7,20 +7,24 @@ import Core
     @Published var sent = false
     /// One U净 account at a time: one cooldown, under a fixed key (the phone number is not in it).
     private let cooldownKey = PreferenceKey.ujingSMSCooldown
-    init() {
-        // Builds before keyed the cooldown by a hash of the phone number.
-        let defaults = UserDefaults.standard
+    /// The preferences of the laundry model's services (`dropOldCooldowns` sets them).
+    private var defaults: UserDefaults?
+    /// Builds before keyed the cooldown by a hash of the phone number.
+    func dropOldCooldowns(in defaults: UserDefaults) {
+        guard self.defaults == nil else { return }
+        self.defaults = defaults
         for key in defaults.dictionaryRepresentation().keys where key.hasPrefix(PreferenceKey.ujingSMSCooldown + ".") {
             defaults.removeObject(forKey:key)
         }
     }
     func remaining(_ mobile: String, at date: Date = Date()) -> Int {
-        max(0,Int(ceil(UserDefaults.standard.double(forKey:cooldownKey) - date.timeIntervalSince1970)))
+        max(0,Int(ceil((defaults?.double(forKey:cooldownKey) ?? 0) - date.timeIntervalSince1970)))
     }
     func send(_ mobile: String, laundry: LaundryModel) async {
         guard !busy, UjingInput.isMobile(mobile), remaining(mobile) == 0 else { return }
+        dropOldCooldowns(in:laundry.services.defaults)
         // Reserve the cooldown before sending, including uncertain network outcomes. No automatic retry.
-        UserDefaults.standard.set(Date().addingTimeInterval(60).timeIntervalSince1970,forKey:cooldownKey)
+        defaults?.set(Date().addingTimeInterval(60).timeIntervalSince1970,forKey:cooldownKey)
         busy = true; issue = nil; sent = false; defer { busy = false }
         do { try await laundry.requestSMS(mobile:mobile); sent = true }
         catch { issue = (error as? ServiceError)?.userMessage ?? "验证码可能没发出去，过一会儿再试。" }
@@ -78,6 +82,7 @@ struct UjingLoginView: View {
             }.navigationTitle("登录 U净").navigationBarTitleDisplayMode(.inline)
                 .toolbar { ToolbarItem(placement:.cancellationAction) { Button("取消") { dismiss() }.disabled(login.busy) } }
                 .interactiveDismissDisabled(login.busy)
+                .onAppear { login.dropOldCooldowns(in:laundry.services.defaults) }
                 .onDisappear { code = ""; mobile = "" }
                 .onChange(of:login.sent) { _, sent in if sent { codeFocused = true } }
         }

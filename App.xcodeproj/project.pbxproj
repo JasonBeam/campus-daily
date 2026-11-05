@@ -27,6 +27,13 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		C0DA00510000000000000000 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = C0DA00010000000000000000 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = C0DA00110000000000000000;
+			remoteInfo = App;
+		};
 		C0DA00220000000000000000 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = C0DA00010000000000000000 /* Project object */;
@@ -66,6 +73,7 @@
 		C0DA00370000000000000000 /* CoreTelephony.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreTelephony.framework; path = System/Library/Frameworks/CoreTelephony.framework; sourceTree = SDKROOT; };
 		C0DA00380000000000000000 /* CoreText.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreText.framework; path = System/Library/Frameworks/CoreText.framework; sourceTree = SDKROOT; };
 		C0DA00390000000000000000 /* WebKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WebKit.framework; path = System/Library/Frameworks/WebKit.framework; sourceTree = SDKROOT; };
+		C0DA00520000000000000000 /* AppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -120,6 +128,11 @@
 			path = Configuration;
 			sourceTree = "<group>";
 		};
+		C0DA00530000000000000000 /* AppTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = AppTests;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -150,6 +163,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		C0DA00540000000000000000 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -160,6 +180,7 @@
 				C0DA00090000000000000000 /* Shared */,
 				C0DA000A0000000000000000 /* Widget */,
 				C0DA000B0000000000000000 /* Configuration */,
+				C0DA00530000000000000000 /* AppTests */,
 				C0DA000E0000000000000000 /* Fonts */,
 				C0DA00040000000000000000 /* Frameworks */,
 				C0DA00030000000000000000 /* Products */,
@@ -171,6 +192,7 @@
 			children = (
 				C0DA00060000000000000000 /* XiaoRiChang.app */,
 				C0DA00070000000000000000 /* XiaoRiChangWidget.appex */,
+				C0DA00520000000000000000 /* AppTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -257,6 +279,27 @@
 			productReference = C0DA00070000000000000000 /* XiaoRiChangWidget.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		C0DA00500000000000000000 /* AppTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C0DA005A0000000000000000 /* Build configuration list for PBXNativeTarget "AppTests" */;
+			buildPhases = (
+				C0DA00550000000000000000 /* Sources */,
+				C0DA00540000000000000000 /* Frameworks */,
+				C0DA00560000000000000000 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				C0DA00570000000000000000 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				C0DA00530000000000000000 /* AppTests */,
+			);
+			name = AppTests;
+			productName = AppTests;
+			productReference = C0DA00520000000000000000 /* AppTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -287,6 +330,7 @@
 			targets = (
 				C0DA00110000000000000000 /* App */,
 				C0DA00120000000000000000 /* Widget */,
+				C0DA00500000000000000000 /* AppTests */,
 			);
 		};
 /* End PBXProject section */
@@ -306,6 +350,13 @@
 			buildActionMask = 2147483647;
 			files = (
 				C0DA00200000000000000000 /* Fonts in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C0DA00560000000000000000 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -350,6 +401,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		C0DA00550000000000000000 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -357,6 +415,11 @@
 			isa = PBXTargetDependency;
 			target = C0DA00120000000000000000 /* Widget */;
 			targetProxy = C0DA00220000000000000000 /* PBXContainerItemProxy */;
+		};
+		C0DA00570000000000000000 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = C0DA00110000000000000000 /* App */;
+			targetProxy = C0DA00510000000000000000 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -414,6 +477,7 @@
 				PRODUCT_NAME = XiaoRiChang;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_TESTABILITY = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
@@ -498,6 +562,52 @@
 			};
 			name = Release;
 		};
+		C0DA00580000000000000000 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReferenceAnchor = C0DA000B0000000000000000 /* Configuration */;
+			baseConfigurationReferenceRelativePath = Base.xcconfig;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/XiaoRiChang.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/XiaoRiChang";
+				GENERATE_INFOPLIST_FILE = YES;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-lc++",
+					"-lz",
+					"-framework",
+					SystemConfiguration,
+					"-framework",
+					CoreTelephony,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).apptests";
+				PRODUCT_NAME = AppTests;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		C0DA00590000000000000000 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReferenceAnchor = C0DA000B0000000000000000 /* Configuration */;
+			baseConfigurationReferenceRelativePath = Base.xcconfig;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/XiaoRiChang.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/XiaoRiChang";
+				GENERATE_INFOPLIST_FILE = YES;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-lc++",
+					"-lz",
+					"-framework",
+					SystemConfiguration,
+					"-framework",
+					CoreTelephony,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).apptests";
+				PRODUCT_NAME = AppTests;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -524,6 +634,15 @@
 			buildConfigurations = (
 				C0DA002B0000000000000000 /* Debug */,
 				C0DA002C0000000000000000 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		C0DA005A0000000000000000 /* Build configuration list for PBXNativeTarget "AppTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C0DA00580000000000000000 /* Debug */,
+				C0DA00590000000000000000 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

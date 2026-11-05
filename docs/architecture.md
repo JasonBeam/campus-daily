@@ -29,14 +29,16 @@ App/
                       ClearRoute and ClearDestination, tab/path/sheet state in ClearNavigator (an environment
                       object). Pages: Home/, Shower/, Laundry/, Records/, Settings/, Setup/ (the first-run
                       checklist). Pages only lay out and call the same models as 暖橙; the shared root
-                      handling (reset, first run, refresh, links) is in Common/CampusRootHooks and RootLink.
+                      handling (reset, first run, refresh, links) is in Common/CampusRootHooks and Core's RootLink.
                       Shared pages (meter, top-ups, 常用洗衣机, 学校账号, 高级, 主题) are 暖橙's views drawn in
                       清爽's tokens.
   Services/           Bluetooth (CoreBluetooth ShowerTransport), CampusWebLogin (official-page WKWebView + login script),
                       BackgroundRefresh (BGAppRefreshTask), Alipay, LiveActivities, Intents, Reminders,
                       Feedback (sends 反馈问题; endpoint and key from Info.plist)
   Resources/          Assets, Fonts, Info.plist, App.entitlements
-  Demo/               DEBUG-only demo screens and data behind campusdaily://demo/… (not in Release)
+  Demo/               demo screens and data behind campusdaily://demo/… (DEBUG only); LaundryDemo and
+                      RecordsDemo are also the Release sample mode's washer and 校园卡记录
+  Interface/Sample/   the sample mode's bar, blocked-action alert and its 余额 and 电量 pages
 Shared/               compiled into App and Widget
   WidgetViews/        widget views (also used by the in-app preview)
   LiveActivityViews/  ActivityAttributes and Live Activity views
@@ -63,8 +65,14 @@ Packages/Core/        one library product `Core` (swift-tools 6.0, iOS 17 / macO
     Common/           Money, ServiceError, JSONValue, DormAddress, ShowerHandoff (used by Campus and Shower)
     Theme/            the chosen theme (AppTheme, ThemePreference in the App Group's preferences) and
                       when the 主题 options are greyed out (ThemeLock, from the shower and laundry states)
+    Sample/           the synthetic data the DEBUG demos and the Release sample mode show (SampleData),
+                      and the sample mode itself (SampleMode: in memory only; while on, actions that pay,
+                      open water, bind, send or store are refused with SampleCopy.blocked, the theme
+                      picked in it is held there and nothing is written), and LiveShowerGate: it opens
+                      only while the live shower record is known to be at rest with no start under
+                      way, and no real start begins while it is shown
   Tests/
-    CampusTests/ ShowerTests/ LaundryTests/ SnapshotTests/ NetworkingTests/ StorageTests/ CommonTests/ ThemeTests/ FeedbackTests/
+    CampusTests/ ShowerTests/ LaundryTests/ SnapshotTests/ NetworkingTests/ StorageTests/ CommonTests/ ThemeTests/ FeedbackTests/ SampleTests/
     Support/          StubServer, FixtureLoader, FakeShowerTransport
     Fixtures/         synthetic/redacted API samples, one folder per service
 Scripts/              fetch-alipay-sdk, stage-water-profile, package-ipa, privacy-check

@@ -10,12 +10,8 @@ struct CampusRechargeView: View {
     @State private var loading = false
     @State private var login = false
     @State private var revision = UUID()
-    #if DEBUG
     /// DEBUG demo: show the state of a web view that can't enforce its allow-list.
     var demoBlocked = false
-    #else
-    private var demoBlocked: Bool { false }
-    #endif
     /// Without the navigation allow-list the page would load nothing; say so instead of a blank page.
     private var pageBlocked: Bool { demoBlocked || !WebNavigationPolicy.isEnforced(by:CampusRechargeBrowser.Coordinator.self) }
     static let blockedText = "充值页现在打不开，过会儿再试。急用的话，先去学校官网充值。"

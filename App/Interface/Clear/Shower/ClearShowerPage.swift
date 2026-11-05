@@ -116,11 +116,7 @@ struct ClearShowerPage: View {
 
     /// False on a DEBUG demo (campusdaily://demo/...): its data, not the live models'.
     private var live: Bool {
-        #if DEBUG
         return navigator.demo == nil
-        #else
-        return true
-        #endif
     }
 
     /// 2.4's shower: the one home's 热水 tile names (「上次 11 分钟 · ¥1.32」), demo or live.
@@ -131,16 +127,12 @@ struct ClearShowerPage: View {
     }
 
     private var configured: Bool {
-        #if DEBUG
         if let demo = navigator.demo { return demo.shower != .unconfigured }
-        #endif
         return shower.configured
     }
 
     private var room: String {
-        #if DEBUG
         if let demo = navigator.demo { return demo.dorm ?? "" }
-        #endif
         return Theme.dorm(campus.room) ?? campus.room
     }
 

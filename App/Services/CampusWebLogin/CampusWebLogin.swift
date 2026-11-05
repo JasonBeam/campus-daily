@@ -38,6 +38,9 @@ struct CampusWebLogin {
 
 struct OfficialCampusBrowser: UIViewRepresentable {
     @ObservedObject var state: CampusBrowserState
+    /// The school's page loads only on the live graph: a sample's services send nothing, and
+    /// neither does this page under them.
+    @Environment(\.campusServices) private var services
     #if DEBUG
     /// DEBUG demo: nothing is loaded (loading-state screenshots).
     var loads = true
@@ -60,6 +63,11 @@ struct OfficialCampusBrowser: UIViewRepresentable {
         guard WebNavigationPolicy.isEnforced(by:context.coordinator) else {
             let state = state
             Task { @MainActor in state.stalled = true; state.issue = "学校网页暂时打不开，更新校日常后再试。" }
+            return view
+        }
+        guard services.kind == .live else {
+            let state = state
+            Task { @MainActor in state.stalled = true; state.issue = SampleCopy.blocked }
             return view
         }
         if loads { view.load(URLRequest(url:login.url!)) }

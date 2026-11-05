@@ -11,10 +11,14 @@ struct ClearRootView: View {
     @EnvironmentObject var laundry: LaundryModel
     @Environment(\.scenePhase) var phase
     @Environment(ThemeStore.self) var themeStore
+    @Environment(SampleMode.self) var sample
+    /// The graph's services (`CampusScene`): `@AppStorage` here is on their preferences.
+    @Environment(\.campusServices) var services
     @State var navigator = ClearNavigator()
     @State var successTick = 0
-    @ObservedObject var reminders = Reminders.shared
-    @AppStorage("didSeeQuickSetup") var didSeeQuickSetup = false
+    /// The newest link or login-after-the-sample: an older one still waiting for a sheet is dropped.
+    @State var destination = RootDestination()
+    @EnvironmentObject var reminders: Reminders
     /// Last laundry order whose done panel was shown (once per order, shared with 暖橙).
     @AppStorage("laundryDoneShownOrder") var laundryDoneShown = ""
     #if DEBUG
@@ -25,6 +29,11 @@ struct ClearRootView: View {
     /// Bumped by a records demo: the 记录 tab starts again from it.
     @State var recordsDemoRun = 0
     #endif
+
+    /// Tests: told this root's navigator once the root appears (nil in the app).
+    var navigatorShown: ((ClearNavigator) -> Void)?
+
+    init(navigatorShown: ((ClearNavigator) -> Void)? = nil) { self.navigatorShown = navigatorShown }
 
     var data: HomeData { navigator.data(campus:campus, shower:shower, laundry:laundry) }
 
@@ -50,13 +59,14 @@ struct ClearRootView: View {
         .sensoryFeedback(.success, trigger:successTick)
         .accountSwitchAlert { openShowerSetup() }
         .sheet(isPresented:$navigator.relogin) { SchoolReloginSheet().typesettingLanguage(Theme.typesetting) }
-        .sheet(item:$navigator.setup, onDismiss:{ didSeeQuickSetup = true }) { request in
-            // .id: a new request starts the checklist again, with its own row pushed.
+        // Closed because the sample opened over it: not seen (`QuickSetupSeen`).
+        .sheet(item:$navigator.setup, onDismiss:{ QuickSetupSeen.closed(in:services.defaults, coveredBySample:sample.isActive) }) { request in
+            // .id: a new request (or a new row on this one) starts the checklist again, with its row pushed.
             #if DEBUG
-            ClearSetupChecklist(start:request.start).id(request.id).typesettingLanguage(Theme.typesetting)
+            ClearSetupChecklist(start:request.start).onRow { navigator.setup?.guide.moved(to:$0) }.id(request.guide.contentID).typesettingLanguage(Theme.typesetting)
                 .onOpenURL { handleDemo($0) }
             #else
-            ClearSetupChecklist(start:request.start).id(request.id).typesettingLanguage(Theme.typesetting)
+            ClearSetupChecklist(start:request.start).onRow { navigator.setup?.guide.moved(to:$0) }.id(request.guide.contentID).typesettingLanguage(Theme.typesetting)
             #endif
         }
         .sheet(isPresented:Binding(get:{ navigator.panel != nil }, set:{ if !$0 { navigator.panel = nil } })) {
@@ -77,6 +87,9 @@ struct ClearRootView: View {
         }
         #endif
         .modifier(CampusRootHooks(demo:isDemo, root:.clear, firstRun:{ navigator.openSetup() }, afterReset:afterReset))
+        .sampleChrome()
+        .onChange(of:sample.isActive, initial:true) { _, active in followSample(active) }
+        .onChange(of:sample.loginDue, initial:true) { _, due in openLoginAfterSample(due) }
         // 记录 shows one person's records: back to its root when they sign out or someone else signs in.
         .onChange(of:campus.personChanges) { _, _ in navigator.popToRoot(.records) }
         .onChange(of:shower.page.presented, initial:true) { _, up in followShowerPage(up) }
@@ -93,8 +106,14 @@ struct ClearRootView: View {
         // A done panel that arrived while another was up is shown once that one closes.
         .onChange(of:navigator.panel == nil) { _, clear in if clear { presentLaundryDone(data.laundryDone) } }
         .modifier(ReminderHooks(open:follow, homeClear:homeClear))
-        .onOpenURL { open($0) }
+        // The widget's links, dispatched by the app (`SampleMode.open`): this root opens them
+        // only when it is the live one.
+        .onChange(of:sample.pendingLink, initial:true) { _, _ in takePendingLink() }
+        #if DEBUG
+        .onOpenURL { if RootLink($0) == nil { handleDemo($0) } }
+        #endif
         .environment(navigator)
+        .onAppear { navigatorShown?(navigator) }
     }
 
     @ViewBuilder var recordsTab: some View {
@@ -105,12 +124,6 @@ struct ClearRootView: View {
         #endif
     }
 
-    /// DEBUG demo data is on screen (never in Release).
-    var isDemo: Bool {
-        #if DEBUG
-        navigator.demo != nil
-        #else
-        false
-        #endif
-    }
+    /// Synthetic data is on screen (a DEBUG demo, or the sample in Release too).
+    var isDemo: Bool { navigator.demo != nil || sample.isActive }
 }

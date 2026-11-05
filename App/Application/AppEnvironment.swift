@@ -4,29 +4,36 @@ import WidgetKit
 import Core
 
 /// Composition root: one Keychain store, one HTTP client per service family, the school session
-/// and the snapshot refresher (the only writer of the widget-shared snapshot).
+/// and the snapshot refresher (the only writer of the widget-shared snapshot), gathered in `live`,
+/// the services the live models run on (a sample runs on `CampusServices.sample()` instead).
 /// The hot-water and laundry engines are built by their models (they depend on the binding / login).
 enum AppEnvironment {
-    static let store: SecureStore = SharedKeychain.store
+    private static let store: SecureStore = SharedKeychain.store
 
-    static let schoolHTTP: HTTPClient = SchoolRefreshStack.schoolHTTP()
-    static let showerHTTP: HTTPClient = URLSessionHTTPClient(allowedHosts:AllowedHosts.hotWater)
-    static let laundryHTTP: HTTPClient = URLSessionHTTPClient(allowedHosts:AllowedHosts.laundry)
+    private static let schoolHTTP: HTTPClient = SchoolRefreshStack.schoolHTTP()
+    private static let showerHTTP: HTTPClient = URLSessionHTTPClient(allowedHosts:AllowedHosts.hotWater)
+    private static let laundryHTTP: HTTPClient = URLSessionHTTPClient(allowedHosts:AllowedHosts.laundry)
     /// Settings › 反馈问题: only the feedback host, with a longer resource timeout for screenshots.
     /// nil in a build without the feedback key.
-    static let feedbackHTTP: HTTPClient? = FeedbackReporter.endpoint.map { endpoint in
+    private static let feedbackHTTP: HTTPClient? = FeedbackReporter.endpoint.map { endpoint in
         URLSessionHTTPClient(allowedHosts:endpoint.allowedHosts, configuration:FeedbackSender.configuration())
     }
 
-    static let schoolVault = StoredSchoolVault(store:store)
-    static let showerVault = StoredShowerVault(store:store)
-    static let laundryVault = StoredLaundryVault(store:store)
     /// The same stack the widget builds for its own reads; the two take turns through the lease.
     private static let schoolStack = SchoolRefreshStack(store:store, http:schoolHTTP, role:"app",
                                                         leaseWait:SchoolRefreshStack.appLeaseWait, leaseFile:RefreshLease.appFile(),
                                                         didWriteSnapshot:{ WidgetCenter.shared.reloadTimelines(ofKind:SharedSnapshotStore.widgetKind) })
 
-    static var school: SchoolSession { schoolStack.session }
+    /// The live app's stores and services. The school stack on them is `schoolStack` (one per process).
+    @MainActor static let live = CampusServices(
+        kind:.live, secureStore:store, defaults:.standard, sharedPreferences:AppIdentity.usableAppGroup.flatMap { UserDefaults(suiteName:$0) },
+        schoolHTTP:schoolHTTP, showerHTTP:showerHTTP, laundryHTTP:laundryHTTP, feedbackHTTP:feedbackHTTP,
+        showerTransport:BluetoothTransport(), leaseFile:RefreshLease.appFile(),
+        applicationSupport:FileManager.default.urls(for:.applicationSupportDirectory, in:.userDomainMask).first,
+        sharedDidChange:{ WidgetCenter.shared.reloadAllTimelines() })
+
+    /// The live school stack, for the live `CampusModel` and the background refresh.
+    static var liveSchoolStack: SchoolRefreshStack { schoolStack }
     /// The lock around what the app shares with its extensions besides the school session (the
     /// theme): the refresh lease file's, whoever holds the lease.
     static var sharedLock: any SharedLock { schoolStack.refresher.lease ?? UnsharedLock() }
@@ -35,7 +42,6 @@ enum AppEnvironment {
         guard let group = AppIdentity.usableAppGroup, let defaults = UserDefaults(suiteName:group) else { return nil }
         return AppReset.SharedPreferences(defaults:defaults, domain:group, lock:sharedLock)
     }
-    static var refresher: SnapshotRefresher { schoolStack.refresher }
 
     static var userAgent: String {
         let version = Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? "dev"

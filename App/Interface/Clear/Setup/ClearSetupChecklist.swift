@@ -20,6 +20,14 @@ struct ClearSetupChecklist: View {
     /// The step page pushed.
     @State private var row: ClearSetupRow?
     @State private var startPushed = false
+    /// In the sheet: told each row pushed (nil: back on the list), so a link asking for another
+    /// one can send it there (`GuideRequest.moved(to:)`).
+    private var moved: (ClearSetupRow?) -> Void = { _ in }
+
+    /// `moved` is told each row pushed, nil when back on the list.
+    func onRow(_ moved: @escaping (ClearSetupRow?) -> Void) -> Self {
+        var copy = self; copy.moved = moved; return copy
+    }
 
     var body: some View {
         if inSheet {
@@ -29,6 +37,7 @@ struct ClearSetupChecklist: View {
                 }
             }
             .tint(Theme.accentText)
+            .onChange(of:row) { _, value in moved(value) }
             // Over the tab bar the root's alert can't show: a login on the 学校账号 step that turned
             // out to be someone else is told here, and 「去设置热水」 goes on to 宿舍 (as 暖橙's guide).
             // On the stack, so the step pages pushed on it keep it.
