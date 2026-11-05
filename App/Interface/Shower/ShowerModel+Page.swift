@@ -72,6 +72,7 @@ extension ShowerModel {
     /// Demo: the page over a synthetic record, no engine involved.
     func showDemoPage(_ record: ShowerState?) {
         page = ShowerPageFlow(record:record ?? .idle, presented:record != nil)
+        demoStartNext = record?.canStartNext ?? false
     }
     #endif
 }

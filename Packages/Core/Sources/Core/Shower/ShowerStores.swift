@@ -30,4 +30,18 @@ public struct StoredShowerVault: ShowerVault {
         catch { throw ShowerEngineError.unreadableRecord }
     }
     public func saveShowerState(_ state: ShowerState?) throws { try store.writeJSON(state, .showerSession) }
+    /// `water.retained`. A list that can't be decoded throws, so nothing is added over it.
+    public func retainedShowers() throws -> [ShowerState] {
+        guard let data = try store.read(.showerRetained) else { return [] }
+        do { return try JSONDecoder().decode([ShowerState].self, from: data) }
+        catch { throw ShowerEngineError.unreadableRecord }
+    }
+    public func retainShower(_ state: ShowerState) throws {
+        var kept = try retainedShowers()
+        guard !kept.contains(state) else { return }
+        kept.append(state)
+        try store.writeJSON(kept, .showerRetained)
+        // Read back: the next use goes ahead only when the record is surely kept.
+        guard try retainedShowers().contains(state) else { throw ShowerEngineError.storage }
+    }
 }

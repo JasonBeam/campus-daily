@@ -59,6 +59,12 @@ struct ClearShowerPage: View {
             guard let result else { return }
             AccessibilityNotification.Announcement(ShowerPageText.recheckResult(result)).post()
         }
+        .onChange(of:flow.checkInUse) { _, inUse in
+            // 再查一次水控 says it with its result.
+            guard inUse, flow.recheckResult != .inUse else { return }
+            errorTick += 1
+            AccessibilityNotification.Announcement(ShowerPageText.inUse + "。" + ShowerPageText.checkInUseBody).post()
+        }
         .onChange(of:flow.endFailed) { _, failure in
             guard let failure else { return }
             errorTick += 1

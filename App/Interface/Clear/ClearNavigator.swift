@@ -59,8 +59,6 @@ import Core
     var demo: HomeData?
     var laundryDemo: LaundryDemo?
     var recordsDemo: RecordsDemo?
-    /// campusdaily://demo/recharge-blocked.
-    var rechargeBlockedDemo = false
 
     func path(_ tab: Tab) -> [ClearRoute] {
         switch tab {

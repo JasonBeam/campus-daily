@@ -103,19 +103,17 @@ struct SampleRowLabel<Row: View>: View {
     }
 }
 
-/// 余额 in the sample: the balance over 校园卡记录 on the sample's records; 充值 is blocked.
-/// (The live 余额 is the school's top-up web page, which the sample never opens.)
+/// 余额 in the sample: the balance over 校园卡记录 on the sample's records; 充值 opens 校园充值,
+/// which only leaves for the school's WeChat service or web page (nothing is read after).
+/// (The live 余额 is 校园充值 itself.)
 struct SampleCardPage: View {
     let data: HomeData
-    @Environment(SampleMode.self) private var sample
 
     var body: some View {
         CardRecordsView(app:RecordsDemo.list.app(), source:RecordsDemo.list.source)
             .safeAreaInset(edge:.bottom) {
                 DockBar {
-                    Button { sample.perform(.cardRecharge) {} } label: {
-                        DockPillLabel(title:"校园卡充值" + (data.snapshot.card.value.map { " · 余额 " + Theme.yuan($0.yuan) } ?? ""))
-                    }
+                    NavigationLink { CampusTopUpView() } label: { DockPillLabel(title:"充值") }
                     .buttonStyle(PressScaleStyle())
                     .accessibilityIdentifier("sampleCardRecharge")
                 }
@@ -124,7 +122,7 @@ struct SampleCardPage: View {
 }
 
 /// 电量 in the sample: the room, what is left and the daily use from the sample's meter;
-/// 充值 and 电表 are blocked. (The live 电量 is the school's top-up web page.)
+/// 充值 opens 校园充值 and 电表 is blocked. (The live 电量 is 校园充值 itself.)
 struct SamplePowerPage: View {
     let data: HomeData
     @Environment(SampleMode.self) private var sample
@@ -156,7 +154,7 @@ struct SamplePowerPage: View {
         .navigationTitle("电量").navigationBarTitleDisplayMode(.inline)
         .safeAreaInset(edge:.bottom) {
             DockBar {
-                Button { sample.perform(.powerRecharge) {} } label: { DockPillLabel(title:"宿舍电费充值") }
+                NavigationLink { CampusTopUpView() } label: { DockPillLabel(title:"充值") }
                     .buttonStyle(PressScaleStyle())
                     .accessibilityIdentifier("samplePowerRecharge")
             }

@@ -3,7 +3,7 @@ import Foundation
 /// Settings › 高级 › 重置校日常: everything this app stored, back to a fresh install.
 /// Clears every Keychain item (school login and saved password, the card session's and portal
 /// token's obtained/alive times stored with them, login device id, dorm and meter, hot-water
-/// binding and remembered controller, shower record, U净 login and device, laundry record,
+/// binding and remembered controller, shower record and the records a next use kept, U净 login and device, laundry record,
 /// widget snapshot and reminder lines, the app/widget refresh lease), every preference the app set, and the files
 /// the app wrote (imported hot-water file, records, diagnostics). The hot-water parameters
 /// bundled with the app are read-only resources and stay.

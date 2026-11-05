@@ -122,7 +122,8 @@ final class KeychainStoreTests: XCTestCase {
         XCTAssertEqual(StoreKey.schoolDevice.service, "org.zaxh.xiaorichang.school.device.v1")
         XCTAssertEqual(StoreKey.sharedCredentialLog.service, "org.zaxh.xiaorichang.shared.credentialLog.v1")
         XCTAssertEqual(StoreKey.sharedResetMarker.service, "org.zaxh.xiaorichang.shared.resetMarker.v1")
-        XCTAssertEqual(StoreKey.allCases.count, 13, "a new item needs its stored name pinned here")
+        XCTAssertEqual(StoreKey.showerRetained.service, "org.zaxh.xiaorichang.water.retained.v1")
+        XCTAssertEqual(StoreKey.allCases.count, 14, "a new item needs its stored name pinned here")
     }
 
     /// The Swift names say shower; the stored names stay what installed builds already wrote.

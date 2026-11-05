@@ -52,13 +52,32 @@ final class AppResetTests: XCTestCase {
     /// A new Keychain item is cleared by reset too; this count makes adding one a conscious step.
     func testResetCoversEveryKeychainItem() {
         XCTAssertEqual(Set(AppReset.keychainItems), Set(StoreKey.allCases))
-        XCTAssertEqual(AppReset.keychainItems.count, 13, "a new item: check reset clears it, then update this count")
+        XCTAssertEqual(AppReset.keychainItems.count, 14, "a new item: check reset clears it, then update this count")
         XCTAssertEqual(AppReset.keychainItems.last, .sharedResetMarker, "the marker goes last")
         // The credential times live inside the card session and portal token items, so they
         // go with them.
         XCTAssertTrue(AppReset.keychainItems.contains(.sharedCredentialLog))
         XCTAssertTrue(AppReset.keychainItems.contains(.schoolEcykt))
         XCTAssertTrue(AppReset.keychainItems.contains(.schoolPortal))
+    }
+
+    /// The records a next use kept while they wait for their check (`water.retained`) go with
+    /// the reset; the school's own records still have them.
+    func testResetDeletesTheRecordsANextUseKept() throws {
+        let store = InMemorySecureStore()
+        let vault = StoredShowerVault(store: store)
+        let kept = ShowerState(phase: .running, machineID: "11223344", startedAt: Date(timeIntervalSince1970: 1_800_000_000),
+                               authorizeSent: true, authorizationID: "AABBCCDD", stateReviewRequired: true)
+        try vault.retainShower(kept)
+        XCTAssertEqual(try vault.retainedShowers(), [kept])
+
+        let suite = "reset-retained-" + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        try AppReset.clear(store: store, preferences: defaults, preferencesDomain: suite, shared: nil, files: [])
+
+        XCTAssertNil(try store.read(.showerRetained))
+        XCTAssertEqual(try vault.retainedShowers(), [])
     }
 
     /// A live lease and stamped credentials is gone after a reset, and after

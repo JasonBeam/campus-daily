@@ -25,7 +25,8 @@ struct ShowerRecheckRow: View {
             // While it runs the row stays at full ink2 (the reducer ignores a second tap).
             .disabled(!flow.mayRecheck && !flow.rechecking)
             .accessibilityIdentifier("showerRecheck")
-            if let result = flow.recheckResult {
+            // Water found running turns the face itself to 水控有人在用.
+            if let result = flow.recheckResult, result != .inUse {
                 if result == .stopped {
                     Text(ShowerPageText.recheckResult(result)).scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
                         .fixedSize(horizontal:false, vertical:true)

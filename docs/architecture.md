@@ -587,8 +587,27 @@ Rules:
   second sends it.
 - A probe that finds the controller stopped under a running record sets `stateReviewRequired`:
   the shower page shows a check face (去核对 / 「我在学校记录里核对过了」) and the home card's
-  button reads 去核对. 「再查一次水控」 on that face runs the same read-only probe again: water
-  still running returns to the timer; a stopped or unreachable controller is said under it.
+  button reads 去核对. 「再查一次水控」 on that face runs the same read-only probe again; a stopped
+  or unreachable controller is said under it. Once the controller showed the session stopped,
+  `0xA5` found later may be anyone's water (the session was most likely ended with the
+  controller's own button and someone started another): the check stands, the link is let go,
+  and 结束 is not offered (`canFinish` is false), so no close or settlement goes out under the
+  old authorization.
+- Next use over a record that waits for its check (`canStartNext`, the same records
+  `resolveManually` takes; ported as rules from upstream 0.9.0's `startNext`):
+  `ShowerEngine.startNext` connects and probes first. `0xA5` → the link is let go, nothing is
+  kept or authorized, and the record is marked `waitingForRelease` (saved, so a relaunch keeps
+  it; neither a probe nor 结束 re-opens the link for it). Another machine, no answer or an
+  unreadable frame → nothing changes. Idle with this machine's identity → the record is kept
+  as it is in Keychain `water.retained` (read back before going on; a failure blocks like any
+  storage failure), then a new record authorizes with that fresh identity frame: a new
+  authorization, never the old one written again. Kept records are never settled, retried
+  or dropped by the app (重置校日常 deletes them with everything else). A task cancelled while
+  it connects or probes changes nothing, whatever the controller answered. An open shower (no
+  check pending) still ends only with 结束. 「再洗一次」 sits on the check faces only, with
+  「上一次的记录会留着，扣没扣以学校的热水记录为准。先确认水控已经停水，再点这里。」 under it; when
+  it or 「再查一次水控」 finds the controller in use the face reads 水控有人在用
+  (`ShowerPageFlow.checkInUse`, until the next look or try).
 - `startedAt` is set when the authorization arrives and enters `writePending` (出水), not at the
   开始洗澡 tap: the ~15 s of connecting and authorizing are not shower time. The in-app timer,
   the Live Activity, the unsettled reminder and the shown duration (done page, settled lock
@@ -669,40 +688,27 @@ Rules:
   `50`/`53`/`51`/`52` end the activity and the laundry-done notification and clear the record
   (`52` keeps a warning card until acknowledged). `LaundryDoneReminder` decides the notification.
 
-### 3.3 Recharge (card and electricity)
+### 3.3 校园充值 (card and electricity)
 
-Payment stays inside the school's own web pages (WKWebView); the app does not call the recharge
-submit APIs itself (not captured).
+The app handles no money and no school session for a top-up. One page, 校园充值, serves the card
+and the electricity: 「打开微信」 opens the school's WeChat service (`CampusTopUp.weChat`,
+`weixin://dl/business/?t=I0xUgrvZt1g`, issued by the school's own mini-program; the same
+address as upstream 0.9.0's OfficialCampusRechargeView) and 「用网页打开」 opens the school's
+hand-off page for it in Safari (`CampusTopUp.web`, `https://wxmpurl.cn/I0xUgrvZt1g`). Both go
+through `UIApplication.open`; `canOpenURL` is not used, so `LSApplicationQueriesSchemes` needs
+no `weixin` entry. Nothing opens by itself.
 
-```
-idle ─tap 充值─► checkingSession ─ok─► webSession ─page loaded─► inPage ─back─► idle
-                      │expired                                      │ alipays:// | weixin:// link
-                      ▼                                             ▼ open external app
-                  renewing (one forced refresh)                 inPage (still)
-                      │card read: checkingSession once more
-                      │not renewed, or expired again
-                      ▼
-                  needsLogin (re-login, then retry once)
-```
-
-- `renewing`: an expired card session (here or in the hot-water hand-off) is renewed once the
-  way home renews it, by a forced refresh (portal token, else the saved password), outside the
-  step's lease; when that refresh read the card, the step runs once more
-  (`CardSessionRenewal`). The user is asked to sign in only when the refresh did not read the
-  card or the second try finds the session expired again.
-- `checkingSession`: `boundCards` (liveness) then `freshLogin` → build `elecampus_state`
-  `{logintoken: <fresh token>, loginInfo, schoolid, custInfo, custid}` and inject it as a
-  document-start user script, ecykt origin only. Card: `/ykt-view/recharge?isbind=1`.
-  Electricity: `getPowerUrl?custid&syscustid` (302 → `/ykt-view/powersel?...`; let the WebView
-  follow it).
-- Navigation allow-list (`RechargeNavigation`): https on `ecykt.`, `portal.`, `cas.` school hosts;
-  `alipays`/`alipay`/`weixin` schemes only from a user link tap in the page itself on the ecykt
-  origin → `UIApplication.open`. Frames get the same list: a frame on another host is cancelled
-  (and logged by host), a frame never opens a pay app, and only `about:blank`/`about:srcdoc`
-  (which load nothing) are added for frames. The school login sheet does the same through
-  `SchoolLoginNavigation` (three school hosts, https, default port).
-- Back from the page, the app claims no result: the next refresh reads the balance and the room
-  meter as usual.
+- Entries (`CampusTopUpEntry`): 暖橙's card balance → the page once signed in; its electricity
+  → the page with a meter bound, else the meter picker; signed out → the login step. 清爽's
+  balance card shows 「充值 ›」 under each under the same conditions. Widgets and notifications
+  are unchanged.
+- `CampusTopUpFlow`: WeChat answering `false` turns the footnote into the failure line (notice
+  colour, announced once) until the next tap of either button. Back to active after either
+  button took the user out of the app, the balances are read once in the background
+  (`CampusModel.refresh(force:)`), with nothing on screen; the sample (先看看示例) opens the same
+  addresses and reads nothing.
+- The old signed-in web top-up (`RechargeWebSession`, `RechargeNavigation`) has no entry in the
+  app any more; its Core code and tests stay until they are removed on their own.
 
 ---
 
@@ -716,7 +722,7 @@ idle ─tap 充值─► checkingSession ─ok─► webSession ─page loaded�
 | school profile (dorm, meter) | Keychain `school.profile` | AfterFirstUnlockThisDeviceOnly | **yes** |
 | school account + saved password (opt-in) | Keychain `school.password` | AfterFirstUnlockThisDeviceOnly | **yes** (the widget signs in by itself) |
 | CAS login device id | Keychain `school.device` | AfterFirstUnlockThisDeviceOnly | **yes** (the widget's login shows the same browser id) |
-| water binding, shower session | Keychain `water.binding`, `water.session` | AfterFirstUnlockThisDeviceOnly | never (private group) |
+| water binding, shower session, records kept by a next use | Keychain `water.binding`, `water.session`, `water.retained` | AfterFirstUnlockThisDeviceOnly | never (private group) |
 | U净 account, checkout record | Keychain `laundry.account`, `laundry.checkout` | AfterFirstUnlockThisDeviceOnly | never (private group) |
 | home snapshot (balances, meter, room label, per-tile error, fetchedAt, needsLogin) | Keychain `shared.snapshot` (≤64 KiB JSON) | AfterFirstUnlockThisDeviceOnly | **yes** |
 | reminder thresholds mirrored for widget | Keychain `shared.reminderLines` | same | **yes** |

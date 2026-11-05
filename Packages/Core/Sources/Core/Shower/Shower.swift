@@ -155,6 +155,10 @@ public struct ShowerState: Sendable, Codable, Equatable {
     /// The consumption frame that was held (`holdSettle`), upper hex. A retry of it that is
     /// refused or gets no answer is still held: the water it read may still not be ours.
     public var heldConsumption: String?
+    /// The next use over this record found the controller still in use (`A5`): the link was
+    /// let go and nothing was authorized. The record waits for the user to try again or check it.
+    /// Kept across a relaunch; a record that lost its authorization never sends a close.
+    public var waitingForRelease: Bool
 
     public init(phase: ShowerPhase = .idle, machineID: String? = nil, peripheralID: String? = nil, startedAt: Date? = nil,
                 authorizeSent: Bool = false, authorizationID: String? = nil, closingFrom: ShowerPhase? = nil,
@@ -162,7 +166,8 @@ public struct ShowerState: Sendable, Codable, Equatable {
                 lastReceipt: ShowerReceipt? = nil, failure: ShowerFailure? = nil, stateReviewRequired: Bool = false,
                 reviewing: Bool = false, settleRetryArmed: Bool = false, manualSettleAttempts: Int = 0,
                 endedAt: Date? = nil, notice: ShowerNotice? = nil, authorizationNotWritten: Bool = false,
-                holdSettle: Bool = false, timerResumedAt: Date? = nil, heldConsumption: String? = nil) {
+                holdSettle: Bool = false, timerResumedAt: Date? = nil, heldConsumption: String? = nil,
+                waitingForRelease: Bool = false) {
         self.phase = phase; self.machineID = machineID; self.peripheralID = peripheralID; self.startedAt = startedAt
         self.authorizeSent = authorizeSent; self.authorizationID = authorizationID; self.closingFrom = closingFrom
         self.closeSent = closeSent; self.consumption = consumption; self.receipt = receipt; self.lastReceipt = lastReceipt
@@ -170,6 +175,7 @@ public struct ShowerState: Sendable, Codable, Equatable {
         self.settleRetryArmed = settleRetryArmed; self.manualSettleAttempts = manualSettleAttempts
         self.endedAt = endedAt; self.notice = notice; self.authorizationNotWritten = authorizationNotWritten
         self.holdSettle = holdSettle; self.timerResumedAt = timerResumedAt; self.heldConsumption = heldConsumption
+        self.waitingForRelease = waitingForRelease
     }
 
     public static let idle = ShowerState()
@@ -183,13 +189,24 @@ public struct ShowerState: Sendable, Codable, Equatable {
         }
     }
 
-    public var canFinish: Bool { (phase == .writePending || phase == .running) && !reviewing }
-
-    /// A read-only probe of the controller: while water may run, and from a close that may
-    /// not have taken (water still running there means the close can be sent again).
-    public var canReview: Bool {
-        canFinish || (phase == .failed && failure?.reason == .closeUnconfirmed && !reviewing)
+    /// Not once the controller showed this session stopped (`stateReviewRequired`): water found
+    /// running after that may be anyone's, and a close would settle it under this record.
+    public var canFinish: Bool {
+        (phase == .writePending || phase == .running) && !reviewing && !stateReviewRequired && !waitingForRelease
     }
+
+    /// A read-only probe of the controller: while water may run (also while that waits for the
+    /// check), and from a close that may not have taken (water still running there means the
+    /// close can be sent again).
+    public var canReview: Bool {
+        ((phase == .writePending || phase == .running) && !reviewing)
+            || (phase == .failed && failure?.reason == .closeUnconfirmed && !reviewing)
+    }
+
+    /// The next use (`ShowerEngine.startNext`) over a record that waits for the user's check:
+    /// the record is kept as it is (`ShowerVault.retainShower`), never settled, and the next use
+    /// verifies the controller again and gets a new authorization.
+    public var canStartNext: Bool { canResolveManually }
 
     public var canResolveManually: Bool {
         (phase == .failed && failure?.needsReview == true)
@@ -269,6 +286,7 @@ extension ShowerState {
         holdSettle = try c.decodeIfPresent(Bool.self, forKey: .holdSettle) ?? false
         timerResumedAt = try? c.decodeIfPresent(Date.self, forKey: .timerResumedAt)
         heldConsumption = try? c.decodeIfPresent(String.self, forKey: .heldConsumption)
+        waitingForRelease = try c.decodeIfPresent(Bool.self, forKey: .waitingForRelease) ?? false
     }
 }
 
@@ -450,6 +468,11 @@ public enum ShowerReducer {
                 s.stateReviewRequired = false
                 s.notice = .inUseByOther
                 return (s, [.releaseDevice])
+            case .active where state.stateReviewRequired || state.waitingForRelease:
+                // The controller already showed this session stopped: water running now may be
+                // anyone's. The check stands and the link is let go.
+                s.notice = .inUseByOther
+                return (s, [.releaseDevice])
             case .active:
                 // Back on the timer, but an A5 proves nothing about whose water it is: without
                 // the acknowledgement, the end still waits for the user.
@@ -485,6 +508,9 @@ public enum ShowerReducer {
         case (.failed, .probeReplied(let frame)) where state.reviewing && state.failure?.reason == .closeUnconfirmed:
             s.reviewing = false
             switch ShowerFrames.classify(frame) {
+            case .active where state.waitingForRelease:
+                // The next use already found it in use and let it go: it stays let go.
+                s.notice = .inUseByOther
             case .active:
                 // Back to the timer, so 结束 can send the close again. Our close most likely took
                 // (it was acknowledged, or answered with another identity), so this water is most

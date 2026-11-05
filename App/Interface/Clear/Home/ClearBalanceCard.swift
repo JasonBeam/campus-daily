@@ -53,7 +53,7 @@ struct ClearBalanceCard: View {
         return ClearBalanceColumn(title:"电量", figure:figure, value:figure.value.map(Theme.kwh), unit:"度",
                                   spoken:HomeDuo.spokenPower(figure),
                                   extra:balance.map { "电费余额 " + Theme.yuan($0) },
-                                  link:data.signedIn && data.powerBound ? "充电费 ›" : nil,
+                                  link:CampusTopUpEntry.powerLink(signedIn:data.signedIn, meterBound:data.powerBound),
                                   openLink:{ navigator.push(.power) },
                                   openMeter:{ navigator.push(.powerSetup) })
     }
@@ -62,7 +62,7 @@ struct ClearBalanceCard: View {
         let figure = data.cardFigure(now:now)
         return ClearBalanceColumn(title:"校园卡", figure:figure, value:figure.value.map(CampusFormat.plainYuan), unit:"元",
                                   spoken:HomeDuo.spokenCard(figure), extra:nil,
-                                  link:data.signedIn ? "充校园卡 ›" : nil,
+                                  link:CampusTopUpEntry.cardLink(signedIn:data.signedIn),
                                   openLink:{ navigator.push(.card) }, openMeter:{})
     }
 }

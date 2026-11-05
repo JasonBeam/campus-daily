@@ -12,7 +12,7 @@ struct ClearBalanceColumn: View {
     let spoken: String
     /// 「电费余额 ¥23.40」.
     let extra: String?
-    /// 「充电费 ›」; nil hides it (signed out, no meter).
+    /// 「充值 ›」 to 校园充值; nil hides it (signed out, no meter).
     let link: String?
     let openLink: () -> Void
     /// 「还没找到电表 · 去设置」.
@@ -28,7 +28,8 @@ struct ClearBalanceColumn: View {
                     .buttonStyle(.plain)
                     // 20 to the eye, 44 to the finger.
                     .padding(.vertical,12).contentShape(Rectangle()).padding(.vertical,-12)
-                    .accessibilityLabel(String(link.dropLast(2)))
+                    // Both links read 充值: VoiceOver says which balance.
+                    .accessibilityLabel(title + "充值")
             }
         }
         .frame(maxWidth:.infinity, alignment:.leading)

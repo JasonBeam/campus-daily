@@ -54,8 +54,6 @@ struct HomeView: View {
     /// (「先看看示例」, also in Release). Nil = live models.
     @State var demo: HomeData?
     @State var laundryDemo: LaundryDemo?
-    /// campusdaily://demo/recharge-blocked: the top-up page when its web view can't be allowed to load.
-    @State var rechargeBlockedDemo = false
     /// campusdaily://demo/records/<state> and the sample: 校园卡记录 on synthetic pages.
     @State var recordsDemo: RecordsDemo?
     #if DEBUG

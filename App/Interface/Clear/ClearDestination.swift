@@ -31,9 +31,9 @@ struct ClearDestination: View {
         case .shower: ClearShowerPage()
         case .laundry: ClearLaundryPage()
         case .washerSetup: WasherSetupView(onDone:washerSetupDone)
-        case .power: if campus.powerConfigured { CampusRechargeView(kind:.electricity) } else { CampusPowerSetupView() }
+        case .power: if campus.powerConfigured { CampusTopUpView() } else { CampusPowerSetupView() }
         case .powerSetup: CampusPowerSetupView()
-        case .card: CampusRechargeView(kind:.card, demoBlocked:navigator.rechargeBlockedDemo)
+        case .card: CampusTopUpView()
         case .account: AccountView(preview:navigator.demo)
         case .dorm: CampusOnboardingView()
         case .theme: ThemeSettingsView(preview:navigator.demo)

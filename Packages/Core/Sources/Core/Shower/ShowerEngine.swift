@@ -173,6 +173,78 @@ public actor ShowerEngine {
         return true
     }
 
+    /// The next use over a record that waits for the user's check (`ShowerState.canStartNext`),
+    /// such as a shower stopped with the controller's own button. The controller is probed
+    /// first: still in use (`A5`), the link is let go and the record is marked
+    /// `waitingForRelease`; another or no controller changes nothing. Idle with this machine's
+    /// identity, the record is kept as it is (`ShowerVault.retainShower`, never settled), and
+    /// only then a new record asks for a new authorization with that fresh identity frame.
+    @discardableResult
+    public func startNext(_ b: ShowerBinding) async throws -> ShowerState {
+        try guardIdle()
+        try resetMarker?.checkStart(at: now())
+        guard state.canStartNext else { throw ShowerEngineError.notAllowed }
+        let machine = b.machineId.uppercased()
+        guard state.machineID == machine else { throw ShowerEngineError.wrongBinding }
+        busy = true
+        defer { busy = false; binding = nil }
+        let previous = state
+        let peripheral: String
+        let probe: Data
+        do {
+            peripheral = try await transport.connect(bleName: configuration.bleName, machineID: machine, required: nil,
+                                                     preferred: b.peripheralID ?? previous.peripheralID)
+            probe = try await transport.exchange(ShowerFrames.probeCommand)
+        } catch {
+            await transport.disconnect()
+            return noticed(.device(Self.deviceError(error)))
+        }
+        // Cancelled while it connected or probed: whatever the controller answered, nothing
+        // changes (no mark, no record kept, no authorization).
+        guard !Task.isCancelled else {
+            await transport.disconnect()
+            return noticed(.device(.interrupted))
+        }
+        switch ShowerFrames.classify(probe) {
+        case .active:
+            var waiting = previous
+            waiting.waitingForRelease = true
+            waiting.notice = .device(.busy)
+            try await commit(waiting)
+            await transport.disconnect()
+            await hooks?.diagnostic("nextUse.deviceBusy")
+            return state
+        case .idle(let id) where id == machine:
+            break
+        case .idle:
+            await transport.disconnect()
+            return noticed(.wrongDevice)
+        case .unreadable:
+            await transport.disconnect()
+            return noticed(.device(.malformedFrame))
+        }
+        do { try vault.retainShower(previous.persistable) }
+        catch {
+            storageBlocked = true
+            publish()
+            await transport.disconnect()
+            throw ShowerEngineError.storage
+        }
+        await hooks?.diagnostic("nextUse.recordKept")
+        startCancelled = false; authorizeLeft = false
+        binding = b
+        try await commit(ShowerState(phase: .authorizing, machineID: machine, peripheralID: previous.peripheralID,
+                                     lastReceipt: previous.lastReceipt))
+        return try await loop(.connected(peripheralID: peripheral, probe: probe))
+    }
+
+    /// A line for the user over an unchanged record (not saved: `persistable` drops it).
+    private func noticed(_ notice: ShowerNotice) -> ShowerState {
+        state.notice = notice
+        publish()
+        return state
+    }
+
     /// 结束: probe (`A5` required), close, settle once.
     @discardableResult
     public func finish(_ b: ShowerBinding) async throws -> ShowerState {
@@ -247,6 +319,10 @@ public actor ShowerEngine {
         busy = true
         binding = b
         defer { busy = false; binding = nil }
+        return try await loop(first)
+    }
+
+    private func loop(_ first: ShowerEvent) async throws -> ShowerState {
         var queue = [first]
         while !queue.isEmpty {
             let event = queue.removeFirst()

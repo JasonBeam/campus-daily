@@ -43,6 +43,7 @@ struct ClearShowerDock: View {
                 if flow.presented {
                     primary(ShowerPageText.review, enabled:!flow.rechecking) { shower.pageEvent(.reviewTapped) }
                     secondary("先回首页", enabled:true) { close(.homeTapped) }
+                    startNextButton
                 } else {
                     // After 去核对: marked checked here, as on 暖橙's 热水洗澡 screen.
                     primary(ShowerPageText.resolve, enabled:live && shower.mayResolveManually) { confirmResolve = true }
@@ -52,6 +53,7 @@ struct ClearShowerDock: View {
                 if flow.presented {
                     secondary(ShowerPageText.review, enabled:!flow.rechecking) { shower.pageEvent(.reviewTapped) }
                 }
+                startNextButton
             }
         }
         .frame(maxWidth:560)
@@ -115,6 +117,15 @@ struct ClearShowerDock: View {
         }
         .buttonStyle(ClearShowerButtonStyle())
         .disabled(!enabled)
+    }
+
+    /// Over a record that waits for its check: keeps it and starts the next shower.
+    @ViewBuilder private var startNextButton: some View {
+        if (live && shower.mayStartNext) || (!live && shower.showsStartNext) {
+            secondary(ShowerPageText.startNext, enabled:true) { Task { await shower.startNext() } }
+                .accessibilityIdentifier("showerStartNext")
+            note(ShowerPageText.startNextNote).accessibilityIdentifier("showerStartNextNote")
+        }
     }
 
     private func secondary(_ title: String, enabled: Bool, action: @escaping () -> Void) -> some View {

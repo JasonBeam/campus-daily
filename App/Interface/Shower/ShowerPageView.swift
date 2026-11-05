@@ -21,13 +21,22 @@ enum ShowerPageText {
     static let unsure = "不确定结算了没有"
     static let unsureBody = "别再点结算，免得重复扣钱。核对一下学校那边这次扣了没有。"
     static let check = "这次洗澡要核对一下"
-    static let checkBody = "水控显示已经停了，但这次还没结算上。去学校的热水记录里看看扣了没有，核对完才能再洗。"
+    static let checkBody = "水控显示已经停了，但这次还没结算上。去学校的热水记录里看看扣了没有。"
     /// The home button while that check waits.
     static let checkButton = "核对上次洗澡"
     static let review = "去核对"
     static let resolve = "我在学校记录里核对过了"
     /// The needs-check face's read-only probe, under the body.
     static let recheck = "再查一次水控"
+    /// The next shower over a record that waits for its check; the record is kept, unsettled.
+    static let startNext = "再洗一次"
+    /// The line under 再洗一次.
+    static let startNextNote = "上一次的记录会留着，扣没扣以学校的热水记录为准。先确认水控已经停水，再点这里。"
+    /// The check face once 再洗一次 or 再查一次水控 found the controller in use (title `inUse`).
+    static let checkInUseBody = "水控显示正在用水，现在开不了新的一次。如果是你刚才没停的水，先在水控上按停，再点「再洗一次」。"
+    /// The check face's headline and body: 水控有人在用 while the controller was just found in use.
+    static func checkTitle(_ flow: ShowerPageFlow) -> String { flow.checkInUse ? inUse : check }
+    static func checkBody(_ flow: ShowerPageFlow) -> String { flow.checkInUse ? checkInUseBody : checkBody }
     static let rechecking = "正在查水控…"
     /// The unsure face of a settlement that failed: settle once more, after a second tap.
     /// 我在学校记录里核对过了 is behind that face's 去核对.
@@ -66,6 +75,8 @@ enum ShowerPageText {
         case .busy: return SchoolLoginText.busy
         case .failed: return "没查到水控，再试一次。"
         case .unavailable: return "现在查不了，等一下再试。"
+        // The face itself turns to 水控有人在用; this is what VoiceOver hears.
+        case .inUse: return inUse + "。" + checkInUseBody
         }
     }
     static let resolveConfirm = "这次洗澡核对过了吗？"
@@ -164,6 +175,12 @@ struct ShowerPageView: View {
             guard let result else { return }
             AccessibilityNotification.Announcement(ShowerPageText.recheckResult(result)).post()
         }
+        .onChange(of:flow.checkInUse) { _, inUse in
+            // 再查一次水控 says it with its result.
+            guard inUse, flow.recheckResult != .inUse else { return }
+            errorTick += 1
+            AccessibilityNotification.Announcement(ShowerPageText.inUse + "。" + ShowerPageText.checkInUseBody).post()
+        }
         .onChange(of:flow.endFailed) { _, failure in
             guard let failure else { return }
             errorTick += 1
@@ -259,7 +276,11 @@ struct ShowerPageView: View {
                 }
             case .unsure:
                 icon("questionmark.circle", Theme.notice)
-                if let copy = page?.authorizeUnclear {
+                if flow.checkInUse {
+                    // 再洗一次 found the controller in use.
+                    title(ShowerPageText.inUse)
+                    bodyText(ShowerPageText.checkInUseBody)
+                } else if let copy = page?.authorizeUnclear {
                     // Nothing reached the controller: no settlement to talk about.
                     title(copy.title)
                     bodyText(copy.body)
@@ -272,8 +293,8 @@ struct ShowerPageView: View {
                 if flow.mayRetrySettle { ShowerSettleRetryRow().padding(.top,18) }
             case .needsCheck:
                 icon("questionmark.circle", Theme.notice)
-                title(ShowerPageText.check)
-                bodyText(ShowerPageText.checkBody)
+                title(ShowerPageText.checkTitle(flow))
+                bodyText(ShowerPageText.checkBody(flow))
                 ShowerRecheckRow().padding(.top,18)
             }
         }
@@ -378,12 +399,14 @@ struct ShowerPageView: View {
                     shower.pageEvent(.reviewTapped)
                 }
                 textButton("先回首页") { shower.pageEvent(.homeTapped) }
+                startNextButton
             case .needsCheck:
                 capsule(ShowerPageText.review, background:Theme.pill, ink:Theme.pillInk, enabled:!flow.rechecking) {
                     shower.pageEvent(.reviewTapped)
                 }
                 textButton(ShowerPageText.resolve) { confirmResolve = true }
                     .disabled(!flow.mayResolve).opacity(flow.mayResolve ? 1 : 0.5)
+                startNextButton
             }
         }
     }
@@ -398,6 +421,17 @@ struct ShowerPageView: View {
         }
         .buttonStyle(PressScaleStyle())
         .disabled(!enabled)
+    }
+
+    /// Over a record that waits for its check: keeps it and starts the next shower.
+    @ViewBuilder private var startNextButton: some View {
+        if shower.showsStartNext {
+            textButton(ShowerPageText.startNext) { Task { await shower.startNext() } }
+                .accessibilityIdentifier("showerStartNext")
+            Text(ShowerPageText.startNextNote).scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
+                .multilineTextAlignment(.center).fixedSize(horizontal:false, vertical:true)
+                .accessibilityIdentifier("showerStartNextNote")
+        }
     }
 
     private func textButton(_ label: String, action: @escaping () -> Void) -> some View {

@@ -86,6 +86,10 @@ enum ShowerProfileFiles {
     private var rebuildPending = false
     /// Last action's message (nil = nothing to say).
     @Published private(set) var message: String?
+    #if DEBUG
+    /// Demo: 再洗一次 drawn over a synthetic record that waits for its check (the tap does nothing).
+    @Published var demoStartNext = false
+    #endif
     @Published private(set) var storageBlocked = false
     /// The saved shower record is there but can't be decoded (another build wrote it): a
     /// relaunch doesn't help, the school's record says what happened.
@@ -164,6 +168,18 @@ enum ShowerProfileFiles {
     /// 检查水控状态: while water may run, and after a close that may not have taken.
     var mayReview: Bool { configured && engine != nil && !busy && !storageBlocked && state.canReview }
     var mayResolveManually: Bool { engine != nil && !busy && state.canResolveManually }
+    /// The next shower over a record that waits for its check: the record is kept, unsettled.
+    var mayStartNext: Bool {
+        configured && !platformMissing && !residenceReviewRequired && engine != nil && !busy && !storageBlocked && !inspecting
+            && state.canStartNext
+    }
+    /// 再洗一次 is on the check face.
+    var showsStartNext: Bool {
+        #if DEBUG
+        if demoStartNext { return true }
+        #endif
+        return mayStartNext
+    }
     var mayRetrySettle: Bool { !platformMissing && engine != nil && !busy && state.canRetrySettle }
     /// Binding / profile may change only with no session that could still be open or charged.
     var mayImport: Bool { ShowerImportRule.mayImport(state, busy:busy, storageBlocked:storageBlocked) }
@@ -464,6 +480,27 @@ enum ShowerProfileFiles {
         // nil: the Keychain refused; the record and the clear button stay.
     }
 
+    /// 下一次洗澡 over a record that waits for its check (`ShowerEngine.startNext`): the record is
+    /// kept as it is, the controller is checked again and a new authorization is asked for. A
+    /// controller still in use is let go, with a line saying so.
+    func startNext() async {
+        guard let engine, let binding, mayStartNext else { return }
+        busy = true; message = nil
+        defer { busy = false }
+        do {
+            let result = try await engine.startNext(binding)
+            apply(result)
+            if let stored = (try? services.showerVault.binding()) ?? nil, stored.machineId == binding.machineId {
+                self.binding = stored
+            }
+            // In use: the check face says 水控有人在用 itself (`ShowerPageFlow.checkInUse`).
+            message = result.notice == .device(.busy) ? nil : Self.noticeText(result.notice)
+        } catch {
+            storageBlocked = await engine.storageBlocked
+            message = ShowerActionFailure.thrown(error, failure:await engine.state.failure, other:AppErrorText.text).message
+        }
+    }
+
     func resolveManually() async {
         guard let engine, !busy else { return }
         busy = true; defer { busy = false }
@@ -565,7 +602,7 @@ enum ShowerProfileFiles {
 
     static let inspectionVerifiedText = "找到了，是这间的水控。"
     nonisolated static let inspectionShoweringText = "正在洗澡，洗完再核对水控。"
-    nonisolated static let inspectionAwaitingCheckText = "上次洗澡还没核对，核对完再来。"
+    nonisolated static let inspectionAwaitingCheckText = "上次洗澡还没核对。先确认水控已经停水，就能再洗一次。"
     static let inspectionBusyText = "附近的水控有人在用，现在核对不了是不是这间的。等它空了再试。"
 
     static func noticeText(_ notice: ShowerNotice?) -> String? {

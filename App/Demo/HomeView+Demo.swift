@@ -56,13 +56,6 @@ extension HomeView {
                 freshPush(.records)
                 return
             }
-            if url.host == "demo", url.lastPathComponent == "recharge-blocked" {
-                onboarding = nil
-                demo = HomeDemo.normal.content().0
-                rechargeBlockedDemo = true
-                freshPush(.card)
-                return
-            }
             if url.host == "demo", url.lastPathComponent.hasPrefix("account-switched") || url.lastPathComponent.hasPrefix("account-unconfirmed") {
                 // Account-switch alert over the home demo (「account-unconfirmed」: the login couldn't
                 // tell the previous person); 「-water」 adds the hot-water line and button.
@@ -137,6 +130,7 @@ extension HomeView {
                 case "sh-check-busy": shower.page.recheckResult = .busy
                 case "sh-check-failed": shower.page.recheckResult = .failed
                 case "sh-check-unavailable": shower.page.recheckResult = .unavailable
+                case "sh-check-inuse": shower.page.recheckResult = .inUse
                 case "sh-detail-check-rechecking": shower.page.rechecking = true
                 default: break
                 }

@@ -117,9 +117,9 @@ struct ShowerDetail: View {
         VStack(alignment:.leading, spacing:0) {
             Image(systemName:"questionmark.circle").font(.system(size:34)).foregroundStyle(Theme.notice)
                 .accessibilityHidden(true).padding(.bottom,14)
-            Text(ShowerPageText.check).scaledFont(28, .bold, relativeTo:.title).foregroundStyle(Theme.ink)
+            Text(ShowerPageText.checkTitle(shower.page)).scaledFont(28, .bold, relativeTo:.title).foregroundStyle(Theme.ink)
                 .fixedSize(horizontal:false, vertical:true).accessibilityAddTraits(.isHeader)
-            Text(ShowerPageText.checkBody).scaledFont(17, relativeTo:.body).foregroundStyle(Theme.ink2).lineSpacing(6)
+            Text(ShowerPageText.checkBody(shower.page)).scaledFont(17, relativeTo:.body).foregroundStyle(Theme.ink2).lineSpacing(6)
                 .fixedSize(horizontal:false, vertical:true).padding(.top,10)
             ShowerRecheckRow().padding(.top,18)
         }
@@ -131,7 +131,8 @@ struct ShowerDetail: View {
     /// Settings, say) runs, since the tap would do nothing then.
     private var resolveButton: some View {
         let enabled = shower.page.mayResolve && !shower.busy
-        return Button { confirmResolve = true } label: {
+        return VStack(spacing:6) {
+        Button { confirmResolve = true } label: {
             Text(ShowerPageText.resolve).scaledFont(18, .semibold, relativeTo:.headline)
                 .foregroundStyle(enabled ? Theme.pillInk : Theme.ink3)
                 .frame(maxWidth:.infinity).frame(minHeight:60)
@@ -145,6 +146,18 @@ struct ShowerDetail: View {
             Button("取消", role:.cancel) {}
         } message: {
             Text(ShowerPageText.resolveConfirmNote)
+        }
+        // As on the shower page's check face: keeps this record and starts the next shower.
+        if shower.showsStartNext {
+            Button { Task { await shower.startNext() } } label: {
+                Text(ShowerPageText.startNext).scaledFont(17, .medium, relativeTo:.body).foregroundStyle(Theme.ink2)
+                    .frame(maxWidth:.infinity).frame(minHeight:50)
+            }
+            .buttonStyle(RowPressStyle())
+            .accessibilityIdentifier("showerStartNext")
+            Text(ShowerPageText.startNextNote).scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
+                .multilineTextAlignment(.center).fixedSize(horizontal:false, vertical:true)
+        }
         }
         .padding(.horizontal,20).padding(.top,12).padding(.bottom,10)
         .background(NativeTheme.background)

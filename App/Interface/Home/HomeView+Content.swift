@@ -7,13 +7,23 @@ extension HomeView {
     /// The school's day, as 最近 below it.
     var dateTitle: String { SchoolCalendar.dayTitle(Date()) }
 
+    /// A balance tapped: 校园充值 (on `route`, which the sample shows as its own page), the
+    /// meter picker, or the login step.
+    func openBalance(_ entry: CampusTopUpEntry, as route: HomeRoute) {
+        switch entry {
+        case .topUp: path.append(route)
+        case .bindMeter: path.append(.powerSetup)
+        case .signIn: openOnboarding()
+        }
+    }
+
     @ViewBuilder func content(_ data: HomeData) -> some View {
         let now = Date()
         VStack(alignment:.leading, spacing:0) {
             dateBlock(data).id("top")
             HomeDuo(card:data.cardFigure(now:now), power:data.powerFigure(now:now),
-                    cardAction:{ data.signedIn ? path.append(.card) : openOnboarding() },
-                    powerAction:{ data.signedIn ? path.append(data.powerBound ? .power : .powerSetup) : openOnboarding() })
+                    cardAction:{ openBalance(CampusTopUpEntry.card(signedIn:data.signedIn), as:.card) },
+                    powerAction:{ openBalance(CampusTopUpEntry.power(signedIn:data.signedIn, meterBound:data.powerBound), as:.power) })
                 .padding(.top,28)
             HomeUpdateLineView(line:data.updateLine, now:now) { signInAgain(data) }
                 .padding(.top,16).padding(.horizontal,24)
@@ -231,10 +241,9 @@ extension HomeView {
 
     @ViewBuilder func liveDestination(_ route: HomeRoute) -> some View {
         switch route {
-        case .power: if campus.powerConfigured { CampusRechargeView(kind:.electricity) } else { CampusPowerSetupView() }
+        case .power: if campus.powerConfigured { CampusTopUpView() } else { CampusPowerSetupView() }
         case .powerSetup: CampusPowerSetupView()
-        case .card:
-            CampusRechargeView(kind:.card, demoBlocked:rechargeBlockedDemo)
+        case .card: CampusTopUpView()
         // Not set up yet: hot water is bound by choosing the dorm.
         case .shower:
             // Demo records have no binding behind them.

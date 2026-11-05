@@ -7,6 +7,16 @@ public protocol ShowerVault: Sendable {
     func saveBinding(_ binding: ShowerBinding?) throws
     func showerState() throws -> ShowerState?
     func saveShowerState(_ state: ShowerState?) throws
+    /// Records kept by a next use while they wait for the user's check, oldest first.
+    func retainedShowers() throws -> [ShowerState]
+    /// Keeps `state` as it is (adds it once). Throws when it can't be kept for sure.
+    func retainShower(_ state: ShowerState) throws
+}
+
+extension ShowerVault {
+    public func retainedShowers() throws -> [ShowerState] { [] }
+    /// A vault that can't keep records refuses: the next use never goes ahead without it.
+    public func retainShower(_ state: ShowerState) throws { throw ShowerEngineError.storage }
 }
 
 extension ShowerVault {

@@ -12,6 +12,8 @@ public enum StoreKey: String, Sendable, CaseIterable {
     case schoolDevice = "school.device"
     case showerBinding = "water.binding"
     case showerSession = "water.session"
+    /// Hot-water records kept by a next use while they wait for the user's check.
+    case showerRetained = "water.retained"
     case laundryAccount = "laundry.account"
     case laundryCheckout = "laundry.checkout"
     case sharedSnapshot = "shared.snapshot"
@@ -44,7 +46,7 @@ public enum StoreKey: String, Sendable, CaseIterable {
         switch self {
         case .sharedSnapshot, .sharedReminderLines, .sharedCredentialLog, .sharedResetMarker, .schoolEcykt, .schoolPortal, .schoolProfile, .schoolPassword, .schoolDevice:
             return true
-        case .showerBinding, .showerSession, .laundryAccount, .laundryCheckout: return false
+        case .showerBinding, .showerSession, .showerRetained, .laundryAccount, .laundryCheckout: return false
         }
     }
 }

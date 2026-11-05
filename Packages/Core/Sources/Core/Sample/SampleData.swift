@@ -182,7 +182,10 @@ public enum SampleData {
         case "sh-run", "sh-endfail": return ShowerState(phase: .running, startedAt: start)
         case "sh-check", "sh-check-rechecking", "sh-check-stopped", "sh-check-nocon",
              "sh-check-bt", "sh-check-busy", "sh-check-failed", "sh-check-unavailable",
-             "sh-detail-check", "sh-detail-check-rechecking": return ShowerState(phase: .running, startedAt: start, stateReviewRequired: true, notice: .notActive)
+             "sh-detail-check", "sh-detail-check-rechecking", "sh-check-inuse": return ShowerState(phase: .running, startedAt: start, stateReviewRequired: true, notice: .notActive)
+        // 再洗一次 found the controller in use.
+        case "sh-check-nextbusy":
+            return ShowerState(phase: .running, startedAt: start, stateReviewRequired: true, notice: .device(.busy), waitingForRelease: true)
         case "sh-settle": return ShowerState(phase: .settling, startedAt: start)
         case "sh-done":
             return ShowerState(phase: .done, startedAt: now.addingTimeInterval(-TimeInterval(lastShowerMinutes) * 60),
