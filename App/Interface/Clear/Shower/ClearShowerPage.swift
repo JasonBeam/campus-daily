@@ -27,6 +27,9 @@ struct ClearShowerPage: View {
     /// Every face has its cost card but a shower that is over: the app won't settle it, so
     /// 「本次费用 · 结算后显示」 would promise what doesn't come.
     static func showsCostCard(_ phase: ShowerPagePhase?) -> Bool { phase != .stopped }
+    /// 最近一次用水 names the last shower the app settled: over a shower that is over it would
+    /// read as the cost of the one that just ended, so only the start layout shows it.
+    static func showsLastUse(_ phase: ShowerPagePhase?) -> Bool { phase != .stopped }
 
     var body: some View {
         ScrollView {
@@ -34,7 +37,7 @@ struct ClearShowerPage: View {
                 roomLine
                 ClearShowerHeadline(phase:phase, configured:configured, live:live)
                 if Self.showsCostCard(phase) { ClearShowerCostCard(phase:phase, live:live) }
-                // Over: the start layout's 最近一次用水 and 连接检查 (in use: its own words only).
+                // Over: the start layout's 连接检查, without 最近一次用水 (in use: its own words only).
                 if phase == nil || (phase == .stopped && !flow.foundInUse) { idleExtras }
             }
             .padding(20).frame(maxWidth:560).frame(maxWidth:.infinity)
@@ -102,7 +105,7 @@ struct ClearShowerPage: View {
     /// With no session: the last shower, the way out of an unreadable record, and the
     /// controller check (or the way to set up hot water).
     @ViewBuilder private var idleExtras: some View {
-        if let last = lastUse { ClearShowerLastCard(last:last) }
+        if Self.showsLastUse(phase), let last = lastUse { ClearShowerLastCard(last:last) }
         if live, shower.recordUnreadable {
             // The record can't be read by this build: cleared only after the user checked the official record.
             Button(ShowerPageText.unreadableClear) { confirmClear = true }
