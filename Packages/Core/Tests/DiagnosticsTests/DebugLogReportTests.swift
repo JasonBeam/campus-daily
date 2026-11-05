@@ -92,7 +92,65 @@ final class DebugLogReportTests: XCTestCase {
     }
 }
 
-/// Which log the app gets at launch.
+/// What StoreKit says about the install, for `DebugLogLaunch.decision`.
+struct FakeInstallSource: InstallEnvironmentSource {
+    enum Answer: Sendable { case environment(InstallEnvironment), failure, hang }
+    let answer: Answer
+    struct Failure: Error {}
+    func environment() async throws -> InstallEnvironment {
+        switch answer {
+        case .environment(let e): return e
+        case .failure: throw Failure()
+        case .hang:
+            // Ignores cancellation, as StoreKit may: the timeout must not wait for it.
+            try? await Task.sleep(nanoseconds: 60_000_000_000)
+            return .sandbox
+        }
+    }
+}
+
+/// TestFlight is what StoreKit's app transaction says: `sandbox`. Only a positive `production`
+/// is the App Store; anything else is left undecided (no log, nothing deleted).
+final class DebugLogDecisionTests: XCTestCase {
+    func decide(_ answer: FakeInstallSource.Answer, timeout: TimeInterval = 1) async -> DebugLogDecision {
+        await DebugLogLaunch.decision(from: FakeInstallSource(answer: answer), timeout: timeout)
+    }
+
+    func testSandboxIsTestFlight() async {
+        let d = await decide(.environment(.sandbox))
+        XCTAssertEqual(d, .testFlight)
+    }
+
+    func testProductionIsTheAppStore() async {
+        let d = await decide(.environment(.production))
+        XCTAssertEqual(d, .appStore)
+    }
+
+    func testXcodeAndUnknownAreUndecided() async {
+        let x = await decide(.environment(.xcode))
+        let o = await decide(.environment(.other))
+        XCTAssertEqual(x, .undetermined)
+        XCTAssertEqual(o, .undetermined)
+    }
+
+    func testAnErrorIsUndecided() async {
+        let d = await decide(.failure)
+        XCTAssertEqual(d, .undetermined)
+    }
+
+    func testATimeoutIsUndecidedAndDoesNotWaitForStoreKit() async {
+        let start = Date()
+        let d = await decide(.hang, timeout: 0.1)
+        XCTAssertEqual(d, .undetermined)
+        XCTAssertLessThan(Date().timeIntervalSince(start), 5)
+    }
+
+    func testTheLaunchTimeoutIsFiveSeconds() {
+        XCTAssertEqual(DebugLogLaunch.timeout, 5)
+    }
+}
+
+/// The log the app gets at launch: it holds lines in memory until the install is known.
 final class DebugLogLaunchTests: XCTestCase {
     var base: URL!
     let clock = FakeClock(Date(timeIntervalSince1970: 1_793_332_800))
@@ -100,45 +158,140 @@ final class DebugLogLaunchTests: XCTestCase {
     override func tearDown() { try? FileManager.default.removeItem(at: base) }
 
     var folder: URL { FileDebugLog.directory(in: base) }
-
-    func testNotTestFlightKeepsNothingAndCreatesNothing() throws {
-        let log = DebugLogLaunch.sink(isTestFlight: false, applicationSupport: base, now: clock.function)
-        XCTAssertFalse(log.isEnabled)
-        log.record(.navOpen(.home, from: .launch))
-        XCTAssertEqual(log.lines(), [])
-        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: base.path), [])
+    func launchLog(_ support: URL? = nil, limit: Int = LaunchDebugLog.bufferLimit) -> LaunchDebugLog {
+        LaunchDebugLog(applicationSupport: support ?? base, now: clock.function, bufferLimit: limit)
     }
-
-    /// An App Store build installed over a TestFlight one: the old log goes at its first launch.
-    func testNotTestFlightDeletesALogLeftByATestFlightBuild() {
+    func leaveOldLog() {
         let old = FileDebugLog(directory: folder, now: clock.function)
         old.record(.navOpen(.home, from: .launch))
         old.flush()
         XCTAssertTrue(FileManager.default.fileExists(atPath: folder.path))
-        _ = DebugLogLaunch.sink(isTestFlight: false, applicationSupport: base, now: clock.function)
-        XCTAssertFalse(FileManager.default.fileExists(atPath: folder.path))
     }
 
-    func testTestFlightKeepsTheLogInItsFolderAndDropsWeekOldLines() {
-        let old = FileDebugLog(directory: folder, now: clock.function)
-        old.record(.navOpen(.home, from: .launch))
-        old.flush()
-        clock.advance(8 * 24 * 3600)
-        let log = DebugLogLaunch.sink(isTestFlight: true, applicationSupport: base, now: clock.function)
+    func testBeforeTheAnswerItIsOffAndWritesNothing() throws {
+        let log = launchLog()
+        log.record(.navOpen(.home, from: .launch))
+        XCTAssertFalse(log.isEnabled, "the feedback toggle and clear row stay hidden")
+        XCTAssertNil(log.decision)
+        XCTAssertEqual(log.lines(), [])
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: base.path), [])
+    }
+
+    func testTestFlightReplaysTheHeldLinesWithTheirTimes() {
+        let log = launchLog()
+        log.record(.navOpen(.home, from: .launch))
+        clock.advance(2)
+        log.record(.navOpen(.settings, from: .tab))
+        clock.advance(10)
+        log.resolve(.testFlight)
         XCTAssertTrue(log.isEnabled)
+        log.flush()
+        let lines = log.lines()
+        XCTAssertEqual(lines.count, 2)
+        XCTAssertTrue(lines[0].contains("nav.open"), lines.joined(separator: "\n"))
+        XCTAssertTrue(lines[1].contains("settings"), lines.joined(separator: "\n"))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: FileDebugLog(directory: folder).eventsFile.path))
+        log.record(.navOpen(.records, from: .tab))
+        log.flush()
+        XCTAssertEqual(log.lines().count, 3)
+    }
+
+    func testTheHeldLinesAreBounded() {
+        let log = launchLog(limit: 5)
+        for _ in 0..<8 { log.record(.navOpen(.home, from: .launch)) }
+        log.resolve(.testFlight)
+        log.flush()
+        XCTAssertEqual(log.lines().count, 5)
+        XCTAssertEqual(LaunchDebugLog.bufferLimit, 200)
+    }
+
+    func testTestFlightKeepsTheOldLogAndDropsWeekOldLines() {
+        leaveOldLog()
+        clock.advance(8 * 24 * 3600)
+        let log = launchLog()
+        log.resolve(.testFlight)
+        log.flush()
         XCTAssertEqual(log.lines(), [], "a week-old line goes at launch")
         log.record(.navOpen(.settings, from: .tab))
+        log.flush()
         XCTAssertEqual(log.lines().count, 1)
-        XCTAssertEqual((log as? FileDebugLog)?.directory.standardizedFileURL, folder.standardizedFileURL)
+    }
+
+    func testTheAppStoreDropsTheHeldLinesAndDeletesALeftoverLog() throws {
+        leaveOldLog()
+        let log = launchLog()
+        log.record(.navOpen(.home, from: .launch))
+        log.resolve(.appStore)
+        XCTAssertFalse(log.isEnabled)
+        log.record(.navOpen(.settings, from: .tab))
+        XCTAssertEqual(log.lines(), [])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: folder.path))
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: base.path), [])
+    }
+
+    /// A timeout, an error or an Xcode run: no log, and a TestFlight log already there stays.
+    func testUndecidedKeepsNothingAndDeletesNothing() {
+        leaveOldLog()
+        let log = launchLog()
+        log.record(.navOpen(.home, from: .launch))
+        log.resolve(.undetermined)
+        XCTAssertFalse(log.isEnabled)
+        XCTAssertEqual(log.lines(), [])
+        XCTAssertTrue(FileManager.default.fileExists(atPath: folder.path))
+        XCTAssertEqual(FileDebugLog(directory: folder, now: clock.function).lines().count, 1, "the old lines are untouched")
+    }
+
+    func testOnlyTheFirstAnswerCounts() {
+        leaveOldLog()
+        let log = launchLog()
+        log.resolve(.undetermined)
+        log.resolve(.appStore)
+        log.resolve(.testFlight)
+        XCTAssertEqual(log.decision, .undetermined)
+        XCTAssertFalse(log.isEnabled)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: folder.path))
+    }
+
+    /// A sign-out before the answer clears what was held and, on TestFlight, what was on disk.
+    func testAClearBeforeTheAnswerReachesTheFile() {
+        leaveOldLog()
+        let log = launchLog()
+        log.record(.navOpen(.home, from: .launch))
+        log.clear()
+        log.record(.navOpen(.settings, from: .tab))
+        log.resolve(.testFlight)
+        log.flush()
+        XCTAssertEqual(log.lines().count, 1)
+        XCTAssertTrue(log.lines()[0].contains("settings"))
     }
 
     func testNoFolderNoLog() {
-        XCTAssertFalse(DebugLogLaunch.sink(isTestFlight: true, applicationSupport: nil).isEnabled)
+        let log = LaunchDebugLog(applicationSupport: nil)
+        log.resolve(.testFlight)
+        XCTAssertFalse(log.isEnabled)
     }
 
-    func testNoDebugLogKeepsNothing() {
+    func testStartAsksTheSourceAndWaitingSeesTheAnswer() async {
+        let log = DebugLogLaunch.start(applicationSupport: base, source: FakeInstallSource(answer: .environment(.sandbox)),
+                                       timeout: 1, now: clock.function)
+        await log.waitUntilResolved()
+        XCTAssertEqual(log.decision, .testFlight)
+        XCTAssertTrue(log.isEnabled)
+    }
+
+    func testStartOnAHangingSourceEndsUndecided() async {
+        leaveOldLog()
+        let log = DebugLogLaunch.start(applicationSupport: base, source: FakeInstallSource(answer: .hang),
+                                       timeout: 0.1, now: clock.function)
+        await log.waitUntilResolved()
+        XCTAssertEqual(log.decision, .undetermined)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: folder.path))
+    }
+
+    func testNoDebugLogKeepsNothing() async {
         let log = NoDebugLog()
         log.record(.navOpen(.home, from: .launch))
+        await log.waitUntilResolved()
         XCTAssertFalse(log.isEnabled)
         XCTAssertEqual(log.lines(), [])
     }

@@ -53,8 +53,10 @@ public final class FileDebugLog: DebugLogSink, @unchecked Sendable {
 
     public var isEnabled: Bool { true }
 
-    public func record(_ event: DebugEvent) {
-        let at = now()
+    public func record(_ event: DebugEvent) { record(event, at: now()) }
+
+    /// A line recorded earlier (`LaunchDebugLog` replaying what it held), kept with its own time.
+    public func record(_ event: DebugEvent, at: Date) {
         queue.async { [self] in
             let fields = event.fields { self.tagOnQueue($0) }
             var text = fields.isEmpty ? event.name : "\(event.name) \(fields)"
@@ -255,21 +257,5 @@ public enum DebugLogReport {
         func compose(_ k: [String]) -> String { lead + header(k.count) + "\n" + k.joined(separator: "\n") }
         while !kept.isEmpty, compose(kept).utf16.count > limit { kept.removeFirst() }
         return kept.isEmpty ? text : compose(kept)
-    }
-}
-
-/// Picks the log once at launch. A TestFlight install keeps it (week-old lines dropped); any
-/// other install deletes a folder left by a TestFlight build and keeps nothing.
-public enum DebugLogLaunch {
-    public static func sink(isTestFlight: Bool, applicationSupport: URL?, now: @escaping @Sendable () -> Date = Date.init) -> any DebugLogSink {
-        guard let applicationSupport else { return NoDebugLog() }
-        let folder = FileDebugLog.directory(in: applicationSupport)
-        guard isTestFlight else {
-            if FileManager.default.fileExists(atPath: folder.path) { try? FileManager.default.removeItem(at: folder) }
-            return NoDebugLog()
-        }
-        let log = FileDebugLog(directory: folder, now: now)
-        log.pruneExpired()
-        return log
     }
 }

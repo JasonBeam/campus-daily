@@ -18,6 +18,8 @@ struct AdvancedSettingsView: View {
     @State private var debugLogCleared = false
     /// The row as the log stands (`DebugLogClearRow`), read on appear and after a clear.
     @State private var debugLogRow: DebugLogClearRow?
+    /// The log is on (TestFlight), once launch knows (`LaunchDebugLog`).
+    @State private var debugLogShown = false
     @State private var confirmDebugLogClear = false
     @State private var confirmReset = false
     @State private var resetIssue: String?
@@ -59,7 +61,7 @@ struct AdvancedSettingsView: View {
         }.listRowBackground(Theme.group)
     }
 
-    /// TestFlight only (the sample's and an App Store install's log is `NoDebugLog`). Off when
+    /// TestFlight only, once launch knows (the sample's log is `NoDebugLog`, an App Store install's is off). Off when
     /// there is nothing to clear; asks first.
     private var debugLogSection: some View {
         let row = debugLogRow ?? DebugLogClearRow(log:services.debugLog, cleared:debugLogCleared)
@@ -119,13 +121,17 @@ struct AdvancedSettingsView: View {
                     VersionRow()
                 }.listRowBackground(Theme.group)
             }
-            if services.debugLog.isEnabled { debugLogSection }
+            if debugLogShown || services.debugLog.isEnabled { debugLogSection }
             resetSection
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
         .background(Theme.bg.ignoresSafeArea())
         .navigationTitle("高级").navigationBarTitleDisplayMode(.inline)
+        .task {
+            await services.debugLog.waitUntilResolved()
+            debugLogShown = services.debugLog.isEnabled
+        }
         .alert("重置校日常？", isPresented:$confirmReset) {
             Button("取消", role:.cancel) {}
             Button("重置", role:.destructive) { runReset() }

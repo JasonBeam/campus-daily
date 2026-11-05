@@ -11,10 +11,4 @@ public enum VersionText {
     public static func isBeta(receiptName: String?, receiptExists: Bool) -> Bool {
         !receiptExists || receiptName == "sandboxReceipt"
     }
-
-    /// A TestFlight install: its receipt is there and named `sandboxReceipt`. Unlike `isBeta`,
-    /// a build from Xcode (no receipt) is not one. The debug log is kept only here.
-    public static func isTestFlight(receiptName: String?, receiptExists: Bool) -> Bool {
-        receiptExists && receiptName == "sandboxReceipt"
-    }
 }

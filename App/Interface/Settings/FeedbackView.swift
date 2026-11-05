@@ -94,6 +94,11 @@ struct FeedbackView: View {
                 Task { await load(items) }
             }
             .onAppear { logLines = Self.readLog(services.debugLog) }
+            .task {
+                // Shown once launch knows this is TestFlight (`LaunchDebugLog`).
+                await services.debugLog.waitUntilResolved()
+                logLines = Self.readLog(services.debugLog)
+            }
             .sheet(isPresented:$showingLog) { debugLogPreview }
             .alert("发出去了", isPresented:$sent) {
                 Button("好") { dismiss() }

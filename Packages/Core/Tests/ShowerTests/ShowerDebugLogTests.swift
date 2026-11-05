@@ -187,7 +187,8 @@ final class ShowerDebugLogTests: XCTestCase {
 
     /// An App Store, Xcode or sample run: the same shower, no folder, no file.
     func testWithoutTheLogAShowerCreatesNothing() async throws {
-        let log = DebugLogLaunch.sink(isTestFlight: false, applicationSupport: folder, now: clock.function)
+        let log = LaunchDebugLog(applicationSupport: folder, now: clock.function)
+        log.resolve(.appStore)
         try await fullShower(log)
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: folder.path), [])
     }

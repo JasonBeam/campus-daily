@@ -1,5 +1,6 @@
 import Foundation
 import Security
+import StoreKit
 import WidgetKit
 import Core
 
@@ -12,16 +13,9 @@ enum AppEnvironment {
 
     private static let applicationSupport = FileManager.default.urls(for:.applicationSupportDirectory, in:.userDomainMask).first
 
-    /// A TestFlight install (`sandboxReceipt`), worked out once. Not a build from Xcode.
-    static let isTestFlight: Bool = {
-        let receipt = Bundle.main.appStoreReceiptURL
-        return VersionText.isTestFlight(receiptName:receipt?.lastPathComponent,
-                                        receiptExists:receipt.map { FileManager.default.fileExists(atPath:$0.path) } ?? false)
-    }()
-
-    /// The TestFlight debug log (`FileDebugLog`); `NoDebugLog` in any other install, which
-    /// deletes a folder a TestFlight build left (`DebugLogLaunch`). Picked at launch.
-    static let debugLog: any DebugLogSink = DebugLogLaunch.sink(isTestFlight:isTestFlight, applicationSupport:applicationSupport)
+    /// The TestFlight debug log: holds lines in memory until StoreKit says where the app came
+    /// from, then a `FileDebugLog` on TestFlight and nothing anywhere else (`DebugLogLaunch`).
+    static let debugLog: any DebugLogSink = DebugLogLaunch.start(applicationSupport:applicationSupport, source:StoreKitInstallSource())
     /// Each request line: the system log, and the TestFlight log as names, hosts and codes.
     private static var httpLog: HTTPLogSink { DebugHTTPLogSink(debugLog) }
 
@@ -62,6 +56,23 @@ enum AppEnvironment {
     static var userAgent: String {
         let version = Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? "dev"
         return "XiaoRiChang/\(version) (iPhone; iOS \(ProcessInfo.processInfo.operatingSystemVersionString))"
+    }
+}
+
+/// Where the app came from, by its App Store-signed app transaction (verified or not): TestFlight
+/// signs it in `sandbox`, the App Store in `production`.
+struct StoreKitInstallSource: InstallEnvironmentSource {
+    func environment() async throws -> InstallEnvironment {
+        let transaction: AppTransaction
+        switch try await AppTransaction.shared {
+        case .verified(let t), .unverified(let t, _): transaction = t
+        }
+        switch transaction.environment {
+        case .sandbox: return .sandbox
+        case .production: return .production
+        case .xcode: return .xcode
+        default: return .other
+        }
     }
 }
 
