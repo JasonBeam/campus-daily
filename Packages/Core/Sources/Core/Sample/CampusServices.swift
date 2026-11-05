@@ -31,15 +31,21 @@ public final class CampusServices: @unchecked Sendable {
     public let applicationSupport: URL?
     /// Something shared with the widget changed (the theme, the snapshot): it draws again.
     public let sharedDidChange: @Sendable () -> Void
+    /// The TestFlight debug log; `NoDebugLog` in any other install and in every sample.
+    public let debugLog: any DebugLogSink
+    /// `nav.open` lines on `debugLog`, for the pages of both themes.
+    public let debugNav: DebugNav
 
     public init(kind: Kind, secureStore: any SecureStore, defaults: UserDefaults, sharedPreferences: (any PreferenceStorage)?,
                 schoolHTTP: any HTTPClient, showerHTTP: any HTTPClient, laundryHTTP: any HTTPClient, feedbackHTTP: (any HTTPClient)?,
                 showerTransport: any ShowerTransport, leaseFile: LeaseFile?, applicationSupport: URL?,
-                sharedDidChange: @escaping @Sendable () -> Void) {
+                sharedDidChange: @escaping @Sendable () -> Void, debugLog: any DebugLogSink = NoDebugLog()) {
         self.kind = kind; self.secureStore = secureStore; self.defaults = defaults; self.sharedPreferences = sharedPreferences
         self.schoolHTTP = schoolHTTP; self.showerHTTP = showerHTTP; self.laundryHTTP = laundryHTTP; self.feedbackHTTP = feedbackHTTP
         self.showerTransport = showerTransport; self.leaseFile = leaseFile; self.applicationSupport = applicationSupport
         self.sharedDidChange = sharedDidChange
+        self.debugLog = debugLog
+        self.debugNav = DebugNav(log: debugLog)
     }
 
     public var schoolVault: StoredSchoolVault { StoredSchoolVault(store: secureStore) }
@@ -51,14 +57,16 @@ public final class CampusServices: @unchecked Sendable {
     public func schoolStack(role: String = "app") -> SchoolRefreshStack {
         let changed = sharedDidChange
         return SchoolRefreshStack(store: secureStore, http: schoolHTTP, role: role, leaseWait: SchoolRefreshStack.appLeaseWait,
-                                  leaseFile: leaseFile, didWriteSnapshot: { changed() })
+                                  leaseFile: leaseFile, didWriteSnapshot: { changed() },
+                                  debugLog: role == "widget" ? NoDebugLog() : debugLog)
     }
 
     /// The hot-water engine as the app builds it, on these services: their vault, Bluetooth and
     /// the platform gateway `gateway` (over `showerHTTP`).
     public func showerEngine(gateway: any ShowerGateway, bleName: String) throws -> ShowerEngine {
         try ShowerEngine(transport: showerTransport, gateway: gateway, vault: showerVault,
-                         configuration: .init(bleName: bleName), resetMarker: resetMarker)
+                         configuration: .init(bleName: bleName),
+                         hooks: debugLog.isEnabled ? DebugLogShowerHooks(debugLog) : nil, resetMarker: resetMarker)
     }
 
     /// The hot-water platform client on `showerHTTP`.

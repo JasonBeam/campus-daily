@@ -24,7 +24,7 @@ struct ClearRecordsSignedOut: View {
         ContentUnavailableView {
             Label("登录后显示", systemImage:"person.crop.circle")
         } actions: {
-            Button { navigator.openSetup(at:.account) } label: {
+            Button { navigator.openSetup(at:.account, from:.cardRecords) } label: {
                 Text("登录学校账号").font(.headline).padding(.horizontal,8).frame(minHeight:40)
             }
             .buttonStyle(.borderedProminent)

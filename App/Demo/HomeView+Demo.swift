@@ -165,7 +165,7 @@ extension HomeView {
     /// A page pushed anew, so its @State starts from the demo: after the settings sheet has gone
     /// when it is up (`open(_:)`), otherwise a moment after home's pages are popped.
     func freshPush(_ route: HomeRoute) {
-        if settings { open([route]); return }
+        if settings { open([route], from:.deepLink); return }
         path = []; pathAfterSettings = nil
         Task { try? await Task.sleep(for:.milliseconds(350)); path = [route] }
     }
@@ -198,7 +198,7 @@ extension HomeView {
                 successTick += 1
                 if let record = ShowerPageDemo.record("sh-done") { shower.showDemoPage(record) }
             }
-        case .signIn: openOnboarding()
+        case .signIn: openOnboarding(from:.deepLink)
         case .settling: path.append(.shower)
         case .stopped: shower.pageEvent(.reopen)
         case .starting: break

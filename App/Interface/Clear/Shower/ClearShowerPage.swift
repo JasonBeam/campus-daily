@@ -44,6 +44,8 @@ struct ClearShowerPage: View {
         .navigationTitle("热水洗澡")
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(!flow.mayLeave)
+        // 上一次洗好了: the page turns to it on its own (`pageEvent`) unless a tap said why.
+        .navOpen(.showerStopped, shown:phase == .stopped, from:.pageEvent)
         .toolbar(flow.mayLeave ? .automatic : .hidden, for:.tabBar)
         .animation(reduceMotion ? .easeInOut(duration:0.2) : Theme.spring, value:phase)
         .sensoryFeedback(.success, trigger:successTick)

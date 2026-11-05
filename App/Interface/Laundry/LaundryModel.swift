@@ -130,7 +130,7 @@ enum LaundryLoginRefusal: Error { case otherAccount }
         do {
             let engine = try LaundryEngine(api:client, vault:vault, launcher:launcher,
                                            accountID:account?.account?.id,
-                                           resetMarker:services.resetMarker)
+                                           resetMarker:services.resetMarker, debugLog:services.debugLog)
             self.engine = engine
             observer = Task { [weak self] in
                 let blocked = await engine.storageBlocked
@@ -173,7 +173,15 @@ enum LaundryLoginRefusal: Error { case otherAccount }
         guard mayLogin else { throw LaundryEngineError.busy }
         guard !storageBlocked else { throw LaundryEngineError.storage }
         let device = device
-        let signedIn = try await UjingClient(http:services.laundryHTTP, device:device).login(mobile:mobile, code:code)
+        let signedIn: UjingAccount
+        do {
+            signedIn = try await UjingClient(http:services.laundryHTTP, device:device).login(mobile:mobile, code:code)
+            services.debugLog.record(.ujingLogin(.ok))
+        } catch {
+            // Its kind and code only: never the number or the code typed.
+            services.debugLog.record(.ujingLogin(DebugOutcome(error)))
+            throw error
+        }
         guard !loading, !checkoutBusy else { throw LaundryEngineError.busy }
         guard !storageBlocked else { throw LaundryEngineError.storage }
         if let record = checkout, !record.allowsLogin(as:signedIn.id, stored:account?.account?.id) {
@@ -212,7 +220,8 @@ enum LaundryLoginRefusal: Error { case otherAccount }
     func signOut() {
         guard signOutRefusal == nil else { return }
         guard !storageBlocked,
-              let outcome = try? UjingSignOut.perform(vault:vault, preferences:defaults, checkout:checkout)
+              let outcome = try? UjingSignOut.perform(vault:vault, preferences:defaults, checkout:checkout,
+                                                             debugLog:services.debugLog)
         else { signOutFailed = true; return }
         signOutFailed = false
         account = account.map { UjingAccountItem(mobileID:$0.mobileID) }

@@ -11,6 +11,8 @@ public actor SchoolSession {
     let now: @Sendable () -> Date
     /// Event names and measured ages only, never values (the credential-lifetime log).
     let diagnostic: @Sendable (String) -> Void
+    /// The TestFlight debug log (`NoDebugLog` in the widget and outside TestFlight).
+    let debugLog: any DebugLogSink
     /// False in the widget. Every saved password came with a login device id, so a widget that
     /// sees a password but no id is running before the app moved the id (and the portal token)
     /// out of its private group; a login then would start a second "browser" at the school and
@@ -39,10 +41,12 @@ public actor SchoolSession {
                 now: @escaping @Sendable () -> Date = Date.init, diagnostic: @escaping @Sendable (String) -> Void = { _ in },
                 createsLoginDeviceID: Bool = true,
                 recordsTimeout: TimeInterval = CardActivity.timeout,
-                meterRetryWait: @escaping @Sendable (TimeInterval) async -> Void = { try? await Task.sleep(nanoseconds: UInt64($0 * 1_000_000_000)) }) {
+                meterRetryWait: @escaping @Sendable (TimeInterval) async -> Void = { try? await Task.sleep(nanoseconds: UInt64($0 * 1_000_000_000)) },
+                debugLog: any DebugLogSink = NoDebugLog()) {
         self.portal = portal; self.ecykt = ecykt; self.vault = vault; self.passwordLogin = passwordLogin; self.now = now
         self.diagnostic = diagnostic; self.createsLoginDeviceID = createsLoginDeviceID
         self.recordsTimeout = recordsTimeout; self.meterRetryWait = meterRetryWait
+        self.debugLog = debugLog
     }
 
     // MARK: Refresh
@@ -69,6 +73,13 @@ public actor SchoolSession {
     /// where no lease exists).
     public func refresh(inBackground: Bool, mayMint: @Sendable () async -> Bool = { true }, owning: LeaseOwnership,
                         numbers: @Sendable (SchoolReading) async -> Void = { _ in }) async -> SchoolReading {
+        let reading = await read(inBackground: inBackground, mayMint: mayMint, owning: owning, numbers: numbers)
+        debugLog.record(.schoolRefresh(DebugSchoolOutcome(reading.outcome)))
+        return reading
+    }
+
+    private func read(inBackground: Bool, mayMint: @Sendable () async -> Bool, owning: LeaseOwnership,
+                      numbers: @Sendable (SchoolReading) async -> Void) async -> SchoolReading {
         // A read the Keychain refuses (before the first unlock) says nothing about the login:
         // only a read that finds nothing is "not signed in". A session that no longer decodes
         // won't on the next try either: the user signs in again.

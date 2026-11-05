@@ -12,7 +12,7 @@ struct FeedbackRow: View {
         if let endpoint = FeedbackReporter.endpoint, let http = services.feedbackHTTP {
             Button { open = true } label: { SettingsRow(symbol:"bubble.left", title:"反馈问题") }
                 .accessibilityIdentifier("feedbackRow")
-                .sheet(isPresented:$open) { FeedbackView(endpoint:endpoint, http:http).sampleChrome() }
+                .sheet(isPresented:$open) { FeedbackView(endpoint:endpoint, http:http).navOpen(.feedback, from:.settings).sampleChrome() }
         }
     }
 }

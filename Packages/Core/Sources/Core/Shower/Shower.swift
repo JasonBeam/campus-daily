@@ -343,7 +343,8 @@ public enum ShowerEffect: Sendable, Equatable {
     case releaseDevice
     /// Drop `peripheralID` from the saved binding: it answered with another machine's identity.
     case forgetPeripheral(String)
-    case diagnostic(String)
+    /// A note for the hooks (`ShowerHooks.diagnostic`).
+    case diagnostic(ShowerDiagnostic)
 }
 
 public enum ShowerReducer {
@@ -493,7 +494,7 @@ public enum ShowerReducer {
                 // The authorization never reached the controller and nothing runs: no water, no
                 // charge. The record ends as 结束 ends it (which checks `from == .writePending`).
                 return (state.idleAfter(receipt: state.lastReceipt),
-                        [.releaseDevice, .diagnostic("review.writeNeverApplied")])
+                        [.releaseDevice, .diagnostic(.reviewWriteNeverApplied)])
             case .idle(let id) where id == state.machineID:
                 // Stopped, and free again for the next shower.
                 s.stateReviewRequired = true
@@ -571,7 +572,7 @@ public enum ShowerReducer {
             case .idle(let id) where id == state.machineID:
                 if from == .writePending, state.authorizationNotWritten {
                     // The authorization never reached the controller: no water, no charge.
-                    return (state.idleAfter(receipt: state.lastReceipt), [.releaseDevice, .diagnostic("finish.writeNeverApplied")])
+                    return (state.idleAfter(receipt: state.lastReceipt), [.releaseDevice, .diagnostic(.finishWriteNeverApplied)])
                 }
                 // Stopped now, but an unconfirmed write may have been applied and run water.
                 var b = back(s, to: from, notice: .notActive)
@@ -599,7 +600,7 @@ public enum ShowerReducer {
                 s.holdSettle = false
                 s.heldConsumption = s.consumption
                 return (failed(s, .settleUnconfirmed, review: true, settleNotSent: true, settleHeld: true),
-                        [.releaseDevice, .diagnostic("settle.heldAfterUnconfirmedClose")])
+                        [.releaseDevice, .diagnostic(.settleHeldAfterUnconfirmedClose)])
             }
             s.phase = .settling
             return (s, [.releaseDevice, .settle(frame: frame)])
@@ -633,7 +634,7 @@ public enum ShowerReducer {
             s.settleRetryArmed = false
             s.manualSettleAttempts += 1
             s.failure = nil
-            return (s, [.diagnostic("settle.manualRetry#\(s.manualSettleAttempts)"), .settle(frame: frame)])
+            return (s, [.diagnostic(.settleManualRetry(s.manualSettleAttempts)), .settle(frame: frame)])
 
         case (.failed, .disarmSettleRetry) where state.settleRetryArmed:
             s.settleRetryArmed = false
@@ -641,7 +642,7 @@ public enum ShowerReducer {
 
         // MARK: leaving
         case (_, .resolveManually) where state.canResolveManually:
-            return (state.idleAfter(receipt: state.lastReceipt), [.releaseDevice, .diagnostic("resolvedManually.\(state.phase.rawValue)")])
+            return (state.idleAfter(receipt: state.lastReceipt), [.releaseDevice, .diagnostic(.resolvedManually(state.phase))])
 
         case (.done, .dismiss):
             return (state.idleAfter(receipt: state.receipt), [])

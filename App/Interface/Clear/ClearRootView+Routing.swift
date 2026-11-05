@@ -14,12 +14,15 @@ extension ClearRootView {
     func followShowerPage(_ up: Bool) {
         guard up else { return }
         navigator.relogin = false; navigator.setup = nil
-        showShowerPage()
+        showShowerPage(from:.pageEvent)
     }
 
     /// Already lower on the stack: back to it rather than a second copy, unless that would close
-    /// a page that must stay (`PageStack.showingShower`).
-    func showShowerPage() { navigator.showShowerPage(laundry:laundry.checkout?.phase) }
+    /// a page that must stay (`PageStack.showingShower`). The model's own requests say
+    /// `pageEvent`, unless a tap or a Shortcut said why just before.
+    func showShowerPage(from entry: DebugEntry) {
+        navigator.showShowerPage(laundry:laundry.checkout?.phase, from:entry, unlessPending:entry == .pageEvent)
+    }
 
     /// The shower page was popped (its back button, a link) while the model still has it up:
     /// while water runs that collapses it, as 暖橙's ⌄; otherwise it is put back.
@@ -27,7 +30,7 @@ extension ClearRootView {
         switch PageStack.showerLeft(old:old, new:new, presented:shower.page.presented, mayCollapse:shower.page.mayCollapse) {
         case .nothing: break
         case .collapse: shower.pageEvent(.collapseTapped)
-        case .putBack: showShowerPage()
+        case .putBack: showShowerPage(from:.restore)
         }
     }
 
@@ -44,20 +47,26 @@ extension ClearRootView {
 
     /// 日常 showing these pages, under the shower page while that is up: as in 暖橙, they are
     /// there once it goes.
-    func reveal(_ routes: [ClearRoute]) {
+    func reveal(_ routes: [ClearRoute], from entry: DebugEntry) {
+        var pages = Set(routes.map(\.debugPage))
+        if !shower.page.presented, navigator.tab != .home { pages.insert(.home) }
+        if !pages.isEmpty { navigator.mark(entry, pages:pages) }
         let routes = shower.page.presented ? routes + [.shower] : routes
         if !shower.page.presented { navigator.tab = .home }
         navigator.homePath = routes
     }
 
     /// Every stack back to its root and 日常 selected (the shower page stays while it is up).
-    func popAll() {
+    func popAll(from entry: DebugEntry) {
         navigator.recordsPath = []; navigator.settingsPath = []
-        reveal([])
+        reveal([], from:entry)
     }
 
     /// Another tab showing these pages; while the shower page can't be left it stays selected.
-    func show(_ routes: [ClearRoute], in tab: ClearNavigator.Tab) {
+    func show(_ routes: [ClearRoute], in tab: ClearNavigator.Tab, from entry: DebugEntry) {
+        var pages = Set(routes.map(\.debugPage))
+        if !showerLocked, navigator.tab != tab { pages.insert(tab.debugPage) }
+        if !pages.isEmpty { navigator.mark(entry, pages:pages) }
         navigator.setPath(routes, tab)
         if !showerLocked { navigator.tab = tab }
     }
@@ -69,6 +78,10 @@ extension ClearRootView {
     func openShowerSetup() {
         let target = PageStack.showerSetup(configured:shower.configured, home:navigator.homePath,
                                              settings:navigator.settingsPath, laundry:laundry.checkout?.phase)
+        switch target {
+        case .home(let routes): navigator.mark(.alert, pages:Set(routes.map(\.debugPage)).union(showerLocked || navigator.tab == .home ? [] : [.home]))
+        case .settings(let routes): navigator.mark(.alert, pages:Set(routes.map(\.debugPage)).union(showerLocked || navigator.tab == .settings ? [] : [.settings]))
+        }
         switch target {
         case .home(let routes):
             if routes != navigator.homePath { navigator.homePath = routes }
@@ -83,7 +96,7 @@ extension ClearRootView {
     func follow(_ route: Reminders.Route) {
         guard mayClosePages else { return }
         navigator.recordsPath = []; navigator.settingsPath = []
-        reveal(route == .laundry ? [.laundry] : [])
+        reveal(route == .laundry ? [.laundry] : [], from:.notification)
     }
 
     /// Nothing over home: 日常 at its root, no sheet or shower page, app in front.
@@ -100,10 +113,10 @@ extension ClearRootView {
     func afterReset() {
         navigator.setup = nil; navigator.relogin = false; navigator.panel = nil
         navigator.demo = nil; navigator.laundryDemo = nil; navigator.recordsDemo = nil
-        popAll()
+        popAll(from:.reset)
         successTick += 1
         // Let a closing sheet go first, otherwise the new one is not presented.
-        Task { try? await Task.sleep(for:.milliseconds(600)); navigator.openSetup() }
+        Task { try? await Task.sleep(for:.milliseconds(600)); navigator.openSetup(from:.reset) }
     }
 
     func presentLaundryDone(_ done: HomeData.LaundryDone?) {
@@ -130,13 +143,13 @@ extension ClearRootView {
         destination.supersede()
         guard mayClosePages else { return }
         switch link {
-        case .home: popAll()
+        case .home: popAll(from:.widget)
         // A paused automatic login (widget): 设置 › 学校账号, where the pause is explained.
-        case .settings(account:true): show([.account], in:.settings)
+        case .settings(account:true): show([.account], in:.settings, from:.widget)
         case .login:
-            popAll()
-            navigator.openSetup(at:.account)
-        case .settings(account:false): show([], in:.settings)
+            popAll(from:.widget)
+            navigator.openSetup(at:.account, from:.widget)
+        case .settings(account:false): show([], in:.settings, from:.widget)
         }
     }
 }

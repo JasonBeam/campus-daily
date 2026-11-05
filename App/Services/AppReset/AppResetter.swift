@@ -42,12 +42,13 @@ import Core
                              checkingController:shower.inspecting)
     }
 
-    /// Files the app wrote (the imported hot-water file, the laundry cache, what older builds left:
+    /// Files the app wrote (the imported hot-water file, the laundry cache, the TestFlight debug
+    /// log and its salt, what older builds left:
     /// the hot-water diagnostics and their export, the Bluetooth scan note). The bundled hot-water
     /// parameters are app resources and stay.
     private var files: [URL] {
         guard let support = services.applicationSupport else { return [] }
-        return ["Water", "LaundryCache", "WaterSession"].map { support.appendingPathComponent($0, isDirectory:true) }
+        return ["Water", "LaundryCache", "WaterSession", FileDebugLog.folderName].map { support.appendingPathComponent($0, isDirectory:true) }
             + [RetiredDiagnostics.exportFolder(in:FileManager.default.temporaryDirectory)]
     }
 
@@ -115,6 +116,8 @@ import Core
     }
 
     private func clear() throws {
+        // The log's lines and salt in memory too, not only its folder (below).
+        services.debugLog.clear()
         try AppReset.clear(store:services.secureStore, preferences:services.defaults,
                            preferencesDomain:Bundle.main.bundleIdentifier ?? "",
                            shared:sharedPreferences, files:files)

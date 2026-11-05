@@ -24,6 +24,6 @@ extension HomeView {
         guard due, sample.takeLogin() else { return }
         // As after a reset: let a sheet go first, or the cover is not presented. A newer link
         // in the meantime wins (`destination`).
-        destination.after(600) { openOnboarding() }
+        destination.after(600) { openOnboarding(from:.sample) }
     }
 }

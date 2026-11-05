@@ -16,8 +16,10 @@ enum FeedbackReporter {
     }()
 
     /// Throws `FeedbackFailure`. `http` is the injected client (the graph's `CampusServices.feedbackHTTP`).
+    /// `debugLog`: the TestFlight log's lines, only when 「附上调试记录」 is on (`DebugLogReport`).
     @MainActor
-    static func send(message: String, images: [UIImage], to endpoint: FeedbackEndpoint, http: HTTPClient) async throws {
+    static func send(message: String, images: [UIImage], to endpoint: FeedbackEndpoint, http: HTTPClient,
+                     debugLog: [String]? = nil) async throws {
         let info = Bundle.main.infoDictionary ?? [:]
         let metadata = FeedbackMetadata(appVersion:info["CFBundleShortVersionString"] as? String ?? "",
                                         appBuild:info["CFBundleVersion"] as? String ?? "",
@@ -25,7 +27,7 @@ enum FeedbackReporter {
                                         osVersion:"\(UIDevice.current.systemName) \(UIDevice.current.systemVersion)",
                                         locale:Locale.current.identifier)
         try await FeedbackSender(endpoint:endpoint, http:http)
-            .send(message:message, images:images.compactMap(jpeg), metadata:metadata)
+            .send(message:message, images:images.compactMap(jpeg), metadata:metadata, debugLog:debugLog)
     }
 
     /// At most 2048 px on the long side, JPEG.

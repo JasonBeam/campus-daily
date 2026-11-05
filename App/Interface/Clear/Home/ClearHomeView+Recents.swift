@@ -17,7 +17,7 @@ extension ClearHomeView {
             VStack(alignment:.leading, spacing:CGFloat(Self.fit.headerGap)) {
                 ClearRecentsHeader(all:data.signedIn) { navigator.select(.records) }
                 ClearRecentsCard(items:Array(items.prefix(count))) { item in
-                    navigator.push(item.kind == .laundry ? .laundry : .shower)
+                    navigator.push(item.kind == .laundry ? .laundry : .shower, from:.recents)
                 }
             }
         }

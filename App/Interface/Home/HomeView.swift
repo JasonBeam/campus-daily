@@ -65,7 +65,14 @@ struct HomeView: View {
     @State var washerDemo: WasherSetupDemo?
     #endif
 
-    func openOnboarding() {
+    /// `nav.open`'s reason for the pages a route about to run opens (`DebugNav.from`).
+    func mark(_ entry: DebugEntry, _ pages: Set<DebugPage>, unlessPending: Bool = false) {
+        guard !pages.isEmpty else { return }
+        services.debugNav.from(entry, to:pages, unlessPending:unlessPending)
+    }
+
+    func openOnboarding(from entry: DebugEntry) {
+        mark(entry, [.onboarding])
         // Already up (first-run, then 去登录 or a login link just after the sample): kept.
         onboarding = OnboardingRequest.asking(.login, over:onboarding)
     }
@@ -73,7 +80,8 @@ struct HomeView: View {
     /// Shows these pages over home. With the settings sheet up, it is closed first and the pages
     /// are pushed once it has gone: pushed while it slides away, a page comes without its title.
     /// Opened directly, pages still waiting for the sheet to go are dropped: the later request wins.
-    func open(_ routes: [HomeRoute]) {
+    func open(_ routes: [HomeRoute], from entry: DebugEntry) {
+        mark(entry, Set(routes.map(\.debugPage)))
         guard settings else { pathAfterSettings = nil; path = routes; return }
         path = []; pathAfterSettings = routes; settings = false
     }
@@ -89,7 +97,7 @@ struct HomeView: View {
     /// A notification tap: the same guard as the widget's links, then `open(_:)`.
     func follow(_ routes: [HomeRoute]) {
         guard mayClosePages else { return }
-        open(routes)
+        open(routes, from:.notification)
     }
 
     /// Reset finished: back to the first-run guide as on a fresh install, no toast.
@@ -98,7 +106,7 @@ struct HomeView: View {
         demo = nil; laundryDemo = nil
         successTick += 1
         // Let the settings sheet go first, otherwise the cover is not presented.
-        Task { try? await Task.sleep(for:.milliseconds(600)); openOnboarding() }
+        Task { try? await Task.sleep(for:.milliseconds(600)); openOnboarding(from:.reset) }
     }
 
     /// The shower page goes up over home. Whatever covers home (Settings, the sign-in sheet,
@@ -107,6 +115,8 @@ struct HomeView: View {
     func followShowerPage(_ up: Bool) {
         guard up else { pageCover = false; return }
         guard !pageShown else { return }
+        // Raised by the model: `pageEvent`, unless a tap or a Shortcut said why just before.
+        mark(.pageEvent, [.showerPage], unlessPending:true)
         if settings || relogin || onboarding != nil {
             settings = false; relogin = false; onboarding = nil
             Task {
@@ -173,7 +183,7 @@ struct HomeView: View {
                         if old == nil, new != nil { withAnimation(reduceMotion ? nil : Theme.spring) { proxy.scrollTo("top", anchor:.top) } }
                     }
                 }
-                .navigationDestination(for:HomeRoute.self) { route in destination(route) }
+                .navigationDestination(for:HomeRoute.self) { route in destination(route).navOpen(route.debugPage, from:.homeButton) }
             }
             
             SettlementOverlay(result:$panel)
@@ -181,19 +191,24 @@ struct HomeView: View {
         .sensoryFeedback(.impact(weight:.medium), trigger:startTick)
         .sensoryFeedback(.success, trigger:successTick)
         .sensoryFeedback(.error, trigger:errorTick)
-        .accountSwitchAlert { pathAfterSettings = nil; campus.hotWaterSetupRequested = true; settings = true }
+        .accountSwitchAlert {
+            mark(.alert, [.settings, shower.configured ? .showerDetail : .dorm])
+            pathAfterSettings = nil; campus.hotWaterSetupRequested = true; settings = true
+        }
         .sheet(isPresented:$settings, onDismiss:{
             if let routes = pathAfterSettings { pathAfterSettings = nil; path = routes }
-        }) { settingsSheet.sampleChrome().typesettingLanguage(Theme.typesetting) }
-        .sheet(isPresented:$relogin) { SchoolReloginSheet().typesettingLanguage(Theme.typesetting) }
+        }) { settingsSheet.navOpen(.settings, from:.homeButton).sampleChrome().typesettingLanguage(Theme.typesetting) }
+        .sheet(isPresented:$relogin) { SchoolReloginSheet().navOpen(.signIn, from:.updateLine).typesettingLanguage(Theme.typesetting) }
         // The shower page: down only by its own buttons, or a swipe while water runs (收起).
         .fullScreenCover(isPresented:Binding(get:{ pageCover },
                                              set:{ if !$0 { pageCover = false; if shower.page.presented { shower.pageEvent(.collapseTapped) } } })) {
             #if DEBUG
             ShowerPageView(room:demo?.dorm ?? campus.room).environmentObject(shower).onOpenURL { handleDemo($0) }
+                .navOpen(.showerPage, from:.pageEvent)
                 .onAppear { pageShown = true }.onDisappear { pageShown = false }
             #else
             ShowerPageView(room:demo?.dorm ?? campus.room).environmentObject(shower)
+                .navOpen(.showerPage, from:.pageEvent)
                 .onAppear { pageShown = true }.onDisappear { pageShown = false }
             #endif
         }
@@ -208,6 +223,7 @@ struct HomeView: View {
             #else
             OnboardingView(start:request.step) { onboarding = nil }
                 .onStep { onboarding?.guide.moved(to:$0) }.id(request.guide.contentID)
+                .navOpen(.onboarding, from:.setup)
             #endif
         }
         #if DEBUG
@@ -221,7 +237,7 @@ struct HomeView: View {
             WidgetPreview(page:page.number).onTapGesture { widgetPreview = nil }.onOpenURL { handleDemo($0) }
         }
         #endif
-        .modifier(CampusRootHooks(demo:isDemo, root:.warm, firstRun:openOnboarding, afterReset:afterReset))
+        .modifier(CampusRootHooks(demo:isDemo, root:.warm, firstRun:{ openOnboarding(from:.launch) }, afterReset:afterReset))
         .sampleChrome()
         .onChange(of:sample.isActive, initial:true) { _, active in followSample(active) }
         .onChange(of:sample.loginDue, initial:true) { _, due in openLoginAfterSample(due) }
@@ -260,13 +276,15 @@ struct HomeView: View {
         case .home: settings = false; path = []
         // A paused automatic login (widget): Settings › 学校账号, where the pause is explained.
         case .settings(account:true):
+            mark(.widget, [.settings, .account])
             path = []; campus.accountPageRequested = true; settings = true
         case .login:
             let sheetUp = settings
             settings = false; path = []
             // As after a reset or the sample: let a sheet go first, or the cover is not presented.
-            destination.after(sheetUp ? 600 : 300) { openOnboarding() }
+            destination.after(sheetUp ? 600 : 300) { openOnboarding(from:.widget) }
         case .settings(account:false):
+            mark(.widget, settings ? [] : [.settings])
             path = []
             // Just after the sample left (or a cover went), its sheet goes first.
             if !settings { destination.after(600) { settings = true } }
@@ -287,14 +305,19 @@ struct HomeView: View {
         if demo != nil { demoTap(kind); return }
         #endif
         switch kind {
-        case .signIn: openOnboarding()
+        case .signIn: openOnboarding(from:.homeButton)
         case .showering, .settling, .starting, .stopped:
+            // This tap is why the model raises its page next (and its 上一次洗好了 face).
+            var pages: Set<DebugPage> = [.showerPage]
+            if case .stopped = kind { pages.insert(.showerStopped) }
+            mark(.homeButton, pages)
             shower.pageEvent(.reopen)
             followShowerPage(shower.page.presented)
         case .start:
             // An unchecked record blocks a new start: show it instead of failing.
             guard shower.mayStart else { path.append(.shower); return }
             startTick += 1
+            mark(.homeButton, [.showerPage])
             shower.pageEvent(.startTapped)
             followShowerPage(shower.page.presented)
         }

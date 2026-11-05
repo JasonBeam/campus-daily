@@ -20,4 +20,14 @@ final class VersionTextTests: XCTestCase {
         XCTAssertTrue(VersionText.isBeta(receiptName: nil, receiptExists: false))
         XCTAssertFalse(VersionText.isBeta(receiptName: "receipt", receiptExists: true))
     }
+
+    /// The debug log is on in TestFlight installs only: never in an Xcode build (no receipt) or
+    /// an App Store one.
+    func testOnlyASandboxReceiptIsTestFlight() {
+        XCTAssertTrue(VersionText.isTestFlight(receiptName: "sandboxReceipt", receiptExists: true))
+        XCTAssertFalse(VersionText.isTestFlight(receiptName: "sandboxReceipt", receiptExists: false), "named but not there")
+        XCTAssertFalse(VersionText.isTestFlight(receiptName: "receipt", receiptExists: true))
+        XCTAssertFalse(VersionText.isTestFlight(receiptName: "receipt", receiptExists: false))
+        XCTAssertFalse(VersionText.isTestFlight(receiptName: nil, receiptExists: false), "an Xcode build is Beta but keeps no log")
+    }
 }

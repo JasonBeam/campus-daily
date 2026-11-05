@@ -39,34 +39,40 @@ struct ClearRootView: View {
 
     var body: some View {
         @Bindable var navigator = navigator
+        let _ = navigator.attach(services.debugNav)
         TabView(selection:$navigator.tab) {
             NavigationStack(path:$navigator.homePath) {
-                ClearHomeView().navigationDestination(for:ClearRoute.self) { ClearDestination(route:$0) }
+                ClearHomeView().navOpen(.home, from:.tab, once:false)
+                    .navigationDestination(for:ClearRoute.self) { ClearDestination(route:$0) }
             }
             .tabItem { Label("日常", systemImage:"square.grid.2x2") }
             .tag(ClearNavigator.Tab.home)
             NavigationStack(path:$navigator.recordsPath) {
-                recordsTab.navigationDestination(for:ClearRoute.self) { ClearDestination(route:$0) }
+                recordsTab.navOpen(.records, from:.tab, once:false)
+                    .navigationDestination(for:ClearRoute.self) { ClearDestination(route:$0) }
             }
             .tabItem { Label("记录", systemImage:"clock.arrow.circlepath") }
             .tag(ClearNavigator.Tab.records)
             NavigationStack(path:$navigator.settingsPath) {
-                ClearSettingsTab().navigationDestination(for:ClearRoute.self) { ClearDestination(route:$0) }
+                ClearSettingsTab().navOpen(.settings, from:.tab, once:false)
+                    .navigationDestination(for:ClearRoute.self) { ClearDestination(route:$0) }
             }
             .tabItem { Label("设置", systemImage:"slider.horizontal.3") }
             .tag(ClearNavigator.Tab.settings)
         }
         .sensoryFeedback(.success, trigger:successTick)
         .accountSwitchAlert { openShowerSetup() }
-        .sheet(isPresented:$navigator.relogin) { SchoolReloginSheet().typesettingLanguage(Theme.typesetting) }
+        .sheet(isPresented:$navigator.relogin) { SchoolReloginSheet().navOpen(.signIn, from:.updateLine).typesettingLanguage(Theme.typesetting) }
         // Closed because the sample opened over it: not seen (`QuickSetupSeen`).
         .sheet(item:$navigator.setup, onDismiss:{ QuickSetupSeen.closed(in:services.defaults, coveredBySample:sample.isActive) }) { request in
             // .id: a new request (or a new row on this one) starts the checklist again, with its row pushed.
             #if DEBUG
             ClearSetupChecklist(start:request.start).onRow { navigator.setup?.guide.moved(to:$0) }.id(request.guide.contentID).typesettingLanguage(Theme.typesetting)
+                .navOpen(.setupChecklist, from:.homeButton)
                 .onOpenURL { handleDemo($0) }
             #else
             ClearSetupChecklist(start:request.start).onRow { navigator.setup?.guide.moved(to:$0) }.id(request.guide.contentID).typesettingLanguage(Theme.typesetting)
+                .navOpen(.setupChecklist, from:.homeButton)
             #endif
         }
         .sheet(isPresented:Binding(get:{ navigator.panel != nil }, set:{ if !$0 { navigator.panel = nil } })) {
@@ -86,7 +92,7 @@ struct ClearRootView: View {
             WidgetPreview(page:page.number).onTapGesture { widgetPreview = nil }.onOpenURL { handleDemo($0) }
         }
         #endif
-        .modifier(CampusRootHooks(demo:isDemo, root:.clear, firstRun:{ navigator.openSetup() }, afterReset:afterReset))
+        .modifier(CampusRootHooks(demo:isDemo, root:.clear, firstRun:{ navigator.openSetup(from:.launch) }, afterReset:afterReset))
         .sampleChrome()
         .onChange(of:sample.isActive, initial:true) { _, active in followSample(active) }
         .onChange(of:sample.loginDue, initial:true) { _, due in openLoginAfterSample(due) }

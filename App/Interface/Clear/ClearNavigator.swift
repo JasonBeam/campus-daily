@@ -45,6 +45,9 @@ import Core
     }
 
     var tab: Tab = .home
+    /// `nav.open`'s reasons (the graph's, set by the root). Every route here that a plain tap on
+    /// a link doesn't make says why (`from`), for the pages it opens.
+    @ObservationIgnored private(set) var debugNav = DebugNav(log:NoDebugLog())
     var homePath: [ClearRoute] = []
     var recordsPath: [ClearRoute] = []
     var settingsPath: [ClearRoute] = []
@@ -76,8 +79,26 @@ import Core
         }
     }
 
-    /// Pushes a page on the selected tab's stack.
-    func push(_ route: ClearRoute) { setPath(path(tab) + [route], tab) }
+    /// The root's, from its services; once.
+    func attach(_ nav: DebugNav) { if debugNav !== nav { debugNav = nav } }
+
+    /// `entry` for these pages, and for `tab`'s root when it is not the one selected now.
+    private func mark(_ entry: DebugEntry, _ routes: [ClearRoute], tab: Tab? = nil, unlessPending: Bool = false) {
+        var pages = Set(routes.map(\.debugPage))
+        if let tab, tab != self.tab { pages.insert(tab.debugPage) }
+        guard !pages.isEmpty else { return }
+        debugNav.from(entry, to:pages, unlessPending:unlessPending)
+    }
+
+    /// `entry` for pages the root opens itself (a sheet, the checklist).
+    func mark(_ entry: DebugEntry, pages: Set<DebugPage>) { debugNav.from(entry, to:pages) }
+
+    /// Pushes a page on the selected tab's stack. `from`: a tap that isn't the page's own link
+    /// (最近's rows); nil: the tab's entry.
+    func push(_ route: ClearRoute, from entry: DebugEntry? = nil) {
+        if let entry { mark(entry, [route]) }
+        setPath(path(tab) + [route], tab)
+    }
 
     /// Back one page on the selected tab.
     func pop() {
@@ -93,7 +114,8 @@ import Core
     func select(_ tab: Tab) { self.tab = tab }
 
     /// Selects a tab showing exactly these pages.
-    func show(_ routes: [ClearRoute], in tab: Tab) {
+    func show(_ routes: [ClearRoute], in tab: Tab, from entry: DebugEntry) {
+        mark(entry, routes, tab:tab)
         self.tab = tab
         setPath(routes, tab)
     }
@@ -102,14 +124,17 @@ import Core
     /// (`PageStack.opening`): back to it when it is lower and nothing over it must stay (a top-up
     /// page, 洗衣 while an order is being paid), otherwise pushed on top.
     /// 记录's rows open 洗衣 on 日常 this way.
-    func open(_ route: ClearRoute, in tab: Tab, laundry: LaundryPhase?) {
+    func open(_ route: ClearRoute, in tab: Tab, laundry: LaundryPhase?, from entry: DebugEntry) {
+        mark(entry, [route], tab:tab)
         self.tab = tab
         setPath(PageStack.opening(route, on:path(tab)) { PageStack.mayClose($0, laundry:laundry) }, tab)
     }
 
     /// 日常 with the shower page on top (`PageStack.showingShower`): not pushed twice, back to it
     /// when nothing over it must stay. The root's on the model's request; 记录's and 设置's rows too.
-    func showShowerPage(laundry: LaundryPhase?) {
+    /// `unlessPending`: the page raising itself keeps a reason given just before (a tap, a Shortcut).
+    func showShowerPage(laundry: LaundryPhase?, from entry: DebugEntry, unlessPending: Bool = false) {
+        mark(entry, [.shower], tab:.home, unlessPending:unlessPending)
         tab = .home
         let routes = PageStack.showingShower(on:homePath, laundry:laundry)
         if routes != homePath { homePath = routes }
@@ -117,13 +142,14 @@ import Core
 
     /// A page that lives on 日常 (记录's showers and laundry orders): the shower page as the root
     /// shows it, any other with `open`.
-    func openOnHome(_ route: ClearRoute, laundry: LaundryPhase?) {
-        if route == .shower { showShowerPage(laundry:laundry) } else { open(route, in:.home, laundry:laundry) }
+    func openOnHome(_ route: ClearRoute, laundry: LaundryPhase?, from entry: DebugEntry) {
+        if route == .shower { showShowerPage(laundry:laundry, from:entry) } else { open(route, in:.home, laundry:laundry, from:entry) }
     }
 
     /// The checklist, at `row`. Already up (first-run, then a login link just after the sample):
     /// kept, with `row` pushed on it, not presented again.
-    func openSetup(at row: ClearSetupRow? = nil) {
+    func openSetup(at row: ClearSetupRow? = nil, from entry: DebugEntry) {
+        mark(entry, pages:[.setupChecklist])
         guard var request = setup else { setup = SetupRequest(start:row); return }
         request.guide = GuideRequest.ask(row, over:request.guide)
         setup = request
@@ -133,8 +159,8 @@ import Core
     /// is paused there.
     func signInAgain(_ target: HomeUpdateLine.SignInTarget) {
         switch target {
-        case .signIn: relogin = true
-        case .account: show([.account], in:.settings)
+        case .signIn: mark(.updateLine, pages:[.signIn]); relogin = true
+        case .account: show([.account], in:.settings, from:.updateLine)
         }
     }
 

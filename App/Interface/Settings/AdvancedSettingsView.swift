@@ -13,6 +13,12 @@ struct AdvancedSettingsView: View {
     @EnvironmentObject private var campus: CampusModel
     @EnvironmentObject private var laundry: LaundryModel
     @EnvironmentObject private var resetter: AppResetter
+    @Environment(\.campusServices) private var services
+    /// 「清空调试记录」 done: its footer says so.
+    @State private var debugLogCleared = false
+    /// The row as the log stands (`DebugLogClearRow`), read on appear and after a clear.
+    @State private var debugLogRow: DebugLogClearRow?
+    @State private var confirmDebugLogClear = false
     @State private var confirmReset = false
     @State private var resetIssue: String?
     /// Set when a lock stopped the reset (nothing was cleared).
@@ -53,6 +59,34 @@ struct AdvancedSettingsView: View {
         }.listRowBackground(Theme.group)
     }
 
+    /// TestFlight only (the sample's and an App Store install's log is `NoDebugLog`). Off when
+    /// there is nothing to clear; asks first.
+    private var debugLogSection: some View {
+        let row = debugLogRow ?? DebugLogClearRow(log:services.debugLog, cleared:debugLogCleared)
+        return Section {
+            Button(DebugLogClearRow.title, role:.destructive) { confirmDebugLogClear = true }
+                .frame(maxWidth:.infinity)
+                .disabled(row.disabled)
+                .accessibilityLabel(row.accessibilityLabel)
+                .accessibilityIdentifier("clearDebugLog")
+                .confirmationDialog(DebugLogClearRow.confirmTitle, isPresented:$confirmDebugLogClear, titleVisibility:.visible) {
+                    Button(DebugLogClearRow.confirmButton, role:.destructive) {
+                        services.debugLog.clear()
+                        debugLogCleared = true
+                        debugLogRow = DebugLogClearRow(log:services.debugLog, cleared:true)
+                    }
+                    Button(DebugLogClearRow.cancelButton, role:.cancel) {}
+                }
+        } footer: {
+            VStack(alignment:.leading, spacing:6) {
+                if row.cleared { Text(DebugLogClearRow.clearedLine).accessibilityIdentifier("debugLogCleared") }
+                Text(DebugLogClearRow.footer)
+            }
+        }
+        .listRowBackground(Theme.group)
+        .onAppear { debugLogRow = DebugLogClearRow(log:services.debugLog, cleared:debugLogCleared) }
+    }
+
     private func runReset() {
         #if DEBUG
         if preview != nil { resetter.finishDemo(); return }
@@ -85,6 +119,7 @@ struct AdvancedSettingsView: View {
                     VersionRow()
                 }.listRowBackground(Theme.group)
             }
+            if services.debugLog.isEnabled { debugLogSection }
             resetSection
         }
         .listStyle(.insetGrouped)

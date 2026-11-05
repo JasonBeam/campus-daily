@@ -17,6 +17,7 @@ struct StartShowerIntent: AppIntent {
     static let openAppWhenRun = true
     static let authenticationPolicy: IntentAuthenticationPolicy = .requiresLocalDeviceAuthentication
     @MainActor func perform() async throws -> some IntentResult & ProvidesDialog {
+        AppEnvironment.live.debugNav.from(.intent)
         guard !ShowerIntentGate.sampleActive else { throw ShowerActionFailure(ShowerIntentGate.sampleText) }
         // Throws `ShowerActionFailure`: the system shows its real reason.
         switch try await ShowerModel.shared.run(start: true) {
@@ -32,6 +33,7 @@ struct FinishShowerIntent: AppIntent {
     static let openAppWhenRun = true
     static let authenticationPolicy: IntentAuthenticationPolicy = .requiresLocalDeviceAuthentication
     @MainActor func perform() async throws -> some IntentResult & ProvidesDialog {
+        AppEnvironment.live.debugNav.from(.intent)
         // Throws the real reason (`ShowerActionFailure`). Shown over the sample: it is left first.
         _ = try await LiveShowerFinish.run(sample: ShowerIntentGate.sample) { try await ShowerModel.shared.run(start: false) }
         if let amount = ShowerModel.shared.lastCost {

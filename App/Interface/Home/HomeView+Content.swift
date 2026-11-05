@@ -13,7 +13,7 @@ extension HomeView {
         switch entry {
         case .topUp: path.append(route)
         case .bindMeter: path.append(.powerSetup)
-        case .signIn: openOnboarding()
+        case .signIn: openOnboarding(from:.homeButton)
         }
     }
 
@@ -86,8 +86,8 @@ extension HomeView {
     /// is paused there.
     func signInAgain(_ data: HomeData) {
         switch HomeUpdateLine.signInTarget(data.schoolAccount) {
-        case .signIn: relogin = true
-        case .account: campus.accountPageRequested = true; settings = true
+        case .signIn: mark(.updateLine, [.signIn]); relogin = true
+        case .account: mark(.updateLine, [.settings, .account]); campus.accountPageRequested = true; settings = true
         }
     }
 
@@ -191,7 +191,9 @@ extension HomeView {
                 VStack(spacing:0) {
                     if index > 0 { RowSeparator() }
                     if item.source == .app {
-                        NavigationLink(value:item.kind == .laundry ? HomeRoute.laundry : HomeRoute.shower) { RecentRow(item:item) }
+                        // A button, not a link: the page says it came from 最近.
+                        let route = item.kind == .laundry ? HomeRoute.laundry : HomeRoute.shower
+                        Button { mark(.recents, [route.debugPage]); path.append(route) } label: { RecentRow(item:item) }
                             .buttonStyle(RowPressStyle())
                     } else {
                         RecentRow(item:item)
@@ -262,7 +264,9 @@ extension HomeView {
     }
 
     func washerSetupDone() {
-        path = WasherSetupExit.path(path, setup:.washerSetup, laundry:.laundry)
+        let next = WasherSetupExit.path(path, setup:.washerSetup, laundry:.laundry)
+        if next.last == .laundry, path.last != .laundry { mark(.setupDone, [.laundry]) }
+        path = next
     }
 
     // MARK: Toolbar

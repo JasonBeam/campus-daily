@@ -21,6 +21,7 @@ import Core
         // FinishShowerLiveIntent (Live Activity button) runs in this process, on the live session:
         // shown over the sample, it leaves it first and the live app stays up (`LiveShowerFinish`).
         ShowerActivityBridge.finish = { [weak sample] in
+            AppEnvironment.live.debugNav.from(.liveActivity)
             _ = try await LiveShowerFinish.run(sample:sample) { try await ShowerModel.shared.run(start:false) }
         }
         // Notification delegate must be set before launch finishes, so a tapped banner is routed

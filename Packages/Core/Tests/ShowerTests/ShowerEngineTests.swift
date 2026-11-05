@@ -70,7 +70,7 @@ final class RecordingHooks: ShowerHooks, @unchecked Sendable {
     private let lock = NSLock()
     private var _events: [String] = []
     var events: [String] { lock.withLock { _events } }
-    func diagnostic(_ event: String) async { lock.withLock { _events.append(event) } }
+    func diagnostic(_ event: ShowerDiagnostic) async { lock.withLock { _events.append(event.name) } }
 }
 
 /// Holds a task so a fake can cancel it mid-flow.

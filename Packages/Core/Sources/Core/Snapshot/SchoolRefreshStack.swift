@@ -18,11 +18,12 @@ public struct SchoolRefreshStack: Sendable {
     /// never read at the same time. An app with no file at all refreshes without the lease.
     public init(store: SecureStore, http: HTTPClient, role: String, leaseWait: TimeInterval, leaseFile: LeaseFile?,
                 didWriteSnapshot: @escaping @Sendable () -> Void = {},
-                diagnostic: @escaping @Sendable (String) -> Void = SnapshotRefresher.osLog) {
+                diagnostic: @escaping @Sendable (String) -> Void = SnapshotRefresher.osLog,
+                debugLog: any DebugLogSink = NoDebugLog()) {
         session = SchoolSession(portal: PortalClient(http: http), ecykt: EcyktClient(http: http),
                                 vault: StoredSchoolVault(store: store), passwordLogin: CASLoginClient(http: http),
                                 diagnostic: diagnostic,
-                                createsLoginDeviceID: role != "widget")
+                                createsLoginDeviceID: role != "widget", debugLog: debugLog)
         let lease: RefreshLease? = leaseFile == nil && role != "widget" ? nil : RefreshLease(file: leaseFile, owner: RefreshLease.owner(role))
         refresher = SnapshotRefresher(school: session, store: SharedSnapshotStore(store: store, didWrite: didWriteSnapshot),
                                       lease: lease,
@@ -30,7 +31,10 @@ public struct SchoolRefreshStack: Sendable {
     }
 
     /// The URLSession client for the school hosts only.
-    public static func schoolHTTP() -> HTTPClient { URLSessionHTTPClient(allowedHosts: AllowedHosts.school) }
+    /// `log`: where each request line goes (the app passes its TestFlight log's `DebugHTTPLogSink`).
+    public static func schoolHTTP(log: HTTPLogSink = OSLogSink()) -> HTTPClient {
+        URLSessionHTTPClient(allowedHosts: AllowedHosts.school, log: log)
+    }
 }
 
 /// What the widget's timeline provider does before drawing, kept here so it is tested.

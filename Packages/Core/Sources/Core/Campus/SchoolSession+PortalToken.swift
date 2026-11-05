@@ -97,8 +97,14 @@ extension SchoolSession {
         // A credential without a stamp (saved by an older build) is logged once per process.
         let id = kind.rawValue + (obtainedAt.map { "@\($0.timeIntervalSince1970)" } ?? "@unknown")
         guard loggedExpiries.insert(id).inserted else { return }
-        let line = Self.expiredEvent(kind, obtainedAt: obtainedAt, lastAliveAt: lastAliveAt, now: now())
-        diagnostic(line)
+        let at = now()
+        diagnostic(Self.expiredEvent(kind, obtainedAt: obtainedAt, lastAliveAt: lastAliveAt, now: at))
+        func minutes(_ from: Date?, _ to: Date?) -> Int? {
+            guard let from, let to else { return nil }
+            return max(0, Int(to.timeIntervalSince(from) / 60))
+        }
+        debugLog.record(.schoolCredentialExpired(kind: kind == .card ? .card : .portal, ageMinutes: minutes(obtainedAt, at),
+                                                 aliveMinutes: kind == .card ? minutes(obtainedAt, lastAliveAt) : nil))
     }
 
     /// A portal token gets its `obtainedAt` when this app first saves it.
@@ -117,7 +123,19 @@ extension SchoolSession {
         return portal?.value == seenPortalToken
     }
 
+    /// The portal token traded for a new card session (logged as `school.renew`).
     func exchangeSession(portalToken: PortalToken, userAgent: String, previous: EcyktSession?) async throws -> EcyktSession {
+        do {
+            let session = try await exchangeSessionOnce(portalToken: portalToken, userAgent: userAgent, previous: previous)
+            debugLog.record(.schoolRenew(.ok))
+            return session
+        } catch {
+            debugLog.record(.schoolRenew(.failed(DebugError(error))))
+            throw error
+        }
+    }
+
+    private func exchangeSessionOnce(portalToken: PortalToken, userAgent: String, previous: EcyktSession?) async throws -> EcyktSession {
         let url = try await portal.eCardTicketURL(portalToken)
         guard let ticket = CASTicket.extract(from: url) else { throw ServiceError.malformed(.portal, "data.pcUrl") }
         let areacode = URLComponents(url: url, resolvingAgainstBaseURL: false)?

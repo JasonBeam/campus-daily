@@ -25,14 +25,14 @@ extension ClearRootView {
         let name = url.lastPathComponent
         let normal = HomeDemo.normal.content().0
         if url.host == "demo", name == "login-loading" {
-            navigator.setup = nil; popAll()
+            navigator.setup = nil; popAll(from:.deepLink)
             navigator.demo = normal
             Task { try? await Task.sleep(for:.milliseconds(400)); loginDemo = true }
             return
         }
         if let onboard = OnboardingDemo.handle(url) {
             // 清爽 has the checklist instead of the paged guide: the step's row pushed.
-            popAll()
+            popAll(from:.deepLink)
             navigator.setup = ClearNavigator.SetupRequest(start:setupRow(onboard.0), preview:onboard.1)
             return
         }
@@ -49,12 +49,12 @@ extension ClearRootView {
             navigator.demo = normal
             navigator.recordsDemo = records
             recordsDemoRun += 1
-            popAll()
+            popAll(from:.deepLink)
             navigator.tab = .records
             return
         }
         if url.host == "demo", name.hasPrefix("account-switched") || name.hasPrefix("account-unconfirmed") {
-            navigator.setup = nil; popAll()
+            navigator.setup = nil; popAll(from:.deepLink)
             navigator.demo = normal
             campus.switchNotice = AccountSwitchNotice(previousPersonUnconfirmed:name.hasPrefix("account-unconfirmed"),
                                                       hotWaterCleared:name.hasSuffix("-water"))
@@ -69,20 +69,20 @@ extension ClearRootView {
             return
         }
         if url.host == "demo", name == "permission" {
-            navigator.setup = nil; popAll()
+            navigator.setup = nil; popAll(from:.deepLink)
             navigator.demo = normal
             reminders.prompt = .app
             return
         }
         if url.host == "demo", name == "permission-home" {
-            navigator.setup = nil; navigator.panel = nil; navigator.laundryDemo = nil; popAll()
+            navigator.setup = nil; navigator.panel = nil; navigator.laundryDemo = nil; popAll(from:.deepLink)
             navigator.demo = normal
             reminders.demoHomeRead()
             return
         }
         if url.host == "demo", name == "sh-from-settings" {
             // 设置 up, then a start: 日常 selected and the page pushed.
-            navigator.setup = nil; navigator.panel = nil; navigator.laundryDemo = nil; popAll()
+            navigator.setup = nil; navigator.panel = nil; navigator.laundryDemo = nil; popAll(from:.deepLink)
             navigator.demo = normal
             navigator.tab = .settings
             Task {
@@ -93,9 +93,9 @@ extension ClearRootView {
         }
         if url.host == "demo", name == "sh-under-onboarding" {
             // The checklist up, then a shower ended from the lock screen: it closes, the result shows.
-            navigator.panel = nil; navigator.laundryDemo = nil; popAll()
+            navigator.panel = nil; navigator.laundryDemo = nil; popAll(from:.deepLink)
             navigator.demo = normal
-            navigator.openSetup()
+            navigator.openSetup(from:.deepLink)
             Task {
                 try? await Task.sleep(for:.seconds(1.5))
                 shower.showDemoPage(HomeView.ShowerPageDemo.record("sh-done"))
@@ -105,7 +105,7 @@ extension ClearRootView {
         if url.host == "demo", let record = HomeView.ShowerPageDemo.record(name) {
             // The shower page on a synthetic record (nothing connects).
             navigator.setup = nil; navigator.panel = nil; navigator.laundryDemo = nil
-            popAll()
+            popAll(from:.deepLink)
             navigator.demo = normal
             if record.phase == .running, let start = record.startedAt { navigator.demo?.shower = .showering(start) }
             if record.showerOver { navigator.demo?.shower = .stopped }
@@ -132,7 +132,7 @@ extension ClearRootView {
         reminders.demoStatus = settingsDemos[name]
         guard let result = HomeDemo.handle(url) else { return }
         navigator.setup = nil; navigator.laundryDemo = nil; navigator.recordsDemo = nil
-        popAll()
+        popAll(from:.deepLink)
         withAnimation(Theme.spring) {
             navigator.demo = result?.0
             navigator.panel = result?.1
@@ -156,8 +156,8 @@ extension ClearRootView {
 
     /// A page pushed anew on 日常, so its @State starts from the demo.
     func freshPush(_ route: ClearRoute) {
-        popAll()
-        Task { try? await Task.sleep(for:.milliseconds(350)); reveal([route]) }
+        popAll(from:.deepLink)
+        Task { try? await Task.sleep(for:.milliseconds(350)); reveal([route], from:.deepLink) }
     }
 
     func notifyDemo(_ url: URL) -> String? {

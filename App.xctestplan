@@ -82,6 +82,13 @@
     },
     {
       "target": {
+        "containerPath": "container:Packages/Core",
+        "identifier": "DiagnosticsTests",
+        "name": "DiagnosticsTests"
+      }
+    },
+    {
+      "target": {
         "containerPath": "container:App.xcodeproj",
         "identifier": "C0DA00500000000000000000",
         "name": "AppTests"

@@ -36,7 +36,7 @@ public enum UjingSignOut {
     /// (`LaundryCheckout.clearsLastOrder`). Throws `Refusal` with an order open, and the vault's
     /// error when the login can't be written (then nothing else changed).
     public static func perform(vault: LaundryVault, preferences: any PreferenceStorage,
-                               checkout: LaundryCheckout?) throws -> Outcome {
+                               checkout: LaundryCheckout?, debugLog: any DebugLogSink = NoDebugLog()) throws -> Outcome {
         if let refusal = refusal(orderOpen: (checkout?.phase ?? .none) != .none, busy: false) { throw refusal }
         let item = try vault.accountItem()
         let forget = LaundryCheckout.clearsLastOrder(record: checkout, signedInAs: nil, stored: item?.account?.id)
@@ -46,6 +46,8 @@ public enum UjingSignOut {
             if checkout?.lastOutcome != nil, (try? vault.saveCheckout(nil)) != nil { cleared = true }
             preferences.set(nil, forKey: PreferenceKey.laundryLastOrder)
         }
+        // The TestFlight log goes with the login, and its salt with it.
+        debugLog.clear()
         return Outcome(forgotLastOrder: forget, clearedCheckout: cleared)
     }
 }

@@ -40,7 +40,7 @@ struct SettingsView: View {
                 SettingsAppearanceSection(link:link)
                 Section {
                     FeedbackRow()
-                    NavigationLink { advanced } label: {
+                    NavigationLink { advanced.navOpen(.advanced, from:.settings) } label: {
                         SettingsRow(symbol:"wrench.and.screwdriver", title:"高级")
                     }
                 } footer: {
@@ -58,7 +58,8 @@ struct SettingsView: View {
                 }
             }
             .navigationDestination(isPresented:$hotWaterSetup) {
-                if shower.configured { ShowerDetail() } else { CampusOnboardingView() }
+                Group { if shower.configured { ShowerDetail() } else { CampusOnboardingView() } }
+                    .navOpen(shower.configured ? .showerDetail : .dorm, from:.settings)
             }
             // While a shower is on, 热水 here brings up the timer page (Settings goes first).
             .onChange(of:hotWaterSetup) { _, open in
@@ -66,8 +67,8 @@ struct SettingsView: View {
                 hotWaterSetup = false
                 shower.pageEventShowingPage(.reopen)
             }
-            .navigationDestination(isPresented:$accountPage) { account }
-            .navigationDestination(isPresented:$themePageShown) { themePage }
+            .navigationDestination(isPresented:$accountPage) { account.navOpen(.account, from:.settings) }
+            .navigationDestination(isPresented:$themePageShown) { themePage.navOpen(.theme, from:.settings) }
             .onAppear {
                 if preview == nil { campus.reloadAccount() }
                 if campus.hotWaterSetupRequested { campus.hotWaterSetupRequested = false; hotWaterSetup = true }
@@ -106,7 +107,11 @@ extension SettingsView {
         }
     }
 
-    @ViewBuilder private func destination(_ page: SettingsLink) -> some View {
+    private func destination(_ page: SettingsLink) -> some View {
+        pageView(page).navOpen(page.debugPage, from:.settings)
+    }
+
+    @ViewBuilder private func pageView(_ page: SettingsLink) -> some View {
         switch page {
         case .account: account
         case .dorm: CampusOnboardingView()

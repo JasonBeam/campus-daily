@@ -68,5 +68,5 @@ struct ClearSettingsTab: View {
     }
 
     /// 日常 with the shower page on top, as the root shows it (`ClearNavigator.showShowerPage`).
-    private func openShowerPage() { navigator.showShowerPage(laundry:laundry.checkout?.phase) }
+    private func openShowerPage() { navigator.showShowerPage(laundry:laundry.checkout?.phase, from:.settings) }
 }

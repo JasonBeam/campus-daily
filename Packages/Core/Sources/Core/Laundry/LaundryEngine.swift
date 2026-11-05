@@ -27,6 +27,8 @@ public actor LaundryEngine {
     let accountID: String?
     let now: @Sendable () -> Date
     let sleep: @Sendable (TimeInterval) async throws -> Void
+    /// The TestFlight debug log: phases, request outcomes, U净's status codes, a salted order tag.
+    let debugLog: any DebugLogSink
 
     public private(set) var state: LaundryCheckout
     public private(set) var storageBlocked = false
@@ -41,9 +43,9 @@ public actor LaundryEngine {
                 accountID: String? = nil, resetMarker: ResetMarker? = nil, now: @escaping @Sendable () -> Date = Date.init,
                 sleep: @escaping @Sendable (TimeInterval) async throws -> Void = { s in
                     try await Task.sleep(nanoseconds: UInt64(max(0, s) * 1_000_000_000))
-                }) throws {
+                }, debugLog: any DebugLogSink = NoDebugLog()) throws {
         self.api = api; self.vault = vault; self.launcher = launcher; self.accountID = accountID
-        self.now = now; self.sleep = sleep
+        self.now = now; self.sleep = sleep; self.debugLog = debugLog
         self.resetMarker = resetMarker
         let persisted: LaundryCheckout?
         do { persisted = try vault.checkout() } catch { throw LaundryEngineError.storage }
@@ -169,6 +171,9 @@ public actor LaundryEngine {
     /// Persist, then publish. A failed write blocks every later side effect.
     private func commit(_ next: LaundryCheckout) throws {
         let changed = next.persistable != state.persistable
+        if next.phase != state.phase || next.lastOutcome?.status != state.lastOutcome?.status {
+            debugLog.record(.laundryPhase(from: state.phase, to: next.phase, outcome: next.lastOutcome.map { DebugCode($0.status.code) }))
+        }
         state = next
         if changed {
             do { try vault.saveCheckout(next.phase == .none && next.lastOutcome == nil ? nil : next.persistable) }
@@ -186,6 +191,34 @@ public actor LaundryEngine {
     }
 
     private func perform(_ effect: LaundryEffect) async -> LaundryEvent? {
+        let event = await performOnce(effect)
+        if let event { log(event) }
+        return event
+    }
+
+    /// One line per answer: which request and how it went (U净's code only), and the order's status.
+    private func log(_ event: LaundryEvent) {
+        switch event {
+        case .created: debugLog.record(.laundryRequest(.create, .ok))
+        case .createFailed(let e): debugLog.record(.laundryRequest(.create, DebugOutcome(e)))
+        case .orderRead(let order, _):
+            debugLog.record(.laundryRequest(.orderDetail, .ok))
+            debugLog.record(.laundryOrder(status: DebugCode(order.status.code), moduleType: nil, order: DebugTag(.order, order.id)))
+        case .orderReadFailed(let e): debugLog.record(.laundryRequest(.orderDetail, DebugOutcome(e)))
+        case .activeOrderFound: debugLog.record(.laundryRequest(.findActive, .ok))
+        case .activeOrderLookupFailed(let e): debugLog.record(.laundryRequest(.findActive, DebugOutcome(e)))
+        case .paymentMethods: debugLog.record(.laundryRequest(.paymentMethods, .ok))
+        case .paymentMethodsFailed(let e): debugLog.record(.laundryRequest(.paymentMethods, DebugOutcome(e)))
+        case .paymentArguments: debugLog.record(.laundryRequest(.paymentArguments, .ok))
+        case .paymentFailed(let e): debugLog.record(.laundryRequest(.paymentArguments, DebugOutcome(e)))
+        case .launched(let opened): debugLog.record(.laundryPayLaunch(opened: opened))
+        case .cancelAcknowledged: debugLog.record(.laundryRequest(.cancelOrder, .ok))
+        case .cancelFailed(let e): debugLog.record(.laundryRequest(.cancelOrder, DebugOutcome(e)))
+        default: break
+        }
+    }
+
+    private func performOnce(_ effect: LaundryEffect) async -> LaundryEvent? {
         switch effect {
         case .create(let request):
             guard !Task.isCancelled else { return .cancelledBeforeSend }

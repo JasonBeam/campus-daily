@@ -74,7 +74,7 @@ struct PowerChoice: Identifiable, Equatable {
         refresher = stack.refresher
         self.reminders = reminders
         self.hotWater = hotWater
-        signOuts = SchoolSignOut(session:stack.session, refresher:stack.refresher)
+        signOuts = SchoolSignOut(session:stack.session, refresher:stack.refresher, debugLog:services.debugLog)
         reload()
     }
 

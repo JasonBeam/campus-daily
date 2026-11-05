@@ -285,7 +285,7 @@ final class ShowerReducerTests: XCTestCase {
             let (s, fxS) = reduce(armed, .confirmSettleRetry)
             XCTAssertEqual(s.phase, .settling)
             XCTAssertEqual(s.manualSettleAttempts, 1)
-            XCTAssertEqual(fxS, [.diagnostic("settle.manualRetry#1"), .settle(frame: consumption)])
+            XCTAssertEqual(fxS, [.diagnostic(.settleManualRetry(1)), .settle(frame: consumption)])
         }
     }
 

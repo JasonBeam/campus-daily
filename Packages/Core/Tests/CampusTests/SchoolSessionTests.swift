@@ -15,6 +15,8 @@ struct Harness {
     var beforeRecords: (@Sendable () async -> Void)? = nil
     /// The automatic meter lookup's wait before trying again (the app's sleeps).
     var meterRetryWait: @Sendable (TimeInterval) async -> Void = { _ in }
+    /// The TestFlight debug log the session writes to.
+    var debugLog: any DebugLogSink = NoDebugLog()
     var vault: StoredSchoolVault { StoredSchoolVault(store: store) }
     var snapshots: SharedSnapshotStore { SharedSnapshotStore(store: store) }
 
@@ -24,7 +26,7 @@ struct Harness {
         return SchoolSession(portal: PortalClient(http: http), ecykt: EcyktClient(http: http), vault: vault,
                              passwordLogin: passwordLogin, now: clock.function, diagnostic: diagnostic,
                              createsLoginDeviceID: createsLoginDeviceID, recordsTimeout: recordsTimeout,
-                             meterRetryWait: meterRetryWait)
+                             meterRetryWait: meterRetryWait, debugLog: debugLog)
     }
 
     /// The refresher over this harness's session and shared store.

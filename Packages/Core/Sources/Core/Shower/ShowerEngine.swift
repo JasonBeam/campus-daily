@@ -68,8 +68,24 @@ public enum ShowerTargetSelection {
 
 /// Diagnostics hook. Optional. (Reminders follow the published state in the app.)
 public protocol ShowerHooks: Sendable {
-    /// Event names only (no ids, frames or tokens). The app records nothing; tests observe them.
-    func diagnostic(_ event: String) async
+    /// The engine's notes (no ids, frames or tokens); tests observe them.
+    func diagnostic(_ event: ShowerDiagnostic) async
+    /// Every step of the record for the TestFlight debug log (`DebugLogShowerHooks`). Must not
+    /// block: it runs inside the engine's steps.
+    func record(_ event: DebugEvent)
+}
+
+public extension ShowerHooks {
+    func diagnostic(_ event: ShowerDiagnostic) async {}
+    func record(_ event: DebugEvent) {}
+}
+
+/// The app's hooks in a TestFlight install: every event and note goes to the debug log.
+public struct DebugLogShowerHooks: ShowerHooks {
+    let log: any DebugLogSink
+    public init(_ log: any DebugLogSink) { self.log = log }
+    public func diagnostic(_ event: ShowerDiagnostic) async { log.record(.showerNote(event)) }
+    public func record(_ event: DebugEvent) { log.record(event) }
 }
 
 public enum ShowerEngineError: Error, Equatable, Sendable {
@@ -127,9 +143,16 @@ public actor ShowerEngine {
         self.configuration = configuration; self.now = now; self.resetMarker = resetMarker
         let persisted: ShowerState?
         do { persisted = try vault.showerState() }
-        catch ShowerEngineError.unreadableRecord { throw ShowerEngineError.unreadableRecord }
-        catch { throw ShowerEngineError.storage }
+        catch ShowerEngineError.unreadableRecord {
+            hooks?.record(.showerRestore(saved: nil, restored: .idle, unreadable: true))
+            throw ShowerEngineError.unreadableRecord
+        }
+        catch {
+            hooks?.record(.showerRestore(saved: nil, restored: .idle, unreadable: true))
+            throw ShowerEngineError.storage
+        }
         let restored = ShowerReducer.restore(persisted)
+        hooks?.record(.showerRestore(saved: persisted?.phase, restored: restored.phase, unreadable: false))
         var blocked = false
         if let persisted, restored.persistable != persisted {
             do { try vault.saveShowerState(restored.persistable) } catch { blocked = true }
@@ -158,7 +181,9 @@ public actor ShowerEngine {
     /// authorization; it is never closed or settled. Otherwise the usual start.
     @discardableResult
     public func startOrNext(_ b: ShowerBinding) async throws -> ShowerState {
-        if state.showerOver && state.canStartNext { return try await startNext(b) }
+        let next = state.showerOver && state.canStartNext
+        hooks?.record(.showerAction(.shortcutStart(next: next)))
+        if next { return try await startNext(b) }
         return try await start(b)
     }
 
@@ -168,6 +193,7 @@ public actor ShowerEngine {
         try guardIdle()
         try resetMarker?.checkStart(at: now())
         guard state.canStart else { throw ShowerEngineError.blocked }
+        hooks?.record(.showerAction(.start(machine: .machine(b.machineId))))
         let preferred = b.peripheralID ?? (state.machineID == b.machineId.uppercased() ? state.peripheralID : nil)
         startCancelled = false; authorizeLeft = false
         return try await run(b, .start(machineID: b.machineId, preferredPeripheral: preferred))
@@ -178,8 +204,12 @@ public actor ShowerEngine {
     /// its task to cut the Bluetooth connect short. False once the request has left (or there
     /// is no start running): the start goes on and ends as it would have.
     public func cancelStart() -> Bool {
-        guard busy, state.phase == .authorizing, !authorizeLeft else { return false }
+        guard busy, state.phase == .authorizing, !authorizeLeft else {
+            hooks?.record(.showerAction(.cancelStart(accepted: false)))
+            return false
+        }
         startCancelled = true
+        hooks?.record(.showerAction(.cancelStart(accepted: true)))
         return true
     }
 
@@ -196,15 +226,17 @@ public actor ShowerEngine {
         guard state.canStartNext else { throw ShowerEngineError.notAllowed }
         let machine = b.machineId.uppercased()
         guard state.machineID == machine else { throw ShowerEngineError.wrongBinding }
+        hooks?.record(.showerAction(.startNext(machine: .machine(machine))))
         busy = true
         defer { busy = false; binding = nil }
         let previous = state
         let peripheral: String
         let probe: Data
+        let preferred = b.peripheralID ?? previous.peripheralID
         do {
-            peripheral = try await transport.connect(bleName: configuration.bleName, machineID: machine, required: nil,
-                                                     preferred: b.peripheralID ?? previous.peripheralID)
+            peripheral = try await connect(machineID: machine, required: nil, preferred: preferred)
             probe = try await transport.exchange(ShowerFrames.probeCommand)
+            logProbe(probe, machine: machine)
         } catch {
             await transport.disconnect()
             return noticed(.device(Self.deviceError(error)))
@@ -213,6 +245,7 @@ public actor ShowerEngine {
         // changes (no mark, no record kept, no authorization).
         guard !Task.isCancelled else {
             await transport.disconnect()
+            await hooks?.diagnostic(.nextUseCancelled)
             return noticed(.device(.interrupted))
         }
         switch ShowerFrames.classify(probe) {
@@ -222,25 +255,28 @@ public actor ShowerEngine {
             waiting.notice = .device(.busy)
             try await commit(waiting)
             await transport.disconnect()
-            await hooks?.diagnostic("nextUse.deviceBusy")
+            await hooks?.diagnostic(.nextUseDeviceBusy)
             return state
         case .idle(let id) where id == machine:
             break
         case .idle:
             await transport.disconnect()
+            await hooks?.diagnostic(.nextUseWrongDevice)
             return noticed(.wrongDevice)
         case .unreadable:
             await transport.disconnect()
+            await hooks?.diagnostic(.nextUseUnreadable)
             return noticed(.device(.malformedFrame))
         }
         do { try vault.retainShower(previous.persistable) }
         catch {
+            await hooks?.diagnostic(.nextUseKeepFailed)
             storageBlocked = true
             publish()
             await transport.disconnect()
             throw ShowerEngineError.storage
         }
-        await hooks?.diagnostic("nextUse.recordKept")
+        await hooks?.diagnostic(.nextUseRecordKept)
         startCancelled = false; authorizeLeft = false
         binding = b
         do {
@@ -252,6 +288,7 @@ public actor ShowerEngine {
             binding = nil
             state = previous
             publish()
+            await hooks?.diagnostic(.nextUseNotSaved)
             throw error
         }
         return try await loop(.connected(peripheralID: peripheral, probe: probe))
@@ -272,6 +309,7 @@ public actor ShowerEngine {
         guard state.machineID == b.machineId.uppercased() else { throw ShowerEngineError.wrongBinding }
         // Closing the water without a way to settle would leave a charge nobody can send.
         guard gateway.isAvailable else { throw ShowerEngineError.platformMissing }
+        hooks?.record(.showerAction(.finish))
         return try await run(b, .finish)
     }
 
@@ -281,6 +319,7 @@ public actor ShowerEngine {
         try guardIdle()
         guard state.canReview else { throw ShowerEngineError.notAllowed }
         guard state.machineID == b.machineId.uppercased() else { throw ShowerEngineError.wrongBinding }
+        hooks?.record(.showerAction(.review))
         return try await run(b, .review)
     }
 
@@ -324,6 +363,7 @@ public actor ShowerEngine {
     public func dismiss(only expected: ShowerState? = nil) async throws -> ShowerState {
         try guardIdle()
         if let expected, expected != state { return state }
+        hooks?.record(.showerAction(.dismiss))
         return try await run(nil, .dismiss)
     }
 
@@ -363,6 +403,10 @@ public actor ShowerEngine {
     /// Persist, then publish. A failed write blocks every later side effect.
     private func commit(_ next: ShowerState) async throws {
         let changed = next.persistable != state.persistable
+        if let hooks {
+            let before = DebugShowerState(state), after = DebugShowerState(next)
+            if before != after { hooks.record(.showerPhase(from: state.phase, to: after)) }
+        }
         state = next
         if changed {
             do { try vault.saveShowerState(next.persistable) }
@@ -391,8 +435,9 @@ public actor ShowerEngine {
         switch effect {
         case .connectAndProbe(let machine, let preferred):
             do {
-                let id = try await transport.connect(bleName: configuration.bleName, machineID: machine, required: nil, preferred: preferred)
+                let id = try await connect(machineID: machine, required: nil, preferred: preferred)
                 let frame = try await transport.exchange(ShowerFrames.probeCommand)
+                logProbe(frame, machine: machine)
                 return .connected(peripheralID: id, probe: frame)
             } catch {
                 return .connectFailed(Self.deviceError(error))
@@ -401,39 +446,57 @@ public actor ShowerEngine {
         case .authorize(let frame):
             guard let b = binding, !Task.isCancelled, !startCancelled else { return .cancelledBeforeSend }
             authorizeLeft = true
+            hooks?.record(.lxtAuthorize(.sent))
             do {
                 let auth = try await gateway.authorize(b, frame: frame)
+                hooks?.record(.lxtAuthorize(.ok(dataLength: auth.payload.count,
+                                                idIsHex8: ShowerFrames.closeCommand(authorizationID: auth.authorizationID) != nil)))
                 return .authorized(auth, at: now())
             }
-            catch let e as ServiceError { return .authorizeFailed(e) }
-            catch { return .authorizeFailed(.uncertain(.lxt6)) }
+            catch let e as ServiceError { hooks?.record(.lxtAuthorize(.failed(DebugError(e)))); return .authorizeFailed(e) }
+            catch { hooks?.record(.lxtAuthorize(.failed(DebugError(error)))); return .authorizeFailed(.uncertain(.lxt6)) }
 
         case .writeAuthorization(let payload):
-            guard !Task.isCancelled else { return .cancelledBeforeSend }
-            do { return .writeReplied(try await transport.exchange(payload)) }
-            catch is ShowerCommandNotSent { return .cancelledBeforeSend }
-            catch { return .writeFailed(Self.deviceError(error)) }
+            guard !Task.isCancelled else { hooks?.record(.bleAuthWrite(.notSent)); return .cancelledBeforeSend }
+            do {
+                let reply = try await transport.exchange(payload)
+                hooks?.record(.bleAuthWrite(.replied(DebugFrame(reply), matches: ShowerFrames.isAck(reply))))
+                return .writeReplied(reply)
+            }
+            catch is ShowerCommandNotSent { hooks?.record(.bleAuthWrite(.notSent)); return .cancelledBeforeSend }
+            catch { hooks?.record(.bleAuthWrite(.failed(Self.deviceError(error)))); return .writeFailed(Self.deviceError(error)) }
 
         case .probe(let peripheral):
             do {
-                _ = try await transport.connect(bleName: configuration.bleName, machineID: state.machineID ?? "",
-                                                required: peripheral, preferred: nil)
-                return .probeReplied(try await transport.exchange(ShowerFrames.probeCommand))
+                _ = try await connect(machineID: state.machineID ?? "", required: peripheral, preferred: nil)
+                let frame = try await transport.exchange(ShowerFrames.probeCommand)
+                logProbe(frame, machine: state.machineID)
+                return .probeReplied(frame)
             } catch {
                 return .probeFailed(Self.deviceError(error))
             }
 
         case .sendClose(let command):
-            guard !Task.isCancelled else { return .cancelledBeforeSend }
-            do { return .closeReplied(try await transport.exchange(command)) }
-            catch is ShowerCommandNotSent { return .cancelledBeforeSend }
-            catch { return .closeFailed(Self.deviceError(error)) }
+            guard !Task.isCancelled else { hooks?.record(.bleClose(.notSent)); return .cancelledBeforeSend }
+            do {
+                let reply = try await transport.exchange(command)
+                let consumption = ShowerFrames.identity(reply).map { $0 == state.machineID } ?? false
+                hooks?.record(.bleClose(.replied(DebugFrame(reply), matches: consumption)))
+                return .closeReplied(reply)
+            }
+            catch is ShowerCommandNotSent { hooks?.record(.bleClose(.notSent)); return .cancelledBeforeSend }
+            catch { hooks?.record(.bleClose(.failed(Self.deviceError(error)))); return .closeFailed(Self.deviceError(error)) }
 
         case .settle(let frame):
-            guard let b = binding, !Task.isCancelled else { return .cancelledBeforeSend }
-            do { return .settled(try await gateway.settle(b, frame: frame), at: now()) }
-            catch let e as ServiceError { return .settleFailed(e) }
-            catch { return .settleFailed(.uncertain(.lxt6)) }
+            guard let b = binding, !Task.isCancelled else { hooks?.record(.lxtSettle(.notSent)); return .cancelledBeforeSend }
+            hooks?.record(.lxtSettle(.sent))
+            do {
+                let receipt = try await gateway.settle(b, frame: frame)
+                hooks?.record(.lxtSettle(.ok(fen: receipt.amount?.fen)))
+                return .settled(receipt, at: now())
+            }
+            catch let e as ServiceError { hooks?.record(.lxtSettle(.failed(DebugError(e)))); return .settleFailed(e) }
+            catch { hooks?.record(.lxtSettle(.failed(DebugError(error)))); return .settleFailed(.uncertain(.lxt6)) }
 
         case .releaseDevice:
             await transport.disconnect()
@@ -450,6 +513,25 @@ public actor ShowerEngine {
             await hooks?.diagnostic(name)
             return nil
         }
+    }
+
+    /// Connects and logs how (`ble.connect`): never which peripheral, only whether it is the one
+    /// the record already had.
+    private func connect(machineID: String, required: String?, preferred: String?) async throws -> String {
+        let target: DebugConnect.Target = required != nil ? .required : (preferred != nil ? .preferred : .scanned)
+        let known = required ?? preferred
+        do {
+            let id = try await transport.connect(bleName: configuration.bleName, machineID: machineID, required: required, preferred: preferred)
+            hooks?.record(.bleConnect(DebugConnect(error: nil, target: target, samePeripheral: known.map { $0 == id })))
+            return id
+        } catch {
+            hooks?.record(.bleConnect(DebugConnect(error: Self.deviceError(error), target: target, samePeripheral: nil)))
+            throw error
+        }
+    }
+
+    private func logProbe(_ frame: Data, machine: String?) {
+        hooks?.record(.bleProbe(DebugFrame(frame), DebugProbeVerdict(frame, machineID: machine)))
     }
 
     public static func deviceError(_ error: Error) -> ShowerDeviceError {

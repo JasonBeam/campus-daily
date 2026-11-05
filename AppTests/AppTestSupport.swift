@@ -101,8 +101,13 @@ enum Fixture {
     let window: UIWindow
     private(set) var navigator: ClearNavigator?
 
-    init(theme: AppTheme, seenSetup: Bool) {
-        let services = CampusServices.sample()
+    /// `debugLog`: where the pages' `nav.open` lines go (the sample's own services keep none).
+    init(theme: AppTheme, seenSetup: Bool, debugLog: any DebugLogSink = NoDebugLog()) {
+        let http = SampleHTTPClient()
+        let services = CampusServices(kind: .sample, secureStore: InMemorySecureStore(), defaults: SampleDefaults(),
+                                      sharedPreferences: SampleDefaults(), schoolHTTP: http, showerHTTP: http, laundryHTTP: http,
+                                      feedbackHTTP: http, showerTransport: SampleShowerTransport(), leaseFile: nil,
+                                      applicationSupport: nil, sharedDidChange: {}, debugLog: debugLog)
         services.defaults.set(seenSetup, forKey: QuickSetupSeen.key)
         graph = CampusGraph.sample(on: services, theme: theme)
         sample = SampleMode(gate: LiveShowerGate(record: { .known(.idle) }))
@@ -158,5 +163,20 @@ private struct HarnessScene: View {
         .environment(graph.theme)
         .environment(\.campusServices, graph.services)
         .defaultAppStorage(graph.services.defaults)
+    }
+}
+
+/// Keeps every event, for the pages' `nav.open` lines.
+final class AppRecordingLog: DebugLogSink, @unchecked Sendable {
+    private let lock = NSLock()
+    private var kept: [DebugEvent] = []
+    var isEnabled: Bool { true }
+    func record(_ event: DebugEvent) { lock.withLock { kept.append(event) } }
+    func lines() -> [String] { [] }
+    func clear() { lock.withLock { kept = [] } }
+    var events: [DebugEvent] { lock.withLock { kept } }
+    /// Each `nav.open` as `page from`.
+    var opens: [String] {
+        events.compactMap { if case .navOpen(let page, let entry) = $0 { return "\(page.rawValue) \(entry.rawValue)" }; return nil }
     }
 }

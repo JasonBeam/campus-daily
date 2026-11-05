@@ -11,14 +11,14 @@ extension ClearRootView {
             navigator.demo = HomeData.sample()
             navigator.laundryDemo = LaundryDemo.make(.idle)
             navigator.recordsDemo = .list
-            popAll()
+            popAll(from:.sample)
             return
         }
         // Launched outside the sample: nothing to undo.
         guard navigator.demo != nil || navigator.laundryDemo != nil || navigator.recordsDemo != nil else { return }
         navigator.demo = nil; navigator.laundryDemo = nil; navigator.recordsDemo = nil
         navigator.panel = nil
-        popAll()
+        popAll(from:.sample)
     }
 
     /// 去登录: 学校账号 on the checklist, on this root or on the one shown after the sample's
@@ -27,6 +27,6 @@ extension ClearRootView {
         guard due, sample.takeLogin() else { return }
         // Let a closing sheet go first, otherwise the new one is not presented. A newer link in
         // the meantime wins (`destination`).
-        destination.after(600) { navigator.openSetup(at:.account) }
+        destination.after(600) { navigator.openSetup(at:.account, from:.sample) }
     }
 }

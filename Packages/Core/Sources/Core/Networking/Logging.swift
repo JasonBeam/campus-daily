@@ -16,6 +16,12 @@ public struct HTTPLogEntry: Sendable, Equatable {
     public var code: String?
     public var error: String?
 
+    public init(service: Service, method: String, host: String, name: String, status: Int?, milliseconds: Int,
+                code: String?, error: String?) {
+        self.service = service; self.method = method; self.host = host; self.name = name
+        self.status = status; self.milliseconds = milliseconds; self.code = code; self.error = error
+    }
+
     public var line: String {
         var s = "\(service.rawValue) \(method) \(host) \(name)"
         s += status.map { " → \($0)" } ?? ""
@@ -96,5 +102,17 @@ public enum Redactor {
         c?.query = nil
         c?.fragment = nil
         return c?.string ?? "<url>"
+    }
+}
+
+/// Each request line also goes to the TestFlight debug log (as `DebugHTTP`: known names,
+/// hosts, codes and errors only), then to `next`.
+public struct DebugHTTPLogSink: HTTPLogSink {
+    let log: any DebugLogSink
+    let next: any HTTPLogSink
+    public init(_ log: any DebugLogSink, next: any HTTPLogSink = OSLogSink()) { self.log = log; self.next = next }
+    public func record(_ entry: HTTPLogEntry) {
+        if log.isEnabled { log.record(.http(DebugHTTP(entry))) }
+        next.record(entry)
     }
 }

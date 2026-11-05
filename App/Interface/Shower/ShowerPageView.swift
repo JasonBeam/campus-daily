@@ -126,6 +126,8 @@ struct ShowerPageView: View {
         .background(Theme.bg.ignoresSafeArea())
         .animation(reduceMotion ? .easeInOut(duration:0.2) : Theme.spring, value:page?.phase)
         .interactiveDismissDisabled(!flow.mayCollapse)
+        // 上一次洗好了: the page turns to it on its own (`pageEvent`) unless a tap said why.
+        .navOpen(.showerStopped, shown:page?.phase == .stopped, from:.pageEvent)
         .sensoryFeedback(.success, trigger:successTick)
         .sensoryFeedback(.error, trigger:errorTick)
         .onChange(of:page?.phase) { _, phase in
