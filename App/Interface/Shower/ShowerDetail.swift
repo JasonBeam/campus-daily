@@ -9,18 +9,15 @@ struct ShowerDetail: View {
     @Environment(SampleMode.self) private var sample
     @EnvironmentObject private var shower: ShowerModel
     @EnvironmentObject private var campus: CampusModel
-    @State private var confirmResolve = false
     @State private var confirmClear = false
     var body: some View {
         ScrollView {
             VStack(alignment:.leading,spacing:24) {
-                if needsCheck { checkBlock }
                 // Large text: stack instead of squeezing both sides into narrow wrapped columns.
                 ViewThatFits(in:.horizontal) {
                     HStack { Text("宿舍热水").fixedSize(); Spacer(); Text(room).fixedSize() }
                     VStack(alignment:.leading,spacing:4) { Text("宿舍热水"); Text(room) }
                 }.font(.subheadline).foregroundStyle(.secondary)
-                if !needsCheck {
                 if preview != nil { previewStatus } else {
                 VStack(alignment:.leading,spacing:13) {
                     HStack(spacing:9) {
@@ -30,7 +27,6 @@ struct ShowerDetail: View {
                     }
                     Text(shower.inspecting ? "正在只读核对附近水控，不会出水。" : shower.status).font(.subheadline).foregroundStyle(shower.problem ? NativeTheme.notice : .fixed(Color.secondary))
                         .fixedSize(horizontal:false,vertical:true).accessibilityIdentifier("waterStatus")
-                }
                 }
                 }
                 ViewThatFits(in:.horizontal) {
@@ -57,18 +53,6 @@ struct ShowerDetail: View {
                         }
                     }.padding(18).background(NativeTheme.surface,in:RoundedRectangle(cornerRadius:16))
                 }
-                if preview == nil && shower.mayResolveManually && !needsCheck {
-                    // Way out of a record that can't close by itself; only after the user checked the official record.
-                    Button(ShowerPageText.resolve) { confirmResolve = true }
-                        .font(.subheadline).frame(minHeight:44).accessibilityIdentifier("resolveWaterManually")
-                        .disabled(shower.busy)
-                        .confirmationDialog(ShowerPageText.resolveConfirm, isPresented:$confirmResolve, titleVisibility:.visible) {
-                            Button(ShowerPageText.resolveConfirmButton) { Task { await shower.resolveManually() } }
-                            Button("取消", role:.cancel) {}
-                        } message: {
-                            Text(ShowerPageText.resolveConfirmNote)
-                        }
-                }
                 if preview == nil && shower.recordUnreadable {
                     // The record can't be read by this build: cleared only after the user checked the official record.
                     Button(ShowerPageText.unreadableClear) { confirmClear = true }
@@ -92,76 +76,24 @@ struct ShowerDetail: View {
         }.background(NativeTheme.background)
             .navigationTitle("热水洗澡").navigationBarTitleDisplayMode(.inline)
             .safeAreaInset(edge:.bottom) {
-                if needsCheck { resolveButton } else {
                 VStack(spacing:10) {
-                    Button { perform(start:!closing) } label: {
+                    Button { perform() } label: {
                         HStack {
                             if shower.busy { ProgressView().tint(Theme.pillInk).controlSize(.small) }
-                            Text(shower.busy ? "正在处理…" : closing ? "结束并结算" : "开始洗澡")
+                            Text(shower.busy ? "正在处理…" : stopped ? ShowerPageText.startNext : closing ? "结束并结算" : "开始洗澡")
+                                .contentTransition(.opacity)
                             Spacer(); Image(systemName:closing ? "stop.circle" : "arrow.up.right")
                         }.padding(.horizontal,18).frame(minHeight:52)
                     }.buttonStyle(ShowerButtonStyle(primary:true,accent:NativeTheme.tint))
-                        .disabled(preview == nil && (closing ? !shower.mayFinish : !shower.mayStart))
-                        .accessibilityIdentifier(closing ? "finishWater" : "startWater")
-                    Text(closing ? "结算完成前，先别离开水控。" : "授权后，按水控上的出水键。")
+                        .disabled(preview == nil && (stopped ? !shower.mayStartNext : closing ? !shower.mayFinish : !shower.mayStart))
+                        .accessibilityIdentifier(stopped ? "showerStartNext" : closing ? "finishWater" : "startWater")
+                    // The page this opens says 「结算完成前，先别离开水控。」 once 结束 is tapped.
+                    Text(stopped ? ShowerPageText.stoppedNote : closing ? ShowerPageText.runningNote : "授权后，按水控上的出水键。")
                         .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
                 }.padding(.horizontal,20).padding(.top,12).padding(.bottom,12).background(NativeTheme.background)
-                }
             }
     }
 
-    /// The check, as on the shower page's check face (one size smaller on a pushed screen),
-    /// with the same 再查一次水控 row. This screen is where the record is checked: water
-    /// running again is the only way back to the shower page.
-    private var checkBlock: some View {
-        VStack(alignment:.leading, spacing:0) {
-            Image(systemName:"questionmark.circle").font(.system(size:34)).foregroundStyle(Theme.notice)
-                .accessibilityHidden(true).padding(.bottom,14)
-            Text(ShowerPageText.checkTitle(shower.page)).scaledFont(28, .bold, relativeTo:.title).foregroundStyle(Theme.ink)
-                .fixedSize(horizontal:false, vertical:true).accessibilityAddTraits(.isHeader)
-            Text(ShowerPageText.checkBody(shower.page)).scaledFont(17, relativeTo:.body).foregroundStyle(Theme.ink2).lineSpacing(6)
-                .fixedSize(horizontal:false, vertical:true).padding(.top,10)
-            ShowerRecheckRow().padding(.top,18)
-        }
-        .frame(maxWidth:.infinity, alignment:.leading)
-    }
-
-    /// 我在学校记录里核对过了: black pill, 60 pt, 44 pt above the screen's bottom on Face ID
-    /// phones; fill + ink3 while 再查一次水控 or any other controller work (a check from
-    /// Settings, say) runs, since the tap would do nothing then.
-    private var resolveButton: some View {
-        let enabled = shower.page.mayResolve && !shower.busy
-        return VStack(spacing:6) {
-        Button { confirmResolve = true } label: {
-            Text(ShowerPageText.resolve).scaledFont(18, .semibold, relativeTo:.headline)
-                .foregroundStyle(enabled ? Theme.pillInk : Theme.ink3)
-                .frame(maxWidth:.infinity).frame(minHeight:60)
-                .background(enabled ? Theme.pill : Theme.fill, in:appTheme.buttonShape.shape)
-        }
-        .buttonStyle(PressScaleStyle())
-        .disabled(!enabled)
-        .accessibilityIdentifier("resolveWaterManually")
-        .confirmationDialog(ShowerPageText.resolveConfirm, isPresented:$confirmResolve, titleVisibility:.visible) {
-            Button(ShowerPageText.resolveConfirmButton) { shower.pageEvent(.resolveTapped) }
-            Button("取消", role:.cancel) {}
-        } message: {
-            Text(ShowerPageText.resolveConfirmNote)
-        }
-        // As on the shower page's check face: keeps this record and starts the next shower.
-        if shower.showsStartNext {
-            Button { Task { await shower.startNext() } } label: {
-                Text(ShowerPageText.startNext).scaledFont(17, .medium, relativeTo:.body).foregroundStyle(Theme.ink2)
-                    .frame(maxWidth:.infinity).frame(minHeight:50)
-            }
-            .buttonStyle(RowPressStyle())
-            .accessibilityIdentifier("showerStartNext")
-            Text(ShowerPageText.startNextNote).scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
-                .multilineTextAlignment(.center).fixedSize(horizontal:false, vertical:true)
-        }
-        }
-        .padding(.horizontal,20).padding(.top,12).padding(.bottom,10)
-        .background(NativeTheme.background)
-    }
     @ViewBuilder private var cost: some View {
         if preview != nil { Text("结算后显示").font(.subheadline) }
         else if shower.state.phase == .done, let cost = shower.lastCost {
@@ -171,9 +103,10 @@ struct ShowerDetail: View {
         } else { Text("结算后显示").font(.subheadline) }
     }
     private var closing: Bool { preview == nil && shower.state.canFinish }
-    /// The controller showed itself stopped under a running record: the check is done here
-    /// (结束并结算 would only show it). Read from the page's record, which follows the engine.
-    private var needsCheck: Bool { preview == nil && shower.page.record.mayBeFlowing && shower.page.record.stateReviewRequired }
+    /// The shower is over (`ShowerState.showerOver`): the button is the next shower, on the
+    /// shower page (routes to here open that page then, so this shows mostly in passing). Read
+    /// from the page's record, which follows the engine.
+    private var stopped: Bool { preview == nil && shower.page.record.showerOver }
     private var room: String { preview?.dorm ?? campus.room }
     private var lastEnded: Date? {
         guard let preview else { return shower.lastEnded }
@@ -195,6 +128,7 @@ struct ShowerDetail: View {
         if shower.busy { return "正在处理" }
         if shower.problem { return "本次待核对" }
         if !shower.configured { return "尚未配置热水" }
+        if stopped { return ShowerPageText.stoppedTitle }
         switch shower.state.phase {
         case .running, .writePending: return "热水已授权"
         case .done: return "结算完成"
@@ -204,9 +138,11 @@ struct ShowerDetail: View {
     }
     /// Both go through the shower page, which shows the start or the end as it runs. The
     /// sample's start only says it can't.
-    private func perform(start:Bool) {
+    private func perform() {
         if preview != nil { sample.perform(.startShower) {}; return }
-        if start { shower.pageEventShowingPage(.startTapped) } else { shower.pageEventShowingPage(.reopen, .endTapped) }
+        if stopped { shower.pageEventShowingPage(.startNextTapped) }
+        else if closing { shower.pageEventShowingPage(.reopen, .endTapped) }
+        else { shower.pageEventShowingPage(.startTapped) }
     }
 }
 

@@ -27,7 +27,7 @@ struct ClearShowerTileStatus: View {
                 .foregroundStyle(color)
                 .accessibilityElement(children:.ignore)
                 // 「上次 11 分钟，1.32 元」, as 暖橙's home reads its caption.
-                .accessibilityLabel(HomeShowerButton.spoken(status.text))
+                .accessibilityLabel(HomeShowerButton.spoken(status.spoken))
         }
     }
 

@@ -119,21 +119,10 @@ extension HomeView {
                 demo = HomeDemo.normal.content().0
                 // Collapsed while water runs, home shows the showering button, as it would live.
                 if record.phase == .running, let start = record.startedAt { demo?.shower = .showering(start) }
-                if record.stateReviewRequired { demo?.shower = .needsCheck }
+                if record.showerOver { demo?.shower = .stopped }
                 shower.showDemoPage(record)
                 if url.lastPathComponent == "sh-endfail" { shower.page.endFailed = .noConnection }
-                switch url.lastPathComponent {
-                case "sh-check-rechecking": shower.page.rechecking = true
-                case "sh-check-stopped": shower.page.recheckResult = .stopped
-                case "sh-check-nocon": shower.page.recheckResult = .noConnection
-                case "sh-check-bt": shower.page.recheckResult = .bluetoothOff
-                case "sh-check-busy": shower.page.recheckResult = .busy
-                case "sh-check-failed": shower.page.recheckResult = .failed
-                case "sh-check-unavailable": shower.page.recheckResult = .unavailable
-                case "sh-check-inuse": shower.page.recheckResult = .inUse
-                case "sh-detail-check-rechecking": shower.page.rechecking = true
-                default: break
-                }
+                if url.lastPathComponent == "sh-stopped-busy-rechecking" { shower.page.rechecking = true }
                 if url.lastPathComponent.hasPrefix("sh-detail") {
                     // The 热水洗澡 screen over home, the page down.
                     shower.page.presented = false
@@ -145,7 +134,7 @@ extension HomeView {
                                                                   "settings-ask":.notDetermined, "settings-password-on":.authorized,
                                                                   "settings-paused":.authorized, "settings-paused-noanswer":.authorized,
                                                                   "settings-web-login":.authorized,
-                                                                  "settings-reset-shower":.authorized, "settings-reset-unsure":.authorized,
+                                                                  "settings-reset-shower":.authorized, "settings-reset-kept":.authorized,
                                                                   "settings-laundry-off":.authorized, "settings-laundry-locked":.authorized,
                                                                   "settings-theme":.authorized, "settings-theme-shower":.authorized,
                                                                   "settings-theme-laundry":.authorized, "settings-theme-both":.authorized]
@@ -161,11 +150,11 @@ extension HomeView {
                 Task { try? await Task.sleep(for:.milliseconds(500)); settings = true }
             }
     }
-    /// campusdaily://demo/sh-<face>: connect, run, settle, done, nocon, denied, busy, unsure, check,
-    /// endfail (back on the timer after an end that didn't go through), check-rechecking,
-    /// check-stopped, check-nocon, check-bt, check-busy, check-failed, check-unavailable
-    /// (再查一次水控 running, then what it found or why it could not look); detail-check,
-    /// detail-check-rechecking (the same record on the 热水洗澡 screen).
+    /// campusdaily://demo/sh-<face>: connect, run, endfail (back on the timer after an end that
+    /// didn't go through), settle, done, nocon, denied, busy, stopped (over, kept for the school),
+    /// unsure (a settlement without an answer: the same stopped page), stopped-busy (the next
+    /// start found the controller in use), stopped-busy-rechecking (再查一次 running), and
+    /// detail-stopped (the 热水洗澡 screen over the stopped record).
     enum ShowerPageDemo {
         static func record(_ name: String, now: Date = Date()) -> ShowerState? {
             SampleData.showerRecord(name, now:now)
@@ -210,8 +199,8 @@ extension HomeView {
                 if let record = ShowerPageDemo.record("sh-done") { shower.showDemoPage(record) }
             }
         case .signIn: openOnboarding()
-        case .review, .settling: path.append(.shower)
-        case .check: shower.pageEvent(.reopen)
+        case .settling: path.append(.shower)
+        case .stopped: shower.pageEvent(.reopen)
         case .starting: break
         }
     }

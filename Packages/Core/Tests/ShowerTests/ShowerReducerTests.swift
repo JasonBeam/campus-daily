@@ -292,7 +292,7 @@ final class ShowerReducerTests: XCTestCase {
     func testSettleCancelledIsUnconfirmedAndResolvable() {
         let (f, _) = reduce(settling(), .cancelledBeforeSend)
         XCTAssertEqual(f.failure?.reason, .settleUnconfirmed)
-        XCTAssertEqual(ShowerDisplay.title(f), "结算待核对")
+        XCTAssertEqual(ShowerDisplay.title(f), "上一次洗好了，学校会自己扣费。")
         XCTAssertEqual(reduce(f, .dismiss).0, f, "review failures are not dismissed")
         XCTAssertEqual(reduce(f, .resolveManually).0.phase, .idle)
     }

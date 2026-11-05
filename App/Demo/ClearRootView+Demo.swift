@@ -108,20 +108,10 @@ extension ClearRootView {
             popAll()
             navigator.demo = normal
             if record.phase == .running, let start = record.startedAt { navigator.demo?.shower = .showering(start) }
-            if record.stateReviewRequired { navigator.demo?.shower = .needsCheck }
+            if record.showerOver { navigator.demo?.shower = .stopped }
             shower.showDemoPage(record)
             if name == "sh-endfail" { shower.page.endFailed = .noConnection }
-            switch name {
-            case "sh-check-rechecking", "sh-detail-check-rechecking": shower.page.rechecking = true
-            case "sh-check-stopped": shower.page.recheckResult = .stopped
-            case "sh-check-nocon": shower.page.recheckResult = .noConnection
-            case "sh-check-bt": shower.page.recheckResult = .bluetoothOff
-            case "sh-check-busy": shower.page.recheckResult = .busy
-            case "sh-check-failed": shower.page.recheckResult = .failed
-            case "sh-check-unavailable": shower.page.recheckResult = .unavailable
-            case "sh-check-inuse": shower.page.recheckResult = .inUse
-            default: break
-            }
+            if name == "sh-stopped-busy-rechecking" { shower.page.rechecking = true }
             if name.hasPrefix("sh-detail") {
                 // The same page, not brought up by the model.
                 shower.page.presented = false
@@ -135,7 +125,7 @@ extension ClearRootView {
                                                               "settings-ask":.notDetermined, "settings-password-on":.authorized,
                                                               "settings-paused":.authorized, "settings-paused-noanswer":.authorized,
                                                               "settings-web-login":.authorized,
-                                                              "settings-reset-shower":.authorized, "settings-reset-unsure":.authorized,
+                                                              "settings-reset-shower":.authorized, "settings-reset-kept":.authorized,
                                                               "settings-laundry-off":.authorized, "settings-laundry-locked":.authorized,
                                                               "settings-theme":.authorized, "settings-theme-shower":.authorized,
                                                               "settings-theme-laundry":.authorized, "settings-theme-both":.authorized]

@@ -53,7 +53,7 @@ final class ShowerUnacknowledgedSessionTests: XCTestCase {
         XCTAssertEqual(held.failure?.settleNotSent, true, label, file: file, line: line)
         XCTAssertEqual(held.consumption, HexCoding.upper(consumption), "kept for the retry (\(label))", file: file, line: line)
         XCTAssertTrue(held.canRetrySettle, label, file: file, line: line)
-        XCTAssertEqual(ShowerPage(held)?.phase, .unsure, label, file: file, line: line)
+        XCTAssertEqual(ShowerPage(held)?.phase, .stopped, label, file: file, line: line)
     }
 
     func testAnEndWithoutTheControllersAcknowledgementIsNotSettledByItself() async throws {

@@ -152,28 +152,23 @@ final class ShowerCloseNotSentTests: XCTestCase {
 
     // MARK: Page
 
-    func testTheUnsureFaceOfAnUnconfirmedCloseOffersTheProbe() {
-        let unsure = ShowerState(phase: .failed, machineID: machine, peripheralID: "P", startedAt: t0,
-                                 failure: ShowerFailure(reason: .closeUnconfirmed, needsReview: true))
-        var flow = ShowerPageFlow(record: unsure, presented: true)
-        XCTAssertEqual(flow.page?.phase, .unsure)
-        XCTAssertTrue(flow.mayRecheck)
-        XCTAssertEqual(ShowerPageFlow.reduce(flow, .recheckTapped).1, [.recheck])
-        flow = ShowerPageFlow.reduce(flow, .recheckTapped).0
+    /// A close that may not have taken: the shower is over (the school settles it), its one
+    /// button the next shower; 再查一次 only once that start found the controller in use.
+    func testAnUnconfirmedCloseIsOverAndProbesOnlyOnceFoundInUse() {
+        let over = ShowerState(phase: .failed, machineID: machine, peripheralID: "P", startedAt: t0,
+                               failure: ShowerFailure(reason: .closeUnconfirmed, needsReview: true))
+        let flow = ShowerPageFlow(record: over, presented: true)
+        XCTAssertEqual(flow.page?.phase, .stopped)
+        XCTAssertTrue(flow.mayStartNext)
+        XCTAssertFalse(flow.mayRecheck)
 
-        var stopped = flow
-        var after = unsure
-        after.notice = .notActive
-        stopped = ShowerPageFlow.reduce(stopped, .record(after)).0
-        stopped = ShowerPageFlow.reduce(stopped, .recheckReturned(ShowerRecheckResult(after: after))).0
-        XCTAssertEqual(stopped.recheckResult, .stopped)
-        XCTAssertEqual(stopped.page?.phase, .unsure)
-
-        flow = ShowerPageFlow.reduce(flow, .record(ShowerState(phase: .running, machineID: machine, startedAt: t0))).0
-        flow = ShowerPageFlow.reduce(flow, .recheckReturned(nil)).0
-        XCTAssertEqual(flow.page?.phase, .running)
-        XCTAssertTrue(flow.presented)
-        XCTAssertTrue(flow.mayEnd)
+        var inUse = over
+        inUse.waitingForRelease = true
+        let found = ShowerPageFlow(record: inUse, presented: true)
+        XCTAssertTrue(found.foundInUse)
+        XCTAssertFalse(found.mayStartNext)
+        XCTAssertTrue(found.mayRecheck)
+        XCTAssertEqual(ShowerPageFlow.reduce(found, .recheckTapped).1, [.recheck])
 
         let settle = ShowerState(phase: .failed, machineID: machine, startedAt: t0,
                                  failure: ShowerFailure(reason: .settleUncertain, needsReview: true))

@@ -13,7 +13,7 @@ public struct ShowerActionFailure: Error, LocalizedError, Sendable, Equatable {
     public init(_ error: ShowerEngineError) {
         switch error {
         case .busy: message = "正在和水控通信，稍等一下。"
-        case .blocked: message = "上次结算还没确认，打开校日常核对一下。"
+        case .blocked: message = ShowerAuthorText.keptStatus
         case .notAllowed: message = "现在没有可以结束的洗澡。"
         case .wrongBinding: message = "这次洗澡用的不是你现在选的水控，打开校日常看看。"
         case .storage: message = "这台手机的钥匙串暂时写不进去，重启 App 后再试。"

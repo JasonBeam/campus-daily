@@ -94,7 +94,7 @@ final class ShowerStateDecodingTests: XCTestCase {
         XCTAssertEqual(restored.phase, .failed)
         XCTAssertTrue(restored.canResolveManually)
         XCTAssertFalse(restored.canStart)
-        XCTAssertEqual(ShowerPage(restored)?.phase, .unsure)
+        XCTAssertEqual(ShowerPage(restored)?.phase, .stopped)
     }
 
     /// The way out of an unreadable record, after the user checked the school's record: it is

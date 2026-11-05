@@ -24,17 +24,18 @@ struct ClearShowerPage: View {
     private var flow: ShowerPageFlow { shower.page }
     private var phase: ShowerPagePhase? { flow.pushedPhase }
 
+    /// Every face has its cost card but a shower that is over: the app won't settle it, so
+    /// 「本次费用 · 结算后显示」 would promise what doesn't come.
+    static func showsCostCard(_ phase: ShowerPagePhase?) -> Bool { phase != .stopped }
+
     var body: some View {
         ScrollView {
             VStack(alignment:.leading, spacing:24) {
                 roomLine
                 ClearShowerHeadline(phase:phase, configured:configured, live:live)
-                if phase == .unsure || phase == .needsCheck {
-                    ClearShowerCheckCard()
-                } else {
-                    ClearShowerCostCard(phase:phase, live:live)
-                }
-                if phase == nil { idleExtras }
+                if Self.showsCostCard(phase) { ClearShowerCostCard(phase:phase, live:live) }
+                // Over: the start layout's 最近一次用水 and 连接检查 (in use: its own words only).
+                if phase == nil || (phase == .stopped && !flow.foundInUse) { idleExtras }
             }
             .padding(20).frame(maxWidth:560).frame(maxWidth:.infinity)
         }
@@ -49,8 +50,9 @@ struct ClearShowerPage: View {
         .sensoryFeedback(.error, trigger:errorTick)
         .onChange(of:flow.page?.phase) { _, phase in
             switch phase {
-            case .done?: successTick += 1
-            case .connectFailed?, .denied?, .unsure?, .needsCheck?: errorTick += 1
+            // Stopped on the controller: this shower is over, not a failure.
+            case .done?, .stopped?: successTick += 1
+            case .connectFailed?, .denied?: errorTick += 1
             default: break
             }
             if let phase { AccessibilityNotification.Announcement(announcement(phase)).post() }
@@ -59,8 +61,8 @@ struct ClearShowerPage: View {
             guard let result else { return }
             AccessibilityNotification.Announcement(ShowerPageText.recheckResult(result)).post()
         }
-        .onChange(of:flow.checkInUse) { _, inUse in
-            // 再查一次水控 says it with its result.
+        .onChange(of:flow.foundInUse) { _, inUse in
+            // 再查一次 says it with its result.
             guard inUse, flow.recheckResult != .inUse else { return }
             errorTick += 1
             AccessibilityNotification.Announcement(ShowerPageText.inUse + "。" + ShowerPageText.checkInUseBody).post()
@@ -71,8 +73,8 @@ struct ClearShowerPage: View {
             AccessibilityNotification.Announcement(ShowerPageText.endFailed(failure)).post()
         }
         .typesettingLanguage(Theme.typesetting)
-        // On screen, the page holds 再结算一次's first tap even while the flow is down (after
-        // 去核对, after a relaunch); going off screen takes it back (`ShowerPageFlow.pushedVisible`).
+        // On screen, the page counts as shown even while the flow is down (after a relaunch);
+        // going off screen takes back a settle retry an older build left armed (`ShowerPageFlow.pushedVisible`).
         .onAppear {
             guard !counted else { return }
             counted = true; shower.pageEvent(.pushedAppeared)
@@ -150,8 +152,7 @@ struct ClearShowerPage: View {
         case .done: return ShowerPageText.doneLabel
         case .connectFailed: return ShowerPageText.connectFailed
         case .denied: return flow.page?.denial == .inUse ? ShowerPageText.inUse : ShowerPageText.denied
-        case .unsure: return flow.page?.authorizeUnclear?.title ?? ShowerPageText.unsure
-        case .needsCheck: return ShowerPageText.check
+        case .stopped: return flow.foundInUse ? ShowerPageText.inUse : ShowerPageText.stoppedTitle
         }
     }
 }

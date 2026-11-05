@@ -3,13 +3,20 @@ import XCTest
 import CoreTestSupport
 
 /// A held settlement (the water it read may be someone else's) stays held when its retry is
-/// refused or gets no answer: the next unsure face still warns, and does not read as the
+/// refused or gets no answer: the record still says so, and does not read as the
 /// plain "settle again" case.
 final class ShowerHeldSettleRetryTests: XCTestCase {
     let t0 = Date(timeIntervalSince1970: 1_800_000_000)
     let frame = FakeFrames.identity("11223344", tail: 9)
 
-    func cause(_ record: ShowerState) -> ShowerSettleRetryCause? { ShowerPageFlow(record: record, presented: true).settleRetryCause }
+    /// What the record says became of the settlement (the page no longer words it).
+    enum Cause { case held, refused, notSent, noAnswer }
+    func cause(_ record: ShowerState) -> Cause? {
+        guard record.canRetrySettle, let failure = record.failure else { return nil }
+        if failure.settleHeld { return .held }
+        if failure.reason == .settleRefused { return .refused }
+        return failure.settleNotSent ? .notSent : .noAnswer
+    }
 
     var held: ShowerState {
         var closing = ShowerState(phase: .closing, machineID: "11223344", startedAt: t0, authorizationID: "001122FF",

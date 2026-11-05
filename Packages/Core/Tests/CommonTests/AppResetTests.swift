@@ -182,7 +182,9 @@ final class AppResetTests: XCTestCase {
         XCTAssertEqual(AppReset.lock(shower: ShowerState(phase: .running), laundry: .active), .showering)
     }
 
-    func testResetWaitsForTheShowerAndItsSettlement() {
+    /// Only a shower in progress locks reset. One that is over (stopped on the controller, or
+    /// kept with its outcome unknown) does not: the app never settles it, the school does.
+    func testResetWaitsOnlyForAShowerInProgress() {
         XCTAssertNil(AppReset.lock(shower: nil))
         XCTAssertNil(AppReset.lock(shower: .idle))
         XCTAssertNil(AppReset.lock(shower: ShowerState(phase: .done)))
@@ -190,9 +192,16 @@ final class AppResetTests: XCTestCase {
         for phase in [ShowerPhase.authorizing, .writePending, .running, .closing, .settling] {
             XCTAssertEqual(AppReset.lock(shower: ShowerState(phase: phase)), .showering, "\(phase)")
         }
-        XCTAssertEqual(AppReset.lock(shower: ShowerState(phase: .failed, failure: ShowerFailure(reason: .settleUncertain, needsReview: true))),
-                       .unsettled)
-        XCTAssertEqual(AppReset.lock(shower: ShowerState(phase: .running, stateReviewRequired: true)), .unsettled)
+        for reason: ShowerFailureReason in [.settleUncertain, .settleRefused, .settleUnconfirmed, .closeUnconfirmed,
+                                            .authorizeUncertain, .authorizationInvalid] {
+            XCTAssertNil(AppReset.lock(shower: ShowerState(phase: .failed, failure: ShowerFailure(reason: reason, needsReview: true))),
+                         reason.rawValue)
+        }
+        XCTAssertNil(AppReset.lock(shower: ShowerState(phase: .running, stateReviewRequired: true)), "stopped on the controller")
+        XCTAssertNil(AppReset.lock(shower: ShowerState(phase: .writePending, stateReviewRequired: true)))
+        var inUse = ShowerState(phase: .running, stateReviewRequired: true)
+        inUse.waitingForRelease = true
+        XCTAssertNil(AppReset.lock(shower: inUse), "the next start found the controller in use")
     }
 
     func testUnreadableRecordsAndAControllerCheckLockReset() {

@@ -95,12 +95,6 @@ struct ClearRootView: View {
         .onChange(of:shower.page.presented, initial:true) { _, up in followShowerPage(up) }
         .onChange(of:shower.page.page?.phase) { _, _ in followShowerPage(shower.page.presented) }
         .onChange(of:shower.pageWanted) { _, _ in followShowerPage(shower.page.presented) }
-        .onChange(of:shower.reviewRequested) { _, requested in
-            guard requested else { return }
-            shower.reviewRequested = false
-            // 去核对: the same page, now on the record to check.
-            showShowerPage()
-        }
         .onChange(of:navigator.homePath) { old, new in showerPageLeft(old:old, new:new) }
         .onChange(of:data.laundryDone, initial:true) { _, done in presentLaundryDone(done) }
         // A done panel that arrived while another was up is shown once that one closes.

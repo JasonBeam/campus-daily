@@ -47,7 +47,7 @@ final class ShowerWritePendingFinishTests: XCTestCase {
             XCTAssertTrue(s.stateReviewRequired)
             XCTAssertEqual(s.notice, .notActive)
             XCTAssertTrue(s.canResolveManually)
-            XCTAssertEqual(ShowerPage(s)?.phase, .needsCheck)
+            XCTAssertEqual(ShowerPage(s)?.phase, .stopped)
             XCTAssertEqual(try vault.showerState()?.stateReviewRequired, true, "persisted")
             XCTAssertFalse(transport.writes.contains(close))
             XCTAssertTrue(gateway.settleFrames.isEmpty)

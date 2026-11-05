@@ -17,6 +17,10 @@ public struct ShowerTileStatus: Equatable, Sendable {
     public var dimmed = false
     /// Signed out: the tile opens the first-run checklist instead of the page.
     public var opensSetup = false
+    /// What VoiceOver reads when it differs from `text` (「去洗澡，上一次洗好了」).
+    public var spokenText: String?
+    /// What VoiceOver reads.
+    public var spoken: String { spokenText ?? text }
 
     public init(text: String, tone: Tone = .secondary, timerStart: Date? = nil, shorter: [String] = [], dimmed: Bool = false,
                 opensSetup: Bool = false) {
@@ -51,8 +55,11 @@ public struct ShowerTileStatus: Equatable, Sendable {
         case .starting: return ShowerTileStatus(text: "正在连接水控…")
         case .showering(let start): return ShowerTileStatus(text: "正在洗澡", tone: .accent, timerStart: start, shorter: [""])
         case .settling: return ShowerTileStatus(text: "正在结算…")
-        case .unresolved(let review): return ShowerTileStatus(text: review.caption, tone: .notice)
-        case .needsCheck: return ShowerTileStatus(text: "核对上次洗澡", tone: .notice)
+        // Over (stopped on the controller, or kept for the school): the tile opens the timer page.
+        case .stopped:
+            var tile = ShowerTileStatus(text: ShowerAuthorText.homeButton)
+            tile.spokenText = ShowerAuthorText.homeButtonLabel
+            return tile
         }
     }
 }

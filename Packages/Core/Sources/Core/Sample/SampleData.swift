@@ -168,7 +168,8 @@ public enum SampleData {
     // MARK: Shower
 
     /// A shower record on the sample controller, by the demo's name for it: sh-connect, sh-run,
-    /// sh-endfail, sh-check…, sh-settle, sh-done, sh-nocon, sh-denied, sh-busy, sh-unsure.
+    /// sh-endfail, sh-stopped, sh-stopped-busy(-rechecking), sh-detail-stopped, sh-settle, sh-done, sh-nocon, sh-denied,
+    /// sh-busy, sh-unsure (a settlement without an answer: kept for the school, the stopped page).
     /// Nil for any other name.
     public static func showerRecord(_ name: String, now: Date = Date()) -> ShowerState? {
         let start = now.addingTimeInterval(-(8 * 60 + 42))
@@ -180,11 +181,10 @@ public enum SampleData {
         switch name {
         case "sh-connect": return ShowerState(phase: .authorizing)
         case "sh-run", "sh-endfail": return ShowerState(phase: .running, startedAt: start)
-        case "sh-check", "sh-check-rechecking", "sh-check-stopped", "sh-check-nocon",
-             "sh-check-bt", "sh-check-busy", "sh-check-failed", "sh-check-unavailable",
-             "sh-detail-check", "sh-detail-check-rechecking", "sh-check-inuse": return ShowerState(phase: .running, startedAt: start, stateReviewRequired: true, notice: .notActive)
-        // 再洗一次 found the controller in use.
-        case "sh-check-nextbusy":
+        case "sh-stopped", "sh-detail-stopped":
+            return ShowerState(phase: .running, startedAt: start, stateReviewRequired: true, notice: .notActive)
+        // 开始下一次洗澡 found the controller in use (再查一次 running for -rechecking).
+        case "sh-stopped-busy", "sh-stopped-busy-rechecking":
             return ShowerState(phase: .running, startedAt: start, stateReviewRequired: true, notice: .device(.busy), waitingForRelease: true)
         case "sh-settle": return ShowerState(phase: .settling, startedAt: start)
         case "sh-done":

@@ -13,7 +13,7 @@ struct ClearShowerDock: View {
     /// Nil: no session to show (ready to start).
     let phase: ShowerPagePhase?
     let live: Bool
-    @State private var confirmResolve = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var flow: ShowerPageFlow { shower.page }
 
@@ -27,45 +27,49 @@ struct ClearShowerDock: View {
             case .connecting?:
                 primary(ShowerPageText.connecting, spinning:true, enabled:false) {}
                 secondary("取消", enabled:flow.mayCancel) { shower.pageEvent(.cancelTapped) }
-            case .running?:
-                primary("结束并结算", symbol:"stop.circle", enabled:flow.mayEnd && !platformMissing, action:end)
-                // The line in the headline block says why the end can't go out now.
-                if flow.endFailed == nil && !platformMissing { note(ShowerPageText.runningNote) }
+            case .stopped? where flow.foundInUse:
+                // Found in use before the next shower: only 再查一次.
+                primary(flow.rechecking ? ShowerPageText.rechecking : ShowerPageText.recheckInUse, symbol:"arrow.clockwise",
+                        spinning:flow.rechecking, enabled:flow.mayRecheck && !(live && shower.busy)) {
+                    shower.pageEvent(.recheckTapped)
+                }
+                .accessibilityIdentifier("showerRecheck")
+            case .running?, .stopped?:
+                // The one button is the next step: 结束并结算, then 开始下一次洗澡 once the shower
+                // is over (the same button, its words cross-fading).
+                let stopped = phase == .stopped
+                if stopped, flow.nextFailed, live, let line = shower.message {
+                    Label { ClearNoticeText(line) } icon: { Image(systemName:"exclamationmark.circle") }
+                        .font(.footnote).foregroundStyle(NativeTheme.notice)
+                        .frame(maxWidth:.infinity, alignment:.leading)
+                        .fixedSize(horizontal:false, vertical:true)
+                }
+                primary(stopped ? ShowerPageText.startNext : "结束并结算", symbol:stopped ? "arrow.up.right" : "stop.circle",
+                        enabled:stopped ? flow.mayStartNext && (!live || shower.mayStartNext) : flow.mayEnd && !platformMissing,
+                        action:stopped ? startNext : end)
+                    .accessibilityIdentifier(stopped ? "showerStartNext" : "showerEnd")
+                if stopped {
+                    note(ShowerPageText.stoppedNote).accessibilityIdentifier("showerStoppedNote")
+                } else if flow.endFailed == nil && !platformMissing {
+                    // The line in the headline block says why the end can't go out now. From the
+                    // tap of 结束 until the settlement is done: stay at the controller.
+                    note(flow.ending ? ShowerPageText.endingNote : ShowerPageText.runningNote)
+                }
             case .settling?:
-                // 先别离开水控。 is already the headline block's body.
                 primary(ShowerPageText.settling, spinning:true, enabled:false) {}
+                note(ShowerPageText.endingNote)
             case .done?, .denied?:
                 primary("好", enabled:true) { close(.closeTapped) }
             case .connectFailed?:
                 primary("再试一次", symbol:"arrow.clockwise", enabled:!flow.starting) { shower.pageEvent(.retryTapped) }
                 secondary("取消", enabled:true) { close(.closeTapped) }
-            case .unsure?:
-                if flow.presented {
-                    primary(ShowerPageText.review, enabled:!flow.rechecking) { shower.pageEvent(.reviewTapped) }
-                    secondary("先回首页", enabled:true) { close(.homeTapped) }
-                    startNextButton
-                } else {
-                    // After 去核对: marked checked here, as on 暖橙's 热水洗澡 screen.
-                    primary(ShowerPageText.resolve, enabled:live && shower.mayResolveManually) { confirmResolve = true }
-                }
-            case .needsCheck?:
-                primary(ShowerPageText.resolve, enabled:flow.mayResolve && !(live && shower.busy)) { confirmResolve = true }
-                if flow.presented {
-                    secondary(ShowerPageText.review, enabled:!flow.rechecking) { shower.pageEvent(.reviewTapped) }
-                }
-                startNextButton
             }
         }
+        .animation(reduceMotion ? nil : .easeInOut(duration:0.2), value:phase)
         .frame(maxWidth:560)
         .padding(.horizontal,20).padding(.vertical,12)
         .frame(maxWidth:.infinity)
         .background(NativeTheme.background)
-        .confirmationDialog(ShowerPageText.resolveConfirm, isPresented:$confirmResolve, titleVisibility:.visible) {
-            Button(ShowerPageText.resolveConfirmButton) { resolve() }
-            Button("取消", role:.cancel) {}
-        } message: {
-            Text(ShowerPageText.resolveConfirmNote)
-        }
     }
 
     // MARK: Actions
@@ -91,8 +95,12 @@ struct ClearShowerDock: View {
         if flow.presented { shower.pageEvent(.endTapped) } else { shower.pageEventShowingPage(.reopen, .endTapped) }
     }
 
-    private func resolve() {
-        if phase == .needsCheck { shower.pageEvent(.resolveTapped) } else { Task { await shower.resolveManually() } }
+    /// 开始下一次洗澡: connecting at once, on the page brought up.
+    private func startNext() {
+        #if DEBUG
+        if !live { shower.showDemoPage(HomeView.ShowerPageDemo.record("sh-connect")); return }
+        #endif
+        if flow.presented { shower.pageEvent(.startNextTapped) } else { shower.pageEventShowingPage(.startNextTapped) }
     }
 
     private func close(_ event: ShowerPageEvent) {
@@ -108,7 +116,7 @@ struct ClearShowerDock: View {
             HStack {
                 // Tinted by the style: white on blue, grey while disabled.
                 if spinning { ProgressView().controlSize(.small) }
-                Text(title)
+                Text(title).contentTransition(.opacity)
                 Spacer()
                 if let symbol { Image(systemName:symbol).accessibilityHidden(true) }
             }
@@ -117,15 +125,6 @@ struct ClearShowerDock: View {
         }
         .buttonStyle(ClearShowerButtonStyle())
         .disabled(!enabled)
-    }
-
-    /// Over a record that waits for its check: keeps it and starts the next shower.
-    @ViewBuilder private var startNextButton: some View {
-        if (live && shower.mayStartNext) || (!live && shower.showsStartNext) {
-            secondary(ShowerPageText.startNext, enabled:true) { Task { await shower.startNext() } }
-                .accessibilityIdentifier("showerStartNext")
-            note(ShowerPageText.startNextNote).accessibilityIdentifier("showerStartNextNote")
-        }
     }
 
     private func secondary(_ title: String, enabled: Bool, action: @escaping () -> Void) -> some View {

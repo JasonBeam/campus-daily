@@ -66,38 +66,37 @@ final class ShowerStoppedSessionTests: XCTestCase {
         XCTAssertFalse(transport.writes.contains(oldClose))
         XCTAssertTrue(gateway.settleFrames.isEmpty)
     }
-    /// Both ways of finding the controller in use over the check put 水控有人在用 on the face;
-    /// the next look that finds it stopped takes it off.
-    func testTheCheckFaceSaysInUseAfterARecheckOrANextUseFoundItBusy() async throws {
+    /// The next shower found the controller in use: the stopped page says 水控有人在用 (also
+    /// after a relaunch) until 再查一次 finds it free again; water still running keeps it.
+    func testTheStoppedPageSaysInUseUntilARecheckFindsItFree() async throws {
         let e = try await stopped()
         var flow = ShowerPageFlow(record: await e.state, presented: true)
-        XCTAssertFalse(flow.checkInUse)
+        XCTAssertFalse(flow.foundInUse)
+        XCTAssertEqual(ShowerPageFlow.reduce(flow, .recheckTapped).1, [], "no 再查一次 while nothing was found in use")
+
+        transport.script(.frame(FakeFrames.active))
+        let busy = try await e.startNext(binding)
+        (flow, _) = ShowerPageFlow.reduce(flow, .record(busy))
+        XCTAssertEqual(flow.page?.phase, .stopped)
+        XCTAssertTrue(flow.foundInUse, "the next use found it in use")
+        let relaunched = ShowerPageFlow(record: try XCTUnwrap(try vault.showerState()), presented: true)
+        XCTAssertTrue(relaunched.record.waitingForRelease)
+        XCTAssertTrue(relaunched.foundInUse, "still says so after a relaunch")
 
         (flow, _) = ShowerPageFlow.reduce(flow, .recheckTapped)
         transport.script(.frame(FakeFrames.active))
         let probed = try await e.review(binding)
         (flow, _) = ShowerPageFlow.reduce(flow, .record(probed))
         (flow, _) = ShowerPageFlow.reduce(flow, .recheckReturned(try XCTUnwrap(ShowerRecheckResult(after: probed))))
-        XCTAssertEqual(flow.page?.phase, .needsCheck)
-        XCTAssertTrue(flow.checkInUse, "recheck found water running")
+        XCTAssertEqual(flow.page?.phase, .stopped)
+        XCTAssertTrue(flow.foundInUse, "recheck found water running")
 
         (flow, _) = ShowerPageFlow.reduce(flow, .recheckTapped)
-        XCTAssertFalse(flow.checkInUse, "a new look clears it")
         transport.script(.frame(FakeFrames.identity(machine)))
         let idle = try await e.review(binding)
         (flow, _) = ShowerPageFlow.reduce(flow, .record(idle))
         (flow, _) = ShowerPageFlow.reduce(flow, .recheckReturned(try XCTUnwrap(ShowerRecheckResult(after: idle))))
-        XCTAssertFalse(flow.checkInUse)
-
-        transport.script(.frame(FakeFrames.active))
-        let busy = try await e.startNext(binding)
-        (flow, _) = ShowerPageFlow.reduce(flow, .record(busy))
-        XCTAssertEqual(flow.page?.phase, .needsCheck)
-        XCTAssertTrue(flow.checkInUse, "the next use found it in use")
-
-        // After a relaunch the record still waits for the controller, but the face is the check again.
-        let relaunched = ShowerPageFlow(record: try XCTUnwrap(try vault.showerState()), presented: true)
-        XCTAssertTrue(relaunched.record.waitingForRelease)
-        XCTAssertFalse(relaunched.checkInUse)
+        XCTAssertFalse(flow.foundInUse)
+        XCTAssertTrue(flow.mayStartNext)
     }
 }

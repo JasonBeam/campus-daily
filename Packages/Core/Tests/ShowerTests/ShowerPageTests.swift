@@ -30,12 +30,12 @@ final class ShowerPageTests: XCTestCase {
             (failed(.wrongDevice, review: false), .connectFailed, [.failed, .future, .future]),
             (failed(.deviceBusy, review: false), .denied, [.done, .failed, .future]),
             (failed(.authorizeRefused, review: false), .denied, [.done, .failed, .future]),
-            (failed(.authorizeUncertain, review: true), .unsure, [.done, .failed, .future]),
-            (failed(.authorizationInvalid, review: true), .unsure, [.done, .failed, .future]),
-            (failed(.closeUnconfirmed, review: true), .unsure, [.done, .done, .failed]),
-            (failed(.settleRefused, review: true), .unsure, [.done, .done, .failed]),
-            (failed(.settleUncertain, review: true), .unsure, [.done, .done, .failed]),
-            (failed(.settleUnconfirmed, review: true), .unsure, [.done, .done, .failed]),
+            (failed(.authorizeUncertain, review: true), .stopped, [.future, .future, .future]),
+            (failed(.authorizationInvalid, review: true), .stopped, [.future, .future, .future]),
+            (failed(.closeUnconfirmed, review: true), .stopped, [.future, .future, .future]),
+            (failed(.settleRefused, review: true), .stopped, [.future, .future, .future]),
+            (failed(.settleUncertain, review: true), .stopped, [.future, .future, .future]),
+            (failed(.settleUnconfirmed, review: true), .stopped, [.future, .future, .future]),
         ]
         for (state, phase, steps) in cases {
             let page = ShowerPage(state)
@@ -47,10 +47,11 @@ final class ShowerPageTests: XCTestCase {
         XCTAssertEqual(ShowerPage(failed(.deviceUnavailable, review: false))?.stepNumber, 1)
     }
 
-    /// A failure that may have charged is never shown as harmless, whatever its reason.
-    func testARecordThatMayHaveChargedIsAlwaysUnsure() {
+    /// A failure that may have charged is never shown as harmless, whatever its reason: the
+    /// shower is over, kept for the school.
+    func testARecordThatMayHaveChargedIsAlwaysOver() {
         for reason in [ShowerFailureReason.deviceUnavailable, .wrongDevice, .deviceBusy, .authorizeRefused] {
-            XCTAssertEqual(ShowerPage(failed(reason, review: true))?.phase, .unsure, reason.rawValue)
+            XCTAssertEqual(ShowerPage(failed(reason, review: true))?.phase, .stopped, reason.rawValue)
             XCTAssertNil(ShowerPage(failed(reason, review: true))?.denial)
         }
     }
@@ -178,18 +179,19 @@ final class ShowerPageTests: XCTestCase {
         let effects = reduce(&flow, .record(failed(.authorizeUncertain, review: true)))
         XCTAssertEqual(effects, [])
         XCTAssertTrue(flow.presented)
-        XCTAssertEqual(flow.page?.phase, .unsure)
+        XCTAssertEqual(flow.page?.phase, .stopped)
     }
 
-    // MARK: Needs check
+    // MARK: Stopped on the controller
 
-    /// The record says water runs but the controller showed itself stopped: the needs-check
-    /// face, not the timer. No end, no start; 去核对 and 核对过了 only.
-    func testAStoppedControllerShowsTheNeedsCheckFace() {
+    /// The record says water runs but the controller showed itself stopped: this shower is over
+    /// (the school settles it). The page goes back to its start layout, one button: 开始下一次洗澡.
+    /// No end, no check, no 核对过了; it may go down.
+    func testAStoppedControllerShowsTheNextShowerFace() {
         for phase in [ShowerPhase.running, .writePending] {
             let page = ShowerPage(ShowerState(phase: phase, startedAt: t0, stateReviewRequired: true))
-            XCTAssertEqual(page?.phase, .needsCheck, "\(phase)")
-            XCTAssertEqual(page?.steps, [.done, .done, .failed])
+            XCTAssertEqual(page?.phase, .stopped, "\(phase)")
+            XCTAssertEqual(page?.steps, [.future, .future, .future])
         }
         var flow = ShowerPageFlow(record: ShowerState(phase: .running, machineID: "11223344", startedAt: t0), presented: true)
         XCTAssertEqual(reduce(&flow, .endTapped), [.finish])
@@ -198,28 +200,31 @@ final class ShowerPageTests: XCTestCase {
         _ = reduce(&flow, .record(back))
         _ = reduce(&flow, .endNotSent(.notActive))
         _ = reduce(&flow, .endReturned)
-        XCTAssertEqual(flow.page?.phase, .needsCheck)
-        XCTAssertNil(flow.endFailed, "the face says it, not an end-failed line")
+        XCTAssertEqual(flow.page?.phase, .stopped)
+        XCTAssertNil(flow.endFailed, "no end-failed line")
         XCTAssertTrue(flow.presented)
         XCTAssertFalse(flow.mayEnd)
-        XCTAssertTrue(flow.mayResolve)
-        XCTAssertFalse(flow.mayCollapse, "no 收起 and no swipe: the check is answered on the page")
-        for event in [ShowerPageEvent.endTapped, .startTapped, .retryTapped, .cancelTapped, .closeTapped, .collapseTapped] {
+        XCTAssertTrue(flow.mayStartNext)
+        XCTAssertTrue(flow.mayCollapse)
+        XCTAssertFalse(flow.showsRecheck)
+        for event in [ShowerPageEvent.endTapped, .startTapped, .retryTapped, .cancelTapped, .closeTapped, .recheckTapped] {
             XCTAssertEqual(ShowerPageFlow.reduce(flow, event).1, [], "\(event)")
         }
-        var review = flow
-        XCTAssertEqual(reduce(&review, .reviewTapped), [.openReview])
-        XCTAssertFalse(review.presented)
-        XCTAssertEqual(reduce(&flow, .resolveTapped), [.resolveManually])
+        var down = flow
+        _ = reduce(&down, .collapseTapped)
+        XCTAssertFalse(down.presented)
+        var next = flow
+        XCTAssertEqual(reduce(&next, .startNextTapped), [.startNext])
+        XCTAssertEqual(next.page?.phase, .connecting)
         _ = reduce(&flow, .record(.idle))
-        XCTAssertFalse(flow.presented, "checked: nothing left to show")
+        XCTAssertFalse(flow.presented, "nothing left to show")
 
-        // A review probe in flight: 核对过了 waits for it.
-        var probing = ShowerPageFlow(record: ShowerState(phase: .running, startedAt: t0, stateReviewRequired: true, reviewing: true),
-                                     presented: true)
-        XCTAssertFalse(probing.mayResolve)
-        XCTAssertEqual(reduce(&probing, .resolveTapped), [])
-        XCTAssertEqual(ShowerHomeStatus.needsCheck.asksForSchoolSignIn(signedIn: false), false)
+        // A review probe in flight: 开始下一次洗澡 waits for it.
+        var probing = ShowerPageFlow(record: ShowerState(phase: .running, machineID: "11223344", startedAt: t0, stateReviewRequired: true,
+                                                         reviewing: true), presented: true)
+        XCTAssertFalse(probing.mayStartNext)
+        XCTAssertEqual(reduce(&probing, .startNextTapped), [])
+        XCTAssertEqual(ShowerHomeStatus.stopped.asksForSchoolSignIn(signedIn: false), false)
     }
 
     /// Ended from the lock screen with the page down, and the controller was stopped: the
@@ -229,29 +234,33 @@ final class ShowerPageTests: XCTestCase {
         _ = reduce(&flow, .record(ShowerState(phase: .closing, startedAt: t0, closingFrom: .running)))
         _ = reduce(&flow, .record(ShowerState(phase: .running, startedAt: t0, stateReviewRequired: true, notice: .notActive)))
         XCTAssertTrue(flow.presented)
-        XCTAssertEqual(flow.page?.phase, .needsCheck)
+        XCTAssertEqual(flow.page?.phase, .stopped)
     }
 
-    /// 再查一次水控 on the check face: both buttons wait; still running goes back to the timer
-    /// with no line; stopped or not reached stays with a line under it.
-    func testRecheckingTheControllerFromTheCheckFace() {
-        let check = ShowerState(phase: .running, startedAt: t0, stateReviewRequired: true, notice: .notActive)
+    /// 再查一次 on the stopped page found in use: 开始下一次洗澡 waits; free again brings it
+    /// back; not reached stays with a line under it.
+    func testRecheckingTheControllerFromTheInUsePage() {
+        let check = ShowerState(phase: .running, machineID: "11223344", startedAt: t0, stateReviewRequired: true,
+                                notice: .device(.busy), waitingForRelease: true)
         var flow = ShowerPageFlow(record: check, presented: true)
+        XCTAssertTrue(flow.foundInUse)
         XCTAssertTrue(flow.mayRecheck)
+        XCTAssertFalse(flow.mayStartNext)
         XCTAssertEqual(reduce(&flow, .recheckTapped), [.recheck])
         XCTAssertTrue(flow.rechecking)
-        XCTAssertFalse(flow.mayResolve)
-        XCTAssertEqual(reduce(&flow, .reviewTapped), [], "去核对 waits for the probe")
+        XCTAssertEqual(reduce(&flow, .startNextTapped), [], "开始下一次洗澡 waits for the probe")
         XCTAssertEqual(reduce(&flow, .recheckTapped), [], "one probe at a time")
 
         var stopped = flow
-        _ = reduce(&stopped, .record(check))
-        _ = reduce(&stopped, .recheckReturned(ShowerRecheckResult(after: check)))
-        XCTAssertEqual(stopped.recheckResult, .stopped)
-        XCTAssertTrue(stopped.mayResolve)
+        let free = ShowerState(phase: .running, machineID: "11223344", startedAt: t0, stateReviewRequired: true, notice: .notActive)
+        _ = reduce(&stopped, .record(free))
+        _ = reduce(&stopped, .recheckReturned(ShowerRecheckResult(after: free)))
+        XCTAssertFalse(stopped.foundInUse)
+        XCTAssertTrue(stopped.mayStartNext)
 
         var away = flow
-        let notReached = ShowerState(phase: .running, startedAt: t0, stateReviewRequired: true, notice: .device(.notFound))
+        let notReached = ShowerState(phase: .running, machineID: "11223344", startedAt: t0, stateReviewRequired: true,
+                                     notice: .device(.notFound), waitingForRelease: true)
         _ = reduce(&away, .record(notReached))
         _ = reduce(&away, .recheckReturned(ShowerRecheckResult(after: notReached)))
         XCTAssertEqual(away.recheckResult, .noConnection)
@@ -270,7 +279,7 @@ final class ShowerPageTests: XCTestCase {
     /// 再查一次水控 on the 热水洗澡 screen (the page down): water running again brings the
     /// timer up; a stopped controller leaves the page down.
     func testARecheckFromTheShowerScreenBringsTheTimerUpOnlyWhenWaterRuns() {
-        let check = ShowerState(phase: .running, startedAt: t0, stateReviewRequired: true, notice: .notActive)
+        let check = ShowerState(phase: .running, startedAt: t0, stateReviewRequired: true, notice: .notActive, waitingForRelease: true)
         var stopped = ShowerPageFlow(record: check)
         XCTAssertEqual(reduce(&stopped, .recheckTapped), [.recheck])
         _ = reduce(&stopped, .record(check))
@@ -308,7 +317,7 @@ final class ShowerPageTests: XCTestCase {
         XCTAssertEqual(ShowerRecheckResult(error: ShowerEngineError.storage), .failed)
         XCTAssertEqual(ShowerRecheckResult(error: ShowerEngineError.wrongBinding), .failed)
 
-        let check = ShowerState(phase: .running, startedAt: t0, stateReviewRequired: true, notice: .notActive)
+        let check = ShowerState(phase: .running, startedAt: t0, stateReviewRequired: true, notice: .notActive, waitingForRelease: true)
         var flow = ShowerPageFlow(record: check, presented: true)
         _ = reduce(&flow, .recheckTapped)
         _ = reduce(&flow, .recheckReturned(.unavailable))
@@ -323,7 +332,7 @@ final class ShowerPageTests: XCTestCase {
         _ = reduce(&flow, .record(ShowerState(phase: .running, startedAt: t0, reviewing: true)))
         _ = reduce(&flow, .record(ShowerState(phase: .running, startedAt: t0, stateReviewRequired: true, notice: .notActive)))
         XCTAssertFalse(flow.presented)
-        XCTAssertEqual(flow.page?.phase, .needsCheck, "the home button still says 核对上次洗澡")
+        XCTAssertEqual(flow.page?.phase, .stopped, "the home button says 开始下一次洗澡")
     }
 
     /// 结束并结算 came back to the timer: a line says why, until the next tap.
@@ -352,20 +361,20 @@ final class ShowerPageTests: XCTestCase {
         XCTAssertNil(flow.endFailed)
     }
 
-    /// The settlement timed out: 不确定, with no way to settle again from the page.
-    func testASettlementTimeoutIsUnsureWithoutRetry() {
+    /// The settlement timed out: the shower is over (the school settles it), with no way to
+    /// settle again from the page; its one button is the next shower, and it may go down.
+    func testASettlementTimeoutIsOverWithoutRetry() {
         var flow = ShowerPageFlow(record: ShowerState(phase: .settling, startedAt: t0), presented: true)
         _ = reduce(&flow, .record(failed(.settleUncertain, review: true, error: .timedOut)))
-        XCTAssertEqual(flow.page?.phase, .unsure)
+        XCTAssertEqual(flow.page?.phase, .stopped)
+        XCTAssertTrue(flow.presented)
         for event in [ShowerPageEvent.endTapped, .retryTapped, .startTapped, .closeTapped, .cancelTapped] {
             XCTAssertEqual(ShowerPageFlow.reduce(flow, event).1, [], "\(event)")
         }
-        var toReview = flow
-        XCTAssertEqual(reduce(&toReview, .reviewTapped), [.openReview])
-        XCTAssertFalse(toReview.presented)
-        var toHome = flow
-        XCTAssertEqual(reduce(&toHome, .homeTapped), [], "the record stays for 核对")
-        XCTAssertFalse(toHome.presented)
+        XCTAssertTrue(flow.mayStartNext)
+        var down = flow
+        XCTAssertEqual(reduce(&down, .collapseTapped), [], "the record stays")
+        XCTAssertFalse(down.presented)
     }
 
     func testRetryAfterAConnectFailure() {
@@ -385,7 +394,7 @@ final class ShowerPageTests: XCTestCase {
         _ = reduce(&flow, .reopen)
         XCTAssertTrue(flow.presented)
         XCTAssertEqual(flow.page?.phase, .running)
-        for state in [ShowerState(phase: .authorizing), ShowerState(phase: .settling), failed(.settleUncertain, review: true)] {
+        for state in [ShowerState(phase: .authorizing), ShowerState(phase: .settling)] {
             var other = ShowerPageFlow(record: state, presented: true)
             _ = reduce(&other, .collapseTapped)
             XCTAssertTrue(other.presented, "\(state.phase)")
@@ -402,10 +411,10 @@ final class ShowerPageTests: XCTestCase {
         XCTAssertTrue(flow.mayEnd)
 
         let settling = ShowerReducer.restore(ShowerState(phase: .settling, machineID: "11223344", startedAt: t0, closeSent: true))
-        XCTAssertEqual(ShowerPageFlow(record: settling).page?.phase, .unsure, "killed while settling")
+        XCTAssertEqual(ShowerPageFlow(record: settling).page?.phase, .stopped, "killed while settling")
 
         let sent = ShowerReducer.restore(ShowerState(phase: .authorizing, machineID: "11223344", startedAt: t0, authorizeSent: true))
-        XCTAssertEqual(ShowerPageFlow(record: sent).page?.phase, .unsure)
+        XCTAssertEqual(ShowerPageFlow(record: sent).page?.phase, .stopped)
         let notSent = ShowerReducer.restore(ShowerState(phase: .authorizing, machineID: "11223344", startedAt: t0))
         var idle = ShowerPageFlow(record: notSent)
         XCTAssertNil(idle.page)
@@ -418,7 +427,7 @@ final class ShowerPageTests: XCTestCase {
         var flow = ShowerPageFlow(record: failed(.closeUnconfirmed, review: true))
         XCTAssertEqual(reduce(&flow, .startTapped), [])
         XCTAssertTrue(flow.presented)
-        XCTAssertEqual(flow.page?.phase, .unsure)
+        XCTAssertEqual(flow.page?.phase, .stopped)
     }
 
     /// A start refused before it ran (a reset in progress): the page closes again.

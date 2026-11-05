@@ -23,6 +23,9 @@ public enum ShowerActivityAction: Sendable, Equatable {
         switch state.phase {
         case .idle: self = .end
         case .authorizing: self = .leave
+        case .writePending where state.stateReviewRequired, .running where state.stateReviewRequired:
+            // Stopped on the controller: that shower is over (the school settles it).
+            self = .end
         case .writePending, .running:
             guard let started = state.startedAt else { self = .leave; return }
             self = .show(startedAt: started, writeUnconfirmed: state.phase == .writePending)

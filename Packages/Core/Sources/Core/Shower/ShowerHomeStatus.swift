@@ -9,10 +9,9 @@ public enum ShowerHomeStatus: Equatable, Sendable {
     case starting
     case showering(Date)
     case settling(Date)
-    /// A record that needs checking before another start.
-    case unresolved(ShowerHomeReview)
-    /// The controller showed itself stopped while the record says water runs (「核对上次洗澡」).
-    case needsCheck
+    /// The last shower is over and the school settles it (`ShowerState.showerOver`): 「去洗澡」
+    /// opens the timer page, whose button starts the next one.
+    case stopped
     public var showering: Date? {
         switch self { case .showering(let date), .settling(let date): return date; default: return nil }
     }
@@ -24,7 +23,7 @@ public enum ShowerHomeStatus: Equatable, Sendable {
         guard !signedIn else { return false }
         switch self {
         case .idle, .unconfigured, .unavailable: return true
-        case .starting, .showering, .settling, .unresolved, .needsCheck: return false
+        case .starting, .showering, .settling, .stopped: return false
         }
     }
 }

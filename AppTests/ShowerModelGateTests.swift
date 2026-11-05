@@ -49,42 +49,4 @@ final class ShowerModelGateTests: XCTestCase {
         XCTAssertEqual(model.gateRecord, .known(.idle))
         XCTAssertEqual(sample.enter(), .entered)
     }
-
-    /// 再结算一次 (`confirmSettleRetry`) on a record awaiting review and entering the sample, in
-    /// both orders, with the settle held at a fake platform: exactly one goes through, and
-    /// nothing is sent while the sample is shown.
-    func testSettleRetryAndEnteringTheSampleLetOnlyOneThrough() async throws {
-        for retryFirst in [true, false] {
-            let store = ScriptedStore()
-            let vault = StoredShowerVault(store: store)
-            try vault.saveBinding(Fixture.binding)
-            try vault.saveShowerState(Fixture.awaitingReview)
-            let http = HeldHTTP()
-            let (model, sample) = liveShowerModel(store: store, support: try Fixture.supportWithProfile(), showerHTTP: http)
-            await model.reloadProfile()
-            await waitUntil { model.gateRecord != .notLoaded }
-            XCTAssertTrue(model.state.canRetrySettle, "retry first: \(retryFirst)")
-            await model.requestSettleRetry()
-            XCTAssertTrue(model.state.settleRetryArmed)
-
-            if retryFirst {
-                let retry = Task { await model.confirmSettleRetry() }
-                let reached = await http.reached()
-                XCTAssertTrue(reached, "the settle reached the platform: \(String(describing: model.state.failure)) \(model.message ?? "")")
-                guard reached else { retry.cancel(); http.release(); continue }
-                XCTAssertEqual(sample.enter(), .refused, "the settle is at the platform")
-                http.release()
-                await retry.value
-                XCTAssertEqual(http.sent, 1)
-                XCTAssertEqual(sample.enter(), .entered, "the retry is over")
-            } else {
-                XCTAssertEqual(sample.enter(), .entered)
-                await model.confirmSettleRetry()
-                http.release()
-                XCTAssertEqual(http.sent, 0, "nothing sent while the sample is shown")
-                XCTAssertTrue(model.state.canRetrySettle)
-                XCTAssertTrue(sample.isActive)
-            }
-        }
-    }
 }

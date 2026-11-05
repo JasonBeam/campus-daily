@@ -12,8 +12,6 @@ public enum AppReset {
     public enum Lock: Sendable, Equatable {
         /// Water may be flowing or a step of the shower is still running.
         case showering
-        /// A settlement is waiting to be checked against the school's records.
-        case unsettled
         /// A laundry order is not finished (being created, paid, running or needing attention).
         case laundry
         /// The shower or laundry record can't be read, so nobody can tell whether a charge is open.
@@ -22,17 +20,17 @@ public enum AppReset {
         case checkingController
     }
 
-    /// Reset waits for the shower to end and its settlement to be checked, and for any laundry
-    /// order to finish: clearing in between would lose the only record of a charge.
+    /// Reset waits for a shower in progress to end, and for any laundry order to finish:
+    /// clearing in between would lose the only record of a charge. A shower that is over
+    /// (`ShowerState.showerOver`: stopped on the controller, or kept with its outcome unknown)
+    /// doesn't lock it: the app never settles it, the school does.
     /// An unreadable record locks first: what it holds is unknown. A controller check in
     /// progress locks too (it writes the binding when it ends).
     public static func lock(shower: ShowerState?, laundry: LaundryPhase? = nil, laundryBusy: Bool = false,
                             recordsUnreadable: Bool = false, checkingController: Bool = false) -> Lock? {
         if recordsUnreadable { return .recordsUnreadable }
         if let s = shower {
-            if s.phase == .failed, s.failure?.needsReview == true { return .unsettled }
-            if s.stateReviewRequired { return .unsettled }
-            if !s.canStart { return .showering }
+            if !s.showerOver, !s.canStart { return .showering }
         }
         if laundryBusy || (laundry ?? LaundryPhase.none) != LaundryPhase.none { return .laundry }
         if checkingController { return .checkingController }

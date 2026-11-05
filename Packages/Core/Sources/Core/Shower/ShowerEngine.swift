@@ -152,6 +152,16 @@ public actor ShowerEngine {
 
     // MARK: User actions
 
+    /// 开始洗澡 from Siri or Shortcuts. Over a shower that is over (`ShowerState.showerOver`) it is
+    /// the page's 开始下一次洗澡 (`startNext`): a read-only probe, nothing sent while the
+    /// controller is in use, else the old record kept and read back before one new
+    /// authorization; it is never closed or settled. Otherwise the usual start.
+    @discardableResult
+    public func startOrNext(_ b: ShowerBinding) async throws -> ShowerState {
+        if state.showerOver && state.canStartNext { return try await startNext(b) }
+        return try await start(b)
+    }
+
     /// 开水: connect + identity probe, authorize, write the authorization.
     @discardableResult
     public func start(_ b: ShowerBinding) async throws -> ShowerState {
@@ -233,8 +243,17 @@ public actor ShowerEngine {
         await hooks?.diagnostic("nextUse.recordKept")
         startCancelled = false; authorizeLeft = false
         binding = b
-        try await commit(ShowerState(phase: .authorizing, machineID: machine, peripheralID: previous.peripheralID,
-                                     lastReceipt: previous.lastReceipt))
+        do {
+            try await commit(ShowerState(phase: .authorizing, machineID: machine, peripheralID: previous.peripheralID,
+                                         lastReceipt: previous.lastReceipt))
+        } catch {
+            // The new record could not be saved: nothing went out, and the one in place (the
+            // stopped shower, still on disk) is what the page shows again.
+            binding = nil
+            state = previous
+            publish()
+            throw error
+        }
         return try await loop(.connected(peripheralID: peripheral, probe: probe))
     }
 

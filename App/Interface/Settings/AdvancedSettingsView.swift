@@ -121,7 +121,6 @@ enum ResetLockText {
     static func text(_ lock: AppReset.Lock) -> String {
         switch lock {
         case .showering: return "正在洗澡，结束并结算以后再重置。"
-        case .unsettled: return "上次洗澡还没核对，核对完再重置。"
         case .laundry: return "洗衣还有一笔没处理完，处理完再重置。"
         case .recordsUnreadable: return "洗澡或洗衣记录现在读不出来，重启 App 以后再重置。"
         case .checkingController: return "正在核对水控，核对完再重置。"

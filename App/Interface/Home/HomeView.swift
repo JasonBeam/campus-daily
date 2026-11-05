@@ -149,7 +149,7 @@ struct HomeView: View {
     var body: some View {
         let data = data
         ZStack {
-            NavigationStack(path:$path) {
+            NavigationStack(path:Binding(get:{ path }, set:{ push($0) })) {
                 ScrollViewReader { proxy in
                     // 「最近」 takes the rows that fit (none when none fits), so home fits the screen
                     // and only bounces, for the pull. When the rest alone is taller than the screen
@@ -232,11 +232,6 @@ struct HomeView: View {
         .onChange(of:shower.page.presented, initial:true) { _, up in followShowerPage(up) }
         .onChange(of:shower.page.page?.phase) { _, _ in followShowerPage(shower.page.presented) }
         .onChange(of:shower.pageWanted) { _, _ in followShowerPage(shower.page.presented) }
-        .onChange(of:shower.reviewRequested) { _, requested in
-            guard requested else { return }
-            shower.reviewRequested = false
-            open([.shower])
-        }
         .onChange(of:data.laundryDone, initial:true) { _, done in presentLaundryDone(done) }
         // A done panel that arrived while another panel was up is shown once that one closes.
         .onChange(of:panel == nil) { _, clear in if clear { presentLaundryDone(data.laundryDone) } }
@@ -284,7 +279,7 @@ struct HomeView: View {
     // MARK: Actions
 
     /// 开始洗澡 opens the shower page and starts connecting; a shower going on opens the page as
-    /// it stands; a record to check opens the 核对 screen.
+    /// it stands (also a shower that is over: its page has 开始下一次洗澡).
     func tap(_ kind: HomeShowerButton.Kind) {
         // The sample's 热水: its page, where 开始洗澡 is blocked; nothing connects.
         if sample.isActive { path.append(.shower); return }
@@ -293,8 +288,7 @@ struct HomeView: View {
         #endif
         switch kind {
         case .signIn: openOnboarding()
-        case .review: path.append(.shower)
-        case .showering, .settling, .starting, .check:
+        case .showering, .settling, .starting, .stopped:
             shower.pageEvent(.reopen)
             followShowerPage(shower.page.presented)
         case .start:
@@ -304,6 +298,14 @@ struct HomeView: View {
             shower.pageEvent(.startTapped)
             followShowerPage(shower.page.presented)
         }
+    }
+
+    /// The stack's own pushes and pops (a NavigationLink, the back button). While a shower is on,
+    /// 热水 opens its timer page instead (`HomeRoute.opened`).
+    func push(_ routes: [HomeRoute]) {
+        let opened = HomeRoute.opened(routes, over:path, page:shower.page)
+        path = opened.routes
+        if opened.showsPage, !sample.isActive { shower.pageEventShowingPage(.reopen) }
     }
 
     /// Pull to refresh: joins a running refresh. Only a pull the user made buzzes on failure.

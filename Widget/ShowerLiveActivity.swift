@@ -26,7 +26,7 @@ private extension ShowerState {
         switch phase {
         case .active, .settling: return "正在洗澡"
         case .settled: return "洗好了"
-        case .unconfirmed: return "结算待核对"
+        case .unconfirmed: return ShowerAuthorText.keptStatus
         }
     }
     var showsTimer: Bool { phase == .active || phase == .settling }

@@ -60,6 +60,12 @@ struct SettingsView: View {
             .navigationDestination(isPresented:$hotWaterSetup) {
                 if shower.configured { ShowerDetail() } else { CampusOnboardingView() }
             }
+            // While a shower is on, 热水 here brings up the timer page (Settings goes first).
+            .onChange(of:hotWaterSetup) { _, open in
+                guard open, preview == nil, shower.page.opensPageOnRoute else { return }
+                hotWaterSetup = false
+                shower.pageEventShowingPage(.reopen)
+            }
             .navigationDestination(isPresented:$accountPage) { account }
             .navigationDestination(isPresented:$themePageShown) { themePage }
             .onAppear {
@@ -92,6 +98,9 @@ extension SettingsView {
             SampleGatedRow(action:.schoolAccount) { NavigationLink { destination(page) } label: { row } } label: { SampleRowLabel(row:row) }
         case .washer:
             SampleGatedRow(action:.bindWasher) { NavigationLink { destination(page) } label: { row } } label: { SampleRowLabel(row:row) }
+        case .hotWater where !sample.isActive && shower.page.opensPageOnRoute:
+            // While a shower is on, its timer page comes up instead (Settings goes first).
+            Button { shower.pageEventShowingPage(.reopen) } label: { row }.foregroundStyle(Theme.ink)
         default:
             NavigationLink { destination(page) } label: { row }
         }

@@ -198,9 +198,11 @@ public struct ShowerState: Sendable, Codable, Equatable {
     /// A read-only probe of the controller: while water may run (also while that waits for the
     /// check), and from a close that may not have taken (water still running there means the
     /// close can be sent again).
+    /// Also over a kept failure the next start found in use (`waitingForRelease`): 再查一次.
     public var canReview: Bool {
         ((phase == .writePending || phase == .running) && !reviewing)
             || (phase == .failed && failure?.reason == .closeUnconfirmed && !reviewing)
+            || (phase == .failed && failure?.needsReview == true && waitingForRelease && !reviewing)
     }
 
     /// The next use (`ShowerEngine.startNext`) over a record that waits for the user's check:
@@ -219,6 +221,13 @@ public struct ShowerState: Sendable, Codable, Equatable {
     public var canRetrySettle: Bool {
         phase == .failed && failure?.needsReview == true && consumption != nil
             && [ShowerFailureReason.settleRefused, .settleUncertain, .settleUnconfirmed].contains { $0 == failure?.reason }
+    }
+
+    /// The shower is over without a settlement in the app, and the school settles it: stopped
+    /// on the controller, or a failure whose outcome is unknown (`needsReview`). Such a record is
+    /// kept as it is, never settled again; the next step is the next shower (`canStartNext`).
+    public var showerOver: Bool {
+        (mayBeFlowing && stateReviewRequired) || (phase == .failed && failure?.needsReview == true)
     }
 
     /// The reminder ("还没结束洗澡？") runs while water may be flowing.
@@ -462,15 +471,15 @@ public enum ShowerReducer {
             guard state.reviewing else { return (state, []) }
             s.reviewing = false
             switch ShowerFrames.classify(frame) {
+            case .active where state.stateReviewRequired || state.waitingForRelease:
+                // The controller already showed this session stopped: that shower is over, and
+                // water running now is someone else's (or a new one). It never resumes the old
+                // session; the link is let go.
+                s.notice = .inUseByOther
+                return (s, [.releaseDevice])
             case .active where state.authorizationNotWritten:
                 // Our authorization provably never reached it: the water is someone else's, and
                 // the probe says so instead of showing the timer as if it were ours.
-                s.stateReviewRequired = false
-                s.notice = .inUseByOther
-                return (s, [.releaseDevice])
-            case .active where state.stateReviewRequired || state.waitingForRelease:
-                // The controller already showed this session stopped: water running now may be
-                // anyone's. The check stands and the link is let go.
                 s.notice = .inUseByOther
                 return (s, [.releaseDevice])
             case .active:
@@ -486,7 +495,9 @@ public enum ShowerReducer {
                 return (state.idleAfter(receipt: state.lastReceipt),
                         [.releaseDevice, .diagnostic("review.writeNeverApplied")])
             case .idle(let id) where id == state.machineID:
+                // Stopped, and free again for the next shower.
                 s.stateReviewRequired = true
+                s.waitingForRelease = false
                 s.notice = .notActive
             case .idle:
                 s.notice = .wrongDevice
@@ -505,11 +516,15 @@ public enum ShowerReducer {
             s.reviewing = true
             return (s, [.probe(peripheralID: state.peripheralID)])
 
-        case (.failed, .probeReplied(let frame)) where state.reviewing && state.failure?.reason == .closeUnconfirmed:
+        case (.failed, .probeReplied(let frame)) where state.reviewing
+                && (state.failure?.reason == .closeUnconfirmed || state.waitingForRelease):
             s.reviewing = false
             switch ShowerFrames.classify(frame) {
             case .active where state.waitingForRelease:
                 // The next use already found it in use and let it go: it stays let go.
+                s.notice = .inUseByOther
+            case .active where state.failure?.reason != .closeUnconfirmed:
+                // Not a close to send again: someone else's water.
                 s.notice = .inUseByOther
             case .active:
                 // Back to the timer, so 结束 can send the close again. Our close most likely took
@@ -523,7 +538,9 @@ public enum ShowerReducer {
                 s.holdSettle = true
                 return (s, [.releaseDevice])
             case .idle(let id) where id == state.machineID:
-                // Stopped: the close may have taken, or water stopped by itself. The check stands.
+                // Stopped: the close may have taken, or water stopped by itself. The record stays
+                // as it is, and is free again for the next shower.
+                s.waitingForRelease = false
                 s.notice = .notActive
             case .idle:
                 s.notice = .wrongDevice
@@ -702,7 +719,7 @@ public enum ShowerDisplay {
         switch s.phase {
         case .idle: return "开水"
         case .authorizing: return "正在开水…"
-        case .writePending, .running: return "洗澡中"
+        case .writePending, .running: return s.stateReviewRequired ? ShowerAuthorText.keptStatus : "洗澡中"
         case .closing: return "正在结束…"
         case .settling: return "正在结算…"
         case .done: return s.receipt?.amount.map { "本次 ¥\($0.yuanText)" } ?? "已结算"
@@ -718,9 +735,8 @@ public enum ShowerDisplay {
         case .deviceBusy: return "水控正在使用中。"
         case .authorizeRefused: return ShowerAuthorizeRefusedText.title
         case .authorizeUncertain, .authorizationInvalid: return ShowerAuthorizeUnclearText.title(platformMessage: f.platformMessage)
-        case .closeUnconfirmed: return "结束指令未确认"
-        case .settleRefused, .settleUncertain: return "结算未确认"
-        case .settleUnconfirmed: return "结算待核对"
+        // Over without an answer: the school settles it (`ShowerState.showerOver`).
+        case .closeUnconfirmed, .settleRefused, .settleUncertain, .settleUnconfirmed: return ShowerAuthorText.keptStatus
         }
     }
 }

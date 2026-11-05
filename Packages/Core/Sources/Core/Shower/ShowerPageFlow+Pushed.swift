@@ -10,13 +10,13 @@ extension ShowerPageFlow {
 
     /// The face the pushed page shows; nil when there is no session to show (ready to start).
     /// Once the page is down an answered result (done, denied, not connected) is not shown again;
-    /// what still needs the user (a check, 去核对's record) and a session in progress are.
+    /// a shower that is over (the next one starts there) and a session in progress are.
     public var pushedPhase: ShowerPagePhase? {
         guard let phase = page?.phase else { return nil }
         if presented { return phase }
         switch phase {
         case .done, .denied, .connectFailed: return nil
-        case .connecting, .running, .settling, .unsure, .needsCheck: return phase
+        case .connecting, .running, .settling, .stopped: return phase
         }
     }
 }

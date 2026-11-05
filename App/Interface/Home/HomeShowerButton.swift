@@ -13,14 +13,12 @@ struct HomeShowerButton: View {
         case showering(Date, caption: String)
         /// Closing or settling: spinner, opens the shower page.
         case settling
-        /// 「核对上次结算」 (or 「去核对」 under 「水没开」) with the accent caption.
-        case review(ShowerHomeReview)
-        /// 「核对上次洗澡」: the controller showed itself stopped, nothing settled. Opens the page.
-        case check
+        /// 「去洗澡」: the last shower is over and the school settles it (stopped on the
+        /// controller, or kept with its outcome unknown). Opens the timer page, whose button is
+        /// 开始下一次洗澡.
+        case stopped
         /// 「登录学校账号」
         case signIn
-
-        var isReview: Bool { if case .review = self { return true } else { return false } }
     }
 
     let kind: Kind
@@ -33,19 +31,15 @@ struct HomeShowerButton: View {
                 .buttonStyle(PressScaleStyle())
                 .disabled(kind == .starting)
                 .accessibilityLabel(spokenTitle)
-            if let caption {
-                Text(caption.text)
+            if let caption = Self.caption(kind) {
+                Text(caption)
                     .scaledFont(13, relativeTo:.footnote)
-                    .foregroundStyle(caption.notice ? Theme.notice : Theme.ink2)
+                    .foregroundStyle(Theme.ink2)
                     .multilineTextAlignment(.center)
-                    // The school's own words can be long: two lines on home, the whole text
-                    // on the shower page (and to VoiceOver, below).
-                    .lineLimit(kind.isReview ? 2 : nil)
-                    .truncationMode(.tail)
                     .fixedSize(horizontal:false, vertical:true)
                     .frame(maxWidth:.infinity)
                     // 「上次 11 分钟，1.32 元」: no separator dot or currency sign read aloud.
-                    .accessibilityLabel(Self.spoken(caption.text))
+                    .accessibilityLabel(Self.spoken(caption))
             }
         }
         .padding(.horizontal,20)
@@ -70,10 +64,9 @@ struct HomeShowerButton: View {
             case .settling:
                 ProgressView().tint(Theme.ink2)
                 Text("正在结算…")
-            case .review(let review):
-                Text(review.button)
-            case .check:
-                Text(ShowerPageText.checkButton)
+            case .stopped:
+                Image(systemName:"drop.fill").font(.system(size:17))
+                Text(Self.title(kind))
             case .signIn:
                 Text("登录学校账号")
             }
@@ -106,17 +99,6 @@ struct HomeShowerButton: View {
         }
     }
 
-    private var caption: (text: String, notice: Bool)? {
-        switch kind {
-        case .start(let caption?): return (caption, false)
-        case .showering(_, let caption): return (caption, false)
-        case .settling: return ("点一下回到洗澡页", false)
-        case .review(let review): return (review.caption, true)
-        case .signIn: return ("登录后就能看校园卡和电量，也能洗澡。", false)
-        case .start(nil), .starting, .check: return nil
-        }
-    }
-
     static func spoken(_ caption: String) -> String {
         var text = caption.replacingOccurrences(of:" · ", with:"，")
         if let range = text.range(of:#"¥([0-9.,]+)"#, options:.regularExpression) {
@@ -125,13 +107,33 @@ struct HomeShowerButton: View {
         return text
     }
 
-    private var spokenTitle: String {
+    private var spokenTitle: String { Self.spokenTitle(kind) }
+
+    /// The words on the button where they are not its own view (`label`).
+    static func title(_ kind: Kind) -> String {
+        switch kind {
+        case .stopped: return ShowerAuthorText.homeButton
+        default: return spokenTitle(kind)
+        }
+    }
+
+    /// The line under the button; none over a stopped shower (the timer page has it).
+    static func caption(_ kind: Kind) -> String? {
+        switch kind {
+        case .start(let caption?): return caption
+        case .showering(_, let caption): return caption
+        case .settling: return "点一下回到洗澡页"
+        case .signIn: return "登录后就能看校园卡和电量，也能洗澡。"
+        case .start(nil), .starting, .stopped: return nil
+        }
+    }
+
+    static func spokenTitle(_ kind: Kind) -> String {
         switch kind {
         case .start, .starting: return "开始洗澡"
         case .showering: return "正在洗澡，回到洗澡页"
         case .settling: return "正在结算，回到洗澡页"
-        case .review(let review): return review.button
-        case .check: return ShowerPageText.checkButton
+        case .stopped: return ShowerAuthorText.homeButtonLabel
         case .signIn: return "登录学校账号"
         }
     }

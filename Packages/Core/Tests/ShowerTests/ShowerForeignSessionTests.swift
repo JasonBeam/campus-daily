@@ -72,7 +72,7 @@ final class ShowerForeignSessionTests: XCTestCase {
             XCTAssertEqual(held.consumption, HexCoding.upper(consumption), "kept for the retry")
             XCTAssertTrue(held.canRetrySettle)
             XCTAssertTrue(held.canResolveManually)
-            XCTAssertEqual(ShowerPage(held)?.phase, .unsure)
+            XCTAssertEqual(ShowerPage(held)?.phase, .stopped)
             XCTAssertEqual(try vault.showerState()?.consumption, HexCoding.upper(consumption), "persisted")
 
             // The usual two taps send it once.
@@ -156,24 +156,26 @@ final class ShowerForeignSessionTests: XCTestCase {
         XCTAssertEqual(back.notice, .inUseByOther)
     }
 
-    /// 再查一次水控 that finds water running on such a session: the timer comes up with the
-    /// same line 结束 gives, not as if the water were ours.
-    func testARecheckThatFindsWaterRunningSaysItIsSomeoneElses() async throws {
-        // The needs-check face over such a session (an earlier build's probe left it there).
+    /// 再查一次 that finds water running on such a session once it showed stopped: it stays
+    /// over (水控有人在用), never back on the old session's timer.
+    func testARecheckThatFindsWaterRunningOnAStoppedSessionNeverResumesIt() async throws {
+        // Stopped, and the next start found the controller in use (an earlier build's probe left it there).
         try vault.saveShowerState(ShowerState(phase: .writePending, machineID: machine, startedAt: t0, authorizeSent: true,
                                               authorizationID: "001122FF", stateReviewRequired: true,
-                                              authorizationNotWritten: true))
+                                              authorizationNotWritten: true, waitingForRelease: true))
         let e = try engine()
         var flow = ShowerPageFlow(record: await e.state, presented: true)
-        XCTAssertEqual(flow.page?.phase, .needsCheck)
+        XCTAssertEqual(flow.page?.phase, .stopped)
         flow = ShowerPageFlow.reduce(flow, .recheckTapped).0
         XCTAssertTrue(flow.rechecking)
         transport.script(.frame(FakeFrames.active))
         let probed = try await e.review(binding)
         flow = ShowerPageFlow.reduce(flow, .record(probed)).0
         flow = ShowerPageFlow.reduce(flow, .recheckReturned(ShowerRecheckResult(after: probed))).0
-        XCTAssertEqual(flow.page?.phase, .running)
-        XCTAssertEqual(flow.endFailed, .inUseByOther)
+        XCTAssertEqual(flow.page?.phase, .stopped)
+        XCTAssertTrue(flow.foundInUse)
+        XCTAssertFalse(probed.canFinish)
+        XCTAssertFalse(transport.writes.contains(ShowerFrames.closeCommand(authorizationID: "001122FF")!))
     }
 
     /// A probe that finds the controller idle with our id: our authorization never ran water,

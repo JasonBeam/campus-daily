@@ -17,7 +17,14 @@ public enum ShowerActionOutcome: Sendable, Equatable {
 
     /// `result`: the record after the engine's start or finish. `notice`: the text of its notice
     /// (a device error, a busy controller…), preferred to the record's own title.
+    /// A start over a shower that is over (`ShowerEngine.startOrNext`) that left it so: the
+    /// controller in use says so (nothing was sent), otherwise why it didn't go.
     public static func after(start: Bool, _ result: ShowerState, notice: String?) -> Result<ShowerActionOutcome, ShowerActionFailure> {
+        if start, result.showerOver {
+            if result.waitingForRelease { return .failure(ShowerActionFailure(ShowerAuthorText.spokenInUse)) }
+            if let notice { return .failure(ShowerActionFailure(notice)) }
+            if result.failure?.reason.isUnclearAuthorize != true { return .failure(ShowerActionFailure(ShowerAuthorText.keptStatus)) }
+        }
         if result.phase == .failed {
             if result.failure?.reason == .deviceUnavailable, let device = result.failure?.deviceError {
                 return .failure(ShowerActionFailure(device.userText))

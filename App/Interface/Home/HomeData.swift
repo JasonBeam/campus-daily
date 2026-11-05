@@ -137,13 +137,10 @@ extension HomeData {
 
         let state = model.state
         if !model.configured { shower = .unconfigured }
-        else if state.mayBeFlowing, state.stateReviewRequired { shower = .needsCheck }
+        else if state.showerOver { shower = .stopped }
         else if state.canFinish, let start = model.sessionStarted { shower = model.busy ? .settling(start) : .showering(start) }
         else if let start = state.startedAt, state.phase == .closing || state.phase == .settling { shower = .settling(start) }
         else if state.phase == .authorizing || (model.busy && (state.phase == .idle || state.phase == .done)) { shower = .starting }
-        else if state.phase == .failed, state.failure?.needsReview == true {
-            shower = .unresolved(ShowerHomeReview(state.failure))
-        }
         else if model.platformMissing { shower = .unavailable(ShowerModel.platformMissingText) }
         else { shower = .idle }
         if model.problem, shower == .idle { showerIssue = model.status }
