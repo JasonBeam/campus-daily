@@ -148,13 +148,12 @@ final class ShowerDebugLogTests: XCTestCase {
         XCTAssertEqual(log.droppedCount, 0, "the last check never had to drop a line")
         for l in lines { XCTAssertTrue(DebugLogScreen.isSafe(l), l) }
 
-        // The message a tester would send with 「附上调试记录」 on.
-        let message = DebugLogReport.message("上一次在水控上按停了，开始下一次洗澡后结算成功。", lines: lines)
-        XCTAssertEqual(DebugLogTesting.leaks(secrets, in: message), [])
-        XCTAssertNil(FeedbackDraft.issue(message: message, imageCount: 0))
+        // The file a tester would export from 高级.
+        let exported = DebugLogExport.text(lines)
+        XCTAssertEqual(DebugLogTesting.leaks(secrets, in: exported), [])
         let salt = try Data(contentsOf: log.saltFile).map { String(format: "%02x", $0) }.joined()
-        XCTAssertFalse(message.lowercased().contains(salt))
-        print("=== SAMPLE FEEDBACK MESSAGE BEGIN ===\n\(message)\n=== SAMPLE FEEDBACK MESSAGE END ===")
+        XCTAssertFalse(exported.lowercased().contains(salt))
+        print("=== SAMPLE EXPORT BEGIN ===\n\(exported)=== SAMPLE EXPORT END ===")
     }
 
     /// 55 from another controller, A5 and a frame nobody can read: each as its type and length.

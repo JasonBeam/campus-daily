@@ -3,7 +3,7 @@ import Foundation
 import Core
 import CoreTestSupport
 
-/// The last check before a line is kept or sent.
+/// The last check before a line is kept.
 final class DebugLogScreenTests: XCTestCase {
     func testTheLinesTheLogWritesPass() {
         for line in [
@@ -37,58 +37,6 @@ final class DebugLogScreenTests: XCTestCase {
         ] {
             XCTAssertFalse(DebugLogScreen.isSafe(line), line)
         }
-    }
-}
-
-/// How the log rides along in a feedback message (AirFeedback has no attachment field).
-final class DebugLogReportTests: XCTestCase {
-    func line(_ i: Int) -> String { "10-30 04:\(String(format: "%02d", i % 60)):00 nav.open page=home from=tab n=\(i)" }
-
-    func testNoLinesLeaveTheTextAsItIs() {
-        XCTAssertEqual(DebugLogReport.message("洗衣机扫不出来", lines: []), "洗衣机扫不出来")
-    }
-
-    func testTheLinesFollowTheTextUnderAHeader() {
-        XCTAssertEqual(DebugLogReport.message("热水没开", lines: ["a b", "c d"]),
-                       "热水没开\n\n— 调试记录（测试版，最近 2 条）—\na b\nc d")
-        XCTAssertEqual(DebugLogReport.message("", lines: ["a b"]), "— 调试记录（测试版，最近 1 条）—\na b",
-                       "screenshots only: just the log")
-    }
-
-    /// Short lines, so a hundred fit in 4000: the count, not the length, is what cuts here.
-    func testAtMostTheNewestHundred() {
-        let short = { (i: Int) in "x n=\(i)" }
-        let lines = (0 ..< 150).map(short)
-        let message = DebugLogReport.message("反馈", lines: lines)
-        XCTAssertEqual(DebugLogReport.maxLines, 100)
-        XCTAssertTrue(message.contains("最近 100 条"))
-        XCTAssertFalse(message.contains("n=49\n"))
-        XCTAssertTrue(message.contains(short(50) + "\n"))
-        XCTAssertTrue(message.hasSuffix(short(149)))
-    }
-
-    func testTextAndLogStayWithinFourThousandAndTheOldestGoFirst() {
-        let text = String(repeating: "字", count: 3_700)
-        let lines = (0 ..< 100).map(line)
-        let message = DebugLogReport.message(text, lines: lines)
-        XCTAssertLessThanOrEqual(message.utf16.count, FeedbackDraft.maximumCharacters)
-        XCTAssertTrue(message.hasPrefix(text))
-        XCTAssertTrue(message.hasSuffix(line(99)))
-        let kept = message.components(separatedBy: "\n").filter { $0.contains("nav.open") }
-        XCTAssertEqual(kept, Array(lines.suffix(kept.count)), "a run of the newest lines")
-        XCTAssertTrue(message.contains("最近 \(kept.count) 条"))
-        XCTAssertNil(FeedbackDraft.issue(message: message, imageCount: 0))
-    }
-
-    func testAFullTextGoesAlone() {
-        let text = String(repeating: "字", count: FeedbackDraft.maximumCharacters)
-        XCTAssertEqual(DebugLogReport.message(text, lines: (0 ..< 5).map(line)), text)
-    }
-
-    func testAnUnsafeLineIsLeftOut() {
-        let message = DebugLogReport.message("反馈", lines: ["a ok", "b 12345678", "c ok"])
-        XCTAssertFalse(message.contains("12345678"))
-        XCTAssertTrue(message.contains("最近 2 条"))
     }
 }
 
@@ -171,7 +119,7 @@ final class DebugLogLaunchTests: XCTestCase {
     func testBeforeTheAnswerItIsOffAndWritesNothing() throws {
         let log = launchLog()
         log.record(.navOpen(.home, from: .launch))
-        XCTAssertFalse(log.isEnabled, "the feedback toggle and clear row stay hidden")
+        XCTAssertFalse(log.isEnabled, "the export and clear rows stay hidden")
         XCTAssertNil(log.decision)
         XCTAssertEqual(log.lines(), [])
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: base.path), [])

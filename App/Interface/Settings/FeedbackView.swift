@@ -10,12 +10,6 @@ struct FeedbackView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.appTheme) private var appTheme
     @Environment(SampleMode.self) private var sample
-    @Environment(\.campusServices) private var services
-    /// 「附上调试记录」: off each time the form opens.
-    @State private var attachLog = false
-    /// The TestFlight log's lines, read when the form opens; empty outside TestFlight.
-    @State private var logLines: [String] = []
-    @State private var showingLog = false
     @State private var message = ""
     @State private var pickerItems: [PhotosPickerItem] = []
     @State private var images: [UIImage] = []
@@ -67,7 +61,6 @@ struct FeedbackView: View {
                         Text("最多 4 张。会附上 App 版本、手机型号和系统版本，不带账号和余额。")
                     }
                 }
-                if !logLines.isEmpty { debugLogSection }
                 if let failure {
                     Section {
                         failureLine(failure).accessibilityIdentifier("feedbackFailure")
@@ -93,13 +86,6 @@ struct FeedbackView: View {
                 if !items.isEmpty { loadingImages = true }
                 Task { await load(items) }
             }
-            .onAppear { logLines = Self.readLog(services.debugLog) }
-            .task {
-                // Shown once launch knows this is TestFlight (`LaunchDebugLog`).
-                await services.debugLog.waitUntilResolved()
-                logLines = Self.readLog(services.debugLog)
-            }
-            .sheet(isPresented:$showingLog) { debugLogPreview }
             .alert("发出去了", isPresented:$sent) {
                 Button("好") { dismiss() }
             } message: {
@@ -119,47 +105,6 @@ struct FeedbackView: View {
         } else {
             Text(line).font(.footnote).foregroundStyle(NativeTheme.notice)
         }
-    }
-
-    /// The log's lines once every line queued before is written (`flush`); none outside TestFlight.
-    static func readLog(_ log: any DebugLogSink) -> [String] {
-        guard log.isEnabled else { return [] }
-        log.flush()
-        return log.lines()
-    }
-
-    /// TestFlight only, with something in the log: off unless turned on for this message.
-    private var debugLogSection: some View {
-        Section {
-            Toggle(FeedbackLogText.toggle, isOn:$attachLog)
-                .disabled(sending)
-                .accessibilityIdentifier("feedbackAttachLog")
-        } footer: {
-            VStack(alignment:.leading, spacing:6) {
-                Text(FeedbackLogText.footer)
-                Button(FeedbackLogText.showButton) { logLines = Self.readLog(services.debugLog); showingLog = true }
-                    .font(.footnote)
-                    .accessibilityIdentifier("feedbackShowLog")
-            }
-        }
-    }
-
-    /// Exactly the text that would go: the typed words, then the log as it rides along.
-    private var debugLogPreview: some View {
-        NavigationStack {
-            ScrollView {
-                Text(DebugLogReport.message(message, lines:logLines))
-                    .font(.footnote.monospaced())
-                    .textSelection(.enabled)
-                    .frame(maxWidth:.infinity, alignment:.leading)
-                    .padding()
-            }
-            .navigationTitle(FeedbackLogText.previewTitle).navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement:.confirmationAction) { Button("好") { showingLog = false } }
-            }
-        }
-        .accessibilityIdentifier("feedbackLogPreview")
     }
 
     private var thumbnails: some View {
@@ -213,9 +158,7 @@ struct FeedbackView: View {
         failure = nil
         Task {
             do {
-                // Read again: what happened while the form was open goes too. Off: nothing more.
-                let lines = attachLog && services.debugLog.isEnabled ? Self.readLog(services.debugLog) : nil
-                try await FeedbackReporter.send(message:message, images:images, to:endpoint, http:http, debugLog:lines)
+                try await FeedbackReporter.send(message:message, images:images, to:endpoint, http:http)
                 sent = true
             } catch {
                 failure = FeedbackText.failure(error)
@@ -223,12 +166,4 @@ struct FeedbackView: View {
             sending = false
         }
     }
-}
-
-/// The words for 「附上调试记录」 on 反馈问题.
-enum FeedbackLogText {
-    static let toggle = "附上调试记录"
-    static let footer = "会带上最近的操作步骤：点了什么、走到哪一步、请求成没成。不带密码、账号、学号、姓名和宿舍，机器和订单只记一串代号。"
-    static let showButton = "看看内容"
-    static let previewTitle = "将要发出的调试记录"
 }

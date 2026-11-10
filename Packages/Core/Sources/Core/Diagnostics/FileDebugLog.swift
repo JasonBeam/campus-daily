@@ -7,7 +7,7 @@ import CryptoKit
 /// readable after the first unlock. At most `maxLines` lines and `maxBytes` bytes: the oldest go
 /// first. Lines older than `maxAge` go at launch (`pruneExpired`). Writes run on a serial queue
 /// of their own: `record` only queues the line and never waits on the disk; `flush` waits for
-/// what was queued (the feedback send, its preview, tests). `lines`, `clear` and `tag` run after
+/// what was queued (the export, the 高级 rows, tests). `lines`, `clear` and `tag` run after
 /// every line queued before them. A write that fails is dropped and never reaches the caller.
 public final class FileDebugLog: DebugLogSink, @unchecked Sendable {
     // @unchecked: every field below `queue` is touched only on `queue`.
@@ -226,7 +226,7 @@ public final class FileDebugLog: DebugLogSink, @unchecked Sendable {
     }
 }
 
-/// The last check before a line is written or sent. Not the defence (events take no text):
+/// The last check before a line is written. Not the defence (events take no text):
 /// a line with a run of 8 digits, 16 hex characters, a credential word or anything but ASCII
 /// is replaced whole.
 public enum DebugLogScreen {
@@ -239,23 +239,5 @@ public enum DebugLogScreen {
         if line.range(of: "[0-9A-Fa-f]{16,}", options: .regularExpression) != nil { return false }
         let lower = line.lowercased()
         return !words.contains { lower.contains($0) }
-    }
-}
-
-/// The log as it rides in a feedback message: AirFeedback takes only `message` (at most 4000
-/// UTF-16 units) and screenshots, so the newest lines (at most `maxLines`) follow the typed text
-/// under a header, the oldest left out first until both fit. A line that fails the last check
-/// is left out.
-public enum DebugLogReport {
-    public static let maxLines = 100
-
-    static func header(_ count: Int) -> String { "— 调试记录（测试版，最近 \(count) 条）—" }
-
-    public static func message(_ text: String, lines: [String], limit: Int = FeedbackDraft.maximumCharacters) -> String {
-        var kept = Array(lines.filter(DebugLogScreen.isSafe).suffix(maxLines))
-        let lead = text.isEmpty ? "" : text + "\n\n"
-        func compose(_ k: [String]) -> String { lead + header(k.count) + "\n" + k.joined(separator: "\n") }
-        while !kept.isEmpty, compose(kept).utf16.count > limit { kept.removeFirst() }
-        return kept.isEmpty ? text : compose(kept)
     }
 }

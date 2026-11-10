@@ -53,11 +53,8 @@ public struct FeedbackSender: Sendable {
     public init(endpoint: FeedbackEndpoint, http: HTTPClient) { self.endpoint = endpoint; self.http = http }
 
     /// Throws `FeedbackFailure` for a draft the service would refuse, an error or a non-2xx answer.
-    /// `debugLog`: the TestFlight log's lines when 「附上调试记录」 is on; they follow the text in
-    /// `message` (`DebugLogReport`). Nil or empty sends exactly what it sent before.
-    public func send(message typed: String, images: [Data], metadata: FeedbackMetadata, debugLog: [String]? = nil) async throws {
-        guard FeedbackDraft.issue(message: typed, imageCount: images.count) == nil else { throw FeedbackFailure() }
-        let message = debugLog.map { DebugLogReport.message(typed, lines: $0) } ?? typed
+    public func send(message: String, images: [Data], metadata: FeedbackMetadata) async throws {
+        guard FeedbackDraft.issue(message: message, imageCount: images.count) == nil else { throw FeedbackFailure() }
         let request = HTTPRequest.postJSON(service: .feedback, url: endpoint.url,
                                            headers: ["Authorization": "Bearer \(endpoint.appKey)"],
                                            json: body(message: message, images: images, metadata: metadata),

@@ -19,7 +19,8 @@ struct DebugLogClearRow: Equatable {
     }
 
     static let title = "清空调试记录"
-    static let footer = "调试记录只存在这台手机上，最多留 7 天，退出登录也会清空。"
+    /// The line under 导出调试记录 and 清空调试记录.
+    static let footer = "调试记录只存在这台手机上，最多留 7 天，退出登录也会清空。导出后发给谁由你决定。"
     static let clearedLine = "已清空"
     static let confirmTitle = "清空调试记录？"
     static let confirmButton = "清空"

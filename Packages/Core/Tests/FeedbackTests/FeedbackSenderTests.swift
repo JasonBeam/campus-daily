@@ -103,44 +103,26 @@ final class FeedbackSenderTests: XCTestCase {
         XCTAssertTrue(http.requests.isEmpty)
     }
 
-    // MARK: The TestFlight debug log
+    // MARK: The TestFlight debug log stays on the phone
 
-    /// 「附上调试记录」 off (nil) or nothing kept ([]): the request is byte for byte the one without the log.
-    func testWithoutTheLogTheRequestIsTheSame() async throws {
+    /// The message is the typed text and nothing else, even with lines in the TestFlight log:
+    /// feedback never carries the debug log (it is only exported from 高级).
+    func testTheMessageNeverCarriesTheDebugLog() async throws {
+        let dir = DebugLogTesting.temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let log = FileDebugLog(directory: FileDebugLog.directory(in: dir))
+        log.record(.navOpen(.feedback, from: .settings))
+        log.flush()
+        XCTAssertFalse(log.lines().isEmpty)
         let http = RecordingHTTP(reply: .success(HTTPResponse(status: 201)))
-        let sender = FeedbackSender(endpoint: endpoint, http: http)
-        let image = [Data([0xFF, 0xD8, 0x02])]
-        try await sender.send(message: "热水没开", images: image, metadata: metadata)
-        try await sender.send(message: "热水没开", images: image, metadata: metadata, debugLog: nil)
-        try await sender.send(message: "热水没开", images: image, metadata: metadata, debugLog: [])
-        let bodies = http.requests.map(\.body)
-        XCTAssertEqual(bodies.count, 3)
-        XCTAssertEqual(bodies[1], bodies[0])
-        XCTAssertEqual(bodies[2], bodies[0])
-        XCTAssertEqual(http.requests.map(\.headers), Array(repeating: http.requests[0].headers, count: 3))
-        XCTAssertEqual(try JSONValue.parse(XCTUnwrap(bodies[0]))["message"]?.text, "热水没开")
-    }
-
-    /// On: the lines ride in the message (the service has no attachment field), within 4000.
-    func testWithTheLogTheMessageCarriesIt() async throws {
-        let http = RecordingHTTP(reply: .success(HTTPResponse(status: 201)))
-        let lines = ["10-30 04:00:00 shower.action start machine=m:3fa2c1", "10-30 04:00:01 ble.probe type=55 len=20 verdict=idleSelf"]
-        try await FeedbackSender(endpoint: endpoint, http: http).send(message: "热水没开", images: [], metadata: metadata, debugLog: lines)
-        let body = try XCTUnwrap(JSONValue.parse(XCTUnwrap(http.requests.first?.body)).object)
-        XCTAssertEqual(Set(body.keys), ["message", "appVersion", "appBuild", "deviceModel", "osVersion", "locale", "images"],
-                       "no new field")
-        XCTAssertEqual(body["message"]?.text, DebugLogReport.message("热水没开", lines: lines))
-        XCTAssertTrue(body["message"]?.text?.hasPrefix("热水没开\n\n") ?? false)
-    }
-
-    func testTheLogNeverPushesTheTextOverTheLimit() async throws {
-        let http = RecordingHTTP(reply: .success(HTTPResponse(status: 201)))
-        let text = String(repeating: "字", count: 3_950)
-        let lines = (0 ..< 100).map { "10-30 04:00:00 nav.open page=home from=tab n=\($0)" }
-        try await FeedbackSender(endpoint: endpoint, http: http).send(message: text, images: [], metadata: metadata, debugLog: lines)
-        let message = try XCTUnwrap(JSONValue.parse(XCTUnwrap(http.requests.first?.body))["message"]?.text)
-        XCTAssertLessThanOrEqual(message.utf16.count, FeedbackDraft.maximumCharacters)
-        XCTAssertTrue(message.hasPrefix(text))
+        try await FeedbackSender(endpoint: endpoint, http: http).send(message: "热水没开", images: [], metadata: metadata)
+        let raw = try XCTUnwrap(http.requests.first?.body)
+        let body = try XCTUnwrap(JSONValue.parse(raw).object)
+        XCTAssertEqual(Set(body.keys), ["message", "appVersion", "appBuild", "deviceModel", "osVersion", "locale", "images"])
+        XCTAssertEqual(body["message"]?.text, "热水没开")
+        let text = String(decoding: raw, as: UTF8.self)
+        XCTAssertFalse(text.contains("nav.open"))
+        XCTAssertFalse(text.contains("调试记录"))
     }
 
     private func failureText(_ sender: FeedbackSender) async -> String? {

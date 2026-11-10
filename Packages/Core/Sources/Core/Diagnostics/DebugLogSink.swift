@@ -4,14 +4,14 @@ import Foundation
 /// a `FileDebugLog` once StoreKit says the install is TestFlight and keeps nothing otherwise;
 /// `NoDebugLog` everywhere else (the sample, the widget). Recording never throws and never waits on the caller's work.
 public protocol DebugLogSink: Sendable {
-    /// False: nothing is kept (and the feedback form offers nothing to attach).
+    /// False: nothing is kept (and 高级 offers nothing to export or clear).
     var isEnabled: Bool { get }
     func record(_ event: DebugEvent)
-    /// The kept lines, oldest first, as they would be sent (`MM-dd HH:mm:ss name fields`).
+    /// The kept lines, oldest first, as they are exported (`MM-dd HH:mm:ss name fields`).
     func lines() -> [String]
     /// Empties the log and drops its salt (sign-outs, 清空调试记录); the next line starts a new one.
     func clear()
-    /// Returns once every line recorded before it is on disk (the feedback send, its preview, tests).
+    /// Returns once every line recorded before it is on disk (the export, tests).
     func flush()
     /// Returns once the log knows whether it keeps anything (`LaunchDebugLog`); at once otherwise.
     func waitUntilResolved() async

@@ -18,6 +18,8 @@ struct AdvancedSettingsView: View {
     @State private var debugLogCleared = false
     /// The row as the log stands (`DebugLogClearRow`), read on appear and after a clear.
     @State private var debugLogRow: DebugLogClearRow?
+    /// 「导出调试记录」 as the log stands, read with `debugLogRow`.
+    @State private var debugLogExportRow: DebugLogExportRow?
     /// The log is on (TestFlight), once launch knows (`LaunchDebugLog`).
     @State private var debugLogShown = false
     @State private var confirmDebugLogClear = false
@@ -61,11 +63,19 @@ struct AdvancedSettingsView: View {
         }.listRowBackground(Theme.group)
     }
 
-    /// TestFlight only, once launch knows (the sample's log is `NoDebugLog`, an App Store install's is off). Off when
-    /// there is nothing to clear; asks first.
+    /// TestFlight only, once launch knows (the sample's log is `NoDebugLog`, an App Store install's is off). Both rows
+    /// are off when there is nothing in the log; export goes straight to the share sheet, clear asks first.
     private var debugLogSection: some View {
         let row = debugLogRow ?? DebugLogClearRow(log:services.debugLog, cleared:debugLogCleared)
+        let exportRow = debugLogExportRow ?? DebugLogExportRow(log:services.debugLog)
         return Section {
+            Button(DebugLogExportRow.title) { exportDebugLog() }
+                .frame(maxWidth:.infinity)
+                .disabled(exportRow.disabled)
+                .accessibilityLabel(exportRow.accessibilityLabel)
+                .accessibilityIdentifier("exportDebugLog")
+                // Centred titles: the line between the two rows runs the full width.
+                .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
             Button(DebugLogClearRow.title, role:.destructive) { confirmDebugLogClear = true }
                 .frame(maxWidth:.infinity)
                 .disabled(row.disabled)
@@ -75,7 +85,7 @@ struct AdvancedSettingsView: View {
                     Button(DebugLogClearRow.confirmButton, role:.destructive) {
                         services.debugLog.clear()
                         debugLogCleared = true
-                        debugLogRow = DebugLogClearRow(log:services.debugLog, cleared:true)
+                        refreshDebugLogRows()
                     }
                     Button(DebugLogClearRow.cancelButton, role:.cancel) {}
                 }
@@ -86,7 +96,25 @@ struct AdvancedSettingsView: View {
             }
         }
         .listRowBackground(Theme.group)
-        .onAppear { debugLogRow = DebugLogClearRow(log:services.debugLog, cleared:debugLogCleared) }
+        .onAppear { refreshDebugLogRows() }
+    }
+
+    private func refreshDebugLogRows() {
+        debugLogRow = DebugLogClearRow(log:services.debugLog, cleared:debugLogCleared)
+        debugLogExportRow = DebugLogExportRow(log:services.debugLog)
+    }
+
+    /// The whole log as a text file, handed to the share sheet; the file goes when the sheet closes.
+    private func exportDebugLog() {
+        let temporary = FileManager.default.temporaryDirectory
+        guard let file = DebugLogExportRow.file(from:services.debugLog, in:temporary) else {
+            refreshDebugLogRows()
+            return
+        }
+        let folder = DebugLogExportRow.folder(in:temporary)
+        if !FileShareSheet.present(file, closed:{ DebugLogExport.remove(in:folder) }) {
+            DebugLogExport.remove(in:folder)
+        }
     }
 
     private func runReset() {

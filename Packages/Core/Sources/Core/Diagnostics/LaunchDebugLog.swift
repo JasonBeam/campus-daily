@@ -78,7 +78,7 @@ public enum DebugLogLaunch {
 }
 
 /// The log the app starts with. Until `resolve`, it holds at most `bufferLimit` lines in memory
-/// (never on disk) and is off (`isEnabled` false: no feedback toggle, no clear row). On
+/// (never on disk) and is off (`isEnabled` false: no export or clear row). On
 /// `testFlight` it becomes a `FileDebugLog` (week-old lines dropped) and replays what it held,
 /// each line with its own time; on `appStore` it drops them and deletes a log a TestFlight build
 /// left; on `undetermined` it drops them and leaves the folder alone. Only the first answer counts.
