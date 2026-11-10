@@ -13,6 +13,7 @@ extension HomeData {
         data.snapshot = SampleData.homeSnapshot(now:now)
         data.lastShowerMinutes = SampleData.lastShowerMinutes
         data.lastShowerCost = SampleData.lastShowerCost.yuan
+        data.lastShowerEnded = now.addingTimeInterval(-SampleData.showerAgo)
         data.laundryBound = true
         data.laundryMachine = SampleData.laundryMachine
         data.laundry = .idle

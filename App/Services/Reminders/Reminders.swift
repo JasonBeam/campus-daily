@@ -221,6 +221,27 @@ enum ReminderKey {
             cancelLaundry()
         }
     }
+    /// When the laundry-done reminder set now goes off (清爽's 洗衣提醒 page).
+    var laundryReminderEnd: Date? { center == nil ? nil : scheduledLaundry?.end }
+    /// The system lets notifications show (never for a sample's).
+    var notificationsAllowed: Bool {
+        center != nil && [.authorized, .provisional, .ephemeral].contains(effectiveStatus)
+    }
+    /// 测试提醒（10 秒）: one notification after `LaundryReminderText.testDelay`. Not asked yet: the
+    /// pre-permission sheet shows instead (nil), as 「打开提醒」 does.
+    func testLaundryReminder() async -> LaundryReminderText.TestResult? {
+        guard let center else { return .notAllowed }
+        if notAsked { showPrompt(from:.settings); return nil }
+        guard notificationsAllowed else { return .notAllowed }
+        let content = make(title:LaundryReminderText.testTitle, body:LaundryReminderText.testBody, thread:"laundry", route:.laundry, sound:true)
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval:LaundryReminderText.testDelay, repeats:false)
+        do {
+            try await center.add(UNNotificationRequest(identifier:"laundry-test", content:content, trigger:trigger))
+            return .scheduled
+        } catch {
+            return .failed
+        }
+    }
     /// The laundry-done request set now.
     private var scheduledLaundry: LaundryDoneReminder.Plan? {
         guard let id = defaults.string(forKey:ReminderKey.laundryOrder),

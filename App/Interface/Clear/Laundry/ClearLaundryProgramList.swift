@@ -1,8 +1,7 @@
 import SwiftUI
 import Core
 
-/// 3.2 / 3.3: 「选程序」 and the machine's programs. Not selectable while the machine is busy or
-/// unavailable (dimmed), nor while an order is being placed.
+/// 「选择程序」 and the machine's programs. Not selectable while an order is being placed (dimmed).
 struct ClearLaundryProgramList: View {
     let programs: [WasherProgram]
     /// The selected program's id; nil when nothing can be selected.
@@ -12,18 +11,20 @@ struct ClearLaundryProgramList: View {
     let select: (Int) -> Void
 
     var body: some View {
-        VStack(alignment:.leading, spacing:10) {
+        VStack(alignment:.leading, spacing:20) {
             HStack(alignment:.firstTextBaseline) {
-                Text("选程序").font(.title3.weight(.semibold)).foregroundStyle(Theme.ink)
+                Text(ClearLaundryCopy.programsTitle).font(.title3.weight(.semibold)).foregroundStyle(Theme.ink)
                     .accessibilityAddTraits(.isHeader)
                 Spacer(minLength:8)
-                Text("U净 当前价格").font(.caption).foregroundStyle(Theme.ink2)
+                Text(ClearLaundryCopy.programsNote).font(.caption).foregroundStyle(Theme.ink2)
             }
             .padding(.horizontal,4)
-            ForEach(programs, id:\.id) { program in
-                ClearLaundryProgramRow(program:program, selected:selectedID == program.id) { select(program.id) }
-                    .disabled(!enabled)
-                    .opacity(dimmed ? 0.4 : 1)
+            VStack(spacing:10) {
+                ForEach(programs, id:\.id) { program in
+                    ClearLaundryProgramRow(program:program, selected:selectedID == program.id) { select(program.id) }
+                        .disabled(!enabled)
+                        .opacity(dimmed ? 0.4 : 1)
+                }
             }
         }
     }

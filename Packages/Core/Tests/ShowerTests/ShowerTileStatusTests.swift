@@ -1,46 +1,41 @@
 import XCTest
 import Core
 
-/// 清爽 home's 热水 tile says what 暖橙's home button says for the same state.
+/// 清爽 home's 热水 tile: one short word for each state.
 final class ShowerTileStatusTests: XCTestCase {
     func status(_ s: ShowerHomeStatus, signedIn: Bool = true, minutes: Int? = 11, cost: Decimal? = Decimal(string: "1.32"),
                 issue: String? = nil) -> ShowerTileStatus {
         ShowerTileStatus.of(s, signedIn: signedIn, lastMinutes: minutes, lastCost: cost, issue: issue)
     }
 
-    func testIdleShowsTheLastShower() {
-        XCTAssertEqual(status(.idle), ShowerTileStatus(text: "上次 11 分钟 · ¥1.32", shorter: ["11 分钟 · ¥1.32", "¥1.32"]))
-        XCTAssertEqual(status(.idle, cost: nil).forms, ["上次 11 分钟", "11 分钟"])
-        XCTAssertEqual(status(.idle, minutes: nil).text, "")
-        XCTAssertEqual(status(.idle, issue: "没连上水控").forms, ["没连上水控"], "the last start's problem wins, with no shorter form")
+    func testIdleIsReadyToConnect() {
+        XCTAssertEqual(status(.idle), ShowerTileStatus(text: "可连接"))
+        XCTAssertEqual(status(.idle, minutes: nil, cost: nil), ShowerTileStatus(text: "可连接"))
+        XCTAssertEqual(status(.idle, issue: "没连上水控"), ShowerTileStatus(text: "待核对"), "the last start's problem: to check")
     }
 
     func testRunningStates() {
         let start = Date(timeIntervalSince1970: 1000)
-        XCTAssertEqual(status(.showering(start)), ShowerTileStatus(text: "正在洗澡", tone: .accent, timerStart: start,
-                                                                shorter: [""]), "shorter: the timer alone")
-        XCTAssertEqual(status(.settling(start)).text, "正在结算…")
-        XCTAssertNil(status(.settling(start)).timerStart)
-        XCTAssertEqual(status(.starting).text, "正在连接水控…")
+        XCTAssertEqual(status(.showering(start)), ShowerTileStatus(text: "已授权"))
+        XCTAssertEqual(status(.settling(start)), ShowerTileStatus(text: "处理中"))
+        XCTAssertEqual(status(.starting), ShowerTileStatus(text: "处理中"))
     }
 
-    func testAShowerThatIsOverSaysGoShower() {
-        var over = ShowerTileStatus(text: "去洗澡")
-        over.spokenText = "去洗澡，上一次洗好了"
-        XCTAssertEqual(status(.stopped), over)
+    func testAShowerThatIsOverIsToCheck() {
+        XCTAssertEqual(status(.stopped), ShowerTileStatus(text: "待核对"))
     }
 
-    func testUnavailableIsDimmedButOpensItsPage() {
+    func testNotSetUp() {
+        XCTAssertEqual(status(.unconfigured), ShowerTileStatus(text: "待配置"))
         XCTAssertEqual(status(.unavailable("本校暂未开放")), ShowerTileStatus(text: "本校暂未开放", dimmed: true))
-        XCTAssertEqual(status(.unconfigured), ShowerTileStatus(text: "先在设置里选好宿舍", dimmed: true))
     }
 
-    /// Signed out the tile asks for the sign-in, as the home button; a shower going on keeps its words.
+    /// Signed out the tile still opens the first-run checklist; a shower going on keeps its word.
     func testSignedOut() {
-        XCTAssertEqual(status(.idle, signedIn: false), ShowerTileStatus(text: "登录学校账号", opensSetup: true))
+        XCTAssertEqual(status(.idle, signedIn: false), ShowerTileStatus(text: "待配置", opensSetup: true))
         XCTAssertEqual(status(.unconfigured, signedIn: false).opensSetup, true)
         let start = Date(timeIntervalSince1970: 1000)
-        XCTAssertEqual(status(.showering(start), signedIn: false).text, "正在洗澡")
+        XCTAssertEqual(status(.showering(start), signedIn: false).text, "已授权")
     }
 }
 

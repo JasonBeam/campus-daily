@@ -40,7 +40,8 @@ extension ClearRootView {
             navigator.setup = nil
             navigator.demo = normal
             navigator.laundryDemo = laundryPage
-            navigator.panel = laundryPage.panel
+            // 清爽 says a finished order on the page itself, without the sheet.
+            navigator.panel = nil
             freshPush(.laundry)
             return
         }

@@ -191,7 +191,7 @@ extension HomeView {
                 let minutes = max(1, Int((Date().timeIntervalSince(start) / 60).rounded()))
                 withAnimation(Theme.spring) {
                     demo?.shower = .idle
-                    demo?.lastShowerMinutes = minutes; demo?.lastShowerCost = Decimal(string:"1.32")
+                    demo?.lastShowerMinutes = minutes; demo?.lastShowerCost = Decimal(string:"1.32"); demo?.lastShowerEnded = Date()
                     demo?.appActivities.insert(AppActivity(id:"demo-\(Date().timeIntervalSince1970)", kind:.shower(minutes:minutes),
                                                            date:Date(), amount:Money(fen:132)), at:0)
                 }

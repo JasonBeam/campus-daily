@@ -22,6 +22,9 @@ struct CampusPowerSetupView: View {
     @State private var search = ""
     /// Who was signed in when the picker (re)opened: a pick after someone else signed in is refused.
     @State private var stamp: Int?
+    @Environment(\.appTheme) private var appTheme
+    /// 清爽 words the page as 绑定宿舍电表 (`ClearMeterPageText`); 暖橙 keeps its own.
+    private var clear: Bool { appTheme == .clear }
     var body: some View {
         List {
             if unreadShown {
@@ -83,7 +86,7 @@ struct CampusPowerSetupView: View {
                         }.listRowBackground(Theme.group)
                     } header: {
                         HStack(spacing:6) {
-                            Text(level.map(MeterPageText.header) ?? "选择位置")
+                            Text(clear ? ClearMeterPageText.listHeader(meters:false) : level.map(MeterPageText.header) ?? "选择位置")
                             Spacer(minLength:0)
                             // The lookup is running again: this list stays until it answers.
                             if campus.matchingPower && atStop { ProgressView().controlSize(.mini).frame(width:12, height:12) }
@@ -103,16 +106,22 @@ struct CampusPowerSetupView: View {
                                     Text(meter.name).font(.headline)
                                     Text("剩余 \(NSDecimalNumber(decimal:meter.remainingKWh ?? 0).stringValue) 度 · 电费 \(NSDecimalNumber(decimal:meter.leftMoney?.yuan ?? 0).stringValue) 元")
                                         .font(.subheadline).foregroundStyle(.secondary)
-                                    Text("确认是我的宿舍并保存").font(.footnote)
+                                    Text(clear ? ClearMeterPageText.confirm : "确认是我的宿舍并保存").font(.footnote)
                                 }.padding(.vertical,8)
                             }.disabled(busy)
                         }.listRowBackground(Theme.group)
                     }
                 }
+                if clear, !path.isEmpty {
+                    Section {
+                        Button(ClearMeterPageText.rechoose) { Task { await loadRoot() } }.disabled(busy)
+                            .accessibilityIdentifier("meterRechoose")
+                    }.listRowBackground(Theme.group)
+                }
             }
         }.scrollContentBackground(.hidden).background(Theme.bg.ignoresSafeArea()).tint(NativeTheme.tint)
-            .navigationTitle(MeterPageText.title).navigationBarTitleDisplayMode(.inline)
-            .searchable(text:$search,prompt:MeterPageText.searchPrompt)
+            .navigationTitle(clear ? ClearMeterPageText.title : MeterPageText.title).navigationBarTitleDisplayMode(.inline)
+            .searchable(text:$search,prompt:clear ? ClearMeterPageText.searchPrompt : MeterPageText.searchPrompt)
             .task { await open() }
             // The lookup stopped again (it ran once more meanwhile): shown if the user is still there.
             .onChange(of:campus.powerStop) { _, stop in
@@ -124,7 +133,14 @@ struct CampusPowerSetupView: View {
     /// The matched levels with 「重选」 (or the prompt before any).
     private var pathCard: some View {
         Section {
-            if path.isEmpty {
+            if clear {
+                // The levels (or the prompt) over the note; 重新选择位置 is at the bottom.
+                VStack(alignment:.leading, spacing:6) {
+                    Text(ClearMeterPageText.path(path.map(\.name))).font(.headline)
+                    Text(ClearMeterPageText.note).font(.footnote).foregroundStyle(.secondary)
+                }
+                .padding(.vertical,4)
+            } else if path.isEmpty {
                 LocationPathHeader(path:[], placeholder:MeterPageText.pickerPrompt)
             } else {
                 HStack(spacing:12) {
@@ -197,21 +213,25 @@ struct AutomaticPowerSection: View {
     var onMeterPage = false
     @EnvironmentObject private var campus: CampusModel
     @State private var selection: String?
+    @Environment(\.appTheme) private var appTheme
+    /// 清爽's meter page: 「宿舍电表」 over 「电表已保存」 in green.
+    private var clearPage: Bool { onMeterPage && appTheme == .clear }
     var body: some View {
         // On the meter page at a stopped level the level's own list is the answer: a lookup
         // running again shows only its spinner by the list header; a failure is said here.
         let atStop = onMeterPage && campus.powerStop != nil && campus.powerChoices.isEmpty && !campus.powerConfigured
         if atStop {
             if let note = MeterPageText.noteAtStop(finding:campus.matchingPower, issue:campus.powerMatchIssue) {
-                Section("电表") {
+                Section(clearPage ? ClearMeterPageText.section : "电表") {
                     Text(note).font(.footnote).foregroundStyle(.secondary)
-                    Button("再找一次电表") {campus.matchPowerAutomatically()}
+                    Button(clearPage ? ClearMeterPageText.retryMatch : "再找一次电表") {campus.matchPowerAutomatically()}
                 }.listRowBackground(Theme.group)
             }
         } else if campus.matchingPower || !campus.powerChoices.isEmpty || campus.powerMatchIssue != nil || campus.powerConfigured {
-            Section(campus.powerChoices.isEmpty ? "电表" : SameNameText.titleLead + SameNameText.titleAccent + SameNameText.titleTail) {
+            Section(campus.powerChoices.isEmpty ? (clearPage ? ClearMeterPageText.section : "电表") : SameNameText.titleLead + SameNameText.titleAccent + SameNameText.titleTail) {
                 if campus.matchingPower {
-                    if onMeterPage { Text(MeterPageText.finding).foregroundStyle(Theme.ink2) }
+                    if clearPage { Label(ClearMeterPageText.matching, systemImage:"bolt") }
+                    else if onMeterPage { Text(MeterPageText.finding).foregroundStyle(Theme.ink2) }
                     else { Label("正在找电表，可以先保存宿舍。",systemImage:"bolt") }
                 }
                 else if !campus.powerChoices.isEmpty {
@@ -225,10 +245,13 @@ struct AutomaticPowerSection: View {
                     }
                     .disabled(selection == nil || campus.matchingPower)
                     .accessibilityIdentifier("powerApartmentConfirm")
-                } else if campus.powerConfigured {Label("电表已保存",systemImage:"checkmark.circle").foregroundStyle(Theme.ink2)}
+                } else if campus.powerConfigured {
+                    if clearPage { Label(ClearMeterPageText.saved, systemImage:"checkmark.circle").foregroundStyle(.green) }
+                    else { Label("电表已保存",systemImage:"checkmark.circle").foregroundStyle(Theme.ink2) }
+                }
                 if let issue = campus.powerMatchIssue {
                     Text(onMeterPage ? MeterPageText.issue(issue) : issue).font(.footnote).foregroundStyle(.secondary)
-                    Button("再找一次电表") {campus.matchPowerAutomatically()}
+                    Button(clearPage ? ClearMeterPageText.retryMatch : "再找一次电表") {campus.matchPowerAutomatically()}
                 }
             }
             .listRowBackground(onMeterPage ? Theme.group : nil)

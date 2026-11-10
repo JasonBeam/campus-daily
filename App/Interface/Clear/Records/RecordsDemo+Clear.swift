@@ -1,7 +1,7 @@
 import Foundation
 
 extension RecordsDemo {
-    /// What 清爽's 记录 shows for this demo, over the home demo's data: `open` adds the home
+    /// What 清爽's 订单 shows for this demo, over the home demo's data: `open` adds the home
     /// demo's running shower and washing laundry order, `signed-out` signs out.
     func shown(_ data: HomeData, now: Date = Date()) -> HomeData {
         var data = data
@@ -15,5 +15,10 @@ extension RecordsDemo {
             break
         }
         return data
+    }
+
+    /// The laundry order 清爽's 订单 lists for this demo: `open`'s washing one, otherwise none.
+    func laundryFacts(now: Date = Date()) -> LaundryFacts {
+        self == .open ? LaundryDemo.make(.run, now:now).facts : LaundryFacts()
     }
 }

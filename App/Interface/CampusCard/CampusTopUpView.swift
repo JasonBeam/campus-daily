@@ -5,6 +5,7 @@ import Core
 /// 校园充值: one page for the campus card and the electricity. It only opens the school's
 /// WeChat service (or the school's web hand-off page in Safari); no money goes through the app.
 /// Back in the app after either button, the balances are read again once in the background.
+/// 清爽 has its own page (`ClearCampusTopUpView`).
 struct CampusTopUpView: View {
     @Environment(\.appTheme) private var appTheme
     @Environment(\.scenePhase) private var scenePhase
@@ -13,6 +14,10 @@ struct CampusTopUpView: View {
     @State private var flow: CampusTopUpFlow?
 
     var body: some View {
+        if appTheme == .clear { ClearCampusTopUpView() } else { warm }
+    }
+
+    private var warm: some View {
         ScrollView {
             VStack(alignment:.leading, spacing:0) {
                 Image(systemName:"arrow.up.forward.app").font(.system(size:32))
@@ -27,12 +32,12 @@ struct CampusTopUpView: View {
                     .padding(.top,10)
                 Button { send(.weChatTapped) } label: {
                     Text(CampusTopUpText.openWeChat).font(.body.weight(.semibold))
-                        .foregroundStyle(appTheme == .clear ? Theme.accentInk : Theme.pillInk)
+                        .foregroundStyle(Theme.pillInk)
                         .frame(maxWidth:.infinity, minHeight:50)
                 }
                 .buttonStyle(.borderedProminent)
-                .buttonBorderShape(appTheme == .clear ? .roundedRectangle(radius:12) : .capsule)
-                .tint(appTheme == .clear ? NativeTheme.tint.color(appTheme) : Theme.pill.color(appTheme))
+                .buttonBorderShape(.capsule)
+                .tint(Theme.pill.color(appTheme))
                 .accessibilityIdentifier("campusTopUpWeChat")
                 .padding(.top,28)
                 Button { send(.webTapped) } label: {
@@ -41,7 +46,7 @@ struct CampusTopUpView: View {
                         .frame(maxWidth:.infinity, minHeight:44)
                 }
                 .buttonStyle(.bordered)
-                .buttonBorderShape(appTheme == .clear ? .roundedRectangle(radius:12) : .capsule)
+                .buttonBorderShape(.capsule)
                 .tint(accent.color(appTheme))
                 .accessibilityIdentifier("campusTopUpWeb")
                 .padding(.top,10)
@@ -51,7 +56,7 @@ struct CampusTopUpView: View {
             .frame(maxWidth:560, alignment:.leading)
             .frame(maxWidth:.infinity)
         }
-        .background { background.ignoresSafeArea() }
+        .background { Theme.bg.ignoresSafeArea() }
         .navigationTitle(CampusTopUpText.title)
         .navigationBarTitleDisplayMode(.inline)
         .typesettingLanguage(Theme.typesetting)
@@ -74,11 +79,7 @@ struct CampusTopUpView: View {
         }
     }
 
-    @ViewBuilder private var background: some View {
-        if appTheme == .clear { NativeTheme.background } else { Theme.bg }
-    }
-
-    private var accent: ThemeColor { appTheme == .clear ? NativeTheme.tint : Theme.accentText }
+    private var accent: ThemeColor { Theme.accentText }
 
     private var current: CampusTopUpFlow { flow ?? CampusTopUpFlow(sample:sample.isActive) }
 

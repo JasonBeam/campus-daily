@@ -1,23 +1,23 @@
 import SwiftUI
 import Core
 
-/// 2.4, 最近一次用水: the last settled shower, as home's 热水 tile has it: 已结算 · 11 分钟, when it
-/// was settled (if kept), and the amount.
+/// 2.4, 最近一次用水: the last settled shower: 已结算, when it was settled (if kept), and the
+/// amount in the system's currency style.
 struct ClearShowerLastCard: View {
     let last: ShowerLastUse
 
     var body: some View {
         VStack(alignment:.leading, spacing:14) {
-            Text("最近一次用水").font(.subheadline).foregroundStyle(.secondary)
+            Text(ClearShowerText.lastUse).font(.subheadline).foregroundStyle(.secondary)
             HStack(alignment:.firstTextBaseline) {
                 VStack(alignment:.leading, spacing:6) {
-                    Text("已结算 · " + last.duration).font(.subheadline).monospacedDigit()
+                    Text(ClearShowerText.lastUseSettled).font(.subheadline)
                     if let ended = last.ended {
                         Text(ended.formatted(date:.abbreviated, time:.shortened)).font(.caption).foregroundStyle(.secondary)
                     }
                 }
                 Spacer(minLength:8)
-                if let amount = last.amount { Text(amount).font(.subheadline).monospacedDigit() }
+                if let cost = last.cost { Text(ClearBalanceText.currency(cost)).font(.subheadline).monospacedDigit() }
             }
             .accessibilityElement(children:.combine)
         }

@@ -1,6 +1,7 @@
 import Foundation
 
-/// The diagnostics older builds kept (导出热水诊断 is gone and nothing writes them any more):
+/// The diagnostics older builds kept (nothing writes them any more; today's 导出热水诊断 is
+/// `ShowerDiagnosticReport`, which keeps nothing):
 /// `Water/diagnostics.json`, the credential-lifetime lines in the Keychain item
 /// `shared.credentialLog`, a report left in the temporary folder by an export, and the scan note
 /// `WaterSession/last-scan.json` (written only where a much older build had made that folder).

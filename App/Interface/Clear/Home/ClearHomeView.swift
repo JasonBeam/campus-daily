@@ -1,10 +1,9 @@
 import SwiftUI
 import Core
 
-/// 日常 tab root (清爽 home): room line, 电量和校园卡, 继续设置 while something is not set,
-/// the 热水 and 洗衣 tiles, and as many 最近 rows as fit (`RecentCardFit`), so home never scrolls
-/// below the accessibility sizes. On a short screen it first compresses (`HomeCompaction`): no
-/// room line, then the inline title, then tighter cards, then 继续设置 without its small line.
+/// 日常 tab root (清爽 home), under the large title 校园生活: the room, 双余额, 继续设置 while
+/// something is not set, the 热水洗澡 and 洗衣机 tiles, the laundry order while one is open,
+/// 上次热水 once a shower was settled, and the pull hint. The settings button opens 设置 as a sheet.
 ///
 /// Pages open through `ClearNavigator`; the root hosts the shower page, the laundry-done sheet
 /// and the sign-in sheet.
@@ -14,91 +13,69 @@ struct ClearHomeView: View {
     @EnvironmentObject var laundry: LaundryModel
     @Environment(ClearNavigator.self) var navigator
     @Environment(SampleMode.self) var sample
-    @Environment(\.appTheme) var appTheme
     @Environment(\.dynamicTypeSize) var typeSize
     /// The dorm confirmed on the checklist (a dorm may have no controller to bind).
     @AppStorage(SetupChecklist.dormKey) var confirmedDorm = ""
-    /// For 最近 (`recentCount`): the scroll view's visible size, the tiles' bottom, the header's
-    /// height and each row's height, measured hidden at the card's width.
-    @State var viewport: CGSize = .zero
-    @State var tilesBottom: CGFloat = 0
-    @State var recentsHeaderHeight: CGFloat = 0
-    @State var recentHeights: [RecentItem.ID: CGFloat] = [:]
-    /// For `compaction`: the title and the sections measured hidden, as designed and tightened,
-    /// at `sectionsWidth`.
-    @State var sections = HomeCompaction.Sections(title:0, roomLine:0, balance:0, balanceTight:0, setup:0, setupShort:0, tiles:0,
-                                                   tilesTight:0)
-    @State var sectionsWidth: CGFloat = 0
-
-    static let fit = RecentCardFit.clearHome
-    nonisolated static let contentSpace = "clearHomeContent"
+    @State private var settingsShown = false
 
     var body: some View {
         let data = navigator.data(campus:campus, shower:shower, laundry:laundry)
-        let step = compaction
         // Not `.scrollBounceBehavior(.basedOnSize)`: content that fits must still bounce for the pull.
         ScrollView {
-            content(data, step:step)
-        }
-        // The size between the bars: what the page and 最近 have to fit in.
-        .onGeometryChange(for:CGSize.self) { $0.size } action: { viewport = $0 }
-        .background(Theme.bg.ignoresSafeArea())
-        .navigationTitle("校日常")
-        // At accessibility sizes the page scrolls: the bar's own large title, which shrinks into
-        // the bar. Otherwise the bar is inline and home draws the large title (`ClearHomeTitle`)
-        // until a short screen needs the bar's small one.
-        .navigationBarTitleDisplayMode(typeSize.isAccessibilitySize ? .large : .inline)
-        .toolbar {
-            if !typeSize.isAccessibilitySize {
-                ToolbarItem(placement:.principal) {
-                    Text("校日常").font(.headline).foregroundStyle(Theme.ink.color(appTheme))
-                        .opacity(step.usesInlineTitle ? 1 : 0)
-                        .accessibilityHidden(!step.usesInlineTitle)
+            VStack(alignment:.leading, spacing:18) {
+                ClearRoomLine(room:ClearBalanceText.room(data.signedIn ? data.dorm : nil), refreshing:data.refreshing)
+                ClearBalanceCard(data:data)
+                setupCard(data)
+                tiles(data)
+                if let order = data.laundryOrder {
+                    ClearHomeOrderCard(line:order) { navigator.push(.laundry) }
                 }
+                if let ended = data.lastShowerEnded {
+                    ClearLastShowerCard(ended:ended, cost:data.lastShowerCost)
+                }
+                Text(ClearBalanceText.pullHint).font(.caption).foregroundStyle(Theme.ink2).padding(.horizontal,4)
+            }
+            .padding(20).frame(maxWidth:560).frame(maxWidth:.infinity)
+        }
+        .background(Theme.bg.ignoresSafeArea())
+        .navigationTitle(ClearBalanceText.homeTitle)
+        .navigationBarTitleDisplayMode(.large)
+        .toolbar {
+            ToolbarItem(placement:.topBarTrailing) {
+                Button { settingsShown = true } label: {
+                    Image(systemName:"slider.horizontal.3").frame(width:44, height:44)
+                }
+                .accessibilityLabel("设置与个人配置")
             }
         }
+        .sheet(isPresented:$settingsShown) { settingsSheet }
+        // A settings row that opens a page on 日常 (热水, 继续设置) takes the sheet down.
+        .onChange(of:navigator.homePath) { _, _ in settingsShown = false }
+        .onChange(of:navigator.tab) { _, _ in settingsShown = false }
         // SwiftUI may cancel the pull's own task when the page changes under it: the read runs
         // on its own and the pull waits for it.
         .refreshable { await Task { await pull() }.value }
     }
 
-    func content(_ data: HomeData, step: HomeCompaction) -> some View {
-        let fit = Self.fit
-        return VStack(spacing:0) {
-            if showsLargeTitle(step) { ClearHomeTitle() }
-            VStack(alignment:.leading, spacing:CGFloat(fit.gapAbove)) {
-                if !step.hidesRoomLine { roomLine(data) }
-                ClearBalanceCard(data:data, tight:step.tightensCards)
-                setupCard(data, titleOnly:step.shortensSetup)
-                tiles(data, tight:step.tightensCards)
-                    .onGeometryChange(for:CGFloat.self) { $0.frame(in:.named(Self.contentSpace)).maxY } action: { tilesBottom = $0 }
-                recents(data)
-            }
-            .padding(CGFloat(fit.pagePadding))
-            .background(alignment:.top) { recentMeasure(data) }
-            .background(alignment:.top) { sectionMeasure(data) }
-            .frame(maxWidth:CGFloat(fit.maxWidth))
-            .frame(maxWidth:.infinity)
+    private var settingsSheet: some View {
+        NavigationStack {
+            ClearSettingsTab()
+                .navigationDestination(for:ClearRoute.self) { ClearDestination(route:$0) }
+                .toolbar {
+                    ToolbarItem(placement:.confirmationAction) { Button("完成") { settingsShown = false } }
+                }
         }
-        .coordinateSpace(name:Self.contentSpace)
+        .environment(navigator)
+        .typesettingLanguage(Theme.typesetting)
+        .navOpen(.settings, from:.homeButton)
     }
 
-    /// Home's own large title: not at accessibility sizes (the bar's is), nor once the bar's small
-    /// one has taken over.
-    func showsLargeTitle(_ step: HomeCompaction) -> Bool {
-        !typeSize.isAccessibilitySize && !step.usesInlineTitle
-    }
-
-    func roomLine(_ data: HomeData) -> some View {
-        ClearRoomLine(dorm:data.signedIn ? data.dorm : nil, signedIn:data.signedIn, refreshing:data.refreshing)
-    }
-
-    @ViewBuilder func setupCard(_ data: HomeData, titleOnly: Bool = false) -> some View {
+    @ViewBuilder func setupCard(_ data: HomeData) -> some View {
         let dormSet = SetupChecklist.isDormSet(dorm:data.dorm, confirmedDorm:confirmedDorm,
                                                controllerBound:data.shower != .unconfigured)
         if let detail = HomeSetupCard.detail(signedIn:data.signedIn, dormSet:dormSet,
                                              laundryEnabled:data.laundryEnabled, laundryBound:data.laundryBound) {
-            ClearSetupCard(detail:detail, titleOnly:titleOnly) { navigator.push(.setupChecklist) }
+            ClearSetupCard(detail:detail) { navigator.push(.setupChecklist) }
         }
     }
 

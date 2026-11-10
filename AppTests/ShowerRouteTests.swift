@@ -52,20 +52,12 @@ final class ShowerRouteTests: XCTestCase {
         XCTAssertNil(HomeShowerButton.caption(.stopped), "no second line on home")
     }
 
-    /// 清爽's page over a shower that is over: no 「本次费用 · 结算后显示」 card (the app won't
-    /// settle it); 连接检查 stays. Every other face keeps its cost card.
-    func testClearsStoppedPageHasNoCostCard() {
-        XCTAssertFalse(ClearShowerPage.showsCostCard(.stopped))
-        for phase: ShowerPagePhase? in [nil, .connecting, .running, .settling, .done, .connectFailed, .denied] {
+    /// 清爽's page keeps one layout on every face: the 本次费用 card (「结算后显示」 until an
+    /// amount is read) and 最近一次用水 whenever a settled shower is kept.
+    func testClearsPageShowsCostAndLastUseOnEveryFace() {
+        for phase: ShowerPagePhase? in [nil, .connecting, .running, .settling, .done, .connectFailed, .denied, .stopped] {
             XCTAssertTrue(ClearShowerPage.showsCostCard(phase), "\(String(describing: phase))")
+            XCTAssertTrue(ClearShowerPage.showsLastUse(phase), "\(String(describing: phase))")
         }
-    }
-
-    /// 清爽's page over a shower that is over (stopped on the controller, or kept with its
-    /// outcome unknown): no 最近一次用水 card. It names the last shower the app settled, which
-    /// reads as the cost of the one that just ended. 连接检查 stays; the start layout keeps it.
-    func testClearsStoppedPageHasNoLastUseCard() {
-        XCTAssertFalse(ClearShowerPage.showsLastUse(.stopped))
-        XCTAssertTrue(ClearShowerPage.showsLastUse(nil))
     }
 }

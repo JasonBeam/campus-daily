@@ -1,19 +1,19 @@
 import SwiftUI
 
-/// 记录 while signed out: 「登录后显示」 with 「登录学校账号」, which opens the first-run checklist
-/// at 学校账号; under 「进行中」 when a shower or laundry order is still open.
+/// 订单 while signed out: 「登录后显示」 with 「登录学校账号」, which opens the first-run checklist
+/// at 学校账号; under the recent orders when there are some.
 struct ClearRecordsSignedOut: View {
-    let open: [ClearOpenItem]
+    let orders: ClearRecentOrders
     @Environment(ClearNavigator.self) private var navigator
 
     var body: some View {
-        if open.isEmpty {
+        if orders.sections.isEmpty {
             signIn
                 .frame(maxWidth:.infinity, maxHeight:.infinity)
                 .background(Color(uiColor:.systemGroupedBackground))
         } else {
             List {
-                ClearOpenSection(items:open)
+                ClearRecentOrdersSections(orders:orders)
                 signIn.listRowBackground(Color.clear)
             }
             .listStyle(.insetGrouped)

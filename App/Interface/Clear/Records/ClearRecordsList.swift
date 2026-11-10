@@ -1,12 +1,12 @@
 import SwiftUI
 import Core
 
-/// 记录 while signed in: 「进行中」, then the card's records by school day, newest first, read
+/// 订单 while signed in: the recent laundry order and showers, then the card's records by school day, newest first, read
 /// back from today as the list scrolls (`CardRecordsModel`, as 暖橙's 校园卡记录). A day's
 /// 「花了」 shows once the whole day is read. The app's own showers and laundry orders open
 /// their page on 日常.
 struct ClearRecordsList: View {
-    let open: [ClearOpenItem]
+    let orders: ClearRecentOrders
     /// The app's own showers and laundry orders: merged into the school's rows, and shown alone
     /// when the school's records can't be read.
     let app: [AppActivity]
@@ -14,8 +14,8 @@ struct ClearRecordsList: View {
     @Environment(ClearNavigator.self) private var navigator
     @EnvironmentObject private var laundry: LaundryModel
 
-    init(open: [ClearOpenItem], app: [AppActivity], source: CardRecordsSource) {
-        self.open = open
+    init(orders: ClearRecentOrders, app: [AppActivity], source: CardRecordsSource) {
+        self.orders = orders
         self.app = app
         _model = StateObject(wrappedValue:CardRecordsModel(source:source))
     }
@@ -23,7 +23,7 @@ struct ClearRecordsList: View {
     var body: some View {
         let days = days(now:Date())
         List {
-            ClearOpenSection(items:open)
+            ClearRecentOrdersSections(orders:orders)
             switch model.phase {
             case .loading: loadingSection
             case .failed: failedSection

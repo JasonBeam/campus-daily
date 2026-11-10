@@ -2,7 +2,8 @@ import SwiftUI
 import UniformTypeIdentifiers
 import Core
 
-/// 高级: config imports, Bluetooth connection check, Shortcuts hint, version (both in 暖橙 only), reset.
+/// 高级 (清爽: 故障排查): config imports, Bluetooth connection check, Shortcuts hint, version (both in
+/// 暖橙 only), 导出热水诊断 (清爽 only), the debug log, reset.
 struct AdvancedSettingsView: View {
     @Environment(ThemeStore.self) private var themeStore
     @Environment(\.appTheme) private var appTheme
@@ -28,6 +29,8 @@ struct AdvancedSettingsView: View {
     /// Set when a lock stopped the reset (nothing was cleared).
     @State private var resetBlocked: AppReset.Stop?
     @State private var importing = false
+    /// 导出热水诊断 couldn't write or share the file.
+    @State private var diagnosticFailed = false
     /// Last import failure, shown under the import rows (the models' own issue lines live elsewhere).
     @State private var importIssue: String?
     private func importRow(_ title: String) -> some View {
@@ -117,6 +120,47 @@ struct AdvancedSettingsView: View {
         }
     }
 
+    private func importSection(header: LocalizedStringKey, footer: LocalizedStringKey) -> some View {
+        Section {
+            importRow("导入热水配置").disabled(preview == nil && !shower.mayImportProfile)
+        } header: { Text(header) } footer: {
+            VStack(alignment:.leading, spacing:6) {
+                if let importIssue {
+                    Label(importIssue, systemImage:"exclamationmark.circle").foregroundStyle(Theme.ink2)
+                        .accessibilityIdentifier("importIssue")
+                }
+                Text(footer)
+            }
+        }.listRowBackground(Theme.group)
+    }
+
+    /// 清爽's 导出热水诊断: reads the saved record only, nothing is sent to the controller.
+    private var diagnosticsSection: some View {
+        Section {
+            Button { exportDiagnostics() } label: { ChevronRow(title:ShowerDiagnosticReport.title) }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("exportShowerDiagnostics")
+        } footer: {
+            Text(ShowerDiagnosticReport.footer)
+        }.listRowBackground(Theme.group)
+    }
+
+    private func exportDiagnostics() {
+        if sample.isActive { sample.perform(.checkController) {}; return }
+        let bundle = Bundle.main
+        let bound = preview.map { $0.shower != .unconfigured } ?? shower.configured
+        let state: ShowerState? = preview != nil ? ShowerState() : (shower.recordUnreadable ? nil : shower.state)
+        let text = ShowerDiagnosticReport.text(version:bundle.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String,
+                                               build:bundle.object(forInfoDictionaryKey:"CFBundleVersion") as? String,
+                                               now:Date(), timeZone:.current, bound:bound, state:state)
+        let folder = ShowerDiagnosticReport.directory(in:FileManager.default.temporaryDirectory)
+        guard let file = ShowerDiagnosticReport.write(text, into:folder) else { diagnosticFailed = true; return }
+        if !FileShareSheet.present(file, closed:{ ShowerDiagnosticReport.remove(in:folder) }) {
+            ShowerDiagnosticReport.remove(in:folder)
+            diagnosticFailed = true
+        }
+    }
+
     private func runReset() {
         #if DEBUG
         if preview != nil { resetter.finishDemo(); return }
@@ -130,20 +174,14 @@ struct AdvancedSettingsView: View {
 
     var body: some View {
         List {
-            Section {
-                importRow("导入热水配置").disabled(preview == nil && !shower.mayImportProfile)
-            } header: { Text("导入配置") } footer: {
-                VStack(alignment:.leading, spacing:6) {
-                    if let importIssue {
-                        Label(importIssue, systemImage:"exclamationmark.circle").foregroundStyle(Theme.ink2)
-                            .accessibilityIdentifier("importIssue")
-                    }
-                    Text("一般不用导入。有没结算的记录时，别卸载 App，也别换配置。")
-                }
-            }.listRowBackground(Theme.group)
-            ShowerTroubleshootingSections(preview:preview)
-            if appTheme != .clear {
-                // 清爽's 设置 tab shows these two itself.
+            if appTheme == .clear {
+                // 清爽's 故障排查: the checks first, then the export, then the manual config.
+                ShowerTroubleshootingSections(preview:preview)
+                diagnosticsSection
+                importSection(header:"手动配置", footer:"通常使用账号与设备设置即可。有未确认交易时，请先核对官方记录，保留本机数据。")
+            } else {
+                importSection(header:"导入配置", footer:"一般不用导入。有没结算的记录时，别卸载 App，也别换配置。")
+                ShowerTroubleshootingSections(preview:preview)
                 ShortcutsSection()
                 Section {
                     VersionRow()
@@ -155,7 +193,8 @@ struct AdvancedSettingsView: View {
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
         .background(Theme.bg.ignoresSafeArea())
-        .navigationTitle("高级").navigationBarTitleDisplayMode(.inline)
+        .navigationTitle(appTheme == .clear ? "故障排查" : "高级").navigationBarTitleDisplayMode(.inline)
+        .alert(ShowerDiagnosticReport.failed, isPresented:$diagnosticFailed) { Button("知道了", role:.cancel) {} }
         .task {
             await services.debugLog.waitUntilResolved()
             debugLogShown = services.debugLog.isEnabled

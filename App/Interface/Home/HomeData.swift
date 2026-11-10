@@ -84,6 +84,8 @@ struct HomeData {
     var showerUnconfirmed = false
     var lastShowerMinutes: Int?
     var lastShowerCost: Decimal?
+    /// When the last shower was settled, if kept.
+    var lastShowerEnded: Date?
     /// 「学校洗衣机」 on. Off: no laundry row, no laundry in 最近, no done panel.
     var laundryEnabled = true
     /// The 学校洗衣机 switch can't be turned off yet (an order is unfinished).
@@ -91,6 +93,8 @@ struct HomeData {
     var laundryBound = false
     var laundryMachine: String?
     var laundry = Laundry.unknown
+    /// 清爽 home: an open order's status (「洗衣中」), or 「订单结果待核对」 before one was read.
+    var laundryOrder: String?
     /// A recently finished order, for the once-per-order done panel.
     var laundryDone: LaundryDone?
     /// The app's own showers and laundry orders, merged with the card records in 最近.
@@ -148,7 +152,7 @@ extension HomeData {
         var activities: [AppActivity] = []
         // Minutes of water (from 出水, as the timer counted), not from the 开始洗澡 tap.
         if state.phase == .done, let start = model.sessionStarted, let end = model.lastEnded, let minutes = state.minutes {
-            lastShowerMinutes = minutes; lastShowerCost = model.lastCost
+            lastShowerMinutes = minutes; lastShowerCost = model.lastCost; lastShowerEnded = end
             activities.append(AppActivity(id:"shower-\(start.timeIntervalSince1970)", kind:.shower(minutes:minutes),
                                           date:end, amount:model.lastCost.map { Money(yuan:$0) }))
         }
@@ -160,6 +164,9 @@ extension HomeData {
         let facts = LaundryFacts(model:laundry)
         self.laundry = Self.laundryRow(facts, now:now)
         laundryDone = laundryEnabled ? Self.laundryDone(facts, now:now) : nil
+        if laundryEnabled, let record = laundry.checkout, record.inFlight {
+            laundryOrder = record.order?.status.label ?? "订单结果待核对"
+        }
         if let record = laundry.checkout, record.inFlight, let created = record.createdAt {
             activities.append(AppActivity(id:"laundry-\(record.orderId ?? created.description)",
                                           kind:.laundry(program:record.programName), date:created,

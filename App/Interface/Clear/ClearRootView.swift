@@ -1,7 +1,7 @@
 import SwiftUI
 import Core
 
-/// The page tree of 清爽: a tab bar with 日常, 记录 and 设置, each tab its own stack of
+/// The page tree of 清爽: a tab bar with 日常, 订单 (the records) and 设备 (the settings), each tab its own stack of
 /// `ClearRoute`s. Its pages navigate through `ClearNavigator`; what is not a page's (links,
 /// notification taps, the shower page, the sheets over the tab bar) is handled here
 /// (`ClearRootView+Routing`). A theme switch builds this tree anew: 日常, every stack at its root.
@@ -19,8 +19,6 @@ struct ClearRootView: View {
     /// The newest link or login-after-the-sample: an older one still waiting for a sheet is dropped.
     @State var destination = RootDestination()
     @EnvironmentObject var reminders: Reminders
-    /// Last laundry order whose done panel was shown (once per order, shared with 暖橙).
-    @AppStorage("laundryDoneShownOrder") var laundryDoneShown = ""
     #if DEBUG
     @State var activityPreview: LaundryActivityPreview.Kind?
     @State var widgetPreview: WidgetPreview.Page?
@@ -51,13 +49,13 @@ struct ClearRootView: View {
                 recordsTab.navOpen(.records, from:.tab, once:false)
                     .navigationDestination(for:ClearRoute.self) { ClearDestination(route:$0) }
             }
-            .tabItem { Label("记录", systemImage:"clock.arrow.circlepath") }
+            .tabItem { Label(ClearRecentOrders.tabTitle, systemImage:"clock.arrow.circlepath") }
             .tag(ClearNavigator.Tab.records)
             NavigationStack(path:$navigator.settingsPath) {
                 ClearSettingsTab().navOpen(.settings, from:.tab, once:false)
                     .navigationDestination(for:ClearRoute.self) { ClearDestination(route:$0) }
             }
-            .tabItem { Label("设置", systemImage:"slider.horizontal.3") }
+            .tabItem { Label("设备", systemImage:"slider.horizontal.3") }
             .tag(ClearNavigator.Tab.settings)
         }
         .sensoryFeedback(.success, trigger:successTick)
@@ -102,9 +100,6 @@ struct ClearRootView: View {
         .onChange(of:shower.page.page?.phase) { _, _ in followShowerPage(shower.page.presented) }
         .onChange(of:shower.pageWanted) { _, _ in followShowerPage(shower.page.presented) }
         .onChange(of:navigator.homePath) { old, new in showerPageLeft(old:old, new:new) }
-        .onChange(of:data.laundryDone, initial:true) { _, done in presentLaundryDone(done) }
-        // A done panel that arrived while another was up is shown once that one closes.
-        .onChange(of:navigator.panel == nil) { _, clear in if clear { presentLaundryDone(data.laundryDone) } }
         .modifier(ReminderHooks(open:follow, homeClear:homeClear))
         // The widget's links, dispatched by the app (`SampleMode.open`): this root opens them
         // only when it is the live one.

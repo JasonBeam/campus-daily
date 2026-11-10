@@ -86,7 +86,8 @@ struct WidgetPreview: View {
             CampusWidgetFace(model:model, medium:medium, theme:appTheme)
                 .padding(16)
                 .frame(width:medium ? 364 : 170, height:170)
-                .background(CampusWidgetPalette.of(appTheme).group, in:RoundedRectangle(cornerRadius:22, style:.continuous))
+                .background(ClearScriptsFace.draws(model, medium:medium, theme:appTheme) ? ClearScriptsFace.paper
+                                : CampusWidgetPalette.of(appTheme).group, in:RoundedRectangle(cornerRadius:22, style:.continuous))
             Text(caption).font(.system(size:11, weight:.medium))
                 .foregroundStyle(scheme == .dark ? Color.white.opacity(0.8) : Color.black.opacity(0.6))
         }

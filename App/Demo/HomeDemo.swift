@@ -132,9 +132,11 @@ enum HomeDemo: String, CaseIterable {
             return (data, nil)
         case .laundryRun:
             data.laundry = .running(program:"标准洗", end:now.addingTimeInterval(18 * 60 - 30))
+            data.laundryOrder = LaundryOrderStatus("40").label
             return (data, nil)
         case .laundryCheck:
             data.laundry = .unresolved
+            data.laundryOrder = "订单结果待核对"
             return (data, nil)
         case .unconfirmedRow:
             data.shower = .stopped

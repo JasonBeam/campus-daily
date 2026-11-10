@@ -83,6 +83,7 @@ extension ClearRoute {
         case .theme: return .theme
         case .advanced: return .advanced
         case .setupChecklist: return .setupChecklist
+        case .laundryReminders, .reminders, .shortcuts: return .settings
         }
     }
 }

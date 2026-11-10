@@ -1,11 +1,11 @@
 import Foundation
 
-/// 清爽's 首次设置 checklist: which rows it shows, which are done or wait for the row before,
-/// how many are done, which row its button continues with, and what each row says.
+/// 清爽's 首次配置 checklist: which rows it shows, which are done, how many of the needed ones
+/// are done, which step a row or its button opens, and what each row says.
 ///
-/// Rows in order: 学校账号, 宿舍 (after the account), 学校洗衣机, 水控 (after the dorm; gone once
-/// the dorm is confirmed without a controller, as there is nothing to check). 「不用」 answers
-/// the laundry row.
+/// Rows in order: 学校账号, 选择宿舍与水控, 洗衣机（可选）. The first two are needed (「已完成 1 / 2」);
+/// the washers are optional, and 「不用」 (the 学校洗衣机 switch off) answers them. 水控 is not a
+/// row: it is the check after the dorm step while the bound controller wasn't checked.
 public struct SetupChecklist: Equatable, Sendable {
     public enum Row: Hashable, CaseIterable, Sendable {
         case account, dorm, laundry, controller
@@ -14,8 +14,8 @@ public struct SetupChecklist: Equatable, Sendable {
     public enum Laundry: Equatable, Sendable {
         /// Not answered: on, with no machine saved yet.
         case open
-        /// A machine saved (「3 号机」).
-        case machine(String)
+        /// This many machines saved.
+        case saved(Int)
         /// 「不用」.
         case notUsed
     }
@@ -35,9 +35,9 @@ public struct SetupChecklist: Equatable, Sendable {
 
     private var dormDone: Bool { signedIn && dorm != nil }
 
-    public var rows: [Row] {
-        Row.allCases.filter { $0 != .controller || !dormDone || controllerBound }
-    }
+    public var rows: [Row] { [.account, .dorm, .laundry] }
+    /// The rows the count is out of.
+    private var needed: [Row] { [.account, .dorm] }
 
     public func isDone(_ row: Row) -> Bool {
         switch row {
@@ -48,58 +48,66 @@ public struct SetupChecklist: Equatable, Sendable {
         }
     }
 
-    /// Waits for the row before it (the dorm for the account, the controller for the dorm).
-    public func isBlocked(_ row: Row) -> Bool {
-        switch row {
-        case .account, .laundry: false
-        case .dorm: !signedIn
-        case .controller: !dormDone
-        }
+    /// The step page a row opens: the dorm needs the account first.
+    public func step(for row: Row) -> Row {
+        row == .dorm && !signedIn ? .account : row
     }
 
-    public var doneCount: Int { rows.filter(isDone).count }
-    /// The first row not done; nil when all are.
-    public var next: Row? { rows.first { !isDone($0) } }
+    /// After the dorm step: the controller check while the bound controller wasn't checked.
+    public var afterDorm: Row? { controllerBound && !controllerChecked ? .controller : nil }
+
+    public var doneCount: Int { needed.filter(isDone).count }
+    /// The first needed row not done; nil when both are.
+    public var next: Row? { needed.first { !isDone($0) } }
     public var allDone: Bool { next == nil }
     /// For the progress bar, 0...1.
-    public var fraction: Double { rows.isEmpty ? 1 : Double(doneCount) / Double(rows.count) }
+    public var fraction: Double { Double(doneCount) / Double(needed.count) }
 
-    // MARK: Copy (campus-clear-v2-copy.md 首次设置清单)
+    // MARK: Copy
 
-    public static let later = "以后再说"
-    public static let footnote = "这里只读取和保存设置，不会开水、下单或付款。"
-    public static let start = "开始用"
+    public static let navTitle = "首次配置"
+    public static let later = "稍后设置"
+    public static let footnote = "这里只读取和保存配置，不会出水、下单或付款。"
+    public static let meterTitle = "宿舍电费与小组件"
+
+    public static func meterDetail(bound: Bool) -> String { bound ? "电表已绑定，可更换" : "可选，完成后也能设置" }
 
     public static func title(_ row: Row) -> String {
         switch row {
         case .account: "学校账号"
-        case .dorm: "宿舍"
-        case .laundry: "学校洗衣机"
+        case .dorm: "选择宿舍与水控"
+        case .laundry: "洗衣机（可选）"
         case .controller: "水控"
         }
     }
 
     public func detail(_ row: Row) -> String {
-        if isBlocked(row) { return row == .dorm ? "先设好学校账号" : "先选好宿舍" }
         switch row {
-        case .account: return signedIn ? "已登录" : "登录后读校园卡和宿舍"
-        case .dorm: return dorm.flatMap { dormDone ? $0 : nil } ?? "确认你住哪间"
+        case .account: return signedIn ? "已登录，可查询校园卡余额" : "登录后自动同步校园卡余额"
+        case .dorm: return dorm.flatMap { dormDone ? $0.replacingOccurrences(of:" ", with:"") : nil } ?? "选择楼栋房间，确认自己的设备"
         case .laundry:
             switch laundry {
-            case .open: return "用不用学校的洗衣机"
-            case .machine(let name): return name
-            case .notUsed: return "不用"
+            case .open: return "可以跳过，需要时再登录 U净并扫码添加"
+            case .saved(let count): return "已保存 \(count) 台机器"
+            case .notUsed: return "不用学校的洗衣机"
             }
         case .controller: return isDone(.controller) ? "已核对" : "核对宿舍的水控"
         }
     }
 
-    /// 「已完成 2 / 4」.
-    public var progress: String { "已完成 \(doneCount) / \(rows.count)" }
-    public var headline: String { allDone ? "都设好了" : "先把这几项设好" }
-    public var hint: String { allDone ? "以后都能在设置里改。" : "设好以后，首页就能看电量和余额，也能洗澡。" }
-    /// 「继续 · 宿舍」, or 「开始用」 when all are done.
-    public var button: String { next.map { "继续 · " + Self.title($0) } ?? Self.start }
+    /// 「已完成 1 / 2」.
+    public var progress: String { "已完成 \(doneCount) / \(needed.count)" }
+    public var headline: String { allDone ? "都准备好了" : "完成首次设置" }
+    public var hint: String {
+        if !signedIn { return "先登录学校账号，再选择宿舍。洗衣机可以稍后添加。" }
+        if !dormDone { return "学校账号已登录，接着选择你的宿舍。" }
+        return "宿舍已保存，可以开始使用；洗衣机按需添加。"
+    }
+    /// The button under the rows: on to the next needed row, or done.
+    public var button: String {
+        if allDone { return isDone(.laundry) ? "完成设置" : "完成设置，暂不绑定洗衣机" }
+        return signedIn ? "继续选择宿舍" : "登录并连接校园卡"
+    }
 
     /// UserDefaults key (String) of the dorm confirmed on the checklist; hot water may have no
     /// controller to bind, so a binding alone can't say the dorm was confirmed.

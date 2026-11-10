@@ -76,4 +76,17 @@ final class ShowerPushedPageTests: XCTestCase {
             XCTAssertEqual(down, .stopped, "\(record.phase) \(String(describing: record.failure?.reason))")
         }
     }
+
+    /// The settled face's button sends the same answer as 好: the finished record is cleared and
+    /// nothing starts; the page, still on the stack, shows the ready face and may be left.
+    func testAnsweringTheSettledFaceShowsTheReadyFace() {
+        let done = ShowerPageFlow(record: ShowerState(phase: .done, startedAt: t0), presented: true)
+        let (flow, effects) = ShowerPageFlow.reduce(done, .closeTapped)
+        XCTAssertEqual(effects, [.dismissRecord])
+        XCTAssertFalse(effects.contains(.start))
+        XCTAssertNil(flow.pushedPhase, "the ready face")
+        XCTAssertTrue(flow.mayLeave)
+        XCTAssertFalse(flow.starting)
+    }
 }
+

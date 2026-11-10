@@ -21,11 +21,12 @@ struct ClearShowerDock: View {
         VStack(spacing:10) {
             switch phase {
             case nil:
-                primary(live && shower.busy ? "正在处理…" : "开始洗澡", symbol:"arrow.up.right",
+                primary(live && shower.busy ? ClearShowerText.busyButton : ClearShowerText.start, symbol:"arrow.up.right",
                         spinning:live && shower.busy, enabled:mayStart, action:start)
-                note("授权后，按水控上的出水键。")
+                note(ClearShowerText.startNote)
             case .connecting?:
-                primary(ShowerPageText.connecting, spinning:true, enabled:false) {}
+                primary(ClearShowerText.busyButton, spinning:true, enabled:false) {}
+                note(ClearShowerText.startNote)
                 secondary("取消", enabled:flow.mayCancel) { shower.pageEvent(.cancelTapped) }
             case .stopped? where flow.foundInUse:
                 // Found in use before the next shower: only 再查一次.
@@ -44,24 +45,28 @@ struct ClearShowerDock: View {
                         .frame(maxWidth:.infinity, alignment:.leading)
                         .fixedSize(horizontal:false, vertical:true)
                 }
-                primary(stopped ? ShowerPageText.startNext : "结束并结算", symbol:stopped ? "arrow.up.right" : "stop.circle",
+                primary(stopped ? ShowerAuthorText.startNext : ClearShowerText.end, symbol:stopped ? "arrow.up.right" : "stop.circle",
                         enabled:stopped ? flow.mayStartNext && (!live || shower.mayStartNext) : flow.mayEnd && !platformMissing,
                         action:stopped ? startNext : end)
                     .accessibilityIdentifier(stopped ? "showerStartNext" : "showerEnd")
                 if stopped {
-                    note(ShowerPageText.stoppedNote).accessibilityIdentifier("showerStoppedNote")
+                    note(ClearShowerText.nextNote).accessibilityIdentifier("showerStoppedNote")
                 } else if flow.endFailed == nil && !platformMissing {
                     // The line in the headline block says why the end can't go out now. From the
                     // tap of 结束 until the settlement is done: stay at the controller.
-                    note(flow.ending ? ShowerPageText.endingNote : ShowerPageText.runningNote)
+                    note(ClearShowerText.endNote)
                 }
             case .settling?:
-                primary(ShowerPageText.settling, spinning:true, enabled:false) {}
-                note(ShowerPageText.endingNote)
+                primary(ClearShowerText.busyButton, spinning:true, enabled:false) {}
+                note(ClearShowerText.endNote)
             case .done?, .denied?:
-                primary("好", enabled:true) { close(.closeTapped) }
+                // Both send the same answer; settled stays on the page, which turns to its ready face.
+                let button = ClearShowerText.answerButton(phase == .done ? .done : .denied)
+                primary(button.title, symbol:button.leavesPage ? nil : "arrow.up.right", enabled:true) {
+                    if button.leavesPage { close(.closeTapped) } else { shower.pageEvent(.closeTapped) }
+                }
             case .connectFailed?:
-                primary("再试一次", symbol:"arrow.clockwise", enabled:!flow.starting) { shower.pageEvent(.retryTapped) }
+                primary(ClearShowerText.start, symbol:"arrow.up.right", enabled:!flow.starting) { shower.pageEvent(.retryTapped) }
                 secondary("取消", enabled:true) { close(.closeTapped) }
             }
         }

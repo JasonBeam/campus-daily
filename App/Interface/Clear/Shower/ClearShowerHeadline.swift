@@ -2,8 +2,8 @@ import SwiftUI
 import Core
 
 /// 2.2: dot (a spinner while connecting or settling) + the phase's headline, the text under it,
-/// and on the timer why the last 结束并结算 came back. The words are the shower page's (暖橙);
-/// with no session, the 热水洗澡 screen's.
+/// and on the timer why the last 结束并结算 came back (`ClearShowerText`). A problem's line is in
+/// the notice colour.
 struct ClearShowerHeadline: View {
     @EnvironmentObject private var shower: ShowerModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -72,45 +72,34 @@ struct ClearShowerHeadline: View {
         }
     }
 
-    private var problem: Bool {
-        switch phase {
-        case .connectFailed?, .denied?: return true
-        case .stopped?: return flow.foundInUse
-        case nil: return live && shower.problem
-        default: return false
-        }
+    private var face: (title: String, body: String, problem: Bool) {
+        let inUse = phase == .denied ? page?.denial == .inUse : phase == .stopped && flow.foundInUse
+        return ClearShowerText.face(phase, inUse:inUse)
     }
 
-    private var title: String {
-        switch phase {
-        case nil: return idleTitle
-        case .connecting?: return ShowerPageText.connecting
-        case .running?: return ShowerPageText.runningLabel
-        case .settling?: return ShowerPageText.settling
-        case .done?: return ShowerPageText.doneLabel
-        case .connectFailed?: return ShowerPageText.connectFailed
-        case .denied?: return page?.denial == .inUse ? ShowerPageText.inUse : ShowerPageText.denied
-        // Over: its own headline; found in use, the in-use page's.
-        case .stopped?: return flow.foundInUse ? ShowerPageText.inUse : ShowerPageText.stoppedTitle
-        }
+    private var problem: Bool {
+        phase == nil ? live && shower.problem : face.problem
     }
+
+    private var title: String { phase == nil ? idleTitle : face.title }
 
     private var text: String {
         switch phase {
-        case nil: return live ? (shower.inspecting ? "正在只读核对附近水控，不会出水。" : shower.status) : ""
-        case .connecting?: return ShowerPageText.connectingBody
-        case .running?: return page?.writeUnconfirmed == true ? ShowerDisplay.writeUnconfirmedHint + "。" : ShowerPageText.runningBody
-        case .settling?: return ShowerPageText.settlingBody
-        case .done?: return ShowerPageText.doneBody(minutes:page?.minutes)
-        case .connectFailed?: return ShowerPageText.connectFailedBody
-        case .denied?: return page?.denial == .inUse ? ShowerPageText.inUseBody : ShowerPageText.deniedBody
-        case .stopped?: return flow.foundInUse ? ShowerPageText.checkInUseBody : ""
+        case nil:
+            guard live else { return configured ? ClearShowerText.readyBody : "" }
+            if shower.inspecting { return "正在只读核对附近水控，不会出水。" }
+            let status = shower.status
+            return status.isEmpty && idleTitle == ClearShowerText.readyTitle ? ClearShowerText.readyBody : status
+        case .running?:
+            return page?.writeUnconfirmed == true ? ShowerDisplay.writeUnconfirmedHint + "。" : face.body
+        default:
+            return face.body
         }
     }
 
     /// The 热水洗澡 screen's headline when no session is shown.
     private var idleTitle: String {
-        guard live else { return configured ? "准备洗澡" : "尚未配置热水" }
+        guard live else { return configured ? ClearShowerText.readyTitle : "尚未配置热水" }
         if shower.inspecting { return "正在核对水控" }
         if shower.busy { return "正在处理" }
         if shower.problem { return "本次待核对" }
@@ -118,7 +107,7 @@ struct ClearShowerHeadline: View {
         switch shower.state.phase {
         case .running, .writePending: return "热水已授权"
         case .done: return "结算完成"
-        case .idle: return "准备洗澡"
+        case .idle: return ClearShowerText.readyTitle
         default: return "当前记录待核对"
         }
     }

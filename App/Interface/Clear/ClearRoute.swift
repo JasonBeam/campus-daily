@@ -15,14 +15,20 @@ enum ClearRoute: Hashable {
     case powerSetup
     /// 校园卡充值.
     case card
-    /// 学校账号.
+    /// 校园登录与宿舍 (the account, the dorm, the meter and hot water).
     case account
     /// 宿舍 (also where hot water is bound).
     case dorm
     /// 外观 › 主题.
     case theme
-    /// 高级.
+    /// 故障排查.
     case advanced
+    /// 洗衣提醒 (洗衣结束提醒 and its 10-second test).
+    case laundryReminders
+    /// 其他提醒: power, card and unsettled-shower reminders.
+    case reminders
+    /// 快捷使用: how to add the shortcuts.
+    case shortcuts
     /// 首次设置, pushed (from home's 继续设置 card and the settings tab's top row).
     case setupChecklist
 }

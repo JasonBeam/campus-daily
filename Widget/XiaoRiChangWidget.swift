@@ -103,7 +103,8 @@ struct CampusWidgetEntryView: View {
         CampusWidgetFace(model:entry.model, medium:family == .systemMedium, theme:entry.theme)
             .redacted(reason:entry.model.placeholder ? .placeholder : [])
             .privacySensitive()
-            .containerBackground(CampusWidgetPalette.of(entry.theme).group, for:.widget)
+            .containerBackground(ClearScriptsFace.draws(entry.model, medium:family == .systemMedium, theme:entry.theme)
+                                 ? ClearScriptsFace.paper : CampusWidgetPalette.of(entry.theme).group, for:.widget)
             .widgetURL(entry.model.url)
     }
 }

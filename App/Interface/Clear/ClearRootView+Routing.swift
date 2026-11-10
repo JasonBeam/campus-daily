@@ -119,14 +119,6 @@ extension ClearRootView {
         Task { try? await Task.sleep(for:.milliseconds(600)); navigator.openSetup(from:.reset) }
     }
 
-    func presentLaundryDone(_ done: HomeData.LaundryDone?) {
-        if navigator.demo != nil { return }
-        guard let done, done.id != laundryDoneShown, navigator.panel == nil else { return }
-        laundryDoneShown = done.id
-        successTick += 1
-        navigator.panel = .laundryDone(amount:done.amount, detail:done.detail)
-    }
-
     // MARK: Links
 
     /// The widget's link (`SampleMode.takePendingLink`: never while the sample is on, so never

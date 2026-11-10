@@ -1,107 +1,99 @@
 import XCTest
 import Core
 
-/// 清爽's 首次设置 checklist: which rows show, which are done or wait for the one before, how many
-/// are done, which one the button continues with, and what each row says.
+/// 清爽's 首次配置 checklist: three rows (学校账号, 选择宿舍与水控, 洗衣机（可选）), the count out of
+/// the two that are needed, which step a row or the button opens, and what each says.
 final class SetupChecklistTests: XCTestCase {
     private let fresh = SetupChecklist(signedIn:false, dorm:nil, laundry:.open, controllerBound:false, controllerChecked:false)
 
-    func testNothingDoneShowsFourRowsAndStartsWithTheAccount() {
-        XCTAssertEqual(fresh.rows, [.account, .dorm, .laundry, .controller])
+    func testNothingDoneShowsThreeRowsAndCountsTwo() {
+        XCTAssertEqual(fresh.rows, [.account, .dorm, .laundry])
         XCTAssertEqual(fresh.doneCount, 0)
-        XCTAssertEqual(fresh.progress, "已完成 0 / 4")
+        XCTAssertEqual(fresh.progress, "已完成 0 / 2")
         XCTAssertEqual(fresh.next, .account)
         XCTAssertFalse(fresh.allDone)
-        XCTAssertEqual(fresh.headline, "先把这几项设好")
-        XCTAssertEqual(fresh.hint, "设好以后，首页就能看电量和余额，也能洗澡。")
-        XCTAssertEqual(fresh.button, "继续 · 学校账号")
+        XCTAssertEqual(fresh.headline, "完成首次设置")
+        XCTAssertEqual(fresh.hint, "先登录学校账号，再选择宿舍。洗衣机可以稍后添加。")
+        XCTAssertEqual(fresh.button, "登录并连接校园卡")
+        XCTAssertEqual(fresh.fraction, 0)
     }
 
-    func testDormAndControllerWaitForTheRowBefore() {
-        XCTAssertTrue(fresh.isBlocked(.dorm))
-        XCTAssertTrue(fresh.isBlocked(.controller))
-        XCTAssertFalse(fresh.isBlocked(.account))
-        XCTAssertFalse(fresh.isBlocked(.laundry))
-        XCTAssertEqual(fresh.detail(.dorm), "先设好学校账号")
-        XCTAssertEqual(fresh.detail(.controller), "先选好宿舍")
+    func testSignedInAsksForTheDorm() {
+        let list = SetupChecklist(signedIn:true, dorm:nil, laundry:.open, controllerBound:false, controllerChecked:false)
+        XCTAssertEqual(list.progress, "已完成 1 / 2")
+        XCTAssertEqual(list.next, .dorm)
+        XCTAssertEqual(list.hint, "学校账号已登录，接着选择你的宿舍。")
+        XCTAssertEqual(list.button, "继续选择宿舍")
+        XCTAssertEqual(list.fraction, 0.5)
+    }
 
-        var signedIn = fresh
-        signedIn.signedIn = true
-        XCTAssertFalse(signedIn.isBlocked(.dorm))
-        XCTAssertEqual(signedIn.detail(.dorm), "确认你住哪间")
-        XCTAssertTrue(signedIn.isBlocked(.controller), "still no dorm")
+    /// The laundry row is optional: it never holds the count back.
+    func testLaundryIsOptional() {
+        let list = SetupChecklist(signedIn:true, dorm:"3 栋 108", laundry:.open, controllerBound:true, controllerChecked:false)
+        XCTAssertTrue(list.allDone)
+        XCTAssertNil(list.next)
+        XCTAssertEqual(list.progress, "已完成 2 / 2")
+        XCTAssertEqual(list.headline, "都准备好了")
+        XCTAssertEqual(list.hint, "宿舍已保存，可以开始使用；洗衣机按需添加。")
+        XCTAssertEqual(list.button, "完成设置，暂不绑定洗衣机")
+        XCTAssertFalse(list.isDone(.laundry))
+
+        var saved = list
+        saved.laundry = .saved(2)
+        XCTAssertEqual(saved.button, "完成设置")
+        XCTAssertTrue(saved.isDone(.laundry))
     }
 
     func testUndoneDetails() {
-        XCTAssertEqual(fresh.detail(.account), "登录后读校园卡和宿舍")
-        XCTAssertEqual(fresh.detail(.laundry), "用不用学校的洗衣机")
-        let dormDone = SetupChecklist(signedIn:true, dorm:"3 栋 108", laundry:.open, controllerBound:true, controllerChecked:false)
-        XCTAssertEqual(dormDone.detail(.controller), "核对宿舍的水控")
+        XCTAssertEqual(fresh.detail(.account), "登录后自动同步校园卡余额")
+        XCTAssertEqual(fresh.detail(.dorm), "选择楼栋房间，确认自己的设备")
+        XCTAssertEqual(fresh.detail(.laundry), "可以跳过，需要时再登录 U净并扫码添加")
     }
 
     func testDoneDetails() {
-        let all = SetupChecklist(signedIn:true, dorm:"3 栋 108", laundry:.machine("3 号机"), controllerBound:true, controllerChecked:true)
-        XCTAssertEqual(all.detail(.account), "已登录")
-        XCTAssertEqual(all.detail(.dorm), "3 栋 108")
-        XCTAssertEqual(all.detail(.laundry), "3 号机")
-        XCTAssertEqual(all.detail(.controller), "已核对")
+        let all = SetupChecklist(signedIn:true, dorm:"3 栋 108", laundry:.saved(2), controllerBound:true, controllerChecked:true)
+        XCTAssertEqual(all.detail(.account), "已登录，可查询校园卡余额")
+        XCTAssertEqual(all.detail(.dorm), "3栋108", "the room as one word")
+        XCTAssertEqual(all.detail(.laundry), "已保存 2 台机器")
         var notUsed = all
         notUsed.laundry = .notUsed
-        XCTAssertEqual(notUsed.detail(.laundry), "不用")
+        XCTAssertEqual(notUsed.detail(.laundry), "不用学校的洗衣机")
         XCTAssertTrue(notUsed.isDone(.laundry), "「不用」 is an answer")
     }
 
-    func testTheButtonNamesTheFirstRowNotDone() {
-        let account = SetupChecklist(signedIn:true, dorm:nil, laundry:.open, controllerBound:false, controllerChecked:false)
-        XCTAssertEqual(account.next, .dorm)
-        XCTAssertEqual(account.button, "继续 · 宿舍")
-        XCTAssertEqual(account.progress, "已完成 1 / 4")
+    /// Before signing in, the dorm row opens the account step; the dorm step is followed by the
+    /// controller check while the bound controller wasn't checked.
+    func testStepsARowOpens() {
+        XCTAssertEqual(fresh.step(for:.dorm), .account)
+        XCTAssertEqual(fresh.step(for:.account), .account)
+        XCTAssertEqual(fresh.step(for:.laundry), .laundry)
+        let signedIn = SetupChecklist(signedIn:true, dorm:nil, laundry:.open, controllerBound:false, controllerChecked:false)
+        XCTAssertEqual(signedIn.step(for:.dorm), .dorm)
 
-        let laundryFirst = SetupChecklist(signedIn:false, dorm:nil, laundry:.notUsed, controllerBound:false, controllerChecked:false)
-        XCTAssertEqual(laundryFirst.next, .account, "rows in order")
-
-        let twoDone = SetupChecklist(signedIn:true, dorm:"3 栋 108", laundry:.open, controllerBound:true, controllerChecked:false)
-        XCTAssertEqual(twoDone.progress, "已完成 2 / 4")
-        XCTAssertEqual(twoDone.button, "继续 · 学校洗衣机")
-
-        let three = SetupChecklist(signedIn:true, dorm:"3 栋 108", laundry:.machine("3 号机"), controllerBound:true, controllerChecked:false)
-        XCTAssertEqual(three.button, "继续 · 水控")
+        let bound = SetupChecklist(signedIn:true, dorm:"3 栋 108", laundry:.open, controllerBound:true, controllerChecked:false)
+        XCTAssertEqual(bound.afterDorm, .controller)
+        let checked = SetupChecklist(signedIn:true, dorm:"3 栋 108", laundry:.open, controllerBound:true, controllerChecked:true)
+        XCTAssertNil(checked.afterDorm)
+        let noController = SetupChecklist(signedIn:true, dorm:"3 栋 108", laundry:.open, controllerBound:false, controllerChecked:false)
+        XCTAssertNil(noController.afterDorm)
     }
 
-    /// The dorm confirmed and no controller bound (no hot water for this dorm): nothing to check,
-    /// the row goes and the count is out of three.
-    func testNoControllerAfterTheDormHidesItsRow() {
-        let list = SetupChecklist(signedIn:true, dorm:"3 栋 108", laundry:.notUsed, controllerBound:false, controllerChecked:false)
-        XCTAssertEqual(list.rows, [.account, .dorm, .laundry])
-        XCTAssertEqual(list.progress, "已完成 3 / 3")
-        XCTAssertTrue(list.allDone)
-        XCTAssertNil(list.next)
-    }
-
-    func testEverythingDone() {
-        let all = SetupChecklist(signedIn:true, dorm:"3 栋 108", laundry:.machine("3 号机"), controllerBound:true, controllerChecked:true)
-        XCTAssertTrue(all.allDone)
-        XCTAssertEqual(all.progress, "已完成 4 / 4")
-        XCTAssertEqual(all.headline, "都设好了")
-        XCTAssertEqual(all.hint, "以后都能在设置里改。")
-        XCTAssertEqual(all.button, "开始用")
-        XCTAssertEqual(all.fraction, 1)
-    }
-
-    /// Signed out again: the dorm and controller rows wait for the account, even if a dorm and a
-    /// checked controller are still saved.
-    func testSignedOutUndoesTheRowsAfterTheAccount() {
+    /// Signed out again: the dorm row is undone, even if a dorm is still saved.
+    func testSignedOutUndoesTheDorm() {
         let list = SetupChecklist(signedIn:false, dorm:"3 栋 108", laundry:.open, controllerBound:true, controllerChecked:true)
         XCTAssertFalse(list.isDone(.dorm))
-        XCTAssertFalse(list.isDone(.controller))
-        XCTAssertTrue(list.isBlocked(.dorm))
-        XCTAssertEqual(list.detail(.dorm), "先设好学校账号")
-        XCTAssertEqual(list.detail(.controller), "先选好宿舍")
-        XCTAssertEqual(list.rows.count, 4)
+        XCTAssertEqual(list.detail(.dorm), "选择楼栋房间，确认自己的设备")
         XCTAssertEqual(list.doneCount, 0)
     }
 
-    /// One rule for the checklist's 宿舍 row and home's 继续设置 card: a bound controller, or the
+    /// 宿舍电费与小组件, under the button: off until signed in.
+    func testMeterCard() {
+        XCTAssertEqual(SetupChecklist.meterTitle, "宿舍电费与小组件")
+        XCTAssertEqual(SetupChecklist.meterDetail(bound:true), "电表已绑定，可更换")
+        XCTAssertEqual(SetupChecklist.meterDetail(bound:false), "可选，完成后也能设置")
+    }
+
+    /// One rule for the checklist's dorm row and home's 继续设置 card: a bound controller, or the
     /// dorm the user confirmed here when it is still the dorm (a dorm may have no controller).
     func testDormIsSetByAControllerOrByConfirmingTheSameDorm() {
         XCTAssertTrue(SetupChecklist.isDormSet(dorm:"3 栋 108", confirmedDorm:"", controllerBound:true))
@@ -122,12 +114,12 @@ final class SetupChecklistTests: XCTestCase {
     }
 
     func testCopy() {
+        XCTAssertEqual(SetupChecklist.navTitle, "首次配置")
         XCTAssertEqual(SetupChecklist.title(.account), "学校账号")
-        XCTAssertEqual(SetupChecklist.title(.dorm), "宿舍")
-        XCTAssertEqual(SetupChecklist.title(.laundry), "学校洗衣机")
+        XCTAssertEqual(SetupChecklist.title(.dorm), "选择宿舍与水控")
+        XCTAssertEqual(SetupChecklist.title(.laundry), "洗衣机（可选）")
         XCTAssertEqual(SetupChecklist.title(.controller), "水控")
-        XCTAssertEqual(SetupChecklist.later, "以后再说")
-        XCTAssertEqual(SetupChecklist.footnote, "这里只读取和保存设置，不会开水、下单或付款。")
-        XCTAssertEqual(fresh.fraction, 0)
+        XCTAssertEqual(SetupChecklist.later, "稍后设置")
+        XCTAssertEqual(SetupChecklist.footnote, "这里只读取和保存配置，不会出水、下单或付款。")
     }
 }

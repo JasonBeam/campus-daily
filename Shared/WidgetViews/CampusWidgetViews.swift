@@ -99,6 +99,14 @@ struct CampusWidgetFace: View {
     var theme: AppTheme = .standard
     private var P: CampusWidgetPalette { .of(theme) }
     var body: some View {
+        if ClearScriptsFace.draws(model, medium:medium, theme:theme) {
+            ClearScriptsFace(model:model)
+        } else {
+            face
+        }
+    }
+
+    private var face: some View {
         Group {
             if model.state == .never { never }
             else if model.waitingForFirstRead { firstRead }

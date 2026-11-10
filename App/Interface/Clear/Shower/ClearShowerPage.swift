@@ -24,12 +24,10 @@ struct ClearShowerPage: View {
     private var flow: ShowerPageFlow { shower.page }
     private var phase: ShowerPagePhase? { flow.pushedPhase }
 
-    /// Every face has its cost card but a shower that is over: the app won't settle it, so
-    /// 「本次费用 · 结算后显示」 would promise what doesn't come.
-    static func showsCostCard(_ phase: ShowerPagePhase?) -> Bool { phase != .stopped }
-    /// 最近一次用水 names the last shower the app settled: over a shower that is over it would
-    /// read as the cost of the one that just ended, so only the start layout shows it.
-    static func showsLastUse(_ phase: ShowerPagePhase?) -> Bool { phase != .stopped }
+    /// One layout on every face: 本次费用 (「结算后显示」 until an amount is read) ...
+    static func showsCostCard(_ phase: ShowerPagePhase?) -> Bool { true }
+    /// ... and 最近一次用水 whenever a settled shower is kept.
+    static func showsLastUse(_ phase: ShowerPagePhase?) -> Bool { true }
 
     var body: some View {
         ScrollView {
@@ -37,8 +35,7 @@ struct ClearShowerPage: View {
                 roomLine
                 ClearShowerHeadline(phase:phase, configured:configured, live:live)
                 if Self.showsCostCard(phase) { ClearShowerCostCard(phase:phase, live:live) }
-                // Over: the start layout's 连接检查, without 最近一次用水 (in use: its own words only).
-                if phase == nil || (phase == .stopped && !flow.foundInUse) { idleExtras }
+                extras
             }
             .padding(20).frame(maxWidth:560).frame(maxWidth:.infinity)
         }
@@ -70,7 +67,7 @@ struct ClearShowerPage: View {
             // 再查一次 says it with its result.
             guard inUse, flow.recheckResult != .inUse else { return }
             errorTick += 1
-            AccessibilityNotification.Announcement(ShowerPageText.inUse + "。" + ShowerPageText.checkInUseBody).post()
+            AccessibilityNotification.Announcement(ClearShowerText.problemTitle + "。" + ClearShowerText.inUseBody).post()
         }
         .onChange(of:flow.endFailed) { _, failure in
             guard let failure else { return }
@@ -102,9 +99,9 @@ struct ClearShowerPage: View {
         .accessibilityElement(children:.combine)
     }
 
-    /// With no session: the last shower, the way out of an unreadable record, and the
-    /// controller check (or the way to set up hot water).
-    @ViewBuilder private var idleExtras: some View {
+    /// The last shower, the way out of an unreadable record, and the folded controller check
+    /// (or the way to set up hot water).
+    @ViewBuilder private var extras: some View {
         if Self.showsLastUse(phase), let last = lastUse { ClearShowerLastCard(last:last) }
         if live, shower.recordUnreadable {
             // The record can't be read by this build: cleared only after the user checked the official record.
@@ -132,11 +129,11 @@ struct ClearShowerPage: View {
         return navigator.demo == nil
     }
 
-    /// 2.4's shower: the one home's 热水 tile names (「上次 11 分钟 · ¥1.32」), demo or live.
+    /// 2.4's shower: the one home's 上次热水 card names, demo or live.
     private var lastUse: ShowerLastUse? {
         let data = navigator.data(campus:campus, shower:shower, laundry:laundry)
         return ShowerLastUse.of(minutes:data.lastShowerMinutes, cost:data.lastShowerCost,
-                                ended:live ? shower.lastEnded : nil)
+                                ended:data.lastShowerEnded ?? (live ? shower.lastEnded : nil))
     }
 
     private var configured: Bool {
@@ -145,19 +142,13 @@ struct ClearShowerPage: View {
     }
 
     private var room: String {
-        if let demo = navigator.demo { return demo.dorm ?? "" }
-        return Theme.dorm(campus.room) ?? campus.room
+        if let demo = navigator.demo { return ClearBalanceText.room(demo.dorm) ?? "" }
+        return ClearBalanceText.room(Theme.dorm(campus.room) ?? campus.room) ?? ""
     }
 
     private func announcement(_ phase: ShowerPagePhase) -> String {
-        switch phase {
-        case .connecting: return ShowerPageText.connecting
-        case .running: return ShowerPageText.runningLabel
-        case .settling: return ShowerPageText.settling
-        case .done: return ShowerPageText.doneLabel
-        case .connectFailed: return ShowerPageText.connectFailed
-        case .denied: return flow.page?.denial == .inUse ? ShowerPageText.inUse : ShowerPageText.denied
-        case .stopped: return flow.foundInUse ? ShowerPageText.inUse : ShowerPageText.stoppedTitle
-        }
+        let inUse = phase == .denied ? flow.page?.denial == .inUse : phase == .stopped && flow.foundInUse
+        let face = ClearShowerText.face(phase, inUse:inUse)
+        return face.problem ? face.title + "。" + face.body : face.title
     }
 }

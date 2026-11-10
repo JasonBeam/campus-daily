@@ -1,8 +1,8 @@
 import SwiftUI
 import Core
 
-/// 洗衣 in 清爽, pushed on the 日常 stack: the machine's card, then its programs or the open
-/// order, and 「下单」 at the bottom. Ordering, paying, cancelling and checking are the model's
+/// 洗衣机 in 清爽, pushed on the 日常 stack: the machine's card, then its programs (under the
+/// last order's line once it is over) or the open order, and 「确认程序」 at the bottom. Ordering, paying, cancelling and checking are the model's
 /// (`LaundryModel`); this page decides what to show and forwards the user's confirmations, as
 /// 暖橙's `LaundryDetail` does.
 /// DEBUG demos put their laundry state in `navigator.laundryDemo`. The root keeps this page up
@@ -11,7 +11,6 @@ struct ClearLaundryPage: View {
     @EnvironmentObject private var laundry: LaundryModel
     @Environment(ClearNavigator.self) private var navigator
     @Environment(SampleMode.self) private var sample
-    @EnvironmentObject private var reminders: Reminders
     @State private var selectedID: Int?
     @State private var sheet: LaundrySheet?
     /// 重新登录 U净, from an expired login.
@@ -30,11 +29,6 @@ struct ClearLaundryPage: View {
         return LaundryFacts(model:laundry)
     }
 
-    /// Only promise 洗好了会通知你 when the reminder is on and notifications are allowed.
-    private var notifiesWhenDone: Bool {
-        if let demo = navigator.laundryDemo { return demo.notify }
-        return reminders.laundryDoneWillNotify
-    }
 
     var body: some View {
         let facts = facts
@@ -56,7 +50,7 @@ struct ClearLaundryPage: View {
             .frame(maxWidth:.infinity)
         }
         .background(Theme.bg.ignoresSafeArea())
-        .navigationTitle("洗衣")
+        .navigationTitle(ClearLaundryCopy.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { toolbar(facts, phase:phase) }
         .safeAreaInset(edge:.bottom, spacing:0) { dock(facts, phase:phase, busyTitle:busyTitle) }
@@ -102,7 +96,7 @@ struct ClearLaundryPage: View {
 
     /// The sentence the page already shows, so an error line doesn't repeat it.
     private func shownLine(_ facts: LaundryFacts, phase: LaundryFacts.Phase) -> String? {
-        ClearLaundryCopy.orderCaption(facts, phase:phase, notify:notifiesWhenDone)?.text
+        ClearLaundryCopy.problemLine(phase)
     }
 
     // MARK: Content
@@ -115,27 +109,29 @@ struct ClearLaundryPage: View {
         default:
             if let snapshot = facts.snapshot {
                 ClearLaundryDeviceCard(snapshot:snapshot, state:ClearLaundryCopy.deviceState(facts),
-                                       problem:ClearLaundryCopy.isProblem(phase))
-            }
-            if let line = ClearLaundryCopy.unavailableLine(facts, phase:phase) {
-                Text(line).font(.subheadline).foregroundStyle(Theme.ink2)
-                    .fixedSize(horizontal:false, vertical:true)
-                    .padding(.horizontal,4)
+                                       freshness:ClearLaundryCopy.freshness(facts))
             }
             switch phase {
-            case .idle, .done:
+            case .idle, .done, .inUse, .unavailable:
+                if let finished = ClearLaundryCopy.finished(facts) {
+                    HStack(alignment:.firstTextBaseline) {
+                        Text(finished.title).font(.subheadline).foregroundStyle(Theme.ink)
+                        Spacer(minLength:8)
+                        Text(finished.payment).font(.caption).foregroundStyle(Theme.ink2)
+                    }
+                    .padding(16)
+                    .background(Theme.group, in:RoundedRectangle(cornerRadius:18, style:.continuous))
+                    .accessibilityElement(children:.combine)
+                }
                 programs(facts, selectable:true, enabled:busyTitle == nil && !preparing, dimmed:busyTitle != nil)
-                Text(ClearLaundryCopy.caution).font(.footnote).foregroundStyle(Theme.ink2)
+                Text(ClearLaundryCopy.footnote).font(.footnote).foregroundStyle(Theme.ink2)
                     .fixedSize(horizontal:false, vertical:true)
-                    .padding(.horizontal,4)
-            case .inUse, .unavailable:
-                programs(facts, selectable:false, enabled:false, dimmed:true)
             default:
                 if facts.record != nil {
-                    ClearLaundryOrderCard(facts:facts, phase:phase, notify:notifiesWhenDone, busyTitle:busyTitle,
+                    ClearLaundryOrderCard(facts:facts, phase:phase, busyTitle:busyTitle,
                                           pay:{ sheet = confirmSheet(facts, newOrder:false) },
                                           cancel:{ sheet = .cancel },
-                                          check:{ check(failedStart:phase == .check(failedStart:true)) },
+                                          refresh:{ check(failedStart:phase == .check(failedStart:true)) },
                                           resolve:{ sheet = .resolve })
                 }
             }
@@ -162,47 +158,44 @@ struct ClearLaundryPage: View {
     // MARK: Toolbar and dock
 
     @ToolbarContentBuilder private func toolbar(_ facts: LaundryFacts, phase: LaundryFacts.Phase) -> some ToolbarContent {
-        if facts.loading {
-            ToolbarItem(placement:.topBarTrailing) {
-                ProgressView().frame(width:44, height:44).accessibilityLabel("正在更新…")
+        ToolbarItem(placement:.topBarTrailing) {
+            Button { Task { await reload() } } label: {
+                if facts.loading || facts.busy {
+                    ProgressView()
+                } else {
+                    Image(systemName:"arrow.clockwise").frame(width:44, height:44)
+                }
             }
-        } else if phase != .empty, phase != .unknown {
-            ToolbarItem(placement:.topBarTrailing) {
-                SampleGatedRow(action:.bindWasher) {
-                    NavigationLink(value:ClearRoute.washerSetup) {
-                        Image(systemName:"qrcode.viewfinder").frame(width:44, height:44)
-                    }
-                } label: { Image(systemName:"qrcode.viewfinder").frame(width:44, height:44) }
-                .accessibilityLabel(ClearLaundryCopy.isProblem(phase) ? "扫另一台洗衣机" : "扫洗衣机")
-                .accessibilityIdentifier("laundryScan")
-            }
+            .disabled(facts.loading || facts.busy)
+            .accessibilityLabel(ClearLaundryCopy.refresh)
+            .accessibilityIdentifier("laundryRefresh")
         }
     }
 
     @ViewBuilder private func dock(_ facts: LaundryFacts, phase: LaundryFacts.Phase, busyTitle: String?) -> some View {
         switch phase {
-        case .idle, .done:
+        case .idle, .done, .inUse, .unavailable:
             let program = selected(facts)
-            let title = "下单" + (program.map { " · " + Theme.yuan($0.price.yuan) } ?? "")
+            let checking = preparing || facts.loading
             dockBar {
                 Button { order() } label: {
-                    ClearLaundryButtonLabel(title:busyTitle ?? title, symbol:"arrow.right",
-                                            busy:busyTitle != nil || preparing, minHeight:54)
+                    HStack(spacing:10) {
+                        if busyTitle != nil { ProgressView().controlSize(.small).tint(Theme.accentInk) }
+                        Text(busyTitle ?? (checking ? ClearLaundryCopy.checking : ClearLaundryCopy.confirm))
+                        Spacer(minLength:8)
+                        if busyTitle == nil {
+                            if let program { Text(ClearCNY.text(program.price.yuan)).monospacedDigit() }
+                            Image(systemName:"arrow.right").accessibilityHidden(true)
+                        }
+                    }
+                    .padding(.horizontal,18)
+                    .frame(maxWidth:.infinity, minHeight:54)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(ClearLaundryPrimaryStyle())
                 .disabled(busyTitle != nil || !facts.mayCreate || preparing || program == nil)
-                .accessibilityLabel(busyTitle ?? program.map { "下单，" + LaundryFormat.spokenYuan($0.price.yuan) } ?? "下单")
+                .accessibilityLabel(busyTitle ?? program.map { ClearLaundryCopy.confirm + "，" + LaundryFormat.spokenYuan($0.price.yuan) } ?? ClearLaundryCopy.confirm)
                 .accessibilityIdentifier("reviewLaundryOrder")
-            }
-        case .inUse, .unavailable:
-            dockBar {
-                ClearLaundryButtonLabel(title:ClearLaundryCopy.unavailableTitle(phase), minHeight:54)
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(Theme.accentInk)
-                    .background(Theme.accent, in:RoundedRectangle(cornerRadius:12, style:.continuous))
-                    .opacity(0.4)
-                    .accessibilityElement(children:.combine)
-                    .accessibilityAddTraits(.isStaticText)
             }
         default:
             EmptyView()

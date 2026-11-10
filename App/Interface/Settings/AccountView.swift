@@ -39,6 +39,9 @@ enum AccountText {
 struct AccountView: View {
     /// DEBUG demo data; nil = live model.
     var preview: HomeData? = nil
+    /// 清爽's 校园登录与宿舍: these sections (宿舍, 电表, 热水) go on top and the account's under
+    /// 「校园登录」, with 重新登录 in it. nil: 学校账号 as it was.
+    var places: AnyView? = nil
     /// DEBUG demo: the switch flips locally (seeded from the demo data).
     @State private var previewSaved: Bool?
     @EnvironmentObject private var campus: CampusModel
@@ -91,19 +94,22 @@ struct AccountView: View {
 
     var body: some View {
         List {
-            Section {
-                if let account { LabeledContent("账号") { Text(account.masked).monospacedDigit() } }
-                if signedIn && paused {
-                    // Not red: red only means something is running out.
-                    LabeledContent("状态") {
-                        Text(AccountText.paused).scaledFont(16, .medium).foregroundStyle(Theme.notice)
-                    }
-                    .accessibilityIdentifier("accountStatusPaused")
-                } else {
-                    LabeledContent("状态", value:signedIn ? AccountText.signedIn : "未登录")
-                }
-                if signedIn, let dorm { LabeledContent("宿舍", value:dorm) }
-            }.listRowBackground(Theme.group)
+            if let places {
+                places
+                Section {
+                    accountRows
+                    reloginButton
+                } header: {
+                    Text("校园登录")
+                } footer: {
+                    Text("密码只交给学校，不经过我们。").foregroundStyle(Theme.ink2)
+                }.listRowBackground(Theme.group)
+            } else {
+                Section {
+                    accountRows
+                    if signedIn, let dorm { LabeledContent("宿舍", value:dorm) }
+                }.listRowBackground(Theme.group)
+            }
             if signedIn {
                 Section {
                     Toggle(isOn:passwordSwitch) {
@@ -137,16 +143,18 @@ struct AccountView: View {
                     }
                 }.listRowBackground(Theme.group)
             }
-            Section {
-                // Account and password first, the school's web page as the fallback.
-                Button { relogin = true } label: {
-                    ChevronRow(title:signedIn ? "重新登录学校账号" : "登录学校账号")
-                }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("relogin")
-            } footer: {
-                Text("密码只交给学校，不经过我们。").foregroundStyle(Theme.ink2)
-            }.listRowBackground(Theme.group)
+            if places == nil {
+                Section {
+                    // Account and password first, the school's web page as the fallback.
+                    Button { relogin = true } label: {
+                        ChevronRow(title:signedIn ? "重新登录学校账号" : "登录学校账号")
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("relogin")
+                } footer: {
+                    Text("密码只交给学校，不经过我们。").foregroundStyle(Theme.ink2)
+                }.listRowBackground(Theme.group)
+            }
             if signedIn {
                 Section {
                     Button("退出登录", role:.destructive) { confirmSignOut = true }
@@ -160,7 +168,7 @@ struct AccountView: View {
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
         .background(Theme.bg.ignoresSafeArea())
-        .navigationTitle("学校账号").navigationBarTitleDisplayMode(.inline)
+        .navigationTitle(places == nil ? "学校账号" : "校园登录与宿舍").navigationBarTitleDisplayMode(.inline)
         .background {
             // The system tint: on iOS 27 an alert fills its main button with the default blue,
             // and accent-coloured text on it can't be read.
@@ -204,6 +212,31 @@ struct AccountView: View {
         } message: {
             Text("首页的电量和余额会清空，热水记录和洗衣设置都还在。")
         }
+    }
+
+    /// 账号 and 状态.
+    @ViewBuilder private var accountRows: some View {
+        if let account { LabeledContent("账号") { Text(account.masked).monospacedDigit() } }
+        if signedIn && paused {
+            // Not red: red only means something is running out.
+            LabeledContent("状态") {
+                Text(AccountText.paused).scaledFont(16, .medium).foregroundStyle(Theme.notice)
+            }
+            .accessibilityIdentifier("accountStatusPaused")
+        } else {
+            LabeledContent("状态", value:signedIn ? AccountText.signedIn : "未登录")
+        }
+    }
+
+    /// 清爽's 重新登录 (登录 signed out): an accent row with its symbol, in 校园登录.
+    private var reloginButton: some View {
+        Button { relogin = true } label: {
+            Label(signedIn ? "重新登录" : "登录学校账号", systemImage:"person.crop.circle")
+                .foregroundStyle(Theme.accentText)
+                .frame(maxWidth:.infinity, alignment:.leading).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("relogin")
     }
 
     #if DEBUG

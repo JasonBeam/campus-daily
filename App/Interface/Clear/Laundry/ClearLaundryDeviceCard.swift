@@ -1,13 +1,12 @@
 import SwiftUI
 import Core
 
-/// 3.1: the machine — symbol tile, 「3 号机 · 波轮洗衣机」 and its store, then its state and when
-/// it was read.
+/// The machine: symbol tile, 「3号 · 波轮洗衣机」 and its store, then its state with how fresh the
+/// read is, and when it was read.
 struct ClearLaundryDeviceCard: View {
     let snapshot: WasherSnapshot
     let state: String
-    /// Busy, offline, broken or disabled: the state in `notice`.
-    let problem: Bool
+    let freshness: String
 
     var body: some View {
         VStack(alignment:.leading, spacing:14) {
@@ -26,15 +25,13 @@ struct ClearLaundryDeviceCard: View {
                 .fixedSize(horizontal:false, vertical:true)
             }
             HStack(alignment:.firstTextBaseline) {
-                Label {
-                    Text(state).font(.caption.weight(.medium))
-                } icon: {
-                    Image(systemName:"circle.fill").font(.system(size:7))
-                }
-                .foregroundStyle(problem ? Theme.notice : Theme.accentText)
+                Label(state, systemImage:"circle.fill")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(Theme.accentText)
                 Spacer(minLength:8)
-                Text(Theme.updated(snapshot.fetchedAt)).font(.caption).monospacedDigit().foregroundStyle(Theme.ink2)
+                Text(freshness).font(.caption).foregroundStyle(Theme.ink2)
             }
+            Text(ClearLaundryCopy.queried(snapshot.fetchedAt)).font(.caption).monospacedDigit().foregroundStyle(Theme.ink2)
         }
         .padding(20)
         .frame(maxWidth:.infinity, alignment:.leading)
@@ -44,6 +41,6 @@ struct ClearLaundryDeviceCard: View {
 
     private var title: String {
         let type = snapshot.info.typeName
-        return LaundryFormat.machine(snapshot.deviceNo) + (type.isEmpty ? "" : " · " + type)
+        return "\(snapshot.deviceNo)号" + (type.isEmpty ? "" : " · " + type)
     }
 }

@@ -1,9 +1,8 @@
 import SwiftUI
 import Core
 
-/// One row of the checklist card (his `QuickSetupView` row): a 24 pt symbol, or a check once
-/// done; title and detail; chevron. Pushes the row's page; a row waiting for the one before is
-/// dimmed and doesn't open.
+/// One row of the checklist card: a 24 pt symbol, or a check once done; title and detail;
+/// chevron. Pushes the row's step page.
 struct ClearSetupItem: View {
     let row: ClearSetupRow
     let list: SetupChecklist
@@ -11,7 +10,6 @@ struct ClearSetupItem: View {
 
     var body: some View {
         let done = list.isDone(row)
-        let blocked = list.isBlocked(row)
         Button(action:open) {
             HStack(spacing:14) {
                 Image(systemName:done ? "checkmark.circle.fill" : Self.symbol(row))
@@ -30,10 +28,8 @@ struct ClearSetupItem: View {
             .padding(16)
             .frame(minHeight:76)
             .contentShape(Rectangle())
-            .opacity(blocked ? 0.5 : 1)
         }
         .buttonStyle(RowPressStyle())
-        .disabled(blocked)
         .accessibilityElement(children:.combine)
         .accessibilityValue(done ? "已完成" : "")
         .accessibilityIdentifier("setupRow-\(row)")
@@ -42,7 +38,7 @@ struct ClearSetupItem: View {
     static func symbol(_ row: ClearSetupRow) -> String {
         switch row {
         case .account: "person.crop.circle"
-        case .dorm: "house"
+        case .dorm: "building.2"
         case .laundry: "washer"
         case .controller: "drop"
         }

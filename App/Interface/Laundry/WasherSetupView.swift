@@ -7,9 +7,12 @@ import Core
 struct WasherSetupView: View {
     @EnvironmentObject private var laundry: LaundryModel
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.appTheme) private var appTheme
     /// After a machine is saved or switched; nil goes back a page. Home pushes the laundry page
     /// over it when it was opened from home (`WasherSetupExit.path`).
     var onDone: (() -> Void)?
+    /// 清爽: the 「学校洗衣机」 switch, at the bottom of this page (清爽's 设置 has no row for it).
+    var laundrySwitch: SchoolLaundrySwitch? = nil
     #if DEBUG
     /// campusdaily://demo/washer/...: synthetic account and machines; nothing is changed.
     var preview: WasherSetupDemo?
@@ -57,7 +60,8 @@ struct WasherSetupView: View {
 
     var body: some View {
         Form {
-            if let guide = WasherSetupGuide.card(signedIn:signedIn, hasSavedMachine:!machines.isEmpty) {
+            if let guide = appTheme == .clear ? Optional(signedIn ? WasherSetupGuide.scan : .signIn)
+                : WasherSetupGuide.card(signedIn:signedIn, hasSavedMachine:!machines.isEmpty) {
                 Section {
                     Text(guide == .signIn ? "第一步：用手机号登录 U净" : "下一步：扫描机身二维码")
                         .font(.headline)
@@ -65,6 +69,9 @@ struct WasherSetupView: View {
                         .font(.footnote).foregroundStyle(.secondary)
                     if guide == .signIn {
                         Button("登录 U净") { pending = nil; login = true }
+                            .disabled(!laundry.mayLogin).accessibilityIdentifier("ujingLoginEntry")
+                    } else if appTheme == .clear {
+                        Button("更新 U净登录") { if !isPreview { pending = nil; login = true } }
                             .disabled(!laundry.mayLogin).accessibilityIdentifier("ujingLoginEntry")
                     }
                 }
@@ -109,6 +116,18 @@ struct WasherSetupView: View {
                         Button(UjingAccountText.relogin) { pending = nil; login = true }
                             .disabled(!laundry.mayLogin).accessibilityIdentifier("ujingRelogin")
                     }
+                }
+            }
+            if let laundrySwitch {
+                Section {
+                    Toggle(isOn:laundrySwitch.binding) {
+                        Label(SchoolLaundryPreference.title, systemImage:"switch.2")
+                    }
+                    .tint(.green)
+                    .disabled(laundrySwitch.locked)
+                    .accessibilityIdentifier("schoolLaundrySwitch")
+                } footer: {
+                    Text(SchoolLaundryPreference.footer(isOn:laundrySwitch.isOn, locked:laundrySwitch.locked))
                 }
             }
             if signedIn { accountSection }

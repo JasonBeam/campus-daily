@@ -1,7 +1,6 @@
 import Foundation
 
-/// The status line of 清爽 home's 热水 tile: the words 暖橙's home shower button and its caption
-/// use for the same state, and how the tile behaves.
+/// The status line of 清爽 home's 热水 tile: one short word for the state, and how the tile behaves.
 public struct ShowerTileStatus: Equatable, Sendable {
     public enum Tone: Equatable, Sendable { case secondary, notice, accent }
 
@@ -38,28 +37,28 @@ public struct ShowerTileStatus: Equatable, Sendable {
         return dorm
     }
 
-    /// `issue`: the last start's problem (shown instead of the last shower).
+    /// One short word per state: 「可连接」, 「处理中」 while starting or settling, 「已授权」 while
+    /// water runs, 「待核对」 for a problem or a shower that is over, 「待配置」 before hot water is
+    /// set up. `lastMinutes`, `lastCost`: the last shower has its own card on home.
     public static func of(_ status: ShowerHomeStatus, signedIn: Bool, lastMinutes: Int?, lastCost: Decimal?,
                           issue: String?) -> ShowerTileStatus {
-        if status.asksForSchoolSignIn(signedIn: signedIn) { return ShowerTileStatus(text: "登录学校账号", opensSetup: true) }
+        if status.asksForSchoolSignIn(signedIn: signedIn) { return ShowerTileStatus(text: Words.setUp, opensSetup: true) }
         switch status {
-        case .unconfigured: return ShowerTileStatus(text: "先在设置里选好宿舍", dimmed: true)
+        case .unconfigured: return ShowerTileStatus(text: Words.setUp)
         case .unavailable(let reason): return ShowerTileStatus(text: reason, dimmed: true)
-        case .idle:
-            if let issue { return ShowerTileStatus(text: issue) }
-            guard let lastMinutes else { return ShowerTileStatus(text: "") }
-            let minutes = "\(lastMinutes) 分钟"
-            guard let lastCost else { return ShowerTileStatus(text: "上次 " + minutes, shorter: [minutes]) }
-            let cost = Money(yuan: lastCost).description
-            return ShowerTileStatus(text: "上次 \(minutes) · \(cost)", shorter: ["\(minutes) · \(cost)", cost])
-        case .starting: return ShowerTileStatus(text: "正在连接水控…")
-        case .showering(let start): return ShowerTileStatus(text: "正在洗澡", tone: .accent, timerStart: start, shorter: [""])
-        case .settling: return ShowerTileStatus(text: "正在结算…")
+        case .idle: return ShowerTileStatus(text: issue == nil ? Words.ready : Words.check)
+        case .starting, .settling: return ShowerTileStatus(text: Words.busy)
+        case .showering: return ShowerTileStatus(text: Words.authorized)
         // Over (stopped on the controller, or kept for the school): the tile opens the timer page.
-        case .stopped:
-            var tile = ShowerTileStatus(text: ShowerAuthorText.homeButton)
-            tile.spokenText = ShowerAuthorText.homeButtonLabel
-            return tile
+        case .stopped: return ShowerTileStatus(text: Words.check)
         }
+    }
+
+    public enum Words {
+        public static let ready = "可连接"
+        public static let busy = "处理中"
+        public static let authorized = "已授权"
+        public static let check = "待核对"
+        public static let setUp = "待配置"
     }
 }

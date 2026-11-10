@@ -7,17 +7,23 @@ struct ClearSetupButton: View {
     let title: String
     var symbol: String? = "arrow.right"
     var busy = false
+    /// The title centred with no symbol (the checklist's own button).
+    var centered = false
     let action: () -> Void
 
     var body: some View {
         Button(action:action) {
-            HStack(spacing:10) {
-                Text(title).multilineTextAlignment(.leading)
-                Spacer(minLength:8)
-                if busy {
-                    ProgressView().tint(Theme.pillInk)
-                } else if let symbol {
-                    Image(systemName:symbol).accessibilityHidden(true)
+            if centered {
+                Text(title).multilineTextAlignment(.center).frame(maxWidth:.infinity)
+            } else {
+                HStack(spacing:10) {
+                    Text(title).multilineTextAlignment(.leading)
+                    Spacer(minLength:8)
+                    if busy {
+                        ProgressView().tint(Theme.pillInk)
+                    } else if let symbol {
+                        Image(systemName:symbol).accessibilityHidden(true)
+                    }
                 }
             }
         }

@@ -14,7 +14,7 @@ struct ClearSetupDemo {
         let reached = start.flatMap { order.firstIndex(of:$0) } ?? order.count
         func done(_ row: ClearSetupRow) -> Bool { order.firstIndex(of:row)! < reached }
         return SetupChecklist(signedIn:done(.account), dorm:done(.dorm) ? values.dorm ?? "3 栋 108" : nil,
-                              laundry:done(.laundry) ? .machine("3 号机") : .open,
+                              laundry:done(.laundry) ? .saved(2) : .open,
                               controllerBound:true, controllerChecked:done(.controller))
     }
 }

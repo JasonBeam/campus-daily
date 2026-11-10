@@ -125,10 +125,9 @@ final class ShowerKeptRecordTests: XCTestCase {
 
     // MARK: Home and copy
 
-    func testHomeSaysGoShower() {
+    func testHomeTileSaysToCheck() {
         let tile = ShowerTileStatus.of(.stopped, signedIn: true, lastMinutes: 11, lastCost: 1.32, issue: nil)
-        XCTAssertEqual(tile.text, "去洗澡")
-        XCTAssertEqual(tile.spoken, "去洗澡，上一次洗好了")
+        XCTAssertEqual(tile.text, "待核对")
         XCTAssertEqual(tile.tone, .secondary, "not a warning")
     }
 
