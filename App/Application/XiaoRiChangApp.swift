@@ -59,12 +59,7 @@ private struct LiveAppHooks: ViewModifier {
     func body(content: Content) -> some View {
         content
             .onChange(of:campus.room, initial:true) { ShowerActivityController.shared.dorm = Theme.dorm(campus.room) ?? "" }
-            .task {
-                await campus.dropCampusWideMeter()
-                campus.matchPowerAutomatically(.launch)
-                await campus.refresh()
-                await laundry.refresh()
-            }
+            .task { await LaunchReads.run(campus:campus, laundry:laundry) }
             // The one place links are dispatched (`SampleMode.open`): the widget's go to the live
             // root (`takePendingLink`), never to a sample page; another app's answer (Alipay) is
             // the live app's, after the sample if it is on.

@@ -51,14 +51,18 @@ enum LaundryLoginRefusal: Error { case otherAccount }
     private var activitySync: AnyCancellable?
     private var endCheck: (end: Date, task: Task<Void, Never>)?
     private var startWatch: (since: Date, task: Task<Void, Never>)?
+    /// Whether the app is in front (`appInFront`; a test's own).
+    private let inFront: @Sendable () async -> Bool
     private static let machinesKey = PreferenceKey.laundryMachines
     private static let selectedKey = PreferenceKey.laundrySelected
     nonisolated static let lastOrderKey = PreferenceKey.laundryLastOrder
 
-    init(services: CampusServices, reminders: Reminders, activities: LaundryActivityController?) {
+    init(services: CampusServices, reminders: Reminders, activities: LaundryActivityController?,
+         inFront: @escaping @Sendable () async -> Bool = LaundryModel.appInFront) {
         self.services = services
         self.reminders = reminders
         self.activities = activities
+        self.inFront = inFront
         schoolEnabled = SchoolLaundryPreference(storage:services.defaults).isOn
         lastOrder = services.defaults.data(forKey:LaundryModel.lastOrderKey).flatMap { try? JSONDecoder().decode(LaundryLastOrder.self, from:$0) }
         reloadAccount()
@@ -131,7 +135,7 @@ enum LaundryLoginRefusal: Error { case otherAccount }
             let engine = try LaundryEngine(api:client, vault:vault, launcher:launcher,
                                            accountID:account?.account?.id,
                                            resetMarker:services.resetMarker,
-                                           inFront:services.laundryInFront(live:Self.appInFront),
+                                           inFront:services.laundryInFront(live:inFront),
                                            debugLog:services.debugLog)
             self.engine = engine
             observer = Task { [weak self] in
@@ -326,6 +330,14 @@ enum LaundryLoginRefusal: Error { case otherAccount }
         await perform(progress:"正在核对订单…") {
             record.phase == .paying ? try await engine.returnedFromPayment() : try await engine.refresh()
         }
+    }
+
+    /// A user launch reads the open order the way coming back to the app does (a paid 立刻洗衣
+    /// order may be started then, under the engine's rules). The engine's record is mirrored
+    /// here first, so the read doesn't wait for the observer.
+    func readOrderAtLaunch() async {
+        if checkout == nil, let engine { apply(await engine.state) }
+        await refreshOrder()
     }
 
     // MARK: Order + payment
