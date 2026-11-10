@@ -172,11 +172,13 @@ public struct LxtClient: ShowerDirectory, ShowerGateway {
     public static let requestRefusalCodes: Set<String> = ["4002", "-301"]
 
     /// Envelope code mapping shared by reads and operations (both casings, `code`/`Code`).
-    /// A known request refusal is `badRequest`; any other non-zero code is `rejected` with the
-    /// platform's message, which for authorize does not prove nothing was issued.
+    /// A known request refusal is `badRequest`; `4060` (an unfinished order at the school) is
+    /// `officialUnfinishedOrder`; any other non-zero code is `rejected` with the platform's
+    /// message. For authorize, neither of the last two proves nothing was issued.
     static func check(_ root: JSONValue, code: String) throws {
         if code == "0" { return }
         if requestRefusalCodes.contains(code) { throw ServiceError.badRequest(.lxt6) }
+        if code == ServiceError.unfinishedOrderCode { throw ServiceError.officialUnfinishedOrder }
         throw ServiceError.rejection(.lxt6, code: code, message: ResponseDecoding.message(root))
     }
 

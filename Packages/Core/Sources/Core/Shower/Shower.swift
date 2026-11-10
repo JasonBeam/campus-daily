@@ -351,7 +351,7 @@ public enum ShowerReducer {
     /// Errors that are a definite "no" from the service (nothing was issued/charged).
     public static func isDefiniteRefusal(_ e: ServiceError) -> Bool {
         switch e {
-        case .rejected, .badRequest, .sessionExpired: return true
+        case .rejected, .badRequest, .sessionExpired, .officialUnfinishedOrder: return true
         default: return false
         }
     }
@@ -426,8 +426,12 @@ public enum ShowerReducer {
             if isDefiniteAuthorizeRefusal(e) {
                 return (failed(s, .authorizeRefused, review: false, error: e), [.releaseDevice])
             }
-            // A code we don't know keeps its answer with the record; nothing else is assumed from it.
+            // A code we don't know (or 4060, an unfinished order at the school) keeps its answer
+            // with the record; nothing else is assumed from it.
             if case .rejected = e {
+                return (failed(s, .authorizeUncertain, review: true, error: e), [.releaseDevice])
+            }
+            if e == .officialUnfinishedOrder {
                 return (failed(s, .authorizeUncertain, review: true, error: e), [.releaseDevice])
             }
             return (failed(s, .authorizeUncertain, review: true, error: .uncertain(.lxt6)), [.releaseDevice])
@@ -743,8 +747,10 @@ public enum ShowerDisplay {
 }
 
 public extension ShowerFailure {
-    /// The platform's own sentence, when it answered with one (`rejected`).
+    /// The platform's own sentence, when it answered with one (`rejected`), or the words for
+    /// its unfinished-order refusal (4060).
     var platformMessage: String? {
+        if error == .officialUnfinishedOrder { return ServiceError.unfinishedOrderMessage }
         guard case .rejected(_, _, let message)? = error else { return nil }
         let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed

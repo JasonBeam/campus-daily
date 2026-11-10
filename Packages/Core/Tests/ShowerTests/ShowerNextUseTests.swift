@@ -297,7 +297,7 @@ final class ShowerNextUseTests: XCTestCase {
     // MARK: Authorization outcomes are not replayed
 
     func testARefusedOrUnclearNewAuthorizationIsNotSentAgain() async throws {
-        for failure in [ServiceError.badRequest(.lxt6), .timedOut] {
+        for failure in [ServiceError.badRequest(.lxt6), .timedOut, .officialUnfinishedOrder] {
             reset()
             let old = awaitingCheck[3]
             try vault.saveShowerState(old)
@@ -314,6 +314,11 @@ final class ShowerNextUseTests: XCTestCase {
             } else {
                 XCTAssertEqual(s.failure?.reason, .authorizeUncertain)
                 XCTAssertEqual(try vault.showerState()?.failure?.reason, .authorizeUncertain, "waits for its own check")
+                XCTAssertEqual(try vault.showerState()?.failure?.needsReview, true)
+            }
+            if failure == .officialUnfinishedOrder {
+                XCTAssertEqual(s.failure?.error, .officialUnfinishedOrder, "its own refusal is kept with the record")
+                XCTAssertEqual(ShowerDisplay.title(s), "水没开。学校提示：学校仍有未完成热水订单，请到官方热水小程序核对后重试")
             }
         }
     }

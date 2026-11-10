@@ -34,6 +34,13 @@ public enum ServiceError: Error, Equatable, Sendable, Codable {
     case malformed(Service, String)
     /// A state-changing request whose outcome we cannot know. Never retried blindly.
     case uncertain(Service)
+    /// lxt6 code 4060: the school still has an unfinished hot-water order. A refusal in the
+    /// school's own words (`unfinishedOrderMessage`); for authorize it is not proof that
+    /// nothing was issued, so it is treated like any other `rejected` code.
+    case officialUnfinishedOrder
+
+    public static let unfinishedOrderCode = "4060"
+    public static let unfinishedOrderMessage = "学校仍有未完成热水订单，请到官方热水小程序核对后重试"
 
     public static let maxMessageLength = 80
 
@@ -53,7 +60,7 @@ public enum ServiceError: Error, Equatable, Sendable, Codable {
     public var isIndefinite: Bool {
         switch self {
         case .offline, .timedOut, .tls, .malformed, .uncertain: return true
-        case .sessionExpired, .rejected, .badRequest: return false
+        case .sessionExpired, .rejected, .badRequest, .officialUnfinishedOrder: return false
         }
     }
 
@@ -74,6 +81,7 @@ public enum ServiceError: Error, Equatable, Sendable, Codable {
         case .badRequest: return "信息对不上了，重新登录或重新选一下再试。"
         case .malformed: return "返回的内容不对，过一会儿再试。"
         case .uncertain: return "结果未确认，请先查看官方记录，不要重复操作。"
+        case .officialUnfinishedOrder: return Self.unfinishedOrderMessage
         }
     }
 }

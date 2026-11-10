@@ -321,7 +321,7 @@ public enum DebugErrorKind: String, Sendable {
         case .timedOut: self = .timedOut
         case .tls: self = .tls
         case .sessionExpired: self = .sessionExpired
-        case .rejected: self = .rejected
+        case .rejected, .officialUnfinishedOrder: self = .rejected
         case .badRequest: self = .badRequest
         case .malformed: self = .malformed
         case .uncertain: self = .uncertain
@@ -343,6 +343,7 @@ public struct DebugError: Sendable, Equatable {
         case .offline, .timedOut, .tls: service = nil; code = nil
         case .sessionExpired(let s), .badRequest(let s), .malformed(let s, _), .uncertain(let s): service = s; code = nil
         case .rejected(let s, let c, _): service = s; code = DebugCode(c)
+        case .officialUnfinishedOrder: service = .lxt6; code = DebugCode(ServiceError.unfinishedOrderCode)
         }
     }
 }

@@ -74,7 +74,7 @@ extension SchoolSession {
     /// answer: trying again later may work.
     static func isDefiniteRefusal(_ e: ServiceError) -> Bool {
         switch e {
-        case .sessionExpired, .badRequest: return true
+        case .sessionExpired, .badRequest, .officialUnfinishedOrder: return true
         case .rejected(_, let code, _): return !code.hasPrefix("HTTP ")
         case .offline, .timedOut, .tls, .malformed, .uncertain: return false
         }

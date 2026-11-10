@@ -103,6 +103,29 @@ final class LxtClientTests: XCTestCase {
         }
     }
 
+    /// 4060: the school still has an unfinished hot-water order. Its own refusal, with its own
+    /// words, never read as a successful authorization; a boolean code is no answer at all.
+    func testOfficial4060IsDistinctFromSuccessfulAuthorization() async throws {
+        let cases: [(String, ServiceError)] = [
+            (#"{"code":4060,"data":{}}"#, .officialUnfinishedOrder),
+            (#"{"code":4060,"message":"存在未完成订单"}"#, .officialUnfinishedOrder),
+            (#"{"code":true,"data":{}}"#, .uncertain(.lxt6)),
+        ]
+        for (body, expected) in cases {
+            let server = StubServer()
+            operationReply(server, LxtEndpoints.authorize, body)
+            await Golden.expectError(expected) { _ = try await Golden.client(server).authorize(Golden.binding, frame: self.frame) }
+            XCTAssertEqual(server.requests.count, 1, "never retried: \(body)")
+        }
+        XCTAssertEqual(ServiceError.officialUnfinishedOrder.userMessage, "学校仍有未完成热水订单，请到官方热水小程序核对后重试")
+        XCTAssertFalse(ShowerReducer.isDefiniteAuthorizeRefusal(.officialUnfinishedOrder), "may come after an authorization was created")
+        XCTAssertFalse(ServiceError.officialUnfinishedOrder.isIndefinite, "the school answered")
+        let ok = StubServer()
+        operationReply(ok, LxtEndpoints.authorize, #"{"code":0,"data":{"machineid":"11223344","studentId":"a1b2c3d4","systemData":"000102030405060708090a0b0c0d0e"}}"#)
+        let a = try await Golden.client(ok).authorize(Golden.binding, frame: frame)
+        XCTAssertEqual(a.authorizationID, "A1B2C3D4")
+    }
+
     func testOperationsRefuseAFrameFromAnotherControllerBeforeSending() async throws {
         let server = StubServer()
         let other = FakeFrames.identity("99999999")

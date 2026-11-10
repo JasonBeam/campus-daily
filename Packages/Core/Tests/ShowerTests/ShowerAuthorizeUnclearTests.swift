@@ -39,6 +39,23 @@ final class ShowerAuthorizeUnclearTests: XCTestCase {
         }
     }
 
+    /// 4060: the school still has an unfinished hot-water order. The record is kept and waits for
+    /// its check like any unclear answer; only the words are the school's refusal.
+    func testTheSchoolsUnfinishedOrderRefusalIsShown() throws {
+        let s = failedAuthorize(.officialUnfinishedOrder)
+        XCTAssertEqual(s.failure?.reason, .authorizeUncertain)
+        XCTAssertEqual(s.failure?.needsReview, true, "still waits for the check")
+        XCTAssertEqual(s.failure?.error, .officialUnfinishedOrder)
+        XCTAssertFalse(s.canStart)
+        XCTAssertEqual(ShowerPage(s)?.phase, .stopped)
+        XCTAssertEqual(ShowerDisplay.title(s), "水没开。学校提示：学校仍有未完成热水订单，请到官方热水小程序核对后重试")
+        XCTAssertEqual(siri(s), "水没开。学校提示：学校仍有未完成热水订单，请到官方热水小程序核对后重试。打开校日常再试一次。")
+        let debug = DebugError(ServiceError.officialUnfinishedOrder)
+        XCTAssertEqual(debug.kind, .rejected)
+        XCTAssertEqual(debug.service, .lxt6)
+        XCTAssertEqual(debug.code, DebugCode("4060"))
+    }
+
     func testWithoutWordsItSaysTheWaterDidNotStart() throws {
         for e in [ServiceError.timedOut, .uncertain(.lxt6), .rejected(.lxt6, code: "500", message: "  ")] {
             let s = failedAuthorize(e)
