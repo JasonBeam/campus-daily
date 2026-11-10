@@ -22,7 +22,7 @@ extension DebugEvent {
         case .laundryStart: return "laundry.start"
         case .schoolRefresh: return "school.refresh"
         case .schoolCredentialExpired: return "school.credentialExpired"
-        case .schoolPasswordLogin: return "school.passwordLogin"
+        case .schoolSavedLogin: return "school.savedLogin"
         case .schoolRenew: return "school.renew"
         case .ujingLogin: return "ujing.login"
         case .http: return "http"
@@ -114,7 +114,7 @@ extension DebugEvent {
             f["kind"] = kind.rawValue
             f["ageMinutes"] = age.map(String.init) ?? "unknown"
             if kind == .card { f["aliveMinutes"] = alive.map(String.init) ?? "unknown" }
-        case .schoolPasswordLogin(let step):
+        case .schoolSavedLogin(let step):
             switch step {
             case .sent: f.word("sent")
             case .deferred(let r): f.word("deferred"); f["reason"] = r.rawValue

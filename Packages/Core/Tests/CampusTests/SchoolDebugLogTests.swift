@@ -74,7 +74,7 @@ final class SchoolDebugLogTests: XCTestCase {
         try h.vault.saveAccount(SchoolAccount(account: "99100991", password: "synthetic-pw-991"))
         try h.server.serve("ecykt/getSysBindCustInfo-badToken", times: 2)
         _ = await h.refresher().refresh(inBackground: true)
-        XCTAssertTrue(log.events.contains(.schoolPasswordLogin(.deferred(.noLoginDeviceID))))
+        XCTAssertTrue(log.events.contains(.schoolSavedLogin(.deferred(.noLoginDeviceID))))
 
         try h.vault.saveLoginDeviceID("99000000000000000000000000000991")
         h.server.serve(try T.eCardWithTicket())
@@ -82,7 +82,9 @@ final class SchoolDebugLogTests: XCTestCase {
         try h.server.serve("ecykt/getSysBindCustInfo-ok")
         try h.server.serve("ecykt/getUserBalance-ok")
         _ = await h.refresher().refresh(inBackground: true)
-        XCTAssertTrue(log.events.contains(.schoolPasswordLogin(.sent)))
+        XCTAssertTrue(log.events.contains(.schoolSavedLogin(.sent)))
+        XCTAssertTrue(log.lines().contains("school.savedLogin sent"), log.lines().joined(separator: "\n"))
+        XCTAssertTrue(log.lines().allSatisfy(DebugLogScreen.isSafe), "no line is dropped by the log's screen")
         XCTAssertEqual(log.events.last, .schoolRefresh(.ok))
         XCTAssertEqual(DebugLogTesting.leaks(secrets, in: log.lines().joined(separator: "\n")), [])
     }

@@ -31,7 +31,7 @@ public enum DebugEvent: Sendable, Equatable {
     // MARK: School and U净 logins
     case schoolRefresh(DebugSchoolOutcome)
     case schoolCredentialExpired(kind: DebugCredential, ageMinutes: Int?, aliveMinutes: Int?)
-    case schoolPasswordLogin(DebugPasswordStep)
+    case schoolSavedLogin(DebugPasswordStep)
     /// The portal token traded for a new card session.
     case schoolRenew(DebugSchoolOutcome)
     case ujingLogin(DebugOutcome)

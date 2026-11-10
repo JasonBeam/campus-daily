@@ -267,7 +267,7 @@ final class SchoolPasswordSignInTests: XCTestCase {
         let held = try XCTUnwrap(try h.vault.account())
         XCTAssertFalse(held.paused)
         XCTAssertNil(held.unansweredAt)
-        XCTAssertTrue(lines.withLock { $0 }.contains("school.passwordLogin deferred reason=noLoginDeviceID"))
+        XCTAssertTrue(lines.withLock { $0 }.contains("school.savedLogin deferred reason=noLoginDeviceID"))
 
         try h.vault.saveLoginDeviceID("99000000000000000000000000000991")
         try serveExchange(h, token: "AFTER-MOVE")

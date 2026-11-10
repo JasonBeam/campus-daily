@@ -61,15 +61,15 @@ extension SchoolSession {
         guard let saved = (try? vault.account()) ?? nil, let password = saved.automaticPassword(at: now()) else { return .notTried }
         // Not moved to the shared group yet: like no network, nothing is paused or held.
         if !createsLoginDeviceID, ((try? vault.loginDeviceID()) ?? nil)?.isEmpty ?? true {
-            diagnostic("school.passwordLogin deferred reason=noLoginDeviceID")
-            debugLog.record(.schoolPasswordLogin(.deferred(.noLoginDeviceID)))
+            diagnostic("school.savedLogin deferred reason=noLoginDeviceID")
+            debugLog.record(.schoolSavedLogin(.deferred(.noLoginDeviceID)))
             return .offline
         }
         // The portal exchange may have taken most of the lease: confirm it before the password goes out.
         guard await mayMint() else { return .lostLease }
         guard credentialsUnchanged(previous: previous, seenPortalToken: seenPortalToken) else {
-            diagnostic("school.passwordLogin skipped reason=credentialsChanged")
-            debugLog.record(.schoolPasswordLogin(.skipped(.credentialsChanged)))
+            diagnostic("school.savedLogin skipped reason=credentialsChanged")
+            debugLog.record(.schoolSavedLogin(.skipped(.credentialsChanged)))
             return .retryLater
         }
         guard let passwordLogin else { return .notTried }
@@ -80,8 +80,8 @@ extension SchoolSession {
         case .notSaved:
             // The Keychain refused the new id: an interruption, so several in a row show on home
             // as not saving.
-            diagnostic("school.passwordLogin skipped reason=deviceIDNotSaved")
-            debugLog.record(.schoolPasswordLogin(.skipped(.deviceIDNotSaved)))
+            diagnostic("school.savedLogin skipped reason=deviceIDNotSaved")
+            debugLog.record(.schoolSavedLogin(.skipped(.deviceIDNotSaved)))
             return .retryLater
         }
         let sentAt = now()
@@ -95,7 +95,7 @@ extension SchoolSession {
         }
         let token: PortalToken
         do {
-            debugLog.record(.schoolPasswordLogin(.sent))
+            debugLog.record(.schoolSavedLogin(.sent))
             token = try await passwordLogin.login(account: saved.account, password: password, visitorID: visitorID)
         } catch SchoolLoginFailure.noAnswer {
             // The school may have counted this one: the hold written above stays.
