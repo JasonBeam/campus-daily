@@ -1,8 +1,8 @@
 import SwiftUI
 import Core
 
-/// 设置 tab: 首次设置 on top, then 暖橙's settings groups (我的, 设备, 提醒, 外观), 快捷指令, and
-/// 反馈问题 and 高级 with the version last. Rows push their pages on this tab; 热水 opens the shower page on 日常.
+/// 设置 tab: the groups of `SettingsLayout.clear` (账号与设备, 日常使用, 帮助), the version last. Rows push
+/// their pages on this tab; 热水 opens the shower page on 日常.
 struct ClearSettingsTab: View {
     @Environment(ClearNavigator.self) private var navigator
     @EnvironmentObject private var shower: ShowerModel
@@ -18,19 +18,29 @@ struct ClearSettingsTab: View {
 
     var body: some View {
         let data = navigator.data(campus:campus, shower:shower, laundry:laundry)
+        let groups = SettingsLayout.clear
         Form {
-            Section { ClearSetupEntry() }.listRowBackground(Theme.group)
-            SettingsMineSection(data:data, link:link)
-            SettingsDeviceSection(data:data, laundrySwitch:laundrySwitch, link:link)
-            SettingsReminderSection(laundryOn:laundrySwitch.isOn)
-            SettingsAppearanceSection(link:link)
-            ShortcutsSection(header:"快捷指令")
             Section {
-                FeedbackRow()
-                NavigationLink(value:ClearRoute.advanced) {
-                    SettingsRow(symbol:"wrench.and.screwdriver", title:"高级")
+                rows(groups[0], data:data)
+            } header: {
+                Text(groups[0].title)
+            } footer: {
+                SchoolLaundryFooter(laundrySwitch:laundrySwitch)
+            }.listRowBackground(Theme.group)
+            Section {
+                rows(groups[1], data:data)
+            } header: {
+                Text(groups[1].title)
+            } footer: {
+                VStack(alignment:.leading, spacing:6) {
+                    SettingsReminderFooter(laundryOn:laundrySwitch.isOn)
+                    ShortcutsFooter()
                 }
-                VersionRow().font(.footnote).foregroundStyle(Theme.ink2)
+            }.listRowBackground(Theme.group)
+            Section {
+                rows(groups[2], data:data)
+            } header: {
+                Text(groups[2].title)
             } footer: {
                 SettingsFooter()
             }.listRowBackground(Theme.group)
@@ -43,6 +53,27 @@ struct ClearSettingsTab: View {
         .onAppear { if preview == nil { campus.reloadAccount() } }
         // A new demo seeds the switch again.
         .onChange(of:preview?.laundryEnabled) { _, _ in previewLaundry = nil }
+    }
+
+    private func rows(_ group: SettingsGroup, data: HomeData) -> some View {
+        ForEach(group.items, id:\.self) { item in row(item, data:data) }
+    }
+
+    @ViewBuilder private func row(_ item: SettingsItem, data: HomeData) -> some View {
+        switch item {
+        case .setup: ClearSetupEntry()
+        case .account, .dorm, .meter, .hotWater: SettingsPlaceRow(item:item, data:data, link:link)
+        case .schoolLaundry, .washer: SchoolLaundryRows(item:item, data:data, laundrySwitch:laundrySwitch, link:link)
+        case .powerLow, .cardLow, .unsettled, .laundryDone, .notifications: SettingsReminderRow(item:item, laundryOn:laundrySwitch.isOn)
+        case .theme: SettingsThemeRow(link:link)
+        case .shortcuts: ShortcutsRow()
+        case .feedback: FeedbackRow()
+        case .advanced:
+            NavigationLink(value:ClearRoute.advanced) {
+                SettingsRow(symbol:"wrench.and.screwdriver", title:"高级")
+            }
+        case .version: VersionRow().font(.footnote).foregroundStyle(Theme.ink2)
+        }
     }
 
     /// 热水 opens the shower page where it lives, on 日常; every other row pushes its page here.
