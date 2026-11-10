@@ -33,7 +33,7 @@ public struct SchoolLaundryPreference {
     // MARK: Copy (campus-laundry-optional-copy.md)
 
     public static let title = "学校洗衣机"
-    public static let footerOn = "关掉后，首页和提醒里都不显示洗衣。"
+    public static let footerOn = "学校洗衣机关掉后，首页和提醒里都不显示洗衣。"
     public static let footerOff = "打开后就能扫码洗衣。"
     public static let footerLocked = "洗衣还有一笔没处理完，处理完再关。"
     /// A laundry shortcut run while it is off.

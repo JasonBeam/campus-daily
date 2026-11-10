@@ -65,7 +65,7 @@ final class SchoolLaundryPreferenceTests: XCTestCase {
     }
 
     func testFooterCopy() {
-        XCTAssertEqual(SchoolLaundryPreference.footer(isOn:true, locked:false), "关掉后，首页和提醒里都不显示洗衣。")
+        XCTAssertEqual(SchoolLaundryPreference.footer(isOn:true, locked:false), "学校洗衣机关掉后，首页和提醒里都不显示洗衣。")
         XCTAssertEqual(SchoolLaundryPreference.footer(isOn:false, locked:false), "打开后就能扫码洗衣。")
         XCTAssertEqual(SchoolLaundryPreference.footer(isOn:true, locked:true), "洗衣还有一笔没处理完，处理完再关。")
         XCTAssertEqual(SchoolLaundryPreference.Onboarding.title, "宿舍用学校的洗衣机吗？")
