@@ -192,6 +192,43 @@ final class ShowerDebugLogTests: XCTestCase {
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: folder.path), [])
     }
 
+    /// The app's engine (`CampusServices.showerEngine`), built at launch before StoreKit has
+    /// answered: what it logs is held, then kept on a TestFlight install.
+    func testAnEngineBuiltBeforeTheAnswerLogsOnceItIsTestFlight() async throws {
+        let log = LaunchDebugLog(applicationSupport: folder, now: clock.function)
+        let e = try launchServices(log).showerEngine(gateway: FakeGateway(), bleName: "fixture-ble")
+        log.resolve(.testFlight)
+        transport.scriptConnect(.failure(.notFound))
+        _ = try? await e.start(binding)
+        log.flush()
+        let lines = log.lines()
+        XCTAssertTrue(lines.contains { $0.hasSuffix(" shower.restore saved=none restored=idle") }, "held, then replayed\n" + lines.joined(separator: "\n"))
+        XCTAssertTrue(lines.contains { $0.contains(" shower.action start machine=") }, lines.joined(separator: "\n"))
+        XCTAssertTrue(lines.contains { $0.hasSuffix(" ble.connect result=notFound target=scanned") }, lines.joined(separator: "\n"))
+    }
+
+    /// The same engine on an install that is not TestFlight: no line, no folder.
+    func testAnEngineBuiltBeforeTheAnswerLogsNothingOnceItIsOff() async throws {
+        for decision in [DebugLogDecision.appStore, .undetermined] {
+            let log = LaunchDebugLog(applicationSupport: folder, now: clock.function)
+            let e = try launchServices(log).showerEngine(gateway: FakeGateway(), bleName: "fixture-ble")
+            log.resolve(decision)
+            transport.scriptConnect(.failure(.notFound))
+            _ = try? await e.start(binding)
+            log.flush()
+            XCTAssertEqual(log.lines(), [], "\(decision)")
+            XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: folder.path), [], "\(decision)")
+        }
+    }
+
+    /// Live services on this test's transport and folder, logging to `log`.
+    func launchServices(_ log: any DebugLogSink) -> CampusServices {
+        CampusServices(kind: .live, secureStore: InMemorySecureStore(), defaults: SampleDefaults(), sharedPreferences: nil,
+                       schoolHTTP: SampleHTTPClient(), showerHTTP: SampleHTTPClient(), laundryHTTP: SampleHTTPClient(),
+                       feedbackHTTP: nil, showerTransport: transport, leaseFile: nil, applicationSupport: folder,
+                       sharedDidChange: {}, debugLog: log)
+    }
+
     /// A log that can't be written never stops or changes a shower.
     func testAnUnwritableLogNeverStopsTheShower() async throws {
         let blocker = folder.appendingPathComponent("not-a-folder")

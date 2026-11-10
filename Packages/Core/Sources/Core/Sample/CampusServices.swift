@@ -69,11 +69,13 @@ public final class CampusServices: @unchecked Sendable {
     }
 
     /// The hot-water engine as the app builds it, on these services: their vault, Bluetooth and
-    /// the platform gateway `gateway` (over `showerHTTP`).
+    /// the platform gateway `gateway` (over `showerHTTP`). Its steps always go to `debugLog`,
+    /// which decides what is kept: the launch log holds them until the install is known, then
+    /// writes them on TestFlight only.
     public func showerEngine(gateway: any ShowerGateway, bleName: String) throws -> ShowerEngine {
         try ShowerEngine(transport: showerTransport, gateway: gateway, vault: showerVault,
                          configuration: .init(bleName: bleName),
-                         hooks: debugLog.isEnabled ? DebugLogShowerHooks(debugLog) : nil, resetMarker: resetMarker)
+                         hooks: DebugLogShowerHooks(debugLog), resetMarker: resetMarker)
     }
 
     /// The hot-water platform client on `showerHTTP`.

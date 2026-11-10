@@ -80,7 +80,7 @@ public extension ShowerHooks {
     func record(_ event: DebugEvent) {}
 }
 
-/// The app's hooks in a TestFlight install: every event and note goes to the debug log.
+/// The app's hooks: every event and note goes to the debug log (kept on TestFlight only).
 public struct DebugLogShowerHooks: ShowerHooks {
     let log: any DebugLogSink
     public init(_ log: any DebugLogSink) { self.log = log }
