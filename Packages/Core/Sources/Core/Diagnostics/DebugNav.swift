@@ -7,6 +7,9 @@ import Foundation
 /// entry older than `pendingLifetime` is not used. With no pages named, the next page to open
 /// takes it. `unlessPending`: only when no reason was given for those pages already (the page
 /// raising itself after a tap or a Shortcut asked for it keeps the first reason).
+/// Every line goes to the log whether or not it is on yet: at launch it holds them until the
+/// install is known and keeps them on TestFlight only. What waits here is a few entries, dropped
+/// at the next call once older than `pendingLifetime`.
 public final class DebugNav: @unchecked Sendable {
     // @unchecked: `pending` is touched only under `lock`.
     public static let pendingLifetime: TimeInterval = 3
@@ -22,7 +25,6 @@ public final class DebugNav: @unchecked Sendable {
     }
 
     public func from(_ entry: DebugEntry, to pages: Set<DebugPage>? = nil, unlessPending: Bool = false) {
-        guard log.isEnabled else { return }
         let at = now()
         lock.withLock {
             drop(before: at)
@@ -39,7 +41,6 @@ public final class DebugNav: @unchecked Sendable {
     }
 
     public func opened(_ page: DebugPage, default entry: DebugEntry) {
-        guard log.isEnabled else { return }
         let at = now()
         let used: DebugEntry = lock.withLock {
             drop(before: at)
