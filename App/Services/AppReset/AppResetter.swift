@@ -43,12 +43,13 @@ import Core
     }
 
     /// Files the app wrote (the imported hot-water file, the laundry cache, the TestFlight debug
-    /// log and its salt, what older builds left:
+    /// log and its salt, the crash reports not sent yet, what older builds left:
     /// the hot-water diagnostics and their export, the Bluetooth scan note). The bundled hot-water
     /// parameters are app resources and stay.
     private var files: [URL] {
         guard let support = services.applicationSupport else { return [] }
         return ["Water", "LaundryCache", "WaterSession", FileDebugLog.folderName].map { support.appendingPathComponent($0, isDirectory:true) }
+            + [CrashReportsLaunch.pendingFolder(in:support)]
             + [RetiredDiagnostics.exportFolder(in:FileManager.default.temporaryDirectory)]
     }
 

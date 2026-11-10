@@ -10,6 +10,8 @@ import Core
     /// Which page shows the sample's blocked message (`SampleChrome`).
     @State private var sampleAlerts = SampleAlertStack()
     init() {
+        // Crashes are handed over at a later launch (MetricKit), so this runs first, once.
+        CrashReportsLaunch.start(info:Bundle.main.infoDictionary ?? [:]) { AirCrashReports.start(apiKey:$0, endpoint:$1) }
         // Before any model reads: older builds kept items in the other keychain group.
         SharedKeychain.migrateItemGroups()
         let sample = SampleMode(gate:ShowerModel.liveGate)

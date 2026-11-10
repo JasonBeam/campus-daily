@@ -34,8 +34,10 @@ App/
                       清爽's tokens.
   Services/           Bluetooth (CoreBluetooth ShowerTransport), CampusWebLogin (official-page WKWebView + login script),
                       BackgroundRefresh (BGAppRefreshTask), Alipay, LiveActivities, Intents, Reminders,
-                      Feedback (sends 反馈问题; endpoint and key from Info.plist)
-  Resources/          Assets, Fonts, Info.plist, App.entitlements
+                      Feedback (sends 反馈问题; endpoint and key from Info.plist; AirCrashReports, the
+                      AirFeedback crash file kept as shipped, posts MetricKit crash reports with its
+                      own URLSession, started by CrashReportsLaunch in the App's init)
+  Resources/          Assets, Fonts, Info.plist, PrivacyInfo.xcprivacy, App.entitlements
   Demo/               demo screens and data behind campusdaily://demo/… (DEBUG only); LaundryDemo and
                       RecordsDemo are also the Release sample mode's washer and 校园卡记录
   Interface/Sample/   the sample mode's bar, blocked-action alert and its 余额 and 电量 pages

@@ -14,13 +14,15 @@ IPHONEOS_DEPLOYMENT_TARGET = 17.0
 
 CODE_SIGN_STYLE = Automatic
 
-// Settings › 反馈问题 (AirFeedback). The endpoint and public ingestion key come from
-// `workers app-key` and live in the untracked private/distribution/Feedback.xcconfig, next to
-// the hot-water profile:
+// Settings › 反馈问题 and crash reports (AirFeedback). The endpoints and public ingestion key
+// come from `workers app-key` and live in the untracked private/distribution/Feedback.xcconfig,
+// next to the hot-water profile:
 //   FEEDBACK_ENDPOINT = https:/$()/apps.air.build/v1/ingest/feedback
+//   FEEDBACK_CRASH_ENDPOINT = https:/$()/apps.air.build/v1/ingest/crashes
 //   FEEDBACK_APP_KEY = ak_...
-// Without them the build has no 反馈问题 row.
+// Without the key the build has no 反馈问题 row and sends no crash reports.
 FEEDBACK_ENDPOINT =
+FEEDBACK_CRASH_ENDPOINT =
 FEEDBACK_APP_KEY =
 #include? "../private/distribution/Feedback.xcconfig"
 
