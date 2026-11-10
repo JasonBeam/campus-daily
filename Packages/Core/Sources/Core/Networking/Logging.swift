@@ -106,13 +106,15 @@ public enum Redactor {
 }
 
 /// Each request line also goes to the TestFlight debug log (as `DebugHTTP`: known names,
-/// hosts, codes and errors only), then to `next`.
+/// hosts, codes and errors only), then to `next`. Always handed over, whether or not the log
+/// is on yet: at launch it holds the line until the install is known and keeps it on
+/// TestFlight only. Turning an entry into a `DebugHTTP` is a few string compares.
 public struct DebugHTTPLogSink: HTTPLogSink {
     let log: any DebugLogSink
     let next: any HTTPLogSink
     public init(_ log: any DebugLogSink, next: any HTTPLogSink = OSLogSink()) { self.log = log; self.next = next }
     public func record(_ entry: HTTPLogEntry) {
-        if log.isEnabled { log.record(.http(DebugHTTP(entry))) }
+        log.record(.http(DebugHTTP(entry)))
         next.record(entry)
     }
 }
