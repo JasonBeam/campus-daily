@@ -1,0 +1,53 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "https://isv.lxt6.cn/zk_areainfo_api/areaInfo/getAreaInfoForApplests?wxcode=id=20021&sign=REDACTED_TOKEN_20&sid=REDACTED_TOKEN_19",
+    "headers": {
+      "Content-Type": "application/x-www-form-urlencoded"
+    },
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Server": "nginx",
+      "Content-Type": "application/json;charset=UTF-8"
+    },
+    "body": {
+      "message": "OK",
+      "data": [
+        {
+          "id": "997000000000011501",
+          "name": "测试区域"
+        },
+        {
+          "id": "997000000000014501",
+          "name": "星湖校区"
+        },
+        {
+          "id": "997000000000015001",
+          "name": "大旺校区"
+        },
+        {
+          "id": "997000000000024501",
+          "name": "肇庆校区"
+        },
+        {
+          "id": "997000000000034501",
+          "name": "联通肇庆"
+        },
+        {
+          "id": "997000000000034003",
+          "name": "肇庆电信"
+        }
+      ],
+      "serial": 1793321430058,
+      "code": 0,
+      "validMessage": null
+    }
+  },
+  "_fixture": {
+    "capturedAt": "2026-10-30",
+    "redacted": true
+  }
+}

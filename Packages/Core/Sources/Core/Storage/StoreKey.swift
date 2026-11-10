@@ -1,0 +1,94 @@
+import Foundation
+
+/// Keychain item names (architecture §4.1). Service = `org.zaxh.xiaorichang.<name>.v1`,
+/// account = `default`.
+public enum StoreKey: String, Sendable, CaseIterable {
+    case schoolPortal = "school.portal"
+    case schoolEcykt = "school.ecykt"
+    case schoolProfile = "school.profile"
+    /// The school account, and its password only if the user chose to save it.
+    case schoolPassword = "school.password"
+    /// The browser id the school login sees from this install (random, not personal).
+    case schoolDevice = "school.device"
+    case showerBinding = "water.binding"
+    case showerSession = "water.session"
+    /// Hot-water records kept by a next use while they wait for the user's check.
+    case showerRetained = "water.retained"
+    case laundryAccount = "laundry.account"
+    case laundryCheckout = "laundry.checkout"
+    case sharedSnapshot = "shared.snapshot"
+    case sharedReminderLines = "shared.reminderLines"
+    /// The credential-lifetime lines (kind and minutes only) for the exported diagnostics.
+    case sharedCredentialLog = "shared.credentialLog"
+    /// A reset is under way, since when (`ResetMarker`). Holds a time only.
+    case sharedResetMarker = "shared.resetMarker"
+
+    public static let servicePrefix = "org.zaxh.xiaorichang."
+    public static let account = "default"
+
+    public var service: String { Self.servicePrefix + rawValue + ".v1" }
+
+    public enum Accessibility: String, Sendable {
+        case whenUnlockedThisDeviceOnly
+        case afterFirstUnlockThisDeviceOnly
+    }
+
+    /// Every item is readable after the first unlock, so the background refresh and the widget
+    /// work while the phone is locked. None leaves this device (no iCloud Keychain, no backup
+    /// restore onto another phone).
+    public var accessibility: Accessibility { .afterFirstUnlockThisDeviceOnly }
+
+    /// Written to the shared access group so the widget extension can read them: the snapshot and
+    /// reminder lines it shows, the lifetime lines its refresh writes, the reset marker, and everything its own school refresh needs (card session, portal
+    /// token, dorm/meter profile, saved account and password, login device id). Hot-water and
+    /// laundry items live only in the app's private group, which the widget is not entitled to.
+    public var isShared: Bool {
+        switch self {
+        case .sharedSnapshot, .sharedReminderLines, .sharedCredentialLog, .sharedResetMarker, .schoolEcykt, .schoolPortal, .schoolProfile, .schoolPassword, .schoolDevice:
+            return true
+        case .showerBinding, .showerSession, .showerRetained, .laundryAccount, .laundryCheckout: return false
+        }
+    }
+}
+
+/// Raw secure storage of small blobs.
+public protocol SecureStore: Sendable {
+    func read(_ key: StoreKey) throws -> Data?
+    func write(_ data: Data, for key: StoreKey) throws
+    func delete(_ key: StoreKey) throws
+}
+
+public extension SecureStore {
+    func readJSON<T: Decodable>(_ type: T.Type, _ key: StoreKey) throws -> T? {
+        guard let data = try read(key) else { return nil }
+        do { return try JSONDecoder().decode(T.self, from: data) }
+        catch { throw StorageError.undecodable(key.rawValue) }
+    }
+
+    func writeJSON<T: Encodable>(_ value: T?, _ key: StoreKey) throws {
+        guard let value else { try delete(key); return }
+        let data: Data
+        do { data = try JSONEncoder().encode(value) }
+        catch { throw StorageError(operation: "encode \(key.rawValue)", status: -1) }
+        try write(data, for: key)
+    }
+}
+
+/// UserDefaults keys (all prefixed `xrc.`).
+public enum PreferenceKey {
+    public static let prefix = "xrc."
+    public static func reminder(_ name: String) -> String { prefix + "reminder." + name }
+    public static let showerNeedsResidenceReview = prefix + "water.needsResidenceReview"
+    /// Bool, absent = on (school laundry shown).
+    public static let schoolLaundry = prefix + "laundry.school"
+    /// When the next U净 SMS code may be asked for (a time only; one account at a time).
+    public static let ujingSMSCooldown = prefix + "ujing.smsCooldown"
+    /// String, `AppTheme` raw value, in the App Group's preferences (`ThemePreference`).
+    public static let theme = prefix + "theme"
+    /// Data, JSON `[SavedWasher]`: the common washers.
+    public static let laundryMachines = prefix + "laundry.machines"
+    /// String, the selected washer's id.
+    public static let laundrySelected = prefix + "laundry.selected"
+    /// Data, JSON: the last laundry order's program, machine and amount.
+    public static let laundryLastOrder = prefix + "laundry.lastOrder"
+}

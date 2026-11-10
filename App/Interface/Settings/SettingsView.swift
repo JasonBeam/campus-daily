@@ -1,0 +1,124 @@
+import SwiftUI
+import Core
+
+/// Settings sheet.
+struct SettingsView: View {
+    /// DEBUG demo data; nil = live models.
+    var preview: HomeData? = nil
+    /// DEBUG demo: the switch flips locally (seeded from the demo data).
+    @State private var previewLaundry: Bool?
+    private var account: AccountView { AccountView(preview:preview) }
+    private var advanced: AdvancedSettingsView { AdvancedSettingsView(preview:preview) }
+    private var themePage: ThemeSettingsView { ThemeSettingsView(preview:preview) }
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.appTheme) private var appTheme
+    @Environment(SampleMode.self) private var sample
+    @EnvironmentObject private var shower: ShowerModel
+    @EnvironmentObject private var campus: CampusModel
+    @EnvironmentObject private var laundry: LaundryModel
+
+    private var data: HomeData { preview ?? HomeData(campus:campus, shower:shower, laundry:laundry) }
+    /// 「去设置热水」 after an account switch.
+    @State private var hotWaterSetup = false
+    /// 学校账号, pushed when the widget asked for it.
+    @State private var accountPage = false
+    /// 主题, pushed by a DEBUG demo.
+    @State private var themePageShown = false
+
+    /// 「学校洗衣机」 switch.
+    private var laundrySwitch: SchoolLaundrySwitch {
+        SchoolLaundrySwitch(laundry:laundry, preview:preview, previewOn:Binding(get:{ previewLaundry }, set:{ previewLaundry = $0 }))
+    }
+
+    var body: some View {
+        let data = data
+        NavigationStack {
+            List {
+                SettingsMineSection(data:data, link:link)
+                SettingsDeviceSection(data:data, laundrySwitch:laundrySwitch, link:link)
+                SettingsReminderSection(laundryOn:laundrySwitch.isOn)
+                SettingsAppearanceSection(link:link)
+                Section {
+                    FeedbackRow()
+                    NavigationLink { advanced.navOpen(.advanced, from:.settings) } label: {
+                        SettingsRow(symbol:"wrench.and.screwdriver", title:"高级")
+                    }
+                } footer: {
+                    SettingsFooter()
+                }.listRowBackground(Theme.group)
+            }
+            .modifier(SettingsReminderHandlers())
+            .listStyle(.insetGrouped)
+            .scrollContentBackground(.hidden)
+            .background(Theme.bg.ignoresSafeArea())
+            .navigationTitle("设置").navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement:.confirmationAction) {
+                    Button { dismiss() } label: { Text("完成").fontWeight(.semibold).foregroundStyle(Theme.accentText.color(appTheme)) }
+                }
+            }
+            .navigationDestination(isPresented:$hotWaterSetup) {
+                Group { if shower.configured { ShowerDetail() } else { CampusOnboardingView() } }
+                    .navOpen(shower.configured ? .showerDetail : .dorm, from:.settings)
+            }
+            // While a shower is on, 热水 here brings up the timer page (Settings goes first).
+            .onChange(of:hotWaterSetup) { _, open in
+                guard open, preview == nil, shower.page.opensPageOnRoute else { return }
+                hotWaterSetup = false
+                shower.pageEventShowingPage(.reopen)
+            }
+            .navigationDestination(isPresented:$accountPage) { account.navOpen(.account, from:.settings) }
+            .navigationDestination(isPresented:$themePageShown) { themePage.navOpen(.theme, from:.settings) }
+            .onAppear {
+                if preview == nil { campus.reloadAccount() }
+                if campus.hotWaterSetupRequested { campus.hotWaterSetupRequested = false; hotWaterSetup = true }
+                if preview?.themePageShown == true { themePageShown = true }
+                openAccountPageIfRequested()
+            }
+            .onChange(of:campus.accountPageRequested) { _, _ in openAccountPageIfRequested() }
+        }
+        .tint(Theme.accentText)
+        // On the stack, not its root: pushing a page must not hand the alert to the screen below.
+        .accountSwitchAlert { hotWaterSetup = true }
+        .presentationDetents([.large])
+    }
+}
+
+extension SettingsView {
+    func openAccountPageIfRequested() {
+        guard campus.accountPageRequested else { return }
+        campus.accountPageRequested = false
+        accountPage = true
+    }
+
+    /// A row pushing its page.
+    @ViewBuilder private func link(_ page: SettingsLink, _ row: SettingsRow) -> some View {
+        switch page {
+        // These need a real account or device: blocked in the sample.
+        case .account, .dorm:
+            SampleGatedRow(action:.schoolAccount) { NavigationLink { destination(page) } label: { row } } label: { SampleRowLabel(row:row) }
+        case .washer:
+            SampleGatedRow(action:.bindWasher) { NavigationLink { destination(page) } label: { row } } label: { SampleRowLabel(row:row) }
+        case .hotWater where !sample.isActive && shower.page.opensPageOnRoute:
+            // While a shower is on, its timer page comes up instead (Settings goes first).
+            Button { shower.pageEventShowingPage(.reopen) } label: { row }.foregroundStyle(Theme.ink)
+        default:
+            NavigationLink { destination(page) } label: { row }
+        }
+    }
+
+    private func destination(_ page: SettingsLink) -> some View {
+        pageView(page).navOpen(page.debugPage, from:.settings)
+    }
+
+    @ViewBuilder private func pageView(_ page: SettingsLink) -> some View {
+        switch page {
+        case .account: account
+        case .dorm: CampusOnboardingView()
+        case .meter: if sample.isActive, let preview { SamplePowerPage(data:preview) } else { CampusPowerSetupView() }
+        case .hotWater: ShowerDetail(preview:sample.isActive ? preview : nil)
+        case .washer: WasherSetupView()
+        case .theme: themePage
+        }
+    }
+}

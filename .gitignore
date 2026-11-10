@@ -3,10 +3,12 @@ private/
 artifacts/
 .build/
 .swiftpm/
-.playwright-cli/
 output/
 build/
-CampusHotWater.xcodeproj/
+/.DerivedData/
+.build-tests/
+# Local signing override (see Configuration/Base.xcconfig)
+Configuration/Developer.xcconfig
 .DS_Store
 __pycache__/
 *.pyc
@@ -23,6 +25,7 @@ xcuserdata/
 *.mobileprovision
 *.p12
 *.ipa
+*.apk
 *.xcarchive
 *.xcresult
 *.log

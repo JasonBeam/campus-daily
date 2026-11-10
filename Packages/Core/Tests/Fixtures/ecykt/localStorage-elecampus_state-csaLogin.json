@@ -1,0 +1,42 @@
+{
+  "source": "localStorage['elecampus_state'] on https://ecykt.gdbtu.edu.cn after CAS -> portal getMyECard.pcUrl -> /ykt-view/authcsatoken",
+  "value": {
+    "logintoken": "REDACTED_TOKEN_2",
+    "device": null,
+    "custid": null,
+    "miniopenid": null,
+    "loginInfo": {
+      "syscustid": "TESTsyscustid0000000000000000000000000001%",
+      "isbind": 1,
+      "status": "1",
+      "token": "REDACTED_TOKEN_2",
+      "csa": 1
+    },
+    "schoolid": "450010",
+    "custInfo": {
+      "custid": "TESTcustid0000000000000000000000000000001%",
+      "custunionid": "TESTid00000000000000000000000001",
+      "custname": "测试员",
+      "idno": "************000000",
+      "specialtyname": null,
+      "deptfullname": null,
+      "gradename": null,
+      "classname": null,
+      "floorname": null,
+      "roomname": null,
+      "areaname": "星湖校区",
+      "headurl": "https://example.invalid/avatar",
+      "buildno": null,
+      "dormitoryno": null,
+      "feegradecode": null,
+      "gradecode": null
+    },
+    "miniInfo": null,
+    "wxauthurl": null,
+    "loginInfoFee": null
+  },
+  "_fixture": {
+    "capturedAt": "2026-10-30",
+    "redacted": true
+  }
+}

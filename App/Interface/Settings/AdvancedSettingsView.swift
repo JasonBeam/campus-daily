@@ -1,0 +1,243 @@
+import SwiftUI
+import UniformTypeIdentifiers
+import Core
+
+/// 高级 (清爽: 故障排查): config imports, Bluetooth connection check, Shortcuts hint, version (both in
+/// 暖橙 only), 导出热水诊断 (清爽 only), the debug log, reset.
+struct AdvancedSettingsView: View {
+    @Environment(ThemeStore.self) private var themeStore
+    @Environment(\.appTheme) private var appTheme
+    @Environment(SampleMode.self) private var sample
+    /// DEBUG demo data from the settings sheet; nil = live model. Keeps 「热水」 here in step with the main page.
+    var preview: HomeData? = nil
+    @EnvironmentObject private var shower: ShowerModel
+    @EnvironmentObject private var campus: CampusModel
+    @EnvironmentObject private var laundry: LaundryModel
+    @EnvironmentObject private var resetter: AppResetter
+    @Environment(\.campusServices) private var services
+    /// 「清空调试记录」 done: its footer says so.
+    @State private var debugLogCleared = false
+    /// The row as the log stands (`DebugLogClearRow`), read on appear and after a clear.
+    @State private var debugLogRow: DebugLogClearRow?
+    /// 「导出调试记录」 as the log stands, read with `debugLogRow`.
+    @State private var debugLogExportRow: DebugLogExportRow?
+    /// The log is on (TestFlight), once launch knows (`LaunchDebugLog`).
+    @State private var debugLogShown = false
+    @State private var confirmDebugLogClear = false
+    @State private var confirmReset = false
+    @State private var resetIssue: String?
+    /// Set when a lock stopped the reset (nothing was cleared).
+    @State private var resetBlocked: AppReset.Stop?
+    @State private var importing = false
+    /// 导出热水诊断 couldn't write or share the file.
+    @State private var diagnosticFailed = false
+    /// Last import failure, shown under the import rows (the models' own issue lines live elsewhere).
+    @State private var importIssue: String?
+    private func importRow(_ title: String) -> some View {
+        Button {
+            if sample.isActive { sample.perform(.importShowerProfile) {}; return }
+            if preview == nil { importing = true }
+        } label: { ChevronRow(title:title) }
+    }
+    /// Why reset is not offered now (DEBUG demo data, or the live shower).
+    private var resetLock: AppReset.Lock? { preview != nil ? preview?.resetLock : AppResetter.lock(shower:shower, laundry:laundry) }
+
+    /// 重置校日常: its own group at the end; locked, the footer gives the reason.
+    private var resetSection: some View {
+        let lock = resetLock
+        return Section {
+            Button("重置校日常", role:.destructive) {
+                // The sample has nothing of its own to clear, and must not clear what is stored.
+                if sample.isActive { sample.perform(.resetApp) {}; return }
+                resetIssue = nil; confirmReset = true
+            }
+                .frame(maxWidth:.infinity)
+                .disabled(lock != nil || resetter.running)
+                .accessibilityHint("会清掉登录、宿舍和记录")
+                .accessibilityIdentifier("resetApp")
+        } footer: {
+            VStack(alignment:.leading, spacing:6) {
+                if let resetIssue {
+                    Label(resetIssue, systemImage:"exclamationmark.circle").foregroundStyle(Theme.ink2)
+                }
+                if let lock { Text(ResetLockText.text(lock)) }
+                else { Text("清掉登录、宿舍和所有记录，回到刚装好的样子。") }
+            }
+        }.listRowBackground(Theme.group)
+    }
+
+    /// TestFlight only, once launch knows (the sample's log is `NoDebugLog`, an App Store install's is off). Both rows
+    /// are off when there is nothing in the log; export goes straight to the share sheet, clear asks first.
+    private var debugLogSection: some View {
+        let row = debugLogRow ?? DebugLogClearRow(log:services.debugLog, cleared:debugLogCleared)
+        let exportRow = debugLogExportRow ?? DebugLogExportRow(log:services.debugLog)
+        return Section {
+            Button(DebugLogExportRow.title) { exportDebugLog() }
+                .frame(maxWidth:.infinity)
+                .disabled(exportRow.disabled)
+                .accessibilityLabel(exportRow.accessibilityLabel)
+                .accessibilityIdentifier("exportDebugLog")
+                // Centred titles: the line between the two rows runs the full width.
+                .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
+            Button(DebugLogClearRow.title, role:.destructive) { confirmDebugLogClear = true }
+                .frame(maxWidth:.infinity)
+                .disabled(row.disabled)
+                .accessibilityLabel(row.accessibilityLabel)
+                .accessibilityIdentifier("clearDebugLog")
+                .confirmationDialog(DebugLogClearRow.confirmTitle, isPresented:$confirmDebugLogClear, titleVisibility:.visible) {
+                    Button(DebugLogClearRow.confirmButton, role:.destructive) {
+                        services.debugLog.clear()
+                        debugLogCleared = true
+                        refreshDebugLogRows()
+                    }
+                    Button(DebugLogClearRow.cancelButton, role:.cancel) {}
+                }
+        } footer: {
+            VStack(alignment:.leading, spacing:6) {
+                if row.cleared { Text(DebugLogClearRow.clearedLine).accessibilityIdentifier("debugLogCleared") }
+                Text(DebugLogClearRow.footer)
+            }
+        }
+        .listRowBackground(Theme.group)
+        .onAppear { refreshDebugLogRows() }
+    }
+
+    private func refreshDebugLogRows() {
+        debugLogRow = DebugLogClearRow(log:services.debugLog, cleared:debugLogCleared)
+        debugLogExportRow = DebugLogExportRow(log:services.debugLog)
+    }
+
+    /// The whole log as a text file, handed to the share sheet; the file goes when the sheet closes.
+    private func exportDebugLog() {
+        let temporary = FileManager.default.temporaryDirectory
+        guard let file = DebugLogExportRow.file(from:services.debugLog, in:temporary) else {
+            refreshDebugLogRows()
+            return
+        }
+        let folder = DebugLogExportRow.folder(in:temporary)
+        if !FileShareSheet.present(file, closed:{ DebugLogExport.remove(in:folder) }) {
+            DebugLogExport.remove(in:folder)
+        }
+    }
+
+    private func importSection(header: LocalizedStringKey, footer: LocalizedStringKey) -> some View {
+        Section {
+            importRow("导入热水配置").disabled(preview == nil && !shower.mayImportProfile)
+        } header: { Text(header) } footer: {
+            VStack(alignment:.leading, spacing:6) {
+                if let importIssue {
+                    Label(importIssue, systemImage:"exclamationmark.circle").foregroundStyle(Theme.ink2)
+                        .accessibilityIdentifier("importIssue")
+                }
+                Text(footer)
+            }
+        }.listRowBackground(Theme.group)
+    }
+
+    /// 清爽's 导出热水诊断: reads the saved record only, nothing is sent to the controller.
+    private var diagnosticsSection: some View {
+        Section {
+            Button { exportDiagnostics() } label: { ChevronRow(title:ShowerDiagnosticReport.title) }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("exportShowerDiagnostics")
+        } footer: {
+            Text(ShowerDiagnosticReport.footer)
+        }.listRowBackground(Theme.group)
+    }
+
+    private func exportDiagnostics() {
+        if sample.isActive { sample.perform(.checkController) {}; return }
+        let bundle = Bundle.main
+        let bound = preview.map { $0.shower != .unconfigured } ?? shower.configured
+        let state: ShowerState? = preview != nil ? ShowerState() : (shower.recordUnreadable ? nil : shower.state)
+        let text = ShowerDiagnosticReport.text(version:bundle.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String,
+                                               build:bundle.object(forInfoDictionaryKey:"CFBundleVersion") as? String,
+                                               now:Date(), timeZone:.current, bound:bound, state:state)
+        let folder = ShowerDiagnosticReport.directory(in:FileManager.default.temporaryDirectory)
+        guard let file = ShowerDiagnosticReport.write(text, into:folder) else { diagnosticFailed = true; return }
+        if !FileShareSheet.present(file, closed:{ ShowerDiagnosticReport.remove(in:folder) }) {
+            ShowerDiagnosticReport.remove(in:folder)
+            diagnosticFailed = true
+        }
+    }
+
+    private func runReset() {
+        #if DEBUG
+        if preview != nil { resetter.finishDemo(); return }
+        #endif
+        guard preview == nil else { return }
+        Task {
+            do { resetBlocked = try await resetter.reset(campus:campus, shower:shower, laundry:laundry, theme:themeStore) }
+            catch { resetIssue = AppErrorText.text(error) }
+        }
+    }
+
+    var body: some View {
+        List {
+            if appTheme == .clear {
+                // 清爽's 故障排查: the checks first, then the export, then the manual config.
+                ShowerTroubleshootingSections(preview:preview)
+                diagnosticsSection
+                importSection(header:"手动配置", footer:"通常使用账号与设备设置即可。有未确认交易时，请先核对官方记录，保留本机数据。")
+            } else {
+                importSection(header:"导入配置", footer:"一般不用导入。有没结算的记录时，别卸载 App，也别换配置。")
+                ShowerTroubleshootingSections(preview:preview)
+                ShortcutsSection()
+                Section {
+                    VersionRow()
+                }.listRowBackground(Theme.group)
+            }
+            if debugLogShown || services.debugLog.isEnabled { debugLogSection }
+            resetSection
+        }
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .background(Theme.bg.ignoresSafeArea())
+        .navigationTitle(appTheme == .clear ? "故障排查" : "高级").navigationBarTitleDisplayMode(.inline)
+        .alert(ShowerDiagnosticReport.failed, isPresented:$diagnosticFailed) { Button("知道了", role:.cancel) {} }
+        .task {
+            await services.debugLog.waitUntilResolved()
+            debugLogShown = services.debugLog.isEnabled
+        }
+        .alert("重置校日常？", isPresented:$confirmReset) {
+            Button("取消", role:.cancel) {}
+            Button("重置", role:.destructive) { runReset() }
+        } message: {
+            Text("会清掉学校账号和保存的密码、宿舍和电表、记住的水控、U净 登录、洗澡和洗衣记录、小组件上的数字，还有导入的热水配置，主题也会回到暖橙。学校那边的余额和消费记录不受影响。")
+        }
+        .alert(ResetLockText.blockedTitle(resetBlocked), isPresented:Binding(get:{ resetBlocked != nil }, set:{ if !$0 { resetBlocked = nil } })) {
+            Button("好", role:.cancel) {}
+        } message: {
+            Text(resetBlocked.map(ResetLockText.blockedMessage) ?? "")
+        }
+        .fileImporter(isPresented:$importing, allowedContentTypes:[.json, .data]) { result in
+            importIssue = nil
+            do {
+                let url = try result.get()
+                try shower.importConfig(url)
+            } catch {
+                if (error as? CocoaError)?.code == .userCancelled { return }
+                importIssue = (error as? LocalizedError)?.errorDescription ?? "这个文件导入不了，确认是热水配置文件再试。"
+                shower.show(error)
+            }
+        }
+    }
+}
+
+/// Footer of 重置校日常 for the two newer lock reasons.
+enum ResetLockText {
+    static func text(_ lock: AppReset.Lock) -> String {
+        switch lock {
+        case .showering: return "正在洗澡，结束并结算以后再重置。"
+        case .laundry: return "洗衣还有一笔没处理完，处理完再重置。"
+        case .recordsUnreadable: return "洗澡或洗衣记录现在读不出来，重启 App 以后再重置。"
+        case .checkingController: return "正在核对水控，核对完再重置。"
+        }
+    }
+    /// After a reset that found a lock (just now, or resuming one at launch): nothing was touched,
+    /// or, when the lock turned up after the sign-out, only the school account and its password.
+    static func blockedTitle(_ stop: AppReset.Stop?) -> String { stop?.signedOut == true ? "重置停下了" : "没有重置" }
+    static func blockedMessage(_ stop: AppReset.Stop) -> String {
+        text(stop.lock) + (stop.signedOut ? "学校账号已经退出，存的密码也删了，别的都没清掉。" : "什么都没清掉。")
+    }
+}

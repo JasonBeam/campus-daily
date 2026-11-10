@@ -1,0 +1,30 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "https://phoenix.ujing.online/api/v1/orders/TESTORDER0001/detail?additional=price",
+    "headers": {
+      "Authorization": "Bearer REDACTED_TOKEN_SYNTHETIC",
+      "x-app-code": "BI",
+      "x-app-version": "2.4.18",
+      "x-mobile-id": "00000000-0000-4000-8000-000000000001",
+      "x-mobile-brand": "apple",
+      "User-Agent": "XiaoRiChang/test"
+    },
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "code": 30004,
+      "message": "订单不存在",
+      "data": null
+    }
+  },
+  "_fixture": {
+    "synthetic": true,
+    "note": "Synthetic reply shaped like the existing iOS/Android U净 code expects (no capture of it yet; to be checked on a device). All ids/phone/tokens are fake."
+  }
+}

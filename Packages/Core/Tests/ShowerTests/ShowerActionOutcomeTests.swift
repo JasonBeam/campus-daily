@@ -1,0 +1,85 @@
+import XCTest
+@testable import Core
+import CoreTestSupport
+
+/// What Siri, Shortcuts and the Live Activity say after 开始洗澡 / 结束并结算: the real reason a
+/// start or an end did not go through, and an unconfirmed start is not called confirmed.
+final class ShowerActionOutcomeTests: XCTestCase {
+    func failed(_ reason: ShowerFailureReason, review: Bool = false, device: ShowerDeviceError? = nil) -> ShowerState {
+        var s = ShowerState(phase: .failed)
+        s.failure = ShowerFailure(reason: reason, needsReview: review, deviceError: device)
+        return s
+    }
+
+    func testAStartSaysWhetherTheControllerConfirmed() {
+        XCTAssertEqual(ShowerActionOutcome.after(start: true, ShowerState(phase: .running), notice: nil), .success(.started))
+        XCTAssertEqual(ShowerActionOutcome.after(start: true, ShowerState(phase: .writePending), notice: nil), .success(.startUnconfirmed))
+        XCTAssertNotEqual(ShowerActionOutcome.startedText, ShowerActionOutcome.startUnconfirmedText)
+        XCTAssertTrue(ShowerActionOutcome.startUnconfirmedText.contains(ShowerDisplay.writeUnconfirmedHint))
+    }
+
+    func testAFailedStartCarriesItsReason() {
+        XCTAssertEqual(ShowerActionOutcome.after(start: true, failed(.deviceBusy), notice: nil),
+                       .failure(ShowerActionFailure("水控正在使用中。")))
+        XCTAssertEqual(ShowerActionOutcome.after(start: true, failed(.deviceUnavailable, device: .bluetoothOff), notice: nil),
+                       .failure(ShowerActionFailure("蓝牙没开，打开后再试。")), "the device's own reason first")
+        XCTAssertEqual(ShowerActionOutcome.after(start: true, failed(.deviceUnavailable), notice: nil),
+                       .failure(ShowerActionFailure("没连上水控，靠近一点再试。")))
+        XCTAssertEqual(ShowerActionOutcome.after(start: true, failed(.authorizeUncertain, review: true), notice: nil),
+                       .failure(ShowerActionFailure("水没开。打开校日常再试一次。")))
+        XCTAssertEqual(ShowerActionOutcome.after(start: true, failed(.authorizationInvalid, review: true), notice: nil),
+                       .failure(ShowerActionFailure("水没开。打开校日常再试一次。")))
+    }
+
+    /// The platform turned the start down (4002, -301): nothing was issued and it gave no words.
+    func testADefiniteRefusalSaysTheSchoolDidNotLetTheWaterRun() {
+        XCTAssertEqual(ShowerActionOutcome.after(start: true, failed(.authorizeRefused), notice: nil),
+                       .failure(ShowerActionFailure("学校没让开水，打开校日常看看。")))
+        XCTAssertEqual(ShowerDisplay.failureTitle(ShowerFailure(reason: .authorizeRefused, needsReview: false)), "水没开成")
+    }
+
+    func testAnEndSettlesOrSaysWhy() {
+        XCTAssertEqual(ShowerActionOutcome.after(start: false, ShowerState(phase: .done), notice: nil), .success(.settled))
+        // Back on the timer: the close was not sent.
+        XCTAssertEqual(ShowerActionOutcome.after(start: false, ShowerState(phase: .running), notice: "水控没回应，靠近一点再试。"),
+                       .failure(ShowerActionFailure("水控没回应，靠近一点再试。")))
+        XCTAssertEqual(ShowerActionOutcome.after(start: false, ShowerState(phase: .running), notice: nil),
+                       .failure(ShowerActionFailure(ShowerActionOutcome.endNotSentText)))
+        // The settlement got no answer: the shower is over and the school settles it.
+        XCTAssertEqual(ShowerActionOutcome.after(start: false, failed(.settleUncertain, review: true), notice: nil),
+                       .failure(ShowerActionFailure("上一次洗好了，学校会自己扣费。")))
+    }
+
+    /// A start turned down for the check of an unclear authorize doesn't call it a settlement.
+    func testABlockedStartSaysWhatWaits() {
+        var unclear = ShowerFailure(reason: .authorizeUncertain, needsReview: true, error: .rejected(.lxt6, code: "1", message: "余额不足"))
+        XCTAssertEqual(ShowerActionFailure.blockedText(unclear), "水没开。学校提示：余额不足。打开校日常再试一次。")
+        unclear.error = .uncertain(.lxt6)
+        XCTAssertEqual(ShowerActionFailure.blockedText(unclear), "水没开。打开校日常再试一次。")
+        XCTAssertEqual(ShowerActionFailure.blockedText(ShowerFailure(reason: .settleUncertain, needsReview: true)),
+                       ShowerActionFailure(.blocked).message)
+        XCTAssertEqual(ShowerActionFailure.blockedText(nil), ShowerActionFailure(.blocked).message)
+    }
+
+    /// The engine itself refused the start (the record changed in another process after the
+    /// app's own check): the same words as the app's refusal, from the record that blocks it.
+    func testABlockedStartFromTheEngineSaysWhatWaits() {
+        let unclear = ShowerFailure(reason: .authorizeUncertain, needsReview: true, error: .rejected(.lxt6, code: "1", message: "余额不足"))
+        XCTAssertEqual(ShowerActionFailure.thrown(ShowerEngineError.blocked, failure: unclear, other: { _ in "其他" }).message,
+                       "水没开。学校提示：余额不足。打开校日常再试一次。")
+        XCTAssertEqual(ShowerActionFailure.thrown(ShowerEngineError.blocked, failure: nil, other: { _ in "其他" }).message, ShowerActionFailure(.blocked).message)
+        XCTAssertEqual(ShowerActionFailure.thrown(ShowerEngineError.busy, failure: unclear, other: { _ in "其他" }).message, ShowerActionFailure(.busy).message)
+        XCTAssertEqual(ShowerActionFailure.thrown(ShowerDeviceError.bluetoothOff, failure: nil, other: { _ in "其他" }).message, ShowerDeviceError.bluetoothOff.userText)
+        XCTAssertEqual(ShowerActionFailure.thrown(ShowerActionFailure("x"), failure: unclear, other: { _ in "其他" }).message, "x")
+        XCTAssertEqual(ShowerActionFailure.thrown(CocoaError(.fileReadUnknown), failure: nil, other: { _ in "其他" }).message, "其他")
+    }
+
+    func testEngineRefusalsSayWhatToDo() {
+        let all: [ShowerEngineError] = [.busy, .blocked, .notAllowed, .wrongBinding, .storage, .unreadableRecord, .platformMissing]
+        let texts = all.map { ShowerActionFailure($0).message }
+        XCTAssertEqual(Set(texts).count, all.count, "each its own text")
+        XCTAssertFalse(texts.contains(""))
+        XCTAssertEqual(ShowerActionFailure(.platformMissing).message, ShowerActionFailure.platformMissingText)
+        XCTAssertEqual(ShowerActionFailure("x").errorDescription, "x")
+    }
+}

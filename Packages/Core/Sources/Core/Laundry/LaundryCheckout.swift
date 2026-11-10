@@ -1,0 +1,711 @@
+import Foundation
+
+// Laundry order state machine (architecture §3.2). Pure: `LaundryEngine` persists the state a
+// transition returns *before* running its effects, so create / pay / cancel are each guarded
+// by a stored "this may have happened" record. Nothing that can cost money is retried
+// automatically.
+
+public enum LaundryPhase: String, Sendable, Codable, CaseIterable {
+    /// No order in progress.
+    case none
+    /// Persisted right before `orders/create` leaves.
+    case creating
+    /// Create outcome unknown: look for the account's unfinished order, never create again.
+    case reconcile
+    /// Order exists (normally unpaid).
+    case created
+    /// Persisted right before `payment/arguments`; then the Alipay app is opened.
+    case paying
+    /// Back from Alipay (or no launch needed): polling the order.
+    case verifying
+    /// Paid: waiting to start / starting / washing.
+    case active
+    /// Cancel requested (pre-check read, then one POST, then reads).
+    case cancelling
+    /// Order 52 (machine didn't start): kept until the user acknowledges it.
+    case attention
+}
+
+/// The machine + program the user confirmed.
+public struct LaundryDraft: Sendable, Equatable, Codable {
+    public var deviceID: String
+    public var qrCode: String
+    /// `deviceNo` for display.
+    public var machineName: String
+    public var program: WasherProgram
+    public var request: OrderRequest
+    public init(deviceID: String, qrCode: String, machineName: String, program: WasherProgram, request: OrderRequest) {
+        self.deviceID = deviceID; self.qrCode = qrCode; self.machineName = machineName; self.program = program; self.request = request
+    }
+
+    /// Builds the draft from a fresh, orderable snapshot whose program list still contains
+    /// `program` at the same price. Nil = re-read the machine ("机器或价格变了").
+    public static func make(_ s: WasherSnapshot, program: WasherProgram, now: Date) -> LaundryDraft? {
+        let age = now.timeIntervalSince(s.fetchedAt)
+        guard s.isOrderable, age >= 0, age < WasherSnapshot.maxOrderAge,
+              s.info.deviceID == s.scan.deviceID,
+              let listed = s.info.programs.first(where: { $0.id == program.id }), listed == program,
+              let store = s.info.storeID, let type = s.info.deviceTypeID else { return nil }
+        return LaundryDraft(deviceID: s.deviceID, qrCode: s.qrCode, machineName: s.info.deviceNo, program: program,
+                            request: OrderRequest(deviceID: s.deviceID, deviceTypeID: type, storeID: store, programID: program.id))
+    }
+}
+
+/// The last finished order (shown for a while after the record is cleared).
+public struct LaundryOutcome: Sendable, Equatable, Codable {
+    public var orderID: String
+    public var status: LaundryOrderStatus
+    public var at: Date
+    public init(orderID: String, status: LaundryOrderStatus, at: Date) { self.orderID = orderID; self.status = status; self.at = at }
+}
+
+/// Shown once; the phase itself is unchanged unless the transition says otherwise.
+public enum LaundryNotice: Sendable, Codable, Equatable {
+    /// U净 said no (create/pay/cancel/read), in its own words.
+    case refused(ServiceError)
+    /// A read failed; the record is kept.
+    case readFailed(ServiceError)
+    /// The login is gone: sign in again, the record is kept.
+    case sessionExpired
+    /// Machine or price changed before create: re-read.
+    case washerChanged
+    /// U净's order amount is above the confirmed price: payment blocked.
+    case priceChanged
+    /// The order read back is not ours (other machine/program/id).
+    case orderMismatch
+    /// Reconcile found no unfinished order on this machine.
+    case orderNotFound
+    /// No usable Alipay channel for this order.
+    case noPayChannel
+    /// The payment reply failed the launch check: nothing opened.
+    case launchRefused(PaymentLaunchRefusal)
+    /// The Alipay app did not open.
+    case launchFailed
+    /// Polling ended with the order still unpaid.
+    case paymentNotConfirmed
+    /// Polling ended without seeing the cancellation.
+    case cancelUnconfirmed
+    /// The order is already paid/running: cancel not possible.
+    case cancelNotAllowed
+}
+
+/// Keychain `laundry.checkout` (one record at a time).
+public struct LaundryCheckout: Sendable, Equatable, Codable {
+    public var phase: LaundryPhase
+    public var draft: LaundryDraft?
+    /// Local time the create was confirmed.
+    public var createdAt: Date?
+    public var orderID: String?
+    public var order: LaundryOrder?
+    public var orderReadAt: Date?
+    /// Reconcile: the unfinished order U净 reported for this machine, being checked.
+    public var candidateOrderID: String?
+    /// Set (and persisted) right before `payment/arguments` leaves.
+    public var paymentRequestedAt: Date?
+    /// First tap of a re-pay; the second confirmation requests payment again.
+    public var repayArmed: Bool
+    /// Persisted right before `orders/{id}/cancel` leaves.
+    public var cancelSent: Bool
+    /// Polling step in `verifying` / `cancelling`.
+    public var pollAttempt: Int
+    public var lastOutcome: LaundryOutcome?
+    public var notice: LaundryNotice?
+    /// The U净 account (`UjingAccount.id`) the order was placed with. Nil in records written before it was kept.
+    public var accountID: String?
+    /// First read that showed the order paid.
+    public var paidAt: Date?
+    /// Paid but not washing with a known end since this read (`LaundryFollowUp`); nil once a washing read gives the end.
+    public var waitingSince: Date?
+    /// 立刻洗衣: the user asked, at confirmation, for the app to start the machine after payment.
+    /// Old records decode as false.
+    public var immediate: Bool
+    /// 立刻洗衣's start attempt; once set, `control/start` is never sent again.
+    public var start: LaundryStart?
+    /// The pre-start read is running (not stored).
+    public var checkingStart: Bool
+    /// Step of the reads that follow a start request (not stored; nil = none running).
+    public var startPollAttempt: Int?
+
+    public init(phase: LaundryPhase = .none, draft: LaundryDraft? = nil, createdAt: Date? = nil, orderID: String? = nil,
+                order: LaundryOrder? = nil, orderReadAt: Date? = nil, candidateOrderID: String? = nil,
+                paymentRequestedAt: Date? = nil, repayArmed: Bool = false, cancelSent: Bool = false, pollAttempt: Int = 0,
+                lastOutcome: LaundryOutcome? = nil, notice: LaundryNotice? = nil, accountID: String? = nil,
+                paidAt: Date? = nil, waitingSince: Date? = nil, immediate: Bool = false, start: LaundryStart? = nil) {
+        self.phase = phase; self.draft = draft; self.createdAt = createdAt; self.orderID = orderID; self.order = order
+        self.orderReadAt = orderReadAt; self.candidateOrderID = candidateOrderID; self.paymentRequestedAt = paymentRequestedAt
+        self.repayArmed = repayArmed; self.cancelSent = cancelSent; self.pollAttempt = pollAttempt
+        self.lastOutcome = lastOutcome; self.notice = notice; self.accountID = accountID
+        self.paidAt = paidAt; self.waitingSince = waitingSince
+        self.immediate = immediate; self.start = start; self.checkingStart = false; self.startPollAttempt = nil
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(phase: try c.decode(LaundryPhase.self, forKey: .phase),
+                  draft: try c.decodeIfPresent(LaundryDraft.self, forKey: .draft),
+                  createdAt: try c.decodeIfPresent(Date.self, forKey: .createdAt),
+                  orderID: try c.decodeIfPresent(String.self, forKey: .orderID),
+                  order: try c.decodeIfPresent(LaundryOrder.self, forKey: .order),
+                  orderReadAt: try c.decodeIfPresent(Date.self, forKey: .orderReadAt),
+                  candidateOrderID: try c.decodeIfPresent(String.self, forKey: .candidateOrderID),
+                  paymentRequestedAt: try c.decodeIfPresent(Date.self, forKey: .paymentRequestedAt),
+                  repayArmed: try c.decode(Bool.self, forKey: .repayArmed),
+                  cancelSent: try c.decode(Bool.self, forKey: .cancelSent),
+                  pollAttempt: try c.decode(Int.self, forKey: .pollAttempt),
+                  lastOutcome: try c.decodeIfPresent(LaundryOutcome.self, forKey: .lastOutcome),
+                  notice: try c.decodeIfPresent(LaundryNotice.self, forKey: .notice),
+                  accountID: try c.decodeIfPresent(String.self, forKey: .accountID),
+                  paidAt: try c.decodeIfPresent(Date.self, forKey: .paidAt),
+                  waitingSince: try c.decodeIfPresent(Date.self, forKey: .waitingSince),
+                  immediate: try c.decodeIfPresent(Bool.self, forKey: .immediate) ?? false,
+                  start: try c.decodeIfPresent(LaundryStart.self, forKey: .start))
+    }
+
+    public static let empty = LaundryCheckout()
+
+    /// Poll delays (seconds) after returning from Alipay / after a cancel: ≈ 1 minute in total.
+    public static let pollDelays: [TimeInterval] = [2, 4, 8, 15, 15, 15]
+    /// No re-pay within this many seconds of the last payment request.
+    public static let repayWindow: TimeInterval = 120
+    /// A re-pay needs an unpaid read at most this old.
+    public static let repayReadMaxAge: TimeInterval = 300
+    /// Reconcile adopts an order created within this many seconds of our confirmation.
+    public static let adoptWindow: TimeInterval = 120
+    /// 立刻洗衣 starts only this long after the order was confirmed.
+    public static let startWindow: TimeInterval = 600
+
+    /// A new order may be confirmed.
+    public var canCreate: Bool { phase == .none }
+
+    /// The order price is known and not above what the user confirmed.
+    public var priceAccepted: Bool {
+        guard let price = order?.price, let confirmed = draft?.program.price else { return false }
+        return price.fen > 0 && price <= confirmed
+    }
+
+    /// First payment of an unpaid order.
+    public var canPay: Bool {
+        phase == .created && order?.isUnpaid == true && priceAccepted && paymentRequestedAt == nil
+    }
+
+    /// Paying again: unpaid at the confirmed price, the last request ≥ 2 min ago, and a read
+    /// taken after that window that is still recent.
+    public func canRepay(at now: Date) -> Bool {
+        guard phase == .created, order?.isUnpaid == true, priceAccepted,
+              let requested = paymentRequestedAt, let read = orderReadAt else { return false }
+        return now.timeIntervalSince(requested) >= Self.repayWindow
+            && read.timeIntervalSince(requested) >= Self.repayWindow
+            && now.timeIntervalSince(read) >= 0 && now.timeIntervalSince(read) < Self.repayReadMaxAge
+    }
+
+    /// Cancel only an unpaid 10/17 order.
+    public var canCancel: Bool { phase == .created && order?.isUnpaid == true }
+
+    /// `reconcile` can be cleared by the user after checking the U净 app, only once the last
+    /// lookup found no order on the machine. The notice isn't stored, so after a relaunch a
+    /// fresh lookup comes first.
+    public var canResolveManually: Bool { phase == .reconcile && notice == .orderNotFound }
+
+    /// Whether signing in to U净 as `id` may replace the stored login (`stored`, the account id
+    /// saved on this phone). With an order open only the account that placed it may sign in again
+    /// (an expired login is renewed, the order stays readable); another account is refused.
+    public func allowsLogin(as id: String, stored: String?) -> Bool {
+        guard phase != .none else { return true }
+        guard let owner = accountID ?? stored else { return false }
+        return owner == id
+    }
+
+    /// Whether the last order's outcome and the last-order note go when the U净 account on this
+    /// phone changes: signed out (`signedInAs` nil), or signed in as an account other than the
+    /// one saved before (`stored`). They belong to the old account; the same account signing in
+    /// again (its login ran out) keeps them. An open order is never cleared.
+    public static func clearsLastOrder(record: LaundryCheckout?, signedInAs new: String?, stored: String?) -> Bool {
+        guard (record?.phase ?? LaundryPhase.none) == LaundryPhase.none else { return false }
+        guard let new else { return true }
+        return new != stored
+    }
+
+    /// What goes to the Keychain (no one-shot notice / arming).
+    public var persistable: LaundryCheckout {
+        var c = self
+        c.notice = nil
+        c.repayArmed = false
+        c.checkingStart = false
+        c.startPollAttempt = nil
+        return c
+    }
+
+    func cleared(outcome: LaundryOutcome?) -> LaundryCheckout {
+        LaundryCheckout(lastOutcome: outcome ?? lastOutcome)
+    }
+}
+
+public enum LaundryEvent: Sendable, Equatable {
+    /// The user confirmed machine, program and price, signed in as `account` (`UjingAccount.id`).
+    case confirm(LaundryDraft, at: Date, account: String? = nil, immediate: Bool = false)
+    case created(orderID: String)
+    case createFailed(ServiceError)
+    /// `scanWasherCode` during reconcile: the account's unfinished order on the machine.
+    case activeOrderFound(String?)
+    case activeOrderLookupFailed(ServiceError)
+    case orderRead(LaundryOrder, at: Date)
+    case orderReadFailed(ServiceError)
+    /// 付款 (first payment, confirmed in the sheet).
+    case pay
+    case requestRepay(at: Date)
+    case confirmRepay(at: Date)
+    case paymentMethods([PayChannel], at: Date)
+    case paymentMethodsFailed(ServiceError)
+    case paymentArguments(PaymentArguments)
+    case paymentFailed(ServiceError)
+    /// The launcher reported whether Alipay opened.
+    case launched(Bool)
+    /// The app came back to the foreground after the Alipay launch.
+    case returnedFromPayment
+    case cancel
+    case cancelAcknowledged
+    case cancelFailed(ServiceError)
+    /// Pull to refresh / app foreground.
+    case refresh
+    /// A guarded request was cancelled after its record was persisted but before it left.
+    case cancelledBeforeSend
+    case acknowledge
+    case resolveManually
+    /// 立刻洗衣's pre-start read.
+    case startCheckRead(LaundryStartCheck, at: Date)
+    case startCheckFailed(ServiceError)
+    /// `control/start` answered without an error.
+    case startSent(at: Date)
+    /// `control/start` failed (after it was handed to the network).
+    case startFailed(ServiceError, at: Date)
+    /// The app is not in front (or the task was cancelled): nothing was sent.
+    case startNotNow
+    /// The engine won't start this order (another account): nothing was sent.
+    case startBlocked(LaundryStartBlock)
+}
+
+public enum LaundryEffect: Sendable, Equatable {
+    case create(OrderRequest)
+    /// Read the order after `after` seconds → `.orderRead`/`.orderReadFailed`.
+    case readOrder(id: String, after: TimeInterval)
+    /// `scanWasherCode` → `.activeOrderFound`/`.activeOrderLookupFailed`.
+    case findActiveOrder(qrCode: String, deviceID: String)
+    case loadPaymentMethods(orderID: String)
+    case requestPaymentArguments(orderID: String, channel: PayChannel)
+    /// Open Alipay (checked launch) → `.launched`.
+    case launch(PayLaunch)
+    case cancelOrder(id: String)
+    /// 立刻洗衣's pre-start read, only while the app is in front → `.startCheckRead`/`.startCheckFailed`/`.startNotNow`.
+    case readStartCheck(id: String)
+    /// `control/start`, only while the app is in front → `.startSent`/`.startFailed`/`.startNotNow`.
+    case startWasher(id: String)
+}
+
+public enum LaundryReducer {
+    public static func isDefiniteRefusal(_ e: ServiceError) -> Bool {
+        switch e {
+        case .rejected, .badRequest, .sessionExpired: return true
+        default: return false
+        }
+    }
+
+    static func notice(for e: ServiceError, read: Bool) -> LaundryNotice {
+        if e.isSessionExpired { return .sessionExpired }
+        if case .rejected = e { return .refused(e) }
+        return read ? .readFailed(e) : .refused(e)
+    }
+
+    public static func reduce(_ state: LaundryCheckout, _ event: LaundryEvent) -> (LaundryCheckout, [LaundryEffect]) {
+        var s = state
+        s.notice = nil
+        s.checkingStart = false
+        switch (state.phase, event) {
+
+        // MARK: create
+        case (.none, .confirm(let draft, let at, let account, let immediate)):
+            let n = LaundryCheckout(phase: .creating, draft: draft, createdAt: at, lastOutcome: state.lastOutcome, accountID: account,
+                                    immediate: immediate)
+            return (n, [.create(draft.request)])
+
+        case (.creating, .created(let id)):
+            guard UjingInput.isOrderID(id) else {
+                s.phase = .reconcile
+                return (s, findActive(s))
+            }
+            s.phase = .created
+            s.orderID = id
+            return (s, [.readOrder(id: id, after: 0)])
+
+        case (.creating, .createFailed(let e)):
+            if isDefiniteRefusal(e) {
+                var n = state.cleared(outcome: nil)
+                n.notice = notice(for: e, read: false)
+                return (n, [])
+            }
+            s.phase = .reconcile
+            return (s, findActive(s))
+
+        case (.creating, .cancelledBeforeSend):
+            return (state.cleared(outcome: nil), [])
+
+        // MARK: reconcile
+        case (.reconcile, .refresh):
+            return (s, findActive(s))
+
+        case (.reconcile, .activeOrderFound(let id)):
+            guard let id, UjingInput.isOrderID(id) else {
+                s.notice = .orderNotFound
+                return (s, [])
+            }
+            s.candidateOrderID = id
+            return (s, [.readOrder(id: id, after: 0)])
+
+        case (.reconcile, .activeOrderLookupFailed(let e)), (.reconcile, .orderReadFailed(let e)):
+            s.notice = notice(for: e, read: true)
+            return (s, [])
+
+        case (.reconcile, .orderRead(let order, let at)):
+            guard let candidate = state.candidateOrderID, order.id == candidate, belongs(order, state),
+                  adoptable(order, state) else {
+                s.candidateOrderID = nil
+                s.notice = .orderMismatch
+                return (s, [])
+            }
+            s.orderID = candidate
+            s.candidateOrderID = nil
+            s.phase = .created
+            return apply(order, at: at, to: s)
+
+        case (.reconcile, .resolveManually) where state.canResolveManually:
+            return (state.cleared(outcome: nil), [])
+
+        // MARK: reads in order phases
+        case (.created, .orderRead(let order, let at)), (.active, .orderRead(let order, let at)),
+             (.verifying, .orderRead(let order, let at)), (.cancelling, .orderRead(let order, let at)):
+            guard order.id == state.orderID, belongs(order, state) else {
+                s.notice = .orderMismatch
+                return continueStartPoll(s, [])
+            }
+            let (n, effects) = apply(order, at: at, to: s)
+            return continueStartPoll(n, effects)
+
+        case (.created, .orderReadFailed(let e)), (.active, .orderReadFailed(let e)):
+            s.notice = notice(for: e, read: true)
+            if e.isSessionExpired { s.startPollAttempt = nil; return (s, []) }
+            return continueStartPoll(s, [])
+
+        case (.verifying, .orderReadFailed(let e)), (.cancelling, .orderReadFailed(let e)):
+            if e.isSessionExpired {
+                s.notice = .sessionExpired
+                return (s, [])
+            }
+            if state.phase == .cancelling && !state.cancelSent {
+                s.phase = .created
+                s.notice = notice(for: e, read: true)
+                return (s, [])
+            }
+            return poll(s, exhausted: state.phase == .verifying ? .paymentNotConfirmed : .cancelUnconfirmed)
+
+        case (.created, .refresh), (.active, .refresh):
+            guard let id = state.orderID else { return (state, []) }
+            s.startPollAttempt = nil
+            if state.phase == .active, state.wantsStartCheck {
+                s.checkingStart = true
+                return (s, [.readStartCheck(id: id)])
+            }
+            return (s, [.readOrder(id: id, after: 0)])
+
+        // MARK: 立刻洗衣
+        case (.active, .startCheckRead(let check, let at)):
+            return startCheckRead(check, at: at, state: s)
+
+        case (.active, .startCheckFailed(let e)):
+            s.notice = notice(for: e, read: true)
+            return (s, [])
+
+        case (.active, .startNotNow):
+            if case .sent? = state.start { s.start = nil }
+            return (s, [])
+
+        case (.active, .startBlocked(let reason)):
+            if state.start == nil { s.start = .blocked(reason) }
+            else if case .sent? = state.start { s.start = .blocked(reason) }
+            return (s, [])
+
+        case (.active, .startSent(let at)):
+            guard case .sent? = state.start else { return (s, []) }
+            s.start = .accepted(at: at)
+            return startPoll(s)
+
+        case (.active, .startFailed(let e, let at)):
+            guard case .sent? = state.start else { return (s, []) }
+            if case .rejected(_, _, let message) = e { s.start = .refused(message: message, at: at) }
+            else { s.start = .pending(at: at) }
+            return startPoll(s)
+
+        case (.verifying, .refresh), (.cancelling, .refresh):
+            guard let id = state.orderID, state.phase == .verifying || state.cancelSent else { return (state, []) }
+            s.pollAttempt = 0
+            return (s, [.readOrder(id: id, after: 0)])
+
+        // MARK: pay
+        case (.created, .pay) where state.canPay:
+            guard let id = state.orderID else { return (state, []) }
+            return (s, [.loadPaymentMethods(orderID: id)])
+
+        case (.created, .requestRepay(let at)) where state.canRepay(at: at):
+            s.repayArmed = true
+            return (s, [])
+
+        case (.created, .confirmRepay(let at)) where state.repayArmed && state.canRepay(at: at):
+            guard let id = state.orderID else { return (state, []) }
+            return (s, [.loadPaymentMethods(orderID: id)])
+
+        case (.created, .paymentMethods(let channels, let at)) where state.canPay || (state.repayArmed && state.canRepay(at: at)):
+            guard let id = state.orderID else { return (state, []) }
+            s.repayArmed = false
+            guard let channel = PayChannel.preferred(channels) else {
+                s.notice = .noPayChannel
+                return (s, [])
+            }
+            s.phase = .paying
+            s.paymentRequestedAt = at
+            return (s, [.requestPaymentArguments(orderID: id, channel: channel)])
+
+        case (.created, .paymentMethodsFailed(let e)):
+            s.repayArmed = false
+            s.notice = notice(for: e, read: true)
+            return (s, [])
+
+        case (.paying, .paymentArguments(let args)):
+            do {
+                let launch = try PaymentLaunchPolicy.launch(for: args, orderAmount: state.order?.price)
+                if launch == .query { return verify(s) }
+                return (s, [.launch(launch)])
+            } catch {
+                let refusal = (error as? PaymentLaunchRefusal) ?? .unavailable
+                s.phase = .created
+                s.notice = .launchRefused(refusal)
+                return (s, [])
+            }
+
+        case (.paying, .paymentFailed(let e)):
+            if isDefiniteRefusal(e) {
+                s.phase = .created
+                s.notice = notice(for: e, read: false)
+                return (s, [])
+            }
+            // May have been charged (skipPay paths): read the order.
+            return verify(s)
+
+        case (.paying, .cancelledBeforeSend):
+            // The arguments request never left: nothing requested.
+            s.phase = .created
+            s.paymentRequestedAt = nil
+            return (s, [])
+
+        case (.paying, .launched(let opened)):
+            if opened { return (s, []) }
+            s.phase = .created
+            s.notice = .launchFailed
+            return (s, [])
+
+        case (.paying, .returnedFromPayment), (.paying, .refresh):
+            return verify(s)
+
+        // MARK: cancel
+        case (.created, .cancel) where state.canCancel:
+            guard let id = state.orderID else { return (state, []) }
+            s.phase = .cancelling
+            s.cancelSent = false
+            s.pollAttempt = 0
+            // Fresh read first; the POST goes only if it is still unpaid.
+            return (s, [.readOrder(id: id, after: 0)])
+
+        case (.cancelling, .cancelAcknowledged):
+            guard let id = state.orderID else { return (state, []) }
+            s.pollAttempt = 0
+            return (s, [.readOrder(id: id, after: 0)])
+
+        case (.cancelling, .cancelFailed(let e)):
+            if isDefiniteRefusal(e) {
+                s.phase = .created
+                s.cancelSent = false
+                s.notice = notice(for: e, read: false)
+                return (s, [])
+            }
+            guard let id = state.orderID else { return (state, []) }
+            s.pollAttempt = 0
+            return (s, [.readOrder(id: id, after: LaundryCheckout.pollDelays[0])])
+
+        case (.cancelling, .cancelledBeforeSend) where state.cancelSent:
+            s.phase = .created
+            s.cancelSent = false
+            return (s, [])
+
+        // MARK: leaving
+        case (.attention, .acknowledge):
+            return (state.cleared(outcome: state.orderID.flatMap { id in state.order.map { LaundryOutcome(orderID: id, status: $0.status, at: state.orderReadAt ?? Date.distantPast) } }), [])
+
+        default:
+            return (state, [])
+        }
+    }
+
+    /// Relaunch: what a persisted record means now. Nothing is re-sent automatically.
+    public static func restore(_ persisted: LaundryCheckout?) -> LaundryCheckout {
+        guard var s = persisted else { return .empty }
+        s.notice = nil
+        s.repayArmed = false
+        s.checkingStart = false
+        s.startPollAttempt = nil
+        switch s.phase {
+        case .none, .reconcile, .created, .active, .attention, .verifying:
+            return s
+        case .creating:
+            // The create may have reached U净.
+            s.phase = .reconcile
+            return s
+        case .paying:
+            // Arguments requested; Alipay may have been used.
+            s.phase = .verifying
+            s.pollAttempt = 0
+            return s
+        case .cancelling:
+            if !s.cancelSent { s.phase = .created }
+            return s
+        }
+    }
+
+    // MARK: helpers
+
+    static func findActive(_ s: LaundryCheckout) -> [LaundryEffect] {
+        guard let d = s.draft else { return [] }
+        return [.findActiveOrder(qrCode: d.qrCode, deviceID: d.deviceID)]
+    }
+
+    static func belongs(_ order: LaundryOrder, _ s: LaundryCheckout) -> Bool {
+        guard let d = s.draft else { return false }
+        return order.deviceID == d.deviceID && order.programID == d.program.id
+    }
+
+    /// Reconcile adopts only an order created around our confirmation at no more than the confirmed price.
+    static func adoptable(_ order: LaundryOrder, _ s: LaundryCheckout) -> Bool {
+        guard let created = order.createdAt.flatMap(parseDate), let local = s.createdAt,
+              abs(created.timeIntervalSince(local)) < LaundryCheckout.adoptWindow else { return false }
+        if let price = order.price, let confirmed = s.draft?.program.price, price > confirmed { return false }
+        return true
+    }
+
+    /// `createAt`: ISO 8601 with an offset (all the captured replies), or a time without one,
+    /// `yyyy-MM-dd HH:mm:ss` or `yyyy-MM-ddTHH:mm:ss`, read as Beijing time (U净's servers are in
+    /// China); a format we can't read never matches.
+    static func parseDate(_ text: String) -> Date? {
+        let f = ISO8601DateFormatter()
+        if let d = f.date(from: text) { return d }
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let d = f.date(from: text) { return d }
+        guard text.range(of: #"^[0-9]{4}-[0-9]{2}-[0-9]{2}[ T][0-9]{2}:[0-9]{2}:[0-9]{2}$"#, options: .regularExpression) != nil else { return nil }
+        let plain = DateFormatter()
+        plain.calendar = Calendar(identifier: .gregorian)
+        plain.locale = Locale(identifier: "en_US_POSIX")
+        plain.timeZone = TimeZone(identifier: "Asia/Shanghai")
+        plain.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        plain.isLenient = false
+        return plain.date(from: text.replacingOccurrences(of: "T", with: " "))
+    }
+
+    static func verify(_ state: LaundryCheckout) -> (LaundryCheckout, [LaundryEffect]) {
+        var s = state
+        guard let id = s.orderID else { return (s, []) }
+        s.phase = .verifying
+        s.pollAttempt = 0
+        return (s, [.readOrder(id: id, after: LaundryCheckout.pollDelays[0])])
+    }
+
+    /// Next poll step, or stop with `exhausted` (verifying → back to created).
+    static func poll(_ state: LaundryCheckout, exhausted: LaundryNotice) -> (LaundryCheckout, [LaundryEffect]) {
+        var s = state
+        guard let id = s.orderID else { return (s, []) }
+        s.pollAttempt += 1
+        if s.pollAttempt < LaundryCheckout.pollDelays.count {
+            return (s, [.readOrder(id: id, after: LaundryCheckout.pollDelays[s.pollAttempt])])
+        }
+        if s.phase == .verifying { s.phase = .created }
+        s.notice = exhausted
+        return (s, [])
+    }
+
+    /// Applies a matching order read to the current phase.
+    /// `checkStart`: a paid 立刻洗衣 order asks for the pre-start read (not when this read is that one).
+    static func apply(_ order: LaundryOrder, at: Date, to state: LaundryCheckout,
+                      checkStart: Bool = true) -> (LaundryCheckout, [LaundryEffect]) {
+        var s = state
+        s.order = order
+        s.orderReadAt = at
+        let id = s.orderID ?? order.id
+
+        if order.status.isTerminal {
+            if order.status.isFailedStart {
+                s.phase = .attention
+                s.cancelSent = false
+                return (s, [])
+            }
+            return (s.cleared(outcome: LaundryOutcome(orderID: id, status: order.status, at: at)), [])
+        }
+
+        if !order.isUnpaid {
+            // Paid / starting / washing (or a status we don't know: no pay, no cancel).
+            let wasCancelling = s.phase == .cancelling
+            s.phase = .active
+            s.cancelSent = false
+            if wasCancelling { s.notice = .cancelNotAllowed }
+            if s.paidAt == nil { s.paidAt = at }
+            if order.status.isWashing, let left = order.remainSeconds, left > 0 { s.waitingSince = nil }
+            else if s.waitingSince == nil { s.waitingSince = at }
+            if order.status.isWashing, s.start?.requestedAt != nil { s.start = .started }
+            return checkStart ? startIfDue(s, at: at) : (s, [])
+        }
+
+        // Unpaid (10/17).
+        switch s.phase {
+        case .verifying:
+            return poll(s, exhausted: .paymentNotConfirmed)
+        case .cancelling:
+            if !s.cancelSent {
+                s.cancelSent = true
+                return (s, [.cancelOrder(id: id)])
+            }
+            return poll(s, exhausted: .cancelUnconfirmed)
+        default:
+            s.phase = .created
+            if let price = order.price, let confirmed = s.draft?.program.price, price > confirmed { s.notice = .priceChanged }
+            return (s, [])
+        }
+    }
+}
+
+// MARK: - Presentation
+
+public struct LaundryDisplay: Sendable, Equatable {
+    public var title: String
+    public var hint: String?
+    /// 立刻洗衣's line on the order card (nil for normal orders).
+    public var startLine: LaundryStartLine?
+    public init(_ c: LaundryCheckout) {
+        hint = nil
+        startLine = LaundryStartLine.make(c)
+        switch c.phase {
+        case .none: title = "空闲"
+        case .creating: title = "正在下单…"
+        case .reconcile: title = "核对中"; hint = "还没确认订单结果。先刷新核对，别重复下单或付款。"
+        case .created: title = c.order?.status.label ?? "已预约"
+            if c.notice == .priceChanged { hint = "价格变了，刷新一下" }
+        case .paying: title = "正在打开支付宝…"
+        case .verifying: title = "正在核对付款…"
+        case .active: title = c.order?.status.label ?? "已付款"
+        case .cancelling: title = "正在取消…"
+        case .attention: title = "机器没启动"; hint = "去 U净 的订单里看看有没有扣款。"
+        }
+    }
+}

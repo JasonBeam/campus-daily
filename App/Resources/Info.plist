@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>AppGroupIdentifier</key>
+	<string>group.$(APP_BUNDLE_IDENTIFIER)</string>
+	<key>KeychainGroupIdentifier</key>
+	<string>$(APP_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>$(PRODUCT_BUNDLE_IDENTIFIER).alipay</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>$(PRODUCT_BUNDLE_IDENTIFIER).alipay</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>$(PRODUCT_BUNDLE_IDENTIFIER).navigation</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>campusdaily</string>
+			</array>
+		</dict>
+	</array>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>alipay</string>
+		<string>alipays</string>
+		<string>alipayqr</string>
+	</array>
+	<key>UIAppFonts</key>
+	<array>
+		<string>Fonts/Doto[ROND,wght].ttf</string>
+		<string>Fonts/SpaceGrotesk[wght].ttf</string>
+		<string>Fonts/SpaceMono-Regular.ttf</string>
+	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+	</array>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>$(APP_BUNDLE_IDENTIFIER).refresh</string>
+	</array>
+	<key>FeedbackEndpoint</key>
+	<string>$(FEEDBACK_ENDPOINT)</string>
+	<key>FeedbackAppKey</key>
+	<string>$(FEEDBACK_APP_KEY)</string>
+	<key>FeedbackCrashEndpoint</key>
+	<string>$(FEEDBACK_CRASH_ENDPOINT)</string>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
+</dict>
+</plist>
