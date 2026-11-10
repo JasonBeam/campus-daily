@@ -136,7 +136,7 @@ run = 'python3 Scripts/package-ipa.py --app "$APP" --output "$OUTPUT" --platform
 
 [tasks.android]
 description = "Build, unit-test and lint the Android app"
-run = 'bash Android/build-android.sh -PcampusWaterProfile="$PWD/private/distribution/WaterPlatformProfile.json"'
+run = 'bash tools/build-android.sh -PcampusWaterProfile="$PWD/private/distribution/WaterPlatformProfile.json"'
 
 [tasks.clean]
 description = "Remove derived data and SwiftPM build output"

@@ -1,8 +1,9 @@
 # 校日常 — architecture
 
 How the iOS code is organised and why. Endpoint details (params, envelopes, raw shapes) are in
-Appendix A; the Android app in `Android/` is a separate Gradle project that only shares the
-school-login script.
+Appendix A; the Android app in `platforms/android/` is a separate Gradle project, kept exactly as the author
+has it; it reads its own copy of the school-login script from `Shared/CampusLoginAutomation.js`
+(excluded from the App and Widget targets) and `tools/stage_platform_profile.py`.
 
 Ground rules: the BLE frame format and the `wxcode`/MD5 signing are kept byte for byte; any
 change to signing, BLE commands or school/U净 response parsing goes in its own commit with its

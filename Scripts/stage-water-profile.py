@@ -11,7 +11,8 @@
 
   stage-water-profile.py stage --profile <json> --output <file>
       Validate an explicitly supplied platform-only profile and write it to
-      <file> (the Xcode build phase and the Android build call this).
+      <file> (the Xcode build phase calls this; the Android build uses
+      tools/stage_platform_profile.py).
       Personal data is rejected.
 """
 import argparse

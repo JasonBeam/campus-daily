@@ -42,7 +42,7 @@ public struct CampusLoginProgress: Equatable, Sendable {
         }
     }
 
-    /// Automation stage names (Shared/CampusLoginAutomation.js) → shown stage.
+    /// Automation stage names (App/Services/CampusWebLogin/CampusLoginAutomation.js) → shown stage.
     public static func stage(automation: String) -> Stage? {
         switch automation {
         case "portal-profile", "waiting-profile", "waiting-portal": return .signingIn

@@ -99,6 +99,20 @@
 			);
 			target = C0DA00120000000000000000 /* Widget */;
 		};
+		C0DA00F00000000000000000 /* Exceptions for "Shared" folder in "App" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				CampusLoginAutomation.js,
+			);
+			target = C0DA00110000000000000000 /* App */;
+		};
+		C0DA00F10000000000000000 /* Exceptions for "Shared" folder in "Widget" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				CampusLoginAutomation.js,
+			);
+			target = C0DA00120000000000000000 /* Widget */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -112,6 +126,10 @@
 		};
 		C0DA00090000000000000000 /* Shared */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				C0DA00F00000000000000000 /* Exceptions for "Shared" folder in "App" target */,
+				C0DA00F10000000000000000 /* Exceptions for "Shared" folder in "Widget" target */,
+			);
 			path = Shared;
 			sourceTree = "<group>";
 		};

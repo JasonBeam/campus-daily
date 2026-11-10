@@ -44,7 +44,7 @@
 - Redesign the first-run guide: one layout on every step, four page dots, and 不用 on the laundry question continues to the dorm.
 - Redesign the home screen: the date, the card balance and electricity as two numbers (昨天花了 / 够用约 N 天 underneath, red when running low), an update line, one shower button, the 洗衣 row and 最近. The hero sentence and the bottom dock are gone.
 - Read the balance and electricity without waiting for the card records; the records get 6 seconds and arrive in a second write.
-- Reorganize the repository by feature: `App/` (Application, Interface, Services, Resources), `Shared/`, `Widget/`, one `Packages/Core` package, `Android/`, `Configuration/`, `Scripts/`. The Xcode project is committed (`XiaoRiChang.xcworkspace`), and routine commands run through `mise`.
+- Reorganize the repository by feature: `App/` (Application, Interface, Services, Resources), `Shared/`, `Widget/`, one `Packages/Core` package, `Configuration/`, `Scripts/`; the Android app stays in `platforms/android/` with its scripts in `tools/`. The Xcode project is committed (`XiaoRiChang.xcworkspace`), and routine commands run through `mise`.
 - Name the hot-water feature "Shower" throughout the code. User-facing text is unchanged.
 - Fold the release notes from `docs/release-*.md` into this file.
 - Move the screenshots, flow demos, social images and Android previews from `docs/screenshots`, `docs/media`, `docs/social`, `docs/social-0.7.0.md` and `docs/previews` to `docs/media/0.7.0/` and `docs/media/android-0.2.0-alpha12/`, one folder per version.
@@ -128,8 +128,7 @@
 ### Removed
 
 - Remove 「导出热水诊断」 (Settings › 高级 › 热水排查) and every diagnostic record behind it: the hot-water event file, the school credential-lifetime lines in the shared Keychain and the Bluetooth scan note. The app deletes what older builds left at launch.
-- Remove 「导出热水诊断」 from the Android app too, with its event file and file provider; a file an older build left is deleted at launch.
-- Remove the self-hosted hot-water access service (`services/access`), its client in the iOS app and its preparation script. The Android app in `Android/` still contains its client and is unchanged. Hot-water platform parameters now come only from the bundled `CampusWaterPlatform.json` or a user import. Users who were connected only through the access service see the "platform missing" message and need a build with the bundled parameters or an import.
+- Remove the self-hosted hot-water access service (`services/access`), its client in the iOS app and its preparation script. The Android app in `platforms/android/` still contains its client and is unchanged. Hot-water platform parameters now come only from the bundled `CampusWaterPlatform.json` or a user import. Users who were connected only through the access service see the "platform missing" message and need a build with the bundled parameters or an import.
 - Remove the process documents and the old project generator; their history stays in Git.
 
 ## [0.9.0] - 2026-11-04
@@ -313,7 +312,7 @@ Beta 1 的旧安装包已停止公开下载。请前往 [Beta 2 下载页](https
 
 20 项单元测试、23 个模拟器截图场景及导航切换通过；Lint 零错误，APK v1/v2 签名验证通过。模拟器验证不代表真实校园登录、蓝牙开关水、结算、洗衣支付已经在安卓实机通过。
 
-[配置教程](https://github.com/JasonBeam/campus-daily/blob/v0.7.0/docs/configuration.md) · [AI 上手教程](https://github.com/JasonBeam/campus-daily/blob/v0.7.0/docs/ai-guide.md) · [Android 说明](https://github.com/JasonBeam/campus-daily/blob/main/Android/README.md)
+[配置教程](https://github.com/JasonBeam/campus-daily/blob/v0.7.0/docs/configuration.md) · [AI 上手教程](https://github.com/JasonBeam/campus-daily/blob/v0.7.0/docs/ai-guide.md) · [Android 说明](https://github.com/JasonBeam/campus-daily/blob/main/platforms/android/README.md)
 
 请保护自己的账号和配置，不要公开上传令牌、设备二维码或个人数据。
 

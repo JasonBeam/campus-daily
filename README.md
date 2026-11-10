@@ -64,7 +64,7 @@ mise run check         # 维护者提交前跑：同样的步骤，隐私扫描�
 | `Shared/` | App 和小组件共用的界面：小组件、灵动岛、主题 |
 | `Widget/` | 小组件和灵动岛扩展 |
 | `Packages/Core/` | 不含界面的逻辑：学校、热水、洗衣、最新数据、网络、存储，以及全部逻辑测试和合成样本 |
-| `Android/` | Android Gradle 工程（`bash Android/build-android.sh`） |
+| `platforms/android/` | Android Gradle 工程，保持作者原样（`bash tools/build-android.sh`，或 `mise android`；构建时读 `Shared/CampusLoginAutomation.js` 和 `tools/stage_platform_profile.py`） |
 | `Configuration/` | xcconfig：显示名、包名、团队、版本号 |
 | `Scripts/` | 构建、打包和隐私检查脚本，通过 `mise` 调用 |
 
