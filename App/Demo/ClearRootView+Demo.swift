@@ -22,6 +22,7 @@ extension ClearRootView {
         if let kind = LaundryActivityPreview.handle(url) { activityPreview = kind; return }
         activityPreview = nil
         if LaundryActivityController.handleDemo(url) { return }
+        HomeView.ShowerPageDemo.apply(nil, to:shower)
         let name = url.lastPathComponent
         let normal = HomeDemo.normal.content().0
         if url.host == "demo", name == "login-loading" {
@@ -69,6 +70,17 @@ extension ClearRootView {
             freshPush(.powerSetup)
             return
         }
+        if url.host == "demo", name == "orders-kept" {
+            // 订单 on the synthetic list with three kept showers, scrolled to their section.
+            navigator.setup = nil; navigator.panel = nil; navigator.laundryDemo = nil
+            navigator.demo = normal
+            navigator.recordsDemo = .list
+            recordsDemoRun += 1
+            shower.demoRetained = HomeView.ShowerPageDemo.retained()
+            popAll(from:.deepLink)
+            navigator.showRetained(from:.deepLink)
+            return
+        }
         if url.host == "demo", name == "permission" {
             navigator.setup = nil; popAll(from:.deepLink)
             navigator.demo = normal
@@ -111,6 +123,7 @@ extension ClearRootView {
             if record.phase == .running, let start = record.startedAt { navigator.demo?.shower = .showering(start) }
             if record.showerOver { navigator.demo?.shower = .stopped }
             shower.showDemoPage(record)
+            HomeView.ShowerPageDemo.apply(name, to:shower)
             if name == "sh-endfail" { shower.page.endFailed = .noConnection }
             if name == "sh-stopped-busy-rechecking" { shower.page.rechecking = true }
             if name.hasPrefix("sh-detail") {

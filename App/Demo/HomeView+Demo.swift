@@ -20,6 +20,7 @@ extension HomeView {
             if let kind = LaundryActivityPreview.handle(url) { activityPreview = kind; return }
             activityPreview = nil
             if LaundryActivityController.handleDemo(url) { return }
+            ShowerPageDemo.apply(nil, to:shower)
             if url.host == "demo", url.lastPathComponent == "login-loading" {
                 onboarding = nil; settings = false; path = []
                 demo = HomeDemo.normal.content().0
@@ -121,6 +122,7 @@ extension HomeView {
                 if record.phase == .running, let start = record.startedAt { demo?.shower = .showering(start) }
                 if record.showerOver { demo?.shower = .stopped }
                 shower.showDemoPage(record)
+                ShowerPageDemo.apply(url.lastPathComponent, to:shower)
                 if url.lastPathComponent == "sh-endfail" { shower.page.endFailed = .noConnection }
                 if url.lastPathComponent == "sh-stopped-busy-rechecking" { shower.page.rechecking = true }
                 if url.lastPathComponent.hasPrefix("sh-detail") {
@@ -155,9 +157,33 @@ extension HomeView {
     /// unsure (a settlement without an answer: the same stopped page), stopped-busy (the next
     /// start found the controller in use), stopped-busy-rechecking (再查一次 running), and
     /// detail-stopped (the 热水洗澡 screen over the stopped record).
+    /// Also sh-denied-final (the refused face without its retry), and sh-detail-kept /
+    /// sh-detail-kept-list (热水洗澡 ready, with three synthetic kept showers; -list opens 暖橙's
+    /// list over it).
     enum ShowerPageDemo {
         static func record(_ name: String, now: Date = Date()) -> ShowerState? {
-            SampleData.showerRecord(name, now:now)
+            switch name {
+            case "sh-denied-final": return SampleData.showerRecord("sh-denied", now:now)
+            case "sh-detail-kept", "sh-detail-kept-list": return .idle
+            default: return SampleData.showerRecord(name, now:now)
+            }
+        }
+
+        /// Three kept showers (fake controllers): two reasons, one that never started.
+        static func retained(now: Date = Date()) -> ShowerRetainedSummary {
+            ShowerRetainedSummary(entries:[
+                .init(started:now.addingTimeInterval(-26 * 3600), machine:"11223344", reason:.stopped),
+                .init(started:nil, machine:"11223344", reason:.authorizeUnclear),
+                .init(started:now.addingTimeInterval(-3 * 3600), machine:"AABBCCDD", reason:.closeUnconfirmed),
+            ])
+        }
+
+        /// The demo knobs on the model, for this page demo (and cleared for any other).
+        @MainActor static func apply(_ name: String?, to shower: ShowerModel) {
+            shower.demoDeniedFinal = name == "sh-denied-final"
+            let kept = name?.hasPrefix("sh-detail-kept") == true
+            shower.demoRetained = kept ? retained() : nil
+            shower.demoRetainedListOpen = name == "sh-detail-kept-list"
         }
     }
 

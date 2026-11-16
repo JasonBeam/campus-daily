@@ -103,7 +103,7 @@ struct ClearShowerPage: View {
     /// (or the way to set up hot water).
     @ViewBuilder private var extras: some View {
         if Self.showsLastUse(phase), let last = lastUse { ClearShowerLastCard(last:last) }
-        if live, flow.mayLeave, let retained = shower.retained {
+        if flow.mayLeave, let retained = shower.retainedShown(live:live) {
             ClearShowerRetainedLine(count:retained.count) { navigator.showRetained(from:.homeButton) }
         }
         if live, shower.recordUnreadable {

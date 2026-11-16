@@ -10,6 +10,9 @@ struct ShowerDetail: View {
     @EnvironmentObject private var shower: ShowerModel
     @EnvironmentObject private var campus: CampusModel
     @State private var confirmClear = false
+    #if DEBUG
+    @State private var demoListOpen = false
+    #endif
     var body: some View {
         ScrollView {
             VStack(alignment:.leading,spacing:24) {
@@ -53,7 +56,7 @@ struct ShowerDetail: View {
                         }
                     }.padding(18).background(NativeTheme.surface,in:RoundedRectangle(cornerRadius:16))
                 }
-                if preview == nil, let retained = shower.retained {
+                if preview == nil, let retained = shower.retainedShown(live:true) {
                     NavigationLink { ShowerRetainedList(summary:retained) } label: {
                         Text(ShowerRetainedText.Warm.line(count:retained.count)).font(.subheadline)
                             .multilineTextAlignment(.leading).fixedSize(horizontal:false,vertical:true)
@@ -98,6 +101,18 @@ struct ShowerDetail: View {
                         .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
                 }.padding(.horizontal,20).padding(.top,12).padding(.bottom,12).background(NativeTheme.background)
             }
+            #if DEBUG
+            // campusdaily://demo/sh-kept-list: the kept list pushed over this page.
+            .navigationDestination(isPresented:$demoListOpen) {
+                if let retained = shower.retainedShown(live:true) { ShowerRetainedList(summary:retained) }
+            }
+            .task {
+                guard shower.demoRetainedListOpen else { return }
+                shower.demoRetainedListOpen = false
+                try? await Task.sleep(for:.milliseconds(400))
+                demoListOpen = true
+            }
+            #endif
     }
 
     @ViewBuilder private var cost: some View {

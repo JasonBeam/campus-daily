@@ -66,7 +66,7 @@ struct LaundryDetail: View {
         .task {
             if let initial = demo?.sheet {
                 try? await Task.sleep(for:.milliseconds(450))
-                sheet = initial == .cancel ? .cancel : confirmSheet(facts, newOrder:true)
+                sheet = initial == .cancel ? .cancel : confirmSheet(facts, newOrder:initial == .confirm)
                 return
             }
             guard !isDemo else { return }

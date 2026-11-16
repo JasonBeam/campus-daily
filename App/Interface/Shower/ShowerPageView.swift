@@ -325,7 +325,7 @@ struct ShowerPageView: View {
             case .done:
                 capsule("好", background:Theme.pill, ink:Theme.pillInk) { shower.pageEvent(.closeTapped) }
             case .denied:
-                if flow.record.canStart {
+                if shower.deniedRetryable {
                     // Nothing was issued: try again here, as after a failed connect.
                     capsule("再试一次", background:Theme.pill, ink:Theme.pillInk, enabled:!flow.starting) { shower.pageEvent(.retryTapped) }
                     textButton("好") { shower.pageEvent(.closeTapped) }

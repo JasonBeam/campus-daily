@@ -60,7 +60,7 @@ struct ClearLaundryPage: View {
         .task {
             if let initial = navigator.laundryDemo?.sheet {
                 try? await Task.sleep(for:.milliseconds(450))
-                sheet = initial == .cancel ? .cancel : confirmSheet(self.facts, newOrder:true)
+                sheet = initial == .cancel ? .cancel : confirmSheet(self.facts, newOrder:initial == .confirm)
                 return
             }
             guard !isDemo else { return }

@@ -90,6 +90,14 @@ enum ShowerProfileFiles {
     @Published private(set) var recordUnreadable = false
     /// The showers a next use kept, read-only; nil when none are kept or they can't be read.
     @Published private(set) var retained: ShowerRetainedSummary?
+    #if DEBUG
+    /// campusdaily://demo/...-kept: synthetic kept showers the demo pages show instead.
+    @Published var demoRetained: ShowerRetainedSummary?
+    /// campusdaily://demo/sh-kept-list: 暖橙's 热水洗澡 opens its kept list once on appearing.
+    var demoRetainedListOpen = false
+    /// campusdaily://demo/sh-denied-final: the refused face without its retry.
+    @Published var demoDeniedFinal = false
+    #endif
     @Published private(set) var residenceReviewRequired: Bool
     @Published private(set) var verifiedDevice: VerifiedShowerDevice?
     @Published private(set) var inspectionStatus: String?
@@ -291,6 +299,22 @@ enum ShowerProfileFiles {
             activities?.sync(state:next)
             reminders.syncShower(started:reminderStart)
         }
+    }
+
+    /// The kept showers a page shows: the live model's, or nil on a demo page (DEBUG: a demo's).
+    func retainedShown(live: Bool) -> ShowerRetainedSummary? {
+        #if DEBUG
+        if let demoRetained { return demoRetained }
+        #endif
+        return live ? retained : nil
+    }
+
+    /// The refused face offers 开始洗澡 / 再试一次 in place: nothing was issued.
+    var deniedRetryable: Bool {
+        #if DEBUG
+        if demoDeniedFinal { return false }
+        #endif
+        return page.record.canStart
     }
 
     #if DEBUG

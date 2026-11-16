@@ -68,7 +68,7 @@ struct ClearShowerDock: View {
             case .settling?:
                 primary(ClearShowerText.busyButton, spinning:true, enabled:false) {}
                 note(ClearShowerText.endNote)
-            case .denied? where flow.record.canStart:
+            case .denied? where shower.deniedRetryable:
                 // Nothing was issued: start again here, as after a failed connect. The tap shows
                 // the starting look at once, without waiting for the page to move.
                 let face = Self.retryFace(tapped:retryTapped, starting:flow.starting)

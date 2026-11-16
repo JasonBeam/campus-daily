@@ -41,9 +41,9 @@ struct ClearRecordsTab: View {
         return LaundryFacts(model:laundry)
     }
 
-    /// The live model's kept showers; none on a demo (they are not the demo's).
+    /// The live model's kept showers; none on a demo (they are not the demo's) unless it has its own.
     private var retained: ShowerRetainedSummary? {
-        navigator.demo == nil && navigator.recordsDemo == nil ? shower.retained : nil
+        shower.retainedShown(live:navigator.demo == nil && navigator.recordsDemo == nil)
     }
 
     private func app(_ data: HomeData) -> [AppActivity] {

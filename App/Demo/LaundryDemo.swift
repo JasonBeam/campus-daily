@@ -7,13 +7,15 @@ import Core
 struct LaundryDemo {
     enum Kind: String {
         case idle, busy, unpaid, run, check, inuse, offline, broken, disabled, empty, done, confirm, cancel
+        /// An unpaid order with its pay sheet up (paying an order already placed).
+        case pay
         // 立刻洗衣 (fake records; nothing is started).
         case confirmNow = "confirm-now", nowUnpaid = "now-unpaid", nowReady = "now-ready", nowChecking = "now-checking"
         case nowSent = "now-sent", nowUncertain = "now-uncertain", nowUnsupported = "now-unsupported"
         case nowExpired = "now-expired", nowRefused = "now-refused"
         case nowAccount = "now-account", nowPrice = "now-price"
     }
-    enum InitialSheet { case confirm, cancel }
+    enum InitialSheet { case confirm, pay, cancel }
     var facts: LaundryFacts
     var sheet: InitialSheet?
     var panel: SettlementResult?
@@ -40,11 +42,12 @@ struct LaundryDemo {
         case .confirm: demo.sheet = .confirm
         case .busy:
             demo.facts.busy = true; demo.facts.mayCreate = false; demo.facts.progress = "正在打开支付宝…"
-        case .unpaid, .cancel:
+        case .unpaid, .cancel, .pay:
             demo.facts.snapshot = snapshot(status:11, active:"demo1")
             demo.facts.record = record(stage:.created, status:"10", paid:false, remain:nil, created:now.addingTimeInterval(-60), now:now)
             demo.facts.mayCreate = false; demo.facts.mayCancel = true
             if kind == .cancel { demo.sheet = .cancel }
+            if kind == .pay { demo.sheet = .pay }
         case .run:
             demo.facts.snapshot = snapshot(status:1, active:"demo1")
             demo.facts.record = record(stage:.active, status:"40", paid:true, remain:18 * 60 - 30,
