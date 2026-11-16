@@ -26,6 +26,14 @@ struct ClearShowerDock: View {
         tapped || starting ? (ClearShowerText.busyButton, true, false) : (ClearShowerText.deniedRetry, false, true)
     }
 
+    /// The one button of an answered face. Settled: 开始洗澡 with its arrow. Refused without a
+    /// retry: 好, centred and without an arrow, held where 开始洗澡 stands on the face that retries
+    /// (the slot of the 好 under it stays empty).
+    static func answerFace(_ phase: ShowerPagePhase) -> (title: String, symbol: String?, centered: Bool, holdsRetrySlot: Bool) {
+        let button = ClearShowerText.answerButton(phase == .done ? .done : .denied)
+        return button.leavesPage ? (button.title, nil, true, true) : (button.title, "arrow.up.right", false, false)
+    }
+
     var body: some View {
         VStack(spacing:10) {
             switch phase {
@@ -81,9 +89,11 @@ struct ClearShowerDock: View {
             case .done?, .denied?:
                 // Both send the same answer; settled stays on the page, which turns to its ready face.
                 let button = ClearShowerText.answerButton(phase == .done ? .done : .denied)
-                primary(button.title, symbol:button.leavesPage ? nil : "arrow.up.right", enabled:true) {
+                let face = Self.answerFace(phase == .done ? .done : .denied)
+                primary(face.title, symbol:face.symbol, centered:face.centered, enabled:true) {
                     if button.leavesPage { close(.closeTapped) } else { shower.pageEvent(.closeTapped) }
                 }
+                if face.holdsRetrySlot { secondary(ClearShowerText.deniedClose, enabled:false) {}.hidden() }
             case .connectFailed?:
                 primary(ClearShowerText.start, symbol:"arrow.up.right", enabled:!flow.starting) { shower.pageEvent(.retryTapped) }
                 secondary("取消", enabled:true) { close(.closeTapped) }
@@ -135,14 +145,15 @@ struct ClearShowerDock: View {
 
     // MARK: Pieces
 
-    private func primary(_ title: String, symbol: String? = nil, spinning: Bool = false, enabled: Bool,
+    private func primary(_ title: String, symbol: String? = nil, spinning: Bool = false, centered: Bool = false, enabled: Bool,
                          action: @escaping () -> Void) -> some View {
         Button(action:action) {
             HStack {
                 // Tinted by the style: white on blue, grey while disabled.
+                if centered { Spacer(minLength:0) }
                 if spinning { ProgressView().controlSize(.small) }
                 Text(title).contentTransition(.opacity)
-                Spacer()
+                Spacer(minLength:centered ? 0 : nil)
                 if let symbol { Image(systemName:symbol).accessibilityHidden(true) }
             }
             .padding(.horizontal,18).frame(minHeight:52)

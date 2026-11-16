@@ -18,8 +18,14 @@ enum ShowerPageText {
     static let connectFailedBody = "站近一点，确认蓝牙开着，再试一次。"
     static let denied = ShowerAuthorizeRefusedText.title
     static let deniedBody = "这次没扣钱。过一会儿再试，一直这样就去学校的热水记录里看看。"
+    /// Refused with no 再试一次 on the page.
+    static let deniedFinalBody = "学校没让开水。先去学校的热水记录里看看有没有没结束的单，处理完再来开。"
     static let inUse = ClearShowerText.inUseTitle
     static let inUseBody = "附近的水控有人在用，现在开不了水。等它空了再试。这次没扣钱。"
+    /// The refused face's line: in use, or refused with 再试一次 under it, or without.
+    static func refusedBody(inUse: Bool, retryable: Bool) -> String {
+        inUse ? inUseBody : retryable ? deniedBody : deniedFinalBody
+    }
     /// The ready layout's headline (the 热水洗澡 screen's).
     static let readyTitle = "准备洗澡"
     /// The shower is over (stopped on the controller, or kept with its outcome unknown): the product
@@ -231,13 +237,8 @@ struct ShowerPageView: View {
                 bodyText(ShowerPageText.connectFailedBody)
             case .denied:
                 icon("lock.slash", Theme.ink2)
-                if page?.denial == .inUse {
-                    title(ShowerPageText.inUse)
-                    bodyText(ShowerPageText.inUseBody)
-                } else {
-                    title(ShowerPageText.denied)
-                    bodyText(ShowerPageText.deniedBody)
-                }
+                title(page?.denial == .inUse ? ShowerPageText.inUse : ShowerPageText.denied)
+                bodyText(ShowerPageText.refusedBody(inUse:page?.denial == .inUse, retryable:shower.deniedRetryable))
             case .stopped:
                 if flow.foundInUse {
                     // The next start (or 再查一次) found water running: the in-use page.
