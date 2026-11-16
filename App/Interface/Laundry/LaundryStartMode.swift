@@ -8,6 +8,10 @@ enum LaundryStartCopy {
     static let normalNote = "付完款，照常到机器上启动。"
     static let immediate = "立刻洗衣"
     static let trial = "试用"
+    /// The second choice's label wherever it is one string (清爽's picker).
+    static let immediateLabel = immediate + "（" + trial + "）"
+    /// What VoiceOver reads for that choice.
+    static let immediateSpoken = immediate + "，" + trial
     /// The immediate note, split at its sentences (not a word changed).
     static let immediateNotes: [(symbol: String, text: String)] = [
         ("tshirt", "先放好衣服和洗衣液，关好门。"),
@@ -39,7 +43,7 @@ struct LaundryStartModePicker: View {
                 .accessibilityLabel(LaundryStartCopy.normal + "，" + LaundryStartCopy.normalNote.dropLast())
                 Hairline().padding(.leading,52)
                 row(title:LaundryStartCopy.immediate, note:nil, trial:true, selected:immediate) { immediate = true }
-                    .accessibilityLabel(LaundryStartCopy.immediate + "，" + LaundryStartCopy.trial)
+                    .accessibilityLabel(LaundryStartCopy.immediateSpoken)
                     .accessibilityIdentifier("laundryStartImmediate")
             }
             .background(groupFill, in:RoundedRectangle(cornerRadius:16, style:.continuous))

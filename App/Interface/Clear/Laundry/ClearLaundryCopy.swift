@@ -126,17 +126,6 @@ enum ClearLaundryCopy {
         [facts.machine.map(LaundryFormat.machine), facts.record?.programName].compactMap { $0 }.joined(separator:" · ")
     }
 
-    /// 「3 号机 · 4 栋洗衣房」 at the top of the pay sheet.
-    static func machineLine(_ facts: LaundryFacts) -> String {
-        [facts.machine.map(LaundryFormat.machine) ?? "这台洗衣机", facts.store].compactMap { $0 }.joined(separator:" · ")
-    }
-
-    /// 「标准洗 · 45 分钟」 for the order's program, or its name alone.
-    static func programLine(_ facts: LaundryFacts) -> String? {
-        if let program = facts.recordProgram { return LaundryFormat.program(program) }
-        return facts.record?.programName
-    }
-
     /// Error lines under the content, without one the page already shows. A finished order's
     /// own line says how it ended, so its note is not repeated.
     static func issues(_ facts: LaundryFacts, shown: String?) -> [String] {

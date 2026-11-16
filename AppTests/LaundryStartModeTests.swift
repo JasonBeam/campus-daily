@@ -18,6 +18,13 @@ final class LaundryStartModeTests: XCTestCase {
         XCTAssertTrue(ClearLaundryCopy.caution.hasSuffix(LaundryStartCopy.amountNote))
     }
 
+    /// The second choice says it is a trial, in its label and to VoiceOver.
+    func testImmediateLabelSaysTrial() {
+        XCTAssertEqual(LaundryStartCopy.immediateLabel, "立刻洗衣（试用）")
+        XCTAssertEqual(LaundryPayCopy.Clear.modes.last, LaundryStartCopy.immediateLabel)
+        XCTAssertEqual(LaundryStartCopy.immediateSpoken, "立刻洗衣，试用")
+    }
+
     func testTheLineIsSpokenInFullWithANoticePrefix() {
         let refused = LaundryStartLine(kind: .refused, text: "U净 没让启动：设备未关门", detail: "去 U净 App 里启动。")
         XCTAssertEqual(ImmediateStartLine.spoken(refused), "注意，U净 没让启动：设备未关门，去 U净 App 里启动。")

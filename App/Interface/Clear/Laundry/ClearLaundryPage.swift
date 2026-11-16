@@ -223,10 +223,8 @@ struct ClearLaundryPage: View {
     @ViewBuilder private func sheetView(_ item: LaundrySheet, facts: LaundryFacts) -> some View {
         switch item {
         case .confirm(let program, let newOrder):
-            ClearLaundryPaySheet(title:newOrder ? "下单并去支付宝付款？" : "去支付宝付款？",
-                                 machine:ClearLaundryCopy.machineLine(facts),
-                                 program:program.map(LaundryFormat.program) ?? ClearLaundryCopy.programLine(facts),
-                                 amount:program?.price.yuan ?? facts.amount, newOrder:newOrder,
+            ClearLaundryPaySheet(copy:LaundryPayCopy.Clear.sheet(facts, program:newOrder ? program : nil),
+                                 amount:program?.price.yuan ?? facts.amount,
                                  initialImmediate:navigator.laundryDemo?.immediate ?? false) { immediate in
                 sheet = nil
                 if newOrder, let program { submit(program, immediate:immediate) } else { payExisting() }

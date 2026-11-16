@@ -435,7 +435,7 @@ struct LaundryDetail: View {
         case .confirm(let program, let newOrder):
             let machine = facts.snapshot.map { LaundryFormat.machine($0.deviceNo) }
             let line = [machine, program.map(LaundryFormat.program) ?? programLine(facts)].compactMap { $0 }.joined(separator:" · ")
-            LaundryPaySheet(title:newOrder ? "下单并去支付宝付款？" : "去支付宝付款？", line:line,
+            LaundryPaySheet(title:newOrder ? LaundryPayCopy.Warm.newTitle : LaundryPayCopy.Warm.payTitle, line:line,
                             amount:program?.price.yuan ?? facts.amount, newOrder:newOrder,
                             initialImmediate:demo?.immediate ?? false) { immediate in
                 sheet = nil
@@ -637,13 +637,23 @@ private struct LaundryPaySheet: View {
         _immediate = State(initialValue:newOrder && initialImmediate)
     }
     var body: some View {
-        LaundrySheetBody(height:360, large:newOrder) {
+        LaundrySheetBody(height:420, large:newOrder) {
             Text(title).scaledFont(24, .bold, relativeTo:.title2).foregroundStyle(Theme.ink)
                 .fixedSize(horizontal:false, vertical:true)
+            if !newOrder {
+                Text(LaundryPayCopy.Warm.payNote).scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.ink2)
+                    .fixedSize(horizontal:false, vertical:true).padding(.top,8)
+            }
             Text(line).scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.ink2).padding(.top,14)
             if let amount {
-                Text(Theme.yuan(amount)).scaledFont(44, .semibold, design:appTheme.numberDesign, relativeTo:.largeTitle)
-                    .monospacedDigit().tracking(-1).foregroundStyle(Theme.ink).padding(.top,2)
+                VStack(alignment:.leading, spacing:0) {
+                    Text(LaundryPayCopy.Warm.amountLabel).scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
+                        .padding(.top,10)
+                    Text(Theme.yuan(amount)).scaledFont(44, .semibold, design:appTheme.numberDesign, relativeTo:.largeTitle)
+                        .monospacedDigit().tracking(-1).foregroundStyle(Theme.ink).padding(.top,2)
+                }
+                .accessibilityElement(children:.ignore)
+                .accessibilityLabel(LaundryPayCopy.Warm.amountLabel + "，" + LaundryFormat.spokenYuan(amount))
             }
             if newOrder {
                 LaundryStartModePicker(style:.warm, immediate:$immediate, disabled:submitted).padding(.top,24)
@@ -652,12 +662,12 @@ private struct LaundryPaySheet: View {
             Text(newOrder && immediate ? LaundryStartCopy.amountNote : ClearLaundryCopy.caution)
                 .scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.ink2).lineSpacing(4)
                 .fixedSize(horizontal:false, vertical:true).padding(.top,14)
-            Button { submitted = true; confirm(newOrder && immediate) } label: { DockPillLabel(title:"去付款") }
+            Button { submitted = true; confirm(newOrder && immediate) } label: { DockPillLabel(title:LaundryPayCopy.Warm.submit) }
                 .buttonStyle(PressScaleStyle()).disabled(submitted)
                 .padding(.top,24)
                 .accessibilityIdentifier("submitLaundryOrder")
             Button { dismiss() } label: {
-                Text("先不付").scaledFont(17, .medium).foregroundStyle(Theme.ink2)
+                Text(LaundryPayCopy.Warm.cancel).scaledFont(17, .medium).foregroundStyle(Theme.ink2)
                     .frame(maxWidth:.infinity).frame(minHeight:50).contentShape(Rectangle())
             }.buttonStyle(RowPressStyle())
         }

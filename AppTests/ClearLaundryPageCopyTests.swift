@@ -30,6 +30,45 @@ final class ClearLaundryPageCopyTests: XCTestCase {
         XCTAssertEqual(ClearLaundryCopy.uncertainNote, "结果未确认时请勿重复下单或付款，可在U净订单中核对。")
     }
 
+    /// The new-order sheet in 清爽: the review layout's words, as written for it.
+    func testNewOrderReviewWords() {
+        let demo = LaundryDemo.make(.confirm)
+        let program = LaundryDemo.programs[0]
+        let review = LaundryPayCopy.Clear.sheet(demo.facts, program:program)
+        XCTAssertEqual(review.title, "核对订单")
+        XCTAssertEqual(review.cancel, "取消")
+        XCTAssertEqual(review.submit, "下单并前往支付宝")
+        XCTAssertEqual(review.machine, "4 栋洗衣房 · 3号")
+        XCTAssertEqual(review.program, "\(program.name) · \(program.minutes)分钟")
+        XCTAssertEqual(review.note, "确认后将预约这台机器并前往支付宝。付款可能扣款并启动设备，请提前放好衣物，实际金额以收银台为准。")
+        XCTAssertTrue(review.asksMode)
+        XCTAssertEqual(LaundryPayCopy.Clear.amountLabel, "预计金额")
+        XCTAssertEqual(LaundryPayCopy.Clear.modes, ["正常洗衣", "立刻洗衣（试用）"])
+        XCTAssertEqual(LaundryPayCopy.Clear.immediateNote,
+                       "请先放好衣物、投放洗衣液并关紧门盖。付款后返回校日常，确认已付款且机器可启动后，会为本单发送一次启动指令。试用失败请到U净启动。")
+    }
+
+    /// Paying an order already placed: the same sheet, with the payment's own words.
+    func testExistingOrderPayPrompt() {
+        let pay = LaundryPayCopy.Clear.sheet(LaundryDemo.make(.unpaid).facts, program:nil)
+        XCTAssertEqual(pay.title, "确认支付宝付款")
+        XCTAssertEqual(pay.submit, "确认付款")
+        XCTAssertEqual(pay.cancel, "暂不付款")
+        XCTAssertEqual(pay.note, "付款可能扣款并启动这台洗衣机。请确认衣物已放好，实际金额以支付宝收银台为准。")
+        XCTAssertFalse(pay.asksMode, "the order keeps its own choice")
+        XCTAssertEqual(pay.machine, "4 栋洗衣房 · 3号")
+    }
+
+    /// 暖橙 keeps its own words; only the amount gets its label and an unpaid order its caution.
+    func testWarmPaySheetKeepsItsWords() {
+        XCTAssertEqual(LaundryPayCopy.Warm.newTitle, "下单并去支付宝付款？")
+        XCTAssertEqual(LaundryPayCopy.Warm.payTitle, "去支付宝付款？")
+        XCTAssertEqual(LaundryPayCopy.Warm.submit, "去付款")
+        XCTAssertEqual(LaundryPayCopy.Warm.cancel, "先不付")
+        XCTAssertEqual(LaundryPayCopy.Warm.amountLabel, "预计金额")
+        XCTAssertEqual(LaundryPayCopy.Warm.payNote, "付了款机器可能马上启动，先把衣服放好。")
+    }
+
     func testCountdowns() {
         XCTAssertEqual(ClearLaundryCopy.autoCancel(left:589), "09:49 后自动取消")
         XCTAssertEqual(ClearLaundryCopy.autoCancel(left:0), "等待服务器确认预约状态")
