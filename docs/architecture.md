@@ -564,7 +564,10 @@ Rules:
 
 - Any state but `idle`/`done` blocks `start`. Authorize: definite refusal (refused before
   sending, or 4002/-301) → `failed(needsReview: false)` (nothing issued); anything else, any
-  other platform code included → `failed(needsReview: true)`; never re-authorize.
+  other platform code included → `failed(needsReview: true)`; never re-authorize. The refused
+  face (`ShowerPagePhase.denied`) offers 「再试一次」 (清爽 「开始洗澡」, with 「好」 under it) in place
+  only when `record.canStart` (nothing was issued: `failed(needsReview: false)`), as after a
+  failed connect (`ShowerPageFlow.mayRetry`); otherwise it keeps its one 「好」.
 - `writePending` shows as running on purpose (the controller may have accepted without acking).
   `finish` from it: probe shows the device idle with our identity → the shower is over
   (`stateReviewRequired`, as from `running`: the write may have been applied with only its ack
@@ -573,16 +576,22 @@ Rules:
 - Close is sent only after the probe returns `0xA5`; otherwise keep the session, flag review.
   A close that never reached the controller (cancelled before the write, the link unusable, or
   the write refused) goes back to the timer, so 结束 sends it again. Only a close lost after the
-  write was taken is `failed(closeUnconfirmed)`: the shower is over (below). From there only
-  Settings › 高级 › 检查水控状态 (a read-only probe) can return it: `0xA5` returns to `running`
-  (the close can be sent again), anything else keeps the record as it is.
+  write was taken is `failed(closeUnconfirmed)`; a close the controller answered with `0xA5`
+  (still busy, no consumption) is `failed(closeBusy)`. Both are `isUnsureClose` and the shower
+  is over (below), on the stopped face: 清爽 「本次待核对」 with `ClearShowerText.stoppedBody`, or
+  `closeBusyBody` for `closeBusy`; 暖橙 「上一次洗好了」, or `ShowerAuthorText.closeBusyTitle`
+  「水控还没停」 for `closeBusy` (`ShowerPage.closeBusy`). Settings › 高级 › 检查水控状态 (a
+  read-only probe, `canReview`) over such a record only reports what it finds: `0xA5` leaves the
+  record as it is, lets the link go and says `ShowerAuthorText.closeStillRunning`
+  (「水控还在出水，这次没再发结束…」); it never returns to `running` and never reopens 结束. The close
+  is never sent again for that record, not from a check, a relaunch, Siri or the Live Activity.
 - Whose session a close ended: the consumption frame is `55`, the machine id (4 bytes) and 15
   bytes whose layout is not known; nothing in it is known to name the authorization or the
   student, so it can't be checked against `authorizationID`. `0xA5` only says water runs, not
   whose. The one reply tied to our authorization is the write's ack (`0xAA`, 9 bytes), so the
   consumption frame is settled by itself only for a session that got it (`running` from the
-  ack). Without it (`writePending`, also when a probe later found `0xA5`), and after a probe
-  found water running behind an unconfirmed close, the frame is kept (`holdSettle`):
+  ack). Without it (`writePending`, also when a probe later found `0xA5`), the frame is kept
+  (`holdSettle`):
   `failed(settleUnconfirmed)` with the settlement not sent; the frame is only kept with the
   record, never settled by the app. An acknowledged session the controller ended by itself, followed by
   someone else's on the same controller before 结束, is not caught: nothing the controller
@@ -592,7 +601,7 @@ Rules:
   other unknown outcome (below).
 - The shower is over (`ShowerState.showerOver`) when a probe finds the controller stopped under
   a running record (`stateReviewRequired`) or a failure's outcome is unknown (`needsReview`:
-  an unclear authorize, an unconfirmed close, a refused or unanswered settlement). The school
+  an unclear authorize, an unconfirmed or busy close, a refused or unanswered settlement). The school
   settles it; the app never settles it again and has no check page. The page goes back to the
   layout before a start (`ShowerPagePhase.stopped`): 暖橙 「上一次洗好了」 with
   `ShowerAuthorText.stoppedNote` under its one button 「开始下一次洗澡」, 清爽 「本次待核对」 with
@@ -611,13 +620,28 @@ Rules:
   storage failure), then a new record authorizes with that fresh identity frame: a new
   authorization, never the old one written again. Kept records are never settled, retried
   or dropped by the app (重置校日常 deletes them with everything else); they are shown read-only
-  (`ShowerRetainedSummary`: start time, controller, why each was kept; nothing when the list
-  can't be read), on 清爽's 订单 tab and 暖橙's list behind 热水洗澡. A task cancelled while
+  (`ShowerRetainedSummary`: start time, controller, why each was kept — 清爽 停水未结算,
+  关水未确认 (an unconfirmed or busy close), 结算未确认 or 授权未确认; 暖橙 在水控上按停的, 结束没确认,
+  结算没确认 or 开水没确认; nothing when the list can't be read), on 清爽's 订单 tab and 暖橙's
+  list behind 热水洗澡. A task cancelled while
   it connects or probes changes nothing, whatever the controller answered. An open shower (no
   check pending) still ends only with 结束. 「开始下一次洗澡」 is the stopped page's one button;
   when it finds the controller in use the page reads 水控有人在用 (清爽 `ClearShowerText.inUseBody`)
   with one 「再查一次」, the same read-only probe (`ShowerPageFlow.foundInUse`, until the next
   look or try).
+- Automatic check while the app is in front (`ShowerAutoReview`, run by
+  `ShowerForegroundCheck` on any page while the scene is active): every 5 s
+  (`ShowerAutoReview.tick`) the live model looks, and at most once per 30 s
+  (`ShowerAutoReview.interval`, counted from an attempt's start, failed ones too)
+  `ShowerEngine.autoReview` sends the same read-only `AA` probe as 检查水控状态, nothing else:
+  it never authorizes, closes or settles. Eligible (`ShowerAutoReview.eligible`) only in
+  `writePending`/`running` with nothing waiting on the record: not `reviewing`, not
+  `stateReviewRequired`, not `waitingForRelease`, not `authorizationNotWritten`; a failed record
+  (an unsure close among them) never. It is skipped while anything else is under way or the
+  sample is shown (the live-step gate), and says nothing. `0xA5` keeps the link and the timer
+  (`writePending` turns `running` with `holdSettle`); idle with our identity makes the shower
+  over (`stateReviewRequired`); another identity, an unreadable frame or a failed probe only
+  leaves a notice.
 - `startedAt` is set when the authorization arrives and enters `writePending` (出水), not at the
   开始洗澡 tap: the ~15 s of connecting and authorizing are not shower time. The in-app timer,
   the Live Activity, the unsettled reminder and the shown duration (done page, settled lock
