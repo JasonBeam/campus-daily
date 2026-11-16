@@ -11,6 +11,8 @@ struct ClearRecordsList: View {
     /// when the school's records can't be read.
     let app: [AppActivity]
     @StateObject private var model: CardRecordsModel
+    /// Rows of the kept showers' section on screen.
+    @State private var retainedOnScreen = 0
     @Environment(ClearNavigator.self) private var navigator
     @EnvironmentObject private var laundry: LaundryModel
 
@@ -22,8 +24,9 @@ struct ClearRecordsList: View {
 
     var body: some View {
         let days = days(now:Date())
+        ScrollViewReader { proxy in
         List {
-            ClearRecentOrdersSections(orders:orders)
+            ClearRecentOrdersSections(orders:orders) { retainedOnScreen = max(0, retainedOnScreen + $0) }
             switch model.phase {
             case .loading: loadingSection
             case .failed: failedSection
@@ -43,6 +46,15 @@ struct ClearRecordsList: View {
         // does): a read cancelled that way would come back as failed. The read runs on its own.
         .refreshable { await Task { await model.reload() }.value }
         .task { if model.phase == .loading { await model.reload() } }
+        // The hot-water page's kept line: its section to the top, unless it is already in view.
+        .task(id:navigator.recordsScroll) {
+            guard let target = navigator.recordsScroll else { return }
+            try? await Task.sleep(for:.milliseconds(150))
+            navigator.recordsScroll = nil
+            guard target != .showerRetained || retainedOnScreen == 0 else { return }
+            withAnimation { proxy.scrollTo(ClearRecentOrders.scrollID(target), anchor:.top) }
+        }
+        }
     }
 
     private func days(now: Date) -> [CardDay] {

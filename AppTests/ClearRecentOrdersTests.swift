@@ -53,8 +53,8 @@ final class ClearRecentOrdersTests: XCTestCase {
         ])
         let orders = ClearRecentOrders(data:HomeData.sample(now:now), laundry:LaundryFacts(), retained:retained, now:now)
         XCTAssertEqual(orders.sections, [.showerSettled, .showerRetained])
-        let rows = orders.retainedRows { _ in "T" }
-        XCTAssertEqual(rows, ["T · 11223344 · 停水未结算", "T · 11223344 · 结算未确认"])
+        let rows = orders.retainedLines { _ in "T" }
+        XCTAssertEqual(rows, [.init(title:"T", detail:"11223344 · 结算未确认"), .init(title:"T", detail:"11223344 · 停水未结算")], "newest first")
         XCTAssertEqual(ClearRecentOrders.retainedTitle, "待核对的热水记录")
         XCTAssertEqual(ClearRecentOrders.retainedFooter, "可在学校官方热水消费明细中核对。")
 
@@ -67,5 +67,34 @@ final class ClearRecentOrdersTests: XCTestCase {
         var data = HomeData.sample(now:now)
         data.laundryEnabled = false
         XCTAssertNil(ClearRecentOrders(data:data, laundry:LaundryDemo.make(.run, now:now).facts, now:now).laundry)
+    }
+
+    /// Two lines each, newest first; a shower that never started leads with its reason.
+    func testRetainedLinesNewestFirst() {
+        let now = Date()
+        let t0 = now.addingTimeInterval(-7200)
+        let retained = ShowerRetainedSummary(records:[
+            ShowerState(phase:.running, machineID:"11223344", startedAt:t0, stateReviewRequired:true),
+            ShowerState(phase:.failed, machineID:"11223344", failure:ShowerFailure(reason:.authorizeUncertain, needsReview:true)),
+            ShowerState(phase:.failed, machineID:"AABBCCDD", startedAt:t0.addingTimeInterval(600),
+                        failure:ShowerFailure(reason:.closeUnconfirmed, needsReview:true)),
+        ])
+        let orders = ClearRecentOrders(data:HomeData.sample(now:now), laundry:LaundryFacts(), retained:retained, now:now)
+        let lines = orders.retainedLines { $0 == t0 ? "early" : "late" }
+        XCTAssertEqual(lines, [.init(title:"late", detail:"AABBCCDD · 关水未确认"),
+                               .init(title:"early", detail:"11223344 · 停水未结算"),
+                               .init(title:"授权未确认", detail:"11223344")])
+    }
+
+    /// The hot-water page's kept line opens 订单 at its section.
+    func testTheKeptLineOpensOrdersAtItsSection() {
+        let navigator = ClearNavigator()
+        navigator.homePath = [.shower]
+        navigator.recordsPath = [.shower]
+        navigator.showRetained(from:.homeButton)
+        XCTAssertEqual(navigator.tab, .records)
+        XCTAssertEqual(navigator.recordsPath, [])
+        XCTAssertEqual(navigator.recordsScroll, .showerRetained)
+        XCTAssertEqual(ClearRecentOrders.scrollID(.showerRetained), "recordsRetainedShowers")
     }
 }

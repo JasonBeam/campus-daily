@@ -104,7 +104,7 @@ struct ClearShowerPage: View {
     @ViewBuilder private var extras: some View {
         if Self.showsLastUse(phase), let last = lastUse { ClearShowerLastCard(last:last) }
         if live, flow.mayLeave, let retained = shower.retained {
-            ClearShowerRetainedLine(count:retained.count) { navigator.show([], in:.records, from:.homeButton) }
+            ClearShowerRetainedLine(count:retained.count) { navigator.showRetained(from:.homeButton) }
         }
         if live, shower.recordUnreadable {
             // The record can't be read by this build: cleared only after the user checked the official record.

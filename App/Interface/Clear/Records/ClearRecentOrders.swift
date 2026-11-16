@@ -52,12 +52,20 @@ struct ClearRecentOrders: Equatable {
          showerSettled.map { _ in Section.showerSettled }, retained.map { _ in Section.showerRetained }].compactMap { $0 }
     }
 
-    /// One line per kept shower: 「开始时间 · 机器 · 原因」.
-    func retainedRows(time: (Date) -> String = Self.time) -> [String] {
-        (retained?.entries ?? []).map { ShowerRetainedText.row($0, reason:ShowerRetainedText.Clear.reason($0.reason), time:time) }
+    /// Two lines per kept shower, newest first: the start time, then 「机器 · 原因」.
+    func retainedLines(time: (Date) -> String = { ShowerRetainedText.time($0) }) -> [ShowerRetainedText.Line] {
+        retained.map { ShowerRetainedText.lines($0, reason:ShowerRetainedText.Clear.reason, time:time) } ?? []
     }
 
-    static func time(_ date: Date) -> String { date.formatted(date:.abbreviated, time:.shortened) }
+    /// The id a section is scrolled to by (`ClearNavigator.recordsScroll`).
+    static func scrollID(_ section: Section) -> String {
+        switch section {
+        case .laundry: "recordsLaundry"
+        case .showerOpen: "recordsShowerOpen"
+        case .showerSettled: "recordsShowerSettled"
+        case .showerRetained: "recordsRetainedShowers"
+        }
+    }
 
     private static func laundry(_ facts: LaundryFacts, now: Date) -> Laundry? {
         guard let record = facts.record else { return nil }

@@ -37,8 +37,33 @@ public enum ShowerRetainedText {
         }
     }
 
-    /// 「开始时间 · 机器 · 原因」; without a start time (the water never ran) the time is left out.
-    public static func row(_ entry: ShowerRetainedSummary.Entry, reason: String, time: (Date) -> String) -> String {
-        [entry.started.map(time), entry.machine, reason].compactMap { $0 }.joined(separator: " · ")
+    /// One kept shower on a list: the start time (or, without one, the reason), then 「机器 · 原因」
+    /// (the machine alone when the reason leads). Read by VoiceOver as one sentence.
+    public struct Line: Equatable, Sendable {
+        public let title: String
+        public let detail: String?
+
+        public init(title: String, detail: String?) { self.title = title; self.detail = detail }
+
+        public var spoken: String { [title, detail].compactMap { $0 }.joined(separator: "，") }
+    }
+
+    /// The kept showers newest first; those without a start time after the rest, as kept.
+    public static func lines(_ summary: ShowerRetainedSummary, reason: (ShowerRetainedSummary.Reason) -> String,
+                             time: (Date) -> String = { ShowerRetainedText.time($0) }) -> [Line] {
+        let dated = summary.entries.enumerated().filter { $0.element.started != nil }
+            .sorted { ($0.element.started!, $1.offset) > ($1.element.started!, $0.offset) }.map(\.element)
+        let undated = summary.entries.filter { $0.started == nil }
+        return (dated + undated).map { entry in
+            let why = reason(entry.reason)
+            guard let started = entry.started else { return Line(title: why, detail: entry.machine) }
+            return Line(title: time(started), detail: [entry.machine, why].compactMap { $0 }.joined(separator: " · "))
+        }
+    }
+
+    /// 「11月16日 21:05」.
+    public static func time(_ date: Date, calendar: Calendar = .current) -> String {
+        let c = calendar.dateComponents([.month, .day, .hour, .minute], from: date)
+        return "\(c.month ?? 0)月\(c.day ?? 0)日 " + String(format: "%02d:%02d", c.hour ?? 0, c.minute ?? 0)
     }
 }

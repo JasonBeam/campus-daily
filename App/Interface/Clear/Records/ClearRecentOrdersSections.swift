@@ -5,6 +5,9 @@ import Core
 /// a row; each row but the kept showers' opens its page on 日常 (those are plain, read-only rows).
 struct ClearRecentOrdersSections: View {
     let orders: ClearRecentOrders
+    /// A row of the kept showers came on screen (+1) or went off it (-1): the list scrolls to
+    /// them only when none is on screen.
+    var retainedVisible: (Int) -> Void = { _ in }
     @Environment(ClearNavigator.self) private var navigator
     @EnvironmentObject private var laundry: LaundryModel
 
@@ -55,19 +58,30 @@ struct ClearRecentOrdersSections: View {
         retainedSection
     }
 
+    /// Read-only rows, two lines each (when, then 机器 · 原因), newest first; each read as one sentence.
     @ViewBuilder private var retainedSection: some View {
         if orders.retained != nil {
             Section {
-                ForEach(Array(orders.retainedRows().enumerated()), id:\.offset) { _, row in
-                    Text(row).font(.subheadline).foregroundStyle(Color.primary)
-                        .fixedSize(horizontal:false, vertical:true)
-                        .padding(.vertical,4)
+                ForEach(Array(orders.retainedLines().enumerated()), id:\.offset) { _, line in
+                    VStack(alignment:.leading, spacing:4) {
+                        Text(line.title).font(.body).foregroundStyle(Color.primary)
+                        if let detail = line.detail {
+                            Text(detail).font(.subheadline).foregroundStyle(Color.secondary)
+                        }
+                    }
+                    .fixedSize(horizontal:false, vertical:true)
+                    .padding(.vertical,4)
+                    .accessibilityElement(children:.ignore)
+                    .accessibilityLabel(line.spoken)
+                    .onAppear { retainedVisible(1) }
+                    .onDisappear { retainedVisible(-1) }
                 }
             } header: {
                 Text(ClearRecentOrders.retainedTitle)
             } footer: {
                 Text(ClearRecentOrders.retainedFooter)
             }
+            .id(ClearRecentOrders.scrollID(.showerRetained))
             .accessibilityIdentifier("recordsRetainedShowers")
         }
     }

@@ -87,13 +87,4 @@ final class ShowerRetainedSummaryTests: XCTestCase {
         XCTAssertEqual(ShowerRetainedText.Warm.reason(.closeUnconfirmed), "结束没确认")
         XCTAssertEqual(ShowerRetainedText.Warm.reason(.settleUnconfirmed), "结算没确认")
     }
-
-    /// 「开始时间 · 机器 · 原因」; a record that never started has no time.
-    func testRowJoinsTimeMachineAndReason() {
-        let entry = ShowerRetainedSummary.Entry(started: t0, machine: "11223344", reason: .closeUnconfirmed)
-        XCTAssertEqual(ShowerRetainedText.row(entry, reason: "关水未确认", time: { _ in "11月16日 21:30" }),
-                       "11月16日 21:30 · 11223344 · 关水未确认")
-        let noStart = ShowerRetainedSummary.Entry(started: nil, machine: "11223344", reason: .authorizeUnclear)
-        XCTAssertEqual(ShowerRetainedText.row(noStart, reason: "X", time: { _ in "never" }), "11223344 · X")
-    }
 }

@@ -1,7 +1,7 @@
 import SwiftUI
 import Core
 
-/// 暖橙's list of the showers a next use kept: one row each (start time, controller, why it was
+/// 暖橙's list of the showers a next use kept: two lines each, newest first (start time, then controller · why it was
 /// kept) and what to do about them. Read-only: nothing here settles or deletes them.
 struct ShowerRetainedList: View {
     let summary: ShowerRetainedSummary
@@ -9,11 +9,17 @@ struct ShowerRetainedList: View {
     var body: some View {
         List {
             Section {
-                ForEach(Array(summary.entries.enumerated()), id:\.offset) { _, entry in
-                    Text(ShowerRetainedText.row(entry, reason:ShowerRetainedText.Warm.reason(entry.reason), time:Self.time))
-                        .font(.subheadline)
-                        .fixedSize(horizontal:false, vertical:true)
-                        .padding(.vertical,4)
+                ForEach(Array(ShowerRetainedText.lines(summary, reason:ShowerRetainedText.Warm.reason).enumerated()), id:\.offset) { _, line in
+                    VStack(alignment:.leading, spacing:4) {
+                        Text(line.title).font(.body).foregroundStyle(Theme.ink)
+                        if let detail = line.detail {
+                            Text(detail).font(.subheadline).foregroundStyle(Theme.ink2)
+                        }
+                    }
+                    .fixedSize(horizontal:false, vertical:true)
+                    .padding(.vertical,4)
+                    .accessibilityElement(children:.ignore)
+                    .accessibilityLabel(line.spoken)
                 }
             } footer: {
                 Text(ShowerRetainedText.Warm.footer)
@@ -26,6 +32,4 @@ struct ShowerRetainedList: View {
         .accessibilityIdentifier("showerRetainedList")
         .navOpen(.showerRetained, from:.homeButton)
     }
-
-    static func time(_ date: Date) -> String { date.formatted(date:.abbreviated, time:.shortened) }
 }

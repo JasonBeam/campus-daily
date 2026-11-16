@@ -1,27 +1,26 @@
 import SwiftUI
 import Core
 
-/// The kept showers on 热水洗澡: one line with their count; a tap opens the 订单 tab, where each
-/// is listed. Read-only: nothing here settles or deletes them.
+/// The kept showers on 热水洗澡: one footnote line with their count and a chevron, flush with the
+/// cards above; a tap opens 订单 at their section. Read-only: nothing here settles or deletes them.
 struct ClearShowerRetainedLine: View {
     let count: Int
     let open: () -> Void
 
     var body: some View {
         Button(action:open) {
-            ClearLinkRow {
-                Label {
-                    Text(ShowerRetainedText.Clear.line(count:count))
-                        .font(.subheadline).foregroundStyle(Color.secondary)
-                        .multilineTextAlignment(.leading)
-                        .fixedSize(horizontal:false, vertical:true)
-                } icon: {
-                    Image(systemName:"tray.full").foregroundStyle(Color.secondary)
-                }
+            HStack(spacing:8) {
+                Text(ShowerRetainedText.Clear.line(count:count))
+                    .font(.footnote).foregroundStyle(Color.secondary)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal:false, vertical:true)
+                    .frame(maxWidth:.infinity, alignment:.leading)
+                Image(systemName:"chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Color(uiColor:.tertiaryLabel))
             }
-            .padding(.vertical,14).padding(.horizontal,18)
             .frame(maxWidth:.infinity, minHeight:44, alignment:.leading)
-            .background(NativeTheme.surface, in:RoundedRectangle(cornerRadius:16, style:.continuous))
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityElement(children:.ignore)

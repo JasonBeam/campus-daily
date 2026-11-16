@@ -58,6 +58,9 @@ import Core
     /// The laundry-done sheet (`ClearLaundryDonePanel` reads it).
     var panel: SettlementResult?
 
+    /// 订单 scrolls to this section once, then sets it back to nil.
+    var recordsScroll: ClearRecentOrders.Section?
+
     /// DEBUG demo data (campusdaily://demo/...); nil = live models.
     var demo: HomeData?
     var laundryDemo: LaundryDemo?
@@ -118,6 +121,12 @@ import Core
         mark(entry, routes, tab:tab)
         self.tab = tab
         setPath(routes, tab)
+    }
+
+    /// 订单 at its root, scrolled to the kept showers (the hot-water page's kept line).
+    func showRetained(from entry: DebugEntry) {
+        show([], in:.records, from:entry)
+        recordsScroll = .showerRetained
     }
 
     /// Selects a tab with this page showing, keeping the pages already open there

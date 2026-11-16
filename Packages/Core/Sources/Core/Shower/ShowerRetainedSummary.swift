@@ -29,6 +29,8 @@ public struct ShowerRetainedSummary: Equatable, Sendable {
 
     public var count: Int { entries.count }
 
+    public init(entries: [Entry]) { self.entries = entries }
+
     public init(records: [ShowerState]) {
         entries = records.map { Entry(started: $0.startedAt, machine: $0.machineID, reason: Self.reason($0)) }
     }
