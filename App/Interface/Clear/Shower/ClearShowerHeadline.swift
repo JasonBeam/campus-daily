@@ -74,7 +74,7 @@ struct ClearShowerHeadline: View {
 
     private var face: (title: String, body: String, problem: Bool) {
         let inUse = phase == .denied ? page?.denial == .inUse : phase == .stopped && flow.foundInUse
-        return ClearShowerText.face(phase, inUse:inUse)
+        return ClearShowerText.face(phase, inUse:inUse, closeBusy:page?.closeBusy == true)
     }
 
     private var problem: Bool {

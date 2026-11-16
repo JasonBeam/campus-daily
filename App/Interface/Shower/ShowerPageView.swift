@@ -244,6 +244,10 @@ struct ShowerPageView: View {
                     icon("lock.slash", Theme.ink2)
                     title(ShowerPageText.inUse)
                     bodyText(ShowerPageText.checkInUseBody)
+                } else if page?.closeBusy == true {
+                    // The close was answered busy: water still runs there, the button stays.
+                    title(ShowerAuthorText.closeBusyTitle)
+                    bodyText(ShowerAuthorText.closeBusyBody)
                 } else {
                     // Over: the start layout with its own headline, no timer, nothing to alarm.
                     title(ShowerPageText.stoppedTitle)
@@ -321,7 +325,13 @@ struct ShowerPageView: View {
             case .done:
                 capsule("好", background:Theme.pill, ink:Theme.pillInk) { shower.pageEvent(.closeTapped) }
             case .denied:
-                capsule("好", background:Theme.pill, ink:Theme.pillInk) { shower.pageEvent(.closeTapped) }
+                if flow.record.canStart {
+                    // Nothing was issued: try again here, as after a failed connect.
+                    capsule("再试一次", background:Theme.pill, ink:Theme.pillInk, enabled:!flow.starting) { shower.pageEvent(.retryTapped) }
+                    textButton("好") { shower.pageEvent(.closeTapped) }
+                } else {
+                    capsule("好", background:Theme.pill, ink:Theme.pillInk) { shower.pageEvent(.closeTapped) }
+                }
             case .connectFailed:
                 capsule("再试一次", background:Theme.pill, ink:Theme.pillInk, enabled:!flow.starting) { shower.pageEvent(.retryTapped) }
                 textButton("取消") { shower.pageEvent(.closeTapped) }
@@ -414,7 +424,9 @@ struct ShowerPageView: View {
         case .done: return ShowerPageText.doneLabel
         case .connectFailed: return ShowerPageText.connectFailed
         case .denied: return flow.page?.denial == .inUse ? ShowerPageText.inUse : ShowerPageText.denied
-        case .stopped: return flow.foundInUse ? ShowerPageText.inUse : ShowerPageText.stoppedTitle
+        case .stopped:
+            if flow.foundInUse { return ShowerPageText.inUse }
+            return flow.page?.closeBusy == true ? ShowerAuthorText.closeBusyTitle + "。" + ShowerAuthorText.closeBusyBody : ShowerPageText.stoppedTitle
         }
     }
 }

@@ -49,6 +49,8 @@ public enum DebugShowerAction: Sendable, Equatable {
     /// 开始洗澡 from Siri or Shortcuts: `next`, over a shower that is over, it is 开始下一次洗澡.
     case shortcutStart(next: Bool)
     case finish, review, dismiss
+    /// The read-only check the app runs by itself while in front.
+    case autoReview
     case cancelStart(accepted: Bool)
 }
 

@@ -40,6 +40,8 @@ import Core
             }
             .environment(sample).environment(sampleAlerts)
             .modifier(LiveAppHooks(campus:live.campus, laundry:live.laundry, reminders:live.reminders, sample:sample))
+            // The live record only: while the sample is shown the gate turns every check away.
+            .modifier(ShowerForegroundCheck(shower:live.shower))
         }
         // Background campus read: low power / card reminders and a fresh widget (the live graph's).
         .backgroundTask(.appRefresh(BackgroundRefresh.refreshTask)) { await BackgroundRefresh.run() }

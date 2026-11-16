@@ -41,6 +41,7 @@ extension DebugEvent {
             case .shortcutStart(let next): f.word("shortcutStart"); f.flag("next", next)
             case .finish: f.word("finish")
             case .review: f.word("review")
+            case .autoReview: f.word("autoReview")
             case .dismiss: f.word("dismiss")
             case .cancelStart(let accepted): f.word("cancelStart"); f.flag("accepted", accepted)
             }

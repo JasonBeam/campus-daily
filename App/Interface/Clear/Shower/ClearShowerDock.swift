@@ -59,6 +59,10 @@ struct ClearShowerDock: View {
             case .settling?:
                 primary(ClearShowerText.busyButton, spinning:true, enabled:false) {}
                 note(ClearShowerText.endNote)
+            case .denied? where flow.record.canStart:
+                // Nothing was issued: start again here, as after a failed connect.
+                primary(ClearShowerText.deniedRetry, symbol:"arrow.up.right", enabled:!flow.starting) { shower.pageEvent(.retryTapped) }
+                secondary(ClearShowerText.deniedClose, enabled:true) { close(.closeTapped) }
             case .done?, .denied?:
                 // Both send the same answer; settled stays on the page, which turns to its ready face.
                 let button = ClearShowerText.answerButton(phase == .done ? .done : .denied)

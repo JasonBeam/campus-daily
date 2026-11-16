@@ -35,6 +35,9 @@ public enum ShowerFailureReason: String, Sendable, Codable, Equatable {
     case authorizationInvalid
     /// Close was sent but no valid consumption frame came back.
     case closeUnconfirmed
+    /// Close was sent and the controller answered that it is still busy (`A5`): no consumption,
+    /// and nothing says whose water runs now. The close is never sent again for this record.
+    case closeBusy
     /// Settlement explicitly refused.
     case settleRefused
     /// Settlement outcome unknown.
@@ -46,9 +49,13 @@ public enum ShowerFailureReason: String, Sendable, Codable, Equatable {
     public var isBeforeWater: Bool {
         switch self {
         case .deviceUnavailable, .wrongDevice, .deviceBusy, .authorizeRefused, .authorizeUncertain, .authorizationInvalid: return true
-        case .closeUnconfirmed, .settleRefused, .settleUncertain, .settleUnconfirmed: return false
+        case .closeUnconfirmed, .closeBusy, .settleRefused, .settleUncertain, .settleUnconfirmed: return false
         }
     }
+
+    /// The close went out and its outcome is not known: water found running afterwards may be
+    /// anyone's, so a check never takes the record back to the timer.
+    public var isUnsureClose: Bool { self == .closeUnconfirmed || self == .closeBusy }
 
     /// The authorize got an answer the app can't read, or an OK whose authorization can't be
     /// used: it waits for the check, but nothing reached the controller, so no water ran and
@@ -196,12 +203,12 @@ public struct ShowerState: Sendable, Codable, Equatable {
     }
 
     /// A read-only probe of the controller: while water may run (also while that waits for the
-    /// check), and from a close that may not have taken (water still running there means the
-    /// close can be sent again).
+    /// check), and from a close that may not have taken (it only reports what it finds: the
+    /// close is never sent again).
     /// Also over a kept failure the next start found in use (`waitingForRelease`): 再查一次.
     public var canReview: Bool {
         ((phase == .writePending || phase == .running) && !reviewing)
-            || (phase == .failed && failure?.reason == .closeUnconfirmed && !reviewing)
+            || (phase == .failed && failure?.reason.isUnsureClose == true && !reviewing)
             || (phase == .failed && failure?.needsReview == true && waitingForRelease && !reviewing)
     }
 
@@ -522,26 +529,14 @@ public enum ShowerReducer {
             return (s, [.probe(peripheralID: state.peripheralID)])
 
         case (.failed, .probeReplied(let frame)) where state.reviewing
-                && (state.failure?.reason == .closeUnconfirmed || state.waitingForRelease):
+                && (state.failure?.reason.isUnsureClose == true || state.waitingForRelease):
             s.reviewing = false
             switch ShowerFrames.classify(frame) {
-            case .active where state.waitingForRelease:
-                // The next use already found it in use and let it go: it stays let go.
-                s.notice = .inUseByOther
-            case .active where state.failure?.reason != .closeUnconfirmed:
-                // Not a close to send again: someone else's water.
-                s.notice = .inUseByOther
             case .active:
-                // Back to the timer, so 结束 can send the close again. Our close most likely took
-                // (it was acknowledged, or answered with another identity), so this water is most
-                // likely someone else's: what the next close returns waits for the user.
-                s.phase = .running
-                s.failure = nil
-                s.closingFrom = nil
-                s.closeSent = false
-                s.stateReviewRequired = false
-                s.holdSettle = true
-                return (s, [.releaseDevice])
+                // Water running after a close that went out (or after the next use let the link
+                // go): nothing says whose it is, and a second close could stop someone else's
+                // water. The record stays as it is, never back on the timer; the link is let go.
+                s.notice = .inUseByOther
             case .idle(let id) where id == state.machineID:
                 // Stopped: the close may have taken, or water stopped by itself. The record stays
                 // as it is, and is free again for the next shower.
@@ -596,6 +591,10 @@ public enum ShowerReducer {
             return (back(s, to: state.closingFrom ?? .running, notice: .device(.interrupted)), [.releaseDevice])
 
         case (.closing, .closeReplied(let frame)) where state.closeSent:
+            if ShowerFrames.classify(frame) == .active {
+                // Still busy: the close went out, no consumption came back. Kept for the check.
+                return (failed(s, .closeBusy, review: true, device: .busy), [.releaseDevice])
+            }
             guard ShowerFrames.identity(frame) == state.machineID else {
                 return (failed(s, .closeUnconfirmed, review: true, device: .malformedFrame), [.releaseDevice])
             }
@@ -741,6 +740,7 @@ public enum ShowerDisplay {
         case .authorizeRefused: return ShowerAuthorizeRefusedText.title
         case .authorizeUncertain, .authorizationInvalid: return ShowerAuthorizeUnclearText.title(platformMessage: f.platformMessage)
         // Over without an answer: the school settles it (`ShowerState.showerOver`).
+        case .closeBusy: return ShowerAuthorText.closeBusyStatus
         case .closeUnconfirmed, .settleRefused, .settleUncertain, .settleUnconfirmed: return ShowerAuthorText.keptStatus
         }
     }

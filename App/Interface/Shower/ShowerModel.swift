@@ -450,8 +450,32 @@ enum ShowerProfileFiles {
         busy = true; defer { busy = false; liveStepEnded() }
         if let result = try? await engine.review(binding) {
             apply(result)
-            message = Self.noticeText(result.notice) ?? (result.phase == .running ? "水控显示正在用水。" : nil)
+            // Water running after a close that went out: nothing more was sent (it may be theirs).
+            let unsureClose = result.phase == .failed && result.failure?.reason.isUnsureClose == true
+            message = unsureClose && result.notice == .inUseByOther ? ShowerAuthorText.closeStillRunning
+                : Self.noticeText(result.notice) ?? (result.phase == .running ? "水控显示正在用水。" : nil)
         }
+    }
+
+    /// When the last automatic check began (whatever it found), for the interval between two.
+    private(set) var lastAutoReview: Date?
+
+    /// The automatic check while the app is in front (`ShowerForegroundCheck`): the read-only
+    /// probe, over a record `ShowerAutoReview.eligible` allows, once the interval has passed.
+    /// Skipped without waiting when anything else is under way or the sample is shown (a skip
+    /// is not an attempt); the attempt counts from before the probe, failed or not. Says nothing.
+    /// True when a probe went out.
+    @discardableResult func autoReviewIfDue(now: Date = Date()) async -> Bool {
+        guard let engine, let binding, !busy, ShowerAutoReview.eligible(state),
+              ShowerAutoReview.due(lastAttempt: lastAutoReview, now: now), claimLiveStep() else { return false }
+        lastAutoReview = now
+        busy = true; defer { busy = false; liveStepEnded() }
+        if let result = try? await engine.autoReview(binding) {
+            apply(result)
+        } else {
+            apply(await engine.state)
+        }
+        return true
     }
 
     /// 再查一次 on the stopped page found in use: a read-only probe; still running goes back to

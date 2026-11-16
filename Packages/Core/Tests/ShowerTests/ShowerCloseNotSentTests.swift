@@ -4,7 +4,8 @@ import CoreTestSupport
 
 /// 结束 whose close never reached the controller goes back to the timer, so it can be sent
 /// again; only a close lost after the controller took the write needs a check. From that check
-/// a read-only probe that finds water running goes back to the timer too.
+/// a read-only probe that finds water running leaves the record as it is: the close went out
+/// once and is never sent again (`ShowerCloseBusyTests`).
 final class ShowerCloseNotSentTests: XCTestCase {
     let machine = "11223344"
     let binding = ShowerBinding(studentId: "S1234567", schoolId: "20021", machineId: "11223344", roomId: "R1", roomLabel: "99栋 991")
@@ -86,25 +87,20 @@ final class ShowerCloseNotSentTests: XCTestCase {
 
     // MARK: Probe from an unconfirmed close
 
-    func testAProbeThatFindsWaterRunningAllowsTheCloseAgain() async throws {
+    func testAProbeThatFindsWaterRunningNeverAllowsTheCloseAgain() async throws {
         let e = try await closeUnconfirmed()
         transport.script(.frame(FakeFrames.active))
         let s = try await e.review(binding)
-        XCTAssertEqual(s.phase, .running)
-        XCTAssertNil(s.failure)
-        XCTAssertFalse(s.closeSent)
-        XCTAssertFalse(s.stateReviewRequired)
-        XCTAssertTrue(s.canFinish)
-        XCTAssertEqual(try vault.showerState()?.phase, .running)
-        XCTAssertNil(ShowerRecheckResult(after: s), "back on the timer")
+        XCTAssertEqual(s.phase, .failed)
+        XCTAssertEqual(s.failure?.reason, .closeUnconfirmed)
+        XCTAssertTrue(s.closeSent)
+        XCTAssertFalse(s.canFinish)
+        XCTAssertEqual(s.notice, .inUseByOther)
+        XCTAssertEqual(try vault.showerState()?.phase, .failed)
+        XCTAssertEqual(ShowerRecheckResult(after: s), .inUse, "stays on the stopped face")
 
-        // The close goes out again; what it returns waits for the user's settle.
-        transport.script(.frame(FakeFrames.active), .frame(consumption))
-        gateway.scriptSettle(.ok(receipt))
-        let held = try await e.finish(binding)
-        XCTAssertEqual(transport.writes.filter { $0 == close }.count, 2)
-        XCTAssertEqual(held.phase, .failed)
-        XCTAssertTrue(held.canRetrySettle)
+        await XCTAssertThrowsErrorAsync(try await e.finish(binding)) { XCTAssertEqual($0 as? ShowerEngineError, .notAllowed) }
+        XCTAssertEqual(transport.writes.filter { $0 == close }.count, 1)
         XCTAssertTrue(gateway.settleFrames.isEmpty)
     }
 

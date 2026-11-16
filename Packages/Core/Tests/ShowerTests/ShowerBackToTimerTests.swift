@@ -28,9 +28,10 @@ final class ShowerBackToTimerTests: XCTestCase {
         XCTAssertEqual(ShowerReminderStart.next(running, after: running, current: start, now: back.addingTimeInterval(60)), back)
     }
 
-    /// The return is saved with the record: after a relaunch (no start kept in memory) the
-    /// reminder still counts from it, not from the water start 40 minutes earlier.
-    func testAfterARelaunchTheReminderStillCountsFromTheReturn() async throws {
+    /// A check that finds water running after an unsure close no longer goes back to the timer
+    /// (the close is never sent again): the record stays on the unsure face, no return is saved,
+    /// and after a relaunch nothing counts a reminder from it.
+    func testAfterARelaunchTheUnsureCloseStaysOffTheTimer() async throws {
         let clock = FakeClock(t0)
         let transport = FakeShowerTransport(), gateway = FakeGateway()
         let vault = StoredShowerVault(store: InMemorySecureStore())
@@ -51,15 +52,21 @@ final class ShowerBackToTimerTests: XCTestCase {
         clock.advance(60)
         let back = clock.now
         transport.script(.frame(FakeFrames.active))
-        let resumed = try await e.review(binding)
-        XCTAssertEqual(resumed.phase, .running)
+        let kept = try await e.review(binding)
+        XCTAssertEqual(kept.phase, .failed)
+        XCTAssertEqual(kept.failure?.reason, .closeUnconfirmed)
+        XCTAssertNil(kept.timerResumedAt)
 
         let saved = try XCTUnwrap(try vault.showerState())
         XCTAssertEqual(saved.startedAt, t0)
-        XCTAssertEqual(saved.timerResumedAt, back)
+        XCTAssertEqual(saved.phase, .failed)
+        XCTAssertNil(saved.timerResumedAt)
         let relaunched = try await engine().state
-        XCTAssertEqual(ShowerReminderStart.next(relaunched, after: .idle, current: nil, now: back.addingTimeInterval(600)), back)
-        XCTAssertEqual(AppReset.Resync(shower: relaunched, now: back).showerReminderStart, back)
+        XCTAssertEqual(relaunched.failure?.reason, .closeUnconfirmed)
+        XCTAssertFalse(relaunched.canFinish)
+        XCTAssertNil(relaunched.timerResumedAt)
+        XCTAssertNil(ShowerReminderStart.next(relaunched, after: .idle, current: nil, now: back.addingTimeInterval(600)))
+        XCTAssertNil(AppReset.Resync(shower: relaunched, now: back).showerReminderStart)
     }
 
     func testANewTimerEndsTheEarlierResultAtOnce() {

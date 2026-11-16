@@ -54,33 +54,22 @@ final class ShowerForeignSessionTests: XCTestCase {
 
     // MARK: Back from an unconfirmed close
 
-    func testAfterAnUnconfirmedCloseTheNextConsumptionIsKeptNotSettled() async throws {
+    /// Water found running after an unconfirmed close may be anyone's: the check never takes
+    /// the record back to the timer, so no second close goes out and nothing is settled.
+    func testAfterAnUnconfirmedCloseWaterFoundRunningCannotBeEndedAgain() async throws {
         for wrongIdentity in [false, true] {
             reset()
             let e = try await closeUnconfirmed(byWrongIdentity: wrongIdentity)
             transport.script(.frame(FakeFrames.active))
-            let back = try await e.review(binding)
-            XCTAssertEqual(back.phase, .running, "\(wrongIdentity)")
-            XCTAssertTrue(back.canFinish)
-
-            transport.script(.frame(FakeFrames.active), .frame(consumption))
-            gateway.scriptSettle(.ok(receipt))
-            let held = try await e.finish(binding)
-            XCTAssertTrue(gateway.settleFrames.isEmpty, "not settled by itself (\(wrongIdentity))")
-            XCTAssertEqual(held.phase, .failed)
-            XCTAssertEqual(held.failure?.needsReview, true)
-            XCTAssertEqual(held.consumption, HexCoding.upper(consumption), "kept for the retry")
-            XCTAssertTrue(held.canRetrySettle)
-            XCTAssertTrue(held.canResolveManually)
-            XCTAssertEqual(ShowerPage(held)?.phase, .stopped)
-            XCTAssertEqual(try vault.showerState()?.consumption, HexCoding.upper(consumption), "persisted")
-
-            // The usual two taps send it once.
-            _ = try await e.requestSettleRetry()
+            let probed = try await e.review(binding)
+            XCTAssertEqual(probed.phase, .failed, "\(wrongIdentity)")
+            XCTAssertEqual(probed.failure?.reason, .closeUnconfirmed)
+            XCTAssertEqual(probed.notice, .inUseByOther)
+            XCTAssertFalse(probed.canFinish)
+            XCTAssertEqual(ShowerPage(probed)?.phase, .stopped)
+            await XCTAssertThrowsErrorAsync(try await e.finish(binding)) { XCTAssertEqual($0 as? ShowerEngineError, .notAllowed) }
+            XCTAssertEqual(transport.writes.filter { $0 == close }.count, 1, "one close in all (\(wrongIdentity))")
             XCTAssertTrue(gateway.settleFrames.isEmpty)
-            let done = try await e.confirmSettleRetry(binding)
-            XCTAssertEqual(done.phase, .done)
-            XCTAssertEqual(gateway.settleFrames, [consumption])
         }
     }
 
@@ -94,16 +83,15 @@ final class ShowerForeignSessionTests: XCTestCase {
         XCTAssertEqual(gateway.settleFrames, [consumption])
     }
 
-    func testTheHoldSurvivesARelaunch() async throws {
+    func testARelaunchDoesNotReopenItEither() async throws {
         let e = try await closeUnconfirmed(byWrongIdentity: false)
         transport.script(.frame(FakeFrames.active))
         _ = try await e.review(binding)
 
         let relaunched = try engine()
-        transport.script(.frame(FakeFrames.active), .frame(consumption))
-        let held = try await relaunched.finish(binding)
+        await XCTAssertThrowsErrorAsync(try await relaunched.finish(binding)) { XCTAssertEqual($0 as? ShowerEngineError, .notAllowed) }
         XCTAssertTrue(gateway.settleFrames.isEmpty)
-        XCTAssertTrue(held.canRetrySettle)
+        XCTAssertEqual(transport.writes.filter { $0 == close }.count, 1)
     }
 
     // MARK: Authorization never written

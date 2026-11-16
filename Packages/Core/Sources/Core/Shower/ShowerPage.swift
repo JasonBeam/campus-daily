@@ -73,7 +73,7 @@ public enum ShowerRecheckResult: Sendable, Equatable {
 
     /// From the record after the probe; nil when water runs again (the timer face).
     public init?(after record: ShowerState) {
-        let unconfirmedClose = record.phase == .failed && record.failure?.reason == .closeUnconfirmed
+        let unconfirmedClose = record.phase == .failed && record.failure?.reason.isUnsureClose == true
         guard record.showerOver || unconfirmedClose else { return nil }
         switch record.notice {
         case .notActive?: self = .stopped
@@ -123,11 +123,14 @@ public struct ShowerPage: Sendable, Equatable {
     public var startedAt: Date?
     /// The controller didn't confirm the authorization write; shown as running on purpose.
     public var writeUnconfirmed: Bool
+    /// The stopped face of a close the controller answered busy (`ShowerFailureReason.closeBusy`).
+    public var closeBusy: Bool
 
     /// Nil when nothing is going on (idle): the page has nothing to show.
     public init?(_ s: ShowerState) {
         denial = nil; amount = nil; minutes = nil; startedAt = s.startedAt
         writeUnconfirmed = s.phase == .writePending
+        closeBusy = s.phase == .failed && s.failure?.reason == .closeBusy
         switch s.phase {
         case .idle:
             return nil
@@ -189,7 +192,7 @@ public enum ShowerPageEvent: Sendable, Equatable {
     case endReturned
     /// The engine's end came back to the timer without sending the close, with its notice.
     case endNotSent(ShowerNotice?)
-    /// 再试一次 after a connect failure.
+    /// 再试一次 (开始洗澡 in 清爽) after a connect failure or a refusal that issued nothing.
     case retryTapped
     /// 收起 while running.
     case collapseTapped
@@ -300,6 +303,11 @@ public struct ShowerPageFlow: Sendable, Equatable {
     public var mayRecheck: Bool { showsRecheck && record.canReview && !rechecking }
     /// The face has 再查一次.
     public var showsRecheck: Bool { foundInUse }
+    /// 再试一次 in place: on the connect-failed or refused face, only over a record that issued
+    /// nothing (`ShowerState.canStart`), once per tap.
+    public var mayRetry: Bool {
+        (page?.phase == .connectFailed || page?.phase == .denied) && record.canStart && !starting
+    }
     public var mayCancel: Bool { page?.phase == .connecting && !cancelling && !cancelRefused }
     public var mayEnd: Bool { page?.phase == .running && record.canFinish && !ending }
     public static func reduce(_ flow: ShowerPageFlow, _ event: ShowerPageEvent) -> (ShowerPageFlow, [ShowerPageEffect]) {
@@ -404,7 +412,7 @@ public struct ShowerPageFlow: Sendable, Equatable {
             return (f, [])
 
         case .retryTapped:
-            guard flow.page?.phase == .connectFailed, flow.record.canStart, !flow.starting else { return (flow, []) }
+            guard flow.mayRetry else { return (flow, []) }
             f.starting = true; f.cancelRefused = false
             return (f, [.start])
 

@@ -323,6 +323,18 @@ public actor ShowerEngine {
         return try await run(b, .review)
     }
 
+    /// The automatic check while the app is in front: the same read-only probe as `review`, only
+    /// over a record `ShowerAutoReview.eligible` allows (checked here, on the record the engine
+    /// holds). Sends `AA` and nothing else.
+    @discardableResult
+    public func autoReview(_ b: ShowerBinding) async throws -> ShowerState {
+        try guardIdle()
+        guard ShowerAutoReview.eligible(state), state.canReview else { throw ShowerEngineError.notAllowed }
+        guard state.machineID == b.machineId.uppercased() else { throw ShowerEngineError.wrongBinding }
+        hooks?.record(.showerAction(.autoReview))
+        return try await run(b, .review)
+    }
+
     /// First tap of a manual settle retry (UI then asks again).
     @discardableResult
     public func requestSettleRetry() async throws -> ShowerState {

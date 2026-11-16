@@ -19,9 +19,15 @@ public enum ClearShowerText {
     public static let inUseBody = "水控仍在忙，已断开连接；确认停水后请稍后再试"
     public static let deniedBody = "学校未授权本次用水，未扣费；请稍后再试"
     public static let stoppedBody = "水控未保留本次授权，结算尚未确认；请核对官方用水记录"
+    /// The stopped face over a close the controller answered busy.
+    public static let closeBusyBody = "水控仍在忙，尚未收到结束数据；请稍后核对结束结果"
 
     public static let start = "开始洗澡"
     public static let end = "结束并结算"
+    /// The refused face: the button tries again in place (nothing was issued), the one under it
+    /// closes the page.
+    public static let deniedRetry = start
+    public static let deniedClose = "好"
     /// Under 开始洗澡 (and while it runs).
     public static let startNote = "授权后，按水控上的出水键。"
     /// Under 结束并结算 from the start of the water until the settlement is done.
@@ -51,7 +57,8 @@ public enum ClearShowerText {
 
     /// A face's headline and the line under it. `phase` nil: no session shown (ready).
     /// `inUse`: refused because the controller is in use (or found so before the next shower).
-    public static func face(_ phase: ShowerPagePhase?, inUse: Bool = false) -> (title: String, body: String, problem: Bool) {
+    /// `closeBusy`: the stopped face of a close the controller answered busy.
+    public static func face(_ phase: ShowerPagePhase?, inUse: Bool = false, closeBusy: Bool = false) -> (title: String, body: String, problem: Bool) {
         switch phase {
         case nil: return (readyTitle, readyBody, false)
         case .connecting?: return (busyTitle, startingBody, false)
@@ -60,7 +67,7 @@ public enum ClearShowerText {
         case .done?: return (doneTitle, doneBody, false)
         case .connectFailed?: return (problemTitle, connectFailedBody, true)
         case .denied?: return (problemTitle, inUse ? inUseBody : deniedBody, true)
-        case .stopped?: return (problemTitle, inUse ? inUseBody : stoppedBody, true)
+        case .stopped?: return (problemTitle, inUse ? inUseBody : closeBusy ? closeBusyBody : stoppedBody, true)
         }
     }
 

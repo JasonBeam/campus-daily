@@ -47,7 +47,7 @@ final class DebugEventScreenTests: XCTestCase {
     static let order = DebugTag(.order, "458000")
     static let devices: [ShowerDeviceError] = [.bluetoothOff, .notFound, .ambiguous, .timedOut, .disconnected, .malformedFrame, .interrupted, .busy]
     static let reasons: [ShowerFailureReason] = [.deviceUnavailable, .wrongDevice, .deviceBusy, .authorizeRefused, .authorizeUncertain,
-                                                 .authorizationInvalid, .closeUnconfirmed, .settleRefused, .settleUncertain, .settleUnconfirmed]
+                                                 .authorizationInvalid, .closeUnconfirmed, .closeBusy, .settleRefused, .settleUncertain, .settleUnconfirmed]
     static let codes = [DebugCode("4002"), DebugCode("HTTP 502"), DebugCode("-1"), DebugCode("12345678")]
     static let failures: [ServiceError] = [.offline, .timedOut, .tls, .sessionExpired(.ujing), .badRequest(.lxt6),
                                            .malformed(.ecykt, "data.result"), .uncertain(.portal),
@@ -121,7 +121,7 @@ final class DebugEventScreenTests: XCTestCase {
     static var samples: [DebugEvent] {
         var e: [DebugEvent] = []
         e += [DebugShowerAction.start(machine: machine), .startNext(machine: machine), .shortcutStart(next: true),
-              .shortcutStart(next: false), .finish, .review, .dismiss, .cancelStart(accepted: true), .cancelStart(accepted: false)]
+              .shortcutStart(next: false), .finish, .review, .autoReview, .dismiss, .cancelStart(accepted: true), .cancelStart(accepted: false)]
             .map(DebugEvent.showerAction)
         e += ShowerPhase.allCases.flatMap { from in showerStates.map { DebugEvent.showerPhase(from: from, to: $0) } }
         e += ([nil] + ShowerPhase.allCases).flatMap { saved in
