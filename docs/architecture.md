@@ -605,7 +605,9 @@ Rules:
   as it is in Keychain `water.retained` (read back before going on; a failure blocks like any
   storage failure), then a new record authorizes with that fresh identity frame: a new
   authorization, never the old one written again. Kept records are never settled, retried
-  or dropped by the app (重置校日常 deletes them with everything else). A task cancelled while
+  or dropped by the app (重置校日常 deletes them with everything else); they are shown read-only
+  (`ShowerRetainedSummary`: start time, controller, why each was kept; nothing when the list
+  can't be read), on 清爽's 订单 tab and 暖橙's list behind 热水洗澡. A task cancelled while
   it connects or probes changes nothing, whatever the controller answered. An open shower (no
   check pending) still ends only with 结束. 「再洗一次」 sits on the check faces only, with
   「上一次的记录会留着，扣没扣以学校的热水记录为准。先确认水控已经停水，再点这里。」 under it; when
