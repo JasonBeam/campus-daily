@@ -57,7 +57,5 @@ enum LaundryPayCopy {
         static let submit = "去付款"
         static let cancel = "先不付"
         static let amountLabel = "预计金额"
-        /// Under 「去支付宝付款？」 only.
-        static let payNote = "付了款机器可能马上启动，先把衣服放好。"
     }
 }

@@ -66,7 +66,6 @@ final class ClearLaundryPageCopyTests: XCTestCase {
         XCTAssertEqual(LaundryPayCopy.Warm.submit, "去付款")
         XCTAssertEqual(LaundryPayCopy.Warm.cancel, "先不付")
         XCTAssertEqual(LaundryPayCopy.Warm.amountLabel, "预计金额")
-        XCTAssertEqual(LaundryPayCopy.Warm.payNote, "付了款机器可能马上启动，先把衣服放好。")
     }
 
     func testCountdowns() {

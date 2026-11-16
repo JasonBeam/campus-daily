@@ -647,10 +647,6 @@ private struct LaundryPaySheet: View {
         LaundrySheetBody(height:420, large:newOrder) {
             Text(title).scaledFont(24, .bold, relativeTo:.title2).foregroundStyle(Theme.ink)
                 .fixedSize(horizontal:false, vertical:true)
-            if !newOrder {
-                Text(LaundryPayCopy.Warm.payNote).scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.ink2)
-                    .fixedSize(horizontal:false, vertical:true).padding(.top,8)
-            }
             Text(line).scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.ink2).padding(.top,14)
             if let amount {
                 VStack(alignment:.leading, spacing:0) {
