@@ -648,7 +648,7 @@ private struct LaundryPaySheet: View {
             if let amount {
                 VStack(alignment:.leading, spacing:0) {
                     Text(LaundryPayCopy.Warm.amountLabel).scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
-                        .padding(.top,10)
+                        .padding(.top,12)
                     Text(Theme.yuan(amount)).scaledFont(44, .semibold, design:appTheme.numberDesign, relativeTo:.largeTitle)
                         .monospacedDigit().tracking(-1).foregroundStyle(Theme.ink).padding(.top,2)
                 }

@@ -1,10 +1,18 @@
 import XCTest
+import SwiftUI
 import Core
 @testable import XiaoRiChang
 
-/// View-level states of 清爽's shower dock.
+/// View-level states of 清爽's pay sheet and shower dock.
 @MainActor
 final class ClearSheetAndDockTests: XCTestCase {
+    /// Paying an order already placed shows machine, program, amount and note together: the
+    /// half-height detent can't hold them on a small phone, so both sheets open full height.
+    func testPaySheetOpensFullHeight() {
+        XCTAssertEqual(ClearLaundryPaySheet.detents(asksMode:true), [.large])
+        XCTAssertEqual(ClearLaundryPaySheet.detents(asksMode:false), [.large])
+    }
+
     /// 开始洗澡 on a refused shower turns to 正在处理… at once, spinning and off, before the
     /// page's phase moves; as the starting look while the engine has the start.
     func testRefusedRetryShowsTheStartingLookAtOnce() {

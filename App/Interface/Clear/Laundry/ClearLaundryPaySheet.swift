@@ -9,6 +9,7 @@ struct ClearLaundryPaySheet: View {
     let amount: Decimal?
     let confirm: (_ immediate: Bool) -> Void
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var submitted = false
     /// 正常洗衣 every time the sheet opens. Demo screenshots may open on 立刻洗衣.
     @State private var immediate: Bool
@@ -28,11 +29,18 @@ struct ClearLaundryPaySheet: View {
                         if let program = copy.program { Text(program).font(.subheadline).foregroundStyle(Theme.ink2) }
                     }
                     if let amount {
-                        HStack(alignment:.firstTextBaseline) {
-                            Text(LaundryPayCopy.Clear.amountLabel).foregroundStyle(Theme.ink2)
-                            Spacer(minLength:8)
-                            Text(Theme.yuan(amount)).font(.largeTitle.weight(.semibold)).monospacedDigit()
-                                .foregroundStyle(Theme.ink)
+                        // Large text: the label over the amount instead of squeezing the amount.
+                        ViewThatFits(in:.horizontal) {
+                            HStack(alignment:.firstTextBaseline) {
+                                amountLabel.fixedSize()
+                                Spacer(minLength:8)
+                                amountText(amount).fixedSize()
+                            }
+                            VStack(alignment:.leading, spacing:6) {
+                                amountLabel
+                                amountText(amount)
+                            }
+                            .frame(maxWidth:.infinity, alignment:.leading)
                         }
                         .accessibilityElement(children:.ignore)
                         .accessibilityLabel(LaundryPayCopy.Clear.amountLabel + "，" + LaundryFormat.spokenYuan(amount))
@@ -42,6 +50,7 @@ struct ClearLaundryPaySheet: View {
                         Text(LaundryPayCopy.Clear.immediateNote)
                             .font(.subheadline).foregroundStyle(Theme.ink2)
                             .fixedSize(horizontal:false, vertical:true)
+                            .transition(.opacity)
                     }
                     Text(copy.note)
                         .font(.subheadline).foregroundStyle(Theme.ink2)
@@ -49,12 +58,14 @@ struct ClearLaundryPaySheet: View {
                 }
                 .padding(24)
                 .frame(maxWidth:.infinity, alignment:.leading)
+                // The note fades with the choice; with Reduce Motion it just appears.
+                .animation(reduceMotion ? nil : .default, value:immediate)
             }
             .scrollBounceBehavior(.basedOnSize)
             // The primary button stays in view at any detent and text size; what is above it scrolls.
             .safeAreaInset(edge:.bottom, spacing:0) {
                 Button { submitted = true; confirm(copy.asksMode && immediate) } label: {
-                    ClearLaundryButtonLabel(title:copy.submit, symbol:"arrow.up.right.square")
+                    ClearLaundryButtonLabel(title:copy.submit, symbol:"arrow.up.right.square", busy:submitted)
                 }
                 .buttonStyle(ClearLaundryPrimaryStyle())
                 .disabled(submitted)
@@ -68,10 +79,20 @@ struct ClearLaundryPaySheet: View {
                 ToolbarItem(placement:.cancellationAction) { Button(copy.cancel) { dismiss() } }
             }
         }
-        .presentationDetents(copy.asksMode ? [.large] : [.medium, .large])
+        .presentationDetents(Self.detents(asksMode:copy.asksMode))
         .presentationDragIndicator(.visible)
         // Opaque, as the system sheet: the page's 下单 button must not show through.
         .presentationBackground(Theme.group)
+    }
+
+    /// Full height for both: at half height an iPhone SE can't show machine, program, amount and
+    /// note of an order already placed without scrolling.
+    static func detents(asksMode: Bool) -> Set<PresentationDetent> { [.large] }
+
+    private var amountLabel: some View { Text(LaundryPayCopy.Clear.amountLabel).foregroundStyle(Theme.ink2) }
+
+    private func amountText(_ amount: Decimal) -> some View {
+        Text(Theme.yuan(amount)).font(.largeTitle.weight(.semibold)).monospacedDigit().foregroundStyle(Theme.ink)
     }
 
     /// 「正常洗衣 / 立刻洗衣（试用）」, a segmented choice.
