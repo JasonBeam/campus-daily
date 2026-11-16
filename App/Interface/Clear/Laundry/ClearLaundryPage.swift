@@ -302,16 +302,7 @@ struct ClearLaundryPage: View {
 
     /// Fake progress only — never places an order.
     private func runDemoBusy() {
-        let previous = navigator.laundryDemo
-        Task {
-            navigator.laundryDemo?.facts.busy = true; navigator.laundryDemo?.facts.mayCreate = false
-            navigator.laundryDemo?.facts.progress = "正在下单…"
-            try? await Task.sleep(for:.seconds(1.2))
-            navigator.laundryDemo?.facts.progress = "正在打开支付宝…"
-            try? await Task.sleep(for:.seconds(1.2))
-            navigator.laundryDemo?.facts.progress = "正在核对订单…"
-            try? await Task.sleep(for:.seconds(1.2))
-            navigator.laundryDemo = previous
-        }
+        let navigator = navigator
+        Task { await LaundryDemo.runBusy(get:{ navigator.laundryDemo }, set:{ navigator.laundryDemo = $0 }) }
     }
 }

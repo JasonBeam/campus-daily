@@ -22,6 +22,24 @@ struct LaundryDemo {
     var notify = true
     /// The pay sheet opens on 立刻洗衣 (screenshots only; the live sheet always opens on 正常洗衣).
     var immediate = false
+    /// Tells this demo from the next one a link puts up: a submit only ever touches its own.
+    var run = UUID()
+
+    /// What a demo's 下单 or 付款 shows: these progress lines on the page, then the page as it
+    /// was. Local only: nothing is ordered, paid or sent. `get`/`set` are the page's demo state;
+    /// once another demo replaced this one, the steps stop and leave it alone.
+    @MainActor static func runBusy(get: () -> LaundryDemo?, set: (LaundryDemo?) -> Void,
+                                   step: Duration = .seconds(1.2)) async {
+        guard let previous = get() else { return }
+        for line in ["正在下单…", "正在打开支付宝…", "正在核对订单…"] {
+            guard var demo = get(), demo.run == previous.run else { return }
+            demo.facts.busy = true; demo.facts.mayCreate = false; demo.facts.progress = line
+            set(demo)
+            try? await Task.sleep(for:step)
+        }
+        guard get()?.run == previous.run else { return }
+        set(previous)
+    }
 
     #if DEBUG
     static func handle(_ url: URL) -> LaundryDemo? {
