@@ -7,7 +7,7 @@ public struct ShowerRetainedSummary: Equatable, Sendable {
     public enum Reason: String, Equatable, Sendable, CaseIterable {
         /// Stopped on the controller before the app settled it.
         case stopped
-        /// The close was sent and never confirmed.
+        /// The close was sent and never confirmed (no answer, or the controller answered busy).
         case closeUnconfirmed
         /// A settlement was sent (or refused) without a clear answer.
         case settleUnconfirmed
@@ -42,7 +42,7 @@ public struct ShowerRetainedSummary: Equatable, Sendable {
     static func reason(_ record: ShowerState) -> Reason {
         guard record.phase == .failed, let failure = record.failure else { return .stopped }
         switch failure.reason {
-        case .closeUnconfirmed: return .closeUnconfirmed
+        case .closeUnconfirmed, .closeBusy: return .closeUnconfirmed
         case .authorizeUncertain, .authorizationInvalid: return .authorizeUnclear
         default: return .settleUnconfirmed
         }

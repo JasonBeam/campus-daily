@@ -32,6 +32,10 @@ final class ShowerRetainedSummaryTests: XCTestCase {
         XCTAssertEqual(summary.entries.map(\.machine), ["AABBCCDD", "11223344", "11223344"])
     }
 
+    func testBusyCloseReadsAsCloseUnconfirmed() {
+        XCTAssertEqual(ShowerRetainedSummary(records: [failed(.closeBusy, at: t0)]).entries.first?.reason, .closeUnconfirmed)
+    }
+
     func testEverySettleOutcomeReadsAsSettleUnconfirmed() {
         for reason in [ShowerFailureReason.settleRefused, .settleUncertain, .settleUnconfirmed] {
             XCTAssertEqual(ShowerRetainedSummary(records: [failed(reason, at: t0)]).entries.first?.reason, .settleUnconfirmed, reason.rawValue)
