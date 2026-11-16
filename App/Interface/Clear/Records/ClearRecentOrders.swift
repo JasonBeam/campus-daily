@@ -2,7 +2,8 @@ import Foundation
 import Core
 
 /// The 订单 tab's own rows above the card's days: the last laundry order (open, or over within
-/// the last hours), the shower still open, and the last settled shower.
+/// the last hours), the shower still open, the last settled shower, and the showers a next use
+/// kept (read-only: nothing on them settles or deletes).
 struct ClearRecentOrders: Equatable {
     static let tabTitle = "订单"
     static let title = "最近订单"
@@ -11,8 +12,10 @@ struct ClearRecentOrders: Equatable {
     static let showerSettledTitle = "最近热水结算"
     static let settled = "热水已结算"
     static let noAmount = "金额未返回"
+    static let retainedTitle = ShowerRetainedText.Clear.sectionTitle
+    static let retainedFooter = ShowerRetainedText.Clear.footer
 
-    enum Section: Equatable { case laundry, showerOpen, showerSettled }
+    enum Section: Equatable { case laundry, showerOpen, showerSettled, showerRetained }
 
     struct Laundry: Equatable {
         let title: String
@@ -28,11 +31,13 @@ struct ClearRecentOrders: Equatable {
     var laundry: Laundry?
     var showerOpen: ClearOpenItem?
     var showerSettled: Settled?
+    var retained: ShowerRetainedSummary?
 
     /// Finished orders stay listed this long (as the laundry page's line).
     private static let recentWindow: TimeInterval = 3 * 3600
 
-    init(data: HomeData, laundry facts: LaundryFacts, now: Date = Date()) {
+    init(data: HomeData, laundry facts: LaundryFacts, retained: ShowerRetainedSummary? = nil, now: Date = Date()) {
+        self.retained = retained
         if data.laundryEnabled { laundry = Self.laundry(facts, now:now) }
         showerOpen = ClearOpenItem.shower(data.shower)
         let shower = data.recentActivities
@@ -44,8 +49,15 @@ struct ClearRecentOrders: Equatable {
     /// The sections there are rows for, in the tab's order.
     var sections: [Section] {
         [laundry.map { _ in Section.laundry }, showerOpen.map { _ in Section.showerOpen },
-         showerSettled.map { _ in Section.showerSettled }].compactMap { $0 }
+         showerSettled.map { _ in Section.showerSettled }, retained.map { _ in Section.showerRetained }].compactMap { $0 }
     }
+
+    /// One line per kept shower: 「开始时间 · 机器 · 原因」.
+    func retainedRows(time: (Date) -> String = Self.time) -> [String] {
+        (retained?.entries ?? []).map { ShowerRetainedText.row($0, reason:ShowerRetainedText.Clear.reason($0.reason), time:time) }
+    }
+
+    static func time(_ date: Date) -> String { date.formatted(date:.abbreviated, time:.shortened) }
 
     private static func laundry(_ facts: LaundryFacts, now: Date) -> Laundry? {
         guard let record = facts.record else { return nil }

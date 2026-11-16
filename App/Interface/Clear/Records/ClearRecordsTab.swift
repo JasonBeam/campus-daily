@@ -13,7 +13,7 @@ struct ClearRecordsTab: View {
 
     var body: some View {
         let data = shown
-        let orders = ClearRecentOrders(data:data, laundry:laundryFacts)
+        let orders = ClearRecentOrders(data:data, laundry:laundryFacts, retained:retained)
         Group {
             if data.signedIn {
                 // A new list (and records model) for each person and each graph: a sample's
@@ -39,6 +39,11 @@ struct ClearRecordsTab: View {
         if let demo = navigator.recordsDemo { return demo.laundryFacts() }
         if navigator.demo != nil { return LaundryFacts() }
         return LaundryFacts(model:laundry)
+    }
+
+    /// The live model's kept showers; none on a demo (they are not the demo's).
+    private var retained: ShowerRetainedSummary? {
+        navigator.demo == nil && navigator.recordsDemo == nil ? shower.retained : nil
     }
 
     private func app(_ data: HomeData) -> [AppActivity] {

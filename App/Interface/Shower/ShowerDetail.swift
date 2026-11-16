@@ -53,6 +53,12 @@ struct ShowerDetail: View {
                         }
                     }.padding(18).background(NativeTheme.surface,in:RoundedRectangle(cornerRadius:16))
                 }
+                if preview == nil, let retained = shower.retained {
+                    NavigationLink { ShowerRetainedList(summary:retained) } label: {
+                        Text(ShowerRetainedText.Warm.line(count:retained.count)).font(.subheadline)
+                            .multilineTextAlignment(.leading).fixedSize(horizontal:false,vertical:true)
+                    }.frame(minHeight:44).accessibilityIdentifier("showerRetainedLine")
+                }
                 if preview == nil && shower.recordUnreadable {
                     // The record can't be read by this build: cleared only after the user checked the official record.
                     Button(ShowerPageText.unreadableClear) { confirmClear = true }

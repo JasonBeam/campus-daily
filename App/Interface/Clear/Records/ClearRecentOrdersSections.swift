@@ -1,7 +1,8 @@
 import SwiftUI
+import Core
 
-/// 「最近洗衣订单」, 「当前热水记录」 and 「最近热水结算」, each only when it has a row; each row
-/// opens its page on 日常.
+/// 「最近洗衣订单」, 「当前热水记录」, 「最近热水结算」 and the kept showers, each only when it has
+/// a row; each row but the kept showers' opens its page on 日常 (those are plain, read-only rows).
 struct ClearRecentOrdersSections: View {
     let orders: ClearRecentOrders
     @Environment(ClearNavigator.self) private var navigator
@@ -50,6 +51,24 @@ struct ClearRecentOrdersSections: View {
                     .padding(.vertical,6)
                 }
             }
+        }
+        retainedSection
+    }
+
+    @ViewBuilder private var retainedSection: some View {
+        if orders.retained != nil {
+            Section {
+                ForEach(Array(orders.retainedRows().enumerated()), id:\.offset) { _, row in
+                    Text(row).font(.subheadline).foregroundStyle(Color.primary)
+                        .fixedSize(horizontal:false, vertical:true)
+                        .padding(.vertical,4)
+                }
+            } header: {
+                Text(ClearRecentOrders.retainedTitle)
+            } footer: {
+                Text(ClearRecentOrders.retainedFooter)
+            }
+            .accessibilityIdentifier("recordsRetainedShowers")
         }
     }
 

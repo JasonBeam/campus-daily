@@ -88,6 +88,8 @@ enum ShowerProfileFiles {
     /// The saved shower record is there but can't be decoded (another build wrote it): a
     /// relaunch doesn't help, the school's record says what happened.
     @Published private(set) var recordUnreadable = false
+    /// The showers a next use kept, read-only; nil when none are kept or they can't be read.
+    @Published private(set) var retained: ShowerRetainedSummary?
     @Published private(set) var residenceReviewRequired: Bool
     @Published private(set) var verifiedDevice: VerifiedShowerDevice?
     @Published private(set) var inspectionStatus: String?
@@ -131,6 +133,7 @@ enum ShowerProfileFiles {
     /// Reads the saved record into `state`. A read that fails is kept as such (`recordLoad`),
     /// not taken for "no shower": the sample stays shut over it.
     private func loadRecord() {
+        refreshRetained()
         do {
             if let persisted = try services.showerVault.showerState() { state = ShowerReducer.restore(persisted) }
             recordLoad = .loaded
@@ -221,6 +224,7 @@ enum ShowerProfileFiles {
     /// (Re)creates the engine for the current binding. Only while nothing is in flight.
     private func rebuildEngine() {
         guard !busy else { rebuildPending = true; return }
+        refreshRetained()
         observer?.cancel(); observer = nil; engine = nil
         syncGate.reset()
         recordUnreadable = false
@@ -272,6 +276,11 @@ enum ShowerProfileFiles {
                 reminders.syncShower(started:nil)
             }
         }
+    }
+
+    /// Reads the kept showers again (nothing is written).
+    private func refreshRetained() {
+        retained = ShowerRetainedSummary.read(services.showerVault)
     }
 
     private func apply(_ next: ShowerState) {
@@ -488,6 +497,7 @@ enum ShowerProfileFiles {
         do {
             let result = try await engine.startNext(binding)
             apply(result)
+            refreshRetained()
             if let stored = (try? services.showerVault.binding()) ?? nil, stored.machineId == binding.machineId {
                 self.binding = stored
             }
@@ -498,6 +508,7 @@ enum ShowerProfileFiles {
             storageBlocked = await engine.storageBlocked
             message = ShowerActionFailure.thrown(error, failure:await engine.state.failure, other:AppErrorText.text).message
             apply(await engine.state)
+            refreshRetained()
             return false
         }
     }

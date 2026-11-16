@@ -433,6 +433,8 @@ public enum DebugPage: String, Sendable, CaseIterable {
     /// `showerStopped`: the shower page's 上一次洗好了 face (开始下一次洗澡), each time it shows.
     case home, showerPage, showerStopped, showerDetail, laundry, washerSetup, cardRecords, cardTopUp, power, powerSetup
     case records, settings, account, dorm, theme, advanced, setupChecklist, onboarding, feedback, signIn
+    /// 暖橙's list of the showers a next use kept.
+    case showerRetained
 }
 
 /// Where the page was opened from.

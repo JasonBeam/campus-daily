@@ -99,10 +99,13 @@ struct ClearShowerPage: View {
         .accessibilityElement(children:.combine)
     }
 
-    /// The last shower, the way out of an unreadable record, and the folded controller check
+    /// The last shower, the kept showers' line, the way out of an unreadable record, and the folded controller check
     /// (or the way to set up hot water).
     @ViewBuilder private var extras: some View {
         if Self.showsLastUse(phase), let last = lastUse { ClearShowerLastCard(last:last) }
+        if live, flow.mayLeave, let retained = shower.retained {
+            ClearShowerRetainedLine(count:retained.count) { navigator.show([], in:.records, from:.homeButton) }
+        }
         if live, shower.recordUnreadable {
             // The record can't be read by this build: cleared only after the user checked the official record.
             Button(ShowerPageText.unreadableClear) { confirmClear = true }

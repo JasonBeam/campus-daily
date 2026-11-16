@@ -42,6 +42,26 @@ final class ClearRecentOrdersTests: XCTestCase {
         XCTAssertEqual(orders.laundry?.title, "洗衣完成")
     }
 
+    /// Showers a next use kept: their own section after the others, one row each, read-only.
+    func testRetainedSectionListsEach() {
+        let now = Date()
+        let t0 = now.addingTimeInterval(-7200)
+        let retained = ShowerRetainedSummary(records:[
+            ShowerState(phase:.running, machineID:"11223344", startedAt:t0, stateReviewRequired:true),
+            ShowerState(phase:.failed, machineID:"11223344", startedAt:t0.addingTimeInterval(600),
+                        failure:ShowerFailure(reason:.settleUnconfirmed, needsReview:true)),
+        ])
+        let orders = ClearRecentOrders(data:HomeData.sample(now:now), laundry:LaundryFacts(), retained:retained, now:now)
+        XCTAssertEqual(orders.sections, [.showerSettled, .showerRetained])
+        let rows = orders.retainedRows { _ in "T" }
+        XCTAssertEqual(rows, ["T · 11223344 · 停水未结算", "T · 11223344 · 结算未确认"])
+        XCTAssertEqual(ClearRecentOrders.retainedTitle, "待核对的热水记录")
+        XCTAssertEqual(ClearRecentOrders.retainedFooter, "可在学校官方热水消费明细中核对。")
+
+        let none = ClearRecentOrders(data:HomeData.sample(now:now), laundry:LaundryFacts(), retained:nil, now:now)
+        XCTAssertEqual(none.sections, [.showerSettled], "nothing kept or unreadable: no section")
+    }
+
     func testNoLaundryWhileSchoolLaundryIsOff() {
         let now = Date()
         var data = HomeData.sample(now:now)
