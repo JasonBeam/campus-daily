@@ -474,6 +474,13 @@ struct LaundryDetail: View {
         Task { await laundry.cancelOrder() }
     }
 
+    /// The pay, cancel and resolve sheets: about `height` tall with room to pull up, or full height
+    /// for taller content and at accessibility text sizes, where the buttons would sit below the
+    /// fold of the shorter detent.
+    static func sheetDetents(height: CGFloat, large: Bool, textSize: DynamicTypeSize) -> Set<PresentationDetent> {
+        large || textSize.isAccessibilitySize ? [.large] : [.height(height), .large]
+    }
+
     /// Fake progress only — never places an order.
     private func runDemoBusy() {
         let previous = demo
@@ -726,6 +733,7 @@ private struct LaundrySheetBody<Content: View>: View {
     /// Taller content (the new-order sheet with 「洗衣方式」): the large detent only.
     var large = false
     @ViewBuilder var content: Content
+    @Environment(\.dynamicTypeSize) private var textSize
     var body: some View {
         ScrollView {
             VStack(alignment:.leading, spacing:0) { content }
@@ -733,7 +741,7 @@ private struct LaundrySheetBody<Content: View>: View {
                 .frame(maxWidth:.infinity, alignment:.leading)
         }
         .scrollBounceBehavior(.basedOnSize)
-        .presentationDetents(large ? [.large] : [.height(height), .large])
+        .presentationDetents(LaundryDetail.sheetDetents(height:height, large:large, textSize:textSize))
         .presentationDragIndicator(.visible)
         .presentationBackground(Theme.group)
     }
