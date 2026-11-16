@@ -37,6 +37,21 @@ final class CampusTopUpTests: XCTestCase {
 
     // MARK: Opening
 
+    /// The entry may not work for everyone: the page never opens WeChat or the web page by itself,
+    /// on opening or on coming back; only a tap does.
+    func testNothingOpensUntilATap() {
+        for sample in [false, true] {
+            var flow = CampusTopUpFlow(sample: sample)
+            XCTAssertFalse(flow.weChatFailed)
+            var effects: [CampusTopUpEffect] = []
+            for event in [CampusTopUpEvent.scene(active: true), .scene(active: false), .scene(active: true)] {
+                effects += flow.handle(event)
+            }
+            XCTAssertFalse(effects.contains { if case .open = $0 { return true }; return false }, "sample: \(sample)")
+            XCTAssertEqual(flow.handle(.weChatTapped), [.open(CampusTopUp.weChat)])
+        }
+    }
+
     func testEachButtonOpensItsAddress() {
         var flow = CampusTopUpFlow()
         XCTAssertEqual(flow.handle(.weChatTapped), [.open(CampusTopUp.weChat)])

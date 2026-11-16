@@ -27,7 +27,7 @@ struct CampusTopUpView: View {
                     .fixedSize(horizontal:false, vertical:true)
                     .accessibilityAddTraits(.isHeader)
                     .padding(.top,16)
-                Text(CampusTopUpText.body).font(.body).foregroundStyle(.secondary)
+                Text(CampusTopUpText.body + CampusTopUpText.mayNotWork).font(.body).foregroundStyle(.secondary)
                     .fixedSize(horizontal:false, vertical:true)
                     .padding(.top,10)
                 Button { send(.weChatTapped) } label: {
@@ -110,6 +110,8 @@ enum CampusTopUpText {
     static let title = "校园充值"
     static let headline = "去学校的微信服务充值"
     static let body = "校园卡和电费都在学校的「e广工商大办事大厅」里充。进去后选校园卡或电费，付款前核对一下宿舍和金额。"
+    /// After the body: the entry is a shared link that may not open for everyone.
+    static let mayNotWork = "这个入口不一定人人都能打开。打不开的话，在微信里搜 e广工商大办事大厅。"
     static let openWeChat = "打开微信"
     static let openWeb = "用网页打开"
     static let footnote = "微信打不开的话，点「用网页打开」，或者在微信里搜「e广工商大办事大厅」。"

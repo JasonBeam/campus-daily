@@ -73,7 +73,8 @@ enum ClearCampusTopUpText {
     static let title = "校园充值"
     static let headline = "前往学校官方微信服务"
     static let body = "进入“e广工商大办事大厅”后，选择校园卡或电费充值；充值电费时请核对宿舍和金额。"
-    static let note = "校日常只负责打开学校入口。付款和到账以学校官方结果为准；返回后会刷新余额。"
+    /// The entry is a shared link: it says it may not open for everyone.
+    static let note = "校日常只负责打开学校入口，该入口不一定对所有人有效。付款和到账以学校官方结果为准；返回后会刷新余额。"
     static let openWeChat = "打开学校微信入口"
     static let failed = "未能打开微信，请确认已安装微信，或使用下方官方中转页。"
     static let openWeb = "使用学校官方中转页"
