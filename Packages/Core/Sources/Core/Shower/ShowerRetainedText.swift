@@ -37,8 +37,9 @@ public enum ShowerRetainedText {
         }
     }
 
-    /// One kept shower on a list: the start time (or, without one, the reason), then 「机器 · 原因」
-    /// (the machine alone when the reason leads). Read by VoiceOver as one sentence.
+    /// One kept shower on a list: the start time (or, without one, the reason), then
+    /// 「水控 编号 · 原因」, the controller left out when it is the dorm's own (and the line left out
+    /// when nothing is left for it). Read by VoiceOver as one sentence.
     public struct Line: Equatable, Sendable {
         public let title: String
         public let detail: String?
@@ -48,6 +49,9 @@ public enum ShowerRetainedText {
         public var spoken: String { [title, detail].compactMap { $0 }.joined(separator: "，") }
     }
 
+    /// 「水控 AABBCCDD」: a controller other than the dorm's own.
+    public static func machine(_ id: String) -> String { "水控 " + id }
+
     /// The kept showers newest first; those without a start time after the rest, as kept.
     public static func lines(_ summary: ShowerRetainedSummary, reason: (ShowerRetainedSummary.Reason) -> String,
                              time: (Date) -> String = { ShowerRetainedText.time($0) }) -> [Line] {
@@ -56,8 +60,9 @@ public enum ShowerRetainedText {
         let undated = summary.entries.filter { $0.started == nil }
         return (dated + undated).map { entry in
             let why = reason(entry.reason)
-            guard let started = entry.started else { return Line(title: why, detail: entry.machine) }
-            return Line(title: time(started), detail: [entry.machine, why].compactMap { $0 }.joined(separator: " · "))
+            let other = entry.machine.flatMap { $0.uppercased() == summary.currentMachine ? nil : machine($0) }
+            guard let started = entry.started else { return Line(title: why, detail: other) }
+            return Line(title: time(started), detail: [other, why].compactMap { $0 }.joined(separator: " · "))
         }
     }
 

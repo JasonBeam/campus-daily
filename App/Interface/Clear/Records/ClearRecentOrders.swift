@@ -52,7 +52,7 @@ struct ClearRecentOrders: Equatable {
          showerSettled.map { _ in Section.showerSettled }, retained.map { _ in Section.showerRetained }].compactMap { $0 }
     }
 
-    /// Two lines per kept shower, newest first: the start time, then 「机器 · 原因」.
+    /// Two lines per kept shower, newest first: the start time, then 「水控 编号 · 原因」 (the dorm's own controller left out).
     func retainedLines(time: (Date) -> String = { ShowerRetainedText.time($0) }) -> [ShowerRetainedText.Line] {
         retained.map { ShowerRetainedText.lines($0, reason:ShowerRetainedText.Clear.reason, time:time) } ?? []
     }

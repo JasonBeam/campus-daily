@@ -54,7 +54,7 @@ final class ClearRecentOrdersTests: XCTestCase {
         let orders = ClearRecentOrders(data:HomeData.sample(now:now), laundry:LaundryFacts(), retained:retained, now:now)
         XCTAssertEqual(orders.sections, [.showerSettled, .showerRetained])
         let rows = orders.retainedLines { _ in "T" }
-        XCTAssertEqual(rows, [.init(title:"T", detail:"11223344 · 结算未确认"), .init(title:"T", detail:"11223344 · 停水未结算")], "newest first")
+        XCTAssertEqual(rows, [.init(title:"T", detail:"水控 11223344 · 结算未确认"), .init(title:"T", detail:"水控 11223344 · 停水未结算")], "newest first")
         XCTAssertEqual(ClearRecentOrders.retainedTitle, "待核对的热水记录")
         XCTAssertEqual(ClearRecentOrders.retainedFooter, "可在学校官方热水消费明细中核对。")
 
@@ -81,9 +81,27 @@ final class ClearRecentOrdersTests: XCTestCase {
         ])
         let orders = ClearRecentOrders(data:HomeData.sample(now:now), laundry:LaundryFacts(), retained:retained, now:now)
         let lines = orders.retainedLines { $0 == t0 ? "early" : "late" }
-        XCTAssertEqual(lines, [.init(title:"late", detail:"AABBCCDD · 关水未确认"),
-                               .init(title:"early", detail:"11223344 · 停水未结算"),
-                               .init(title:"授权未确认", detail:"11223344")])
+        XCTAssertEqual(lines, [.init(title:"late", detail:"水控 AABBCCDD · 关水未确认"),
+                               .init(title:"early", detail:"水控 11223344 · 停水未结算"),
+                               .init(title:"授权未确认", detail:"水控 11223344")])
+    }
+
+    /// Rows on the dorm's own controller leave it out; a record that never started has no
+    /// second line then.
+    func testRetainedLinesLeaveOutTheDormsController() {
+        let now = Date()
+        let t0 = now.addingTimeInterval(-7200)
+        let retained = ShowerRetainedSummary(records:[
+            ShowerState(phase:.running, machineID:"11223344", startedAt:t0, stateReviewRequired:true),
+            ShowerState(phase:.failed, machineID:"11223344", failure:ShowerFailure(reason:.authorizeUncertain, needsReview:true)),
+            ShowerState(phase:.failed, machineID:"AABBCCDD", startedAt:t0.addingTimeInterval(600),
+                        failure:ShowerFailure(reason:.closeUnconfirmed, needsReview:true)),
+        ], currentMachine:"11223344")
+        let orders = ClearRecentOrders(data:HomeData.sample(now:now), laundry:LaundryFacts(), retained:retained, now:now)
+        XCTAssertEqual(orders.retainedLines { $0 == t0 ? "early" : "late" },
+                       [.init(title:"late", detail:"水控 AABBCCDD · 关水未确认"),
+                        .init(title:"early", detail:"停水未结算"),
+                        .init(title:"授权未确认", detail:nil)])
     }
 
     /// The hot-water page's kept line opens 订单 at its section.

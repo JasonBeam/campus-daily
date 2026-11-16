@@ -1,7 +1,7 @@
 import SwiftUI
 import Core
 
-/// 暖橙's list of the showers a next use kept: two lines each, newest first (start time, then controller · why it was
+/// 暖橙's list of the showers a next use kept: two lines each, newest first (start time, then another controller · why it was
 /// kept) and what to do about them. Read-only: nothing here settles or deletes them.
 struct ShowerRetainedList: View {
     let summary: ShowerRetainedSummary

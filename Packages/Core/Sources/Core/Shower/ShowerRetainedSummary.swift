@@ -26,19 +26,25 @@ public struct ShowerRetainedSummary: Equatable, Sendable {
     }
 
     public let entries: [Entry]
+    /// The dorm's controller now (the binding's), when known: a record on it doesn't name it.
+    public let currentMachine: String?
 
     public var count: Int { entries.count }
 
-    public init(entries: [Entry]) { self.entries = entries }
+    public init(entries: [Entry], currentMachine: String? = nil) {
+        self.entries = entries; self.currentMachine = currentMachine?.uppercased()
+    }
 
-    public init(records: [ShowerState]) {
-        entries = records.map { Entry(started: $0.startedAt, machine: $0.machineID, reason: Self.reason($0)) }
+    public init(records: [ShowerState], currentMachine: String? = nil) {
+        self.init(entries: records.map { Entry(started: $0.startedAt, machine: $0.machineID, reason: Self.reason($0)) },
+                  currentMachine: currentMachine)
     }
 
     /// Nil when none are kept or the list can't be read: then nothing is shown, and no error.
     public static func read(_ vault: some ShowerVault) -> ShowerRetainedSummary? {
         guard let records = try? vault.retainedShowers(), !records.isEmpty else { return nil }
-        return ShowerRetainedSummary(records: records)
+        let current = (try? vault.binding())??.machineId
+        return ShowerRetainedSummary(records: records, currentMachine: current)
     }
 
     static func reason(_ record: ShowerState) -> Reason {

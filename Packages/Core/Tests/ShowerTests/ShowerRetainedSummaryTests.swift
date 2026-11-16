@@ -30,6 +30,14 @@ final class ShowerRetainedSummaryTests: XCTestCase {
         XCTAssertEqual(summary.entries.map(\.reason), [.stopped, .closeUnconfirmed, .settleUnconfirmed])
         XCTAssertEqual(summary.entries.map(\.started), [t0, later, later.addingTimeInterval(60)])
         XCTAssertEqual(summary.entries.map(\.machine), ["AABBCCDD", "11223344", "11223344"])
+        XCTAssertNil(summary.currentMachine, "no binding saved")
+    }
+
+    /// The summary knows the dorm's controller, so the lists can leave it out.
+    func testCarriesTheDormsController() throws {
+        let vault = try vault(keeping: [stopped])
+        try vault.saveBinding(ShowerBinding(studentId: "S-1", schoolId: "1", machineId: "aabbccdd", roomId: "R-1", roomLabel: "3栋108"))
+        XCTAssertEqual(try XCTUnwrap(ShowerRetainedSummary.read(vault)).currentMachine, "AABBCCDD")
     }
 
     func testBusyCloseReadsAsCloseUnconfirmed() {
@@ -59,7 +67,7 @@ final class ShowerRetainedSummaryTests: XCTestCase {
     /// Display fields only: no handle on the stored records, no settle or delete.
     func testNoActionsOffered() throws {
         let summary = try XCTUnwrap(ShowerRetainedSummary.read(try vault(keeping: [stopped])))
-        XCTAssertEqual(Mirror(reflecting: summary).children.compactMap(\.label), ["entries"])
+        XCTAssertEqual(Mirror(reflecting: summary).children.compactMap(\.label), ["entries", "currentMachine"])
         XCTAssertEqual(Mirror(reflecting: summary.entries[0]).children.compactMap(\.label), ["started", "machine", "reason"])
         // Reading it changes nothing.
         let vault = try vault(keeping: [stopped])
