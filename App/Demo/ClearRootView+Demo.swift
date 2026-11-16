@@ -126,6 +126,11 @@ extension ClearRootView {
             HomeView.ShowerPageDemo.apply(name, to:shower)
             if name == "sh-endfail" { shower.page.endFailed = .noConnection }
             if name == "sh-stopped-busy-rechecking" { shower.page.rechecking = true }
+            if let records = HomeView.ShowerPageDemo.records(name) {
+                // The kept line opens 订单: on the synthetic list, not the live one.
+                navigator.recordsDemo = records
+                recordsDemoRun += 1
+            }
             if name.hasPrefix("sh-detail") {
                 // The same page, not brought up by the model.
                 shower.page.presented = false

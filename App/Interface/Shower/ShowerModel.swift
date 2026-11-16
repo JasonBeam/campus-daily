@@ -97,6 +97,9 @@ enum ShowerProfileFiles {
     var demoRetainedListOpen = false
     /// campusdaily://demo/sh-denied-final: the refused face without its retry.
     @Published var demoDeniedFinal = false
+    /// campusdaily://demo/sh-detail-kept: 暖橙's 热水洗澡 drawn set up and idle in this dorm
+    /// (no binding behind it; nothing connects).
+    @Published var demoReadyDorm: String?
     #endif
     @Published private(set) var residenceReviewRequired: Bool
     @Published private(set) var verifiedDevice: VerifiedShowerDevice?

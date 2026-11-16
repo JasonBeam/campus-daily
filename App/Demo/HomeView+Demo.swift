@@ -169,21 +169,33 @@ extension HomeView {
             }
         }
 
-        /// Three kept showers (fake controllers): two reasons, one that never started.
+        /// The demo dorm's controller (fake).
+        static let dormMachine = "11223344"
+
+        /// Three kept showers (fake controllers): two reasons, one that never started; two on the
+        /// dorm's own controller, one on another.
         static func retained(now: Date = Date()) -> ShowerRetainedSummary {
             ShowerRetainedSummary(entries:[
-                .init(started:now.addingTimeInterval(-26 * 3600), machine:"11223344", reason:.stopped),
-                .init(started:nil, machine:"11223344", reason:.authorizeUnclear),
+                .init(started:now.addingTimeInterval(-26 * 3600), machine:dormMachine, reason:.stopped),
+                .init(started:nil, machine:dormMachine, reason:.authorizeUnclear),
                 .init(started:now.addingTimeInterval(-3 * 3600), machine:"AABBCCDD", reason:.closeUnconfirmed),
-            ])
+            ], currentMachine:dormMachine)
         }
+
+        static func isKept(_ name: String?) -> Bool { name?.hasPrefix("sh-detail-kept") == true }
+
+        /// 订单 under a page demo: the synthetic list for the kept showers (their line opens it),
+        /// nil to leave it as it is.
+        static func records(_ name: String) -> RecordsDemo? { isKept(name) ? .list : nil }
 
         /// The demo knobs on the model, for this page demo (and cleared for any other).
         @MainActor static func apply(_ name: String?, to shower: ShowerModel) {
             shower.demoDeniedFinal = name == "sh-denied-final"
-            let kept = name?.hasPrefix("sh-detail-kept") == true
+            let kept = isKept(name)
             shower.demoRetained = kept ? retained() : nil
             shower.demoRetainedListOpen = name == "sh-detail-kept-list"
+            // 暖橙's 热水洗澡 reads the live model: drawn set up and idle instead.
+            shower.demoReadyDorm = kept ? SampleData.dorm : nil
         }
     }
 

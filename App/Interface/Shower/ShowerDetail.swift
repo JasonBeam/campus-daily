@@ -28,7 +28,7 @@ struct ShowerDetail: View {
                         else { Circle().fill(shower.problem ? NativeTheme.notice : NativeTheme.tint).frame(width:7,height:7).accessibilityHidden(true) }
                         Text(headline).font(.title2.bold()).accessibilityIdentifier("waterHeadline")
                     }
-                    Text(shower.inspecting ? "正在只读核对附近水控，不会出水。" : shower.status).font(.subheadline).foregroundStyle(shower.problem ? NativeTheme.notice : .fixed(Color.secondary))
+                    Text(demoReady ? "" : shower.inspecting ? "正在只读核对附近水控，不会出水。" : shower.status).font(.subheadline).foregroundStyle(shower.problem ? NativeTheme.notice : .fixed(Color.secondary))
                         .fixedSize(horizontal:false,vertical:true).accessibilityIdentifier("waterStatus")
                 }
                 }
@@ -76,7 +76,7 @@ struct ShowerDetail: View {
                 }
                 if preview != nil {
                     NavigationLink("连接检查与水控信息") { AdvancedSettingsView(preview:preview) }.font(.subheadline).frame(minHeight:44)
-                } else if !shower.configured {
+                } else if !shower.configured && !demoReady {
                     NavigationLink("设置校园账号与宿舍") { CampusOnboardingView() }.frame(minHeight:44)
                 } else {
                     NavigationLink("连接检查与水控信息") { AdvancedSettingsView() }.font(.subheadline).frame(minHeight:44)
@@ -94,7 +94,7 @@ struct ShowerDetail: View {
                             Spacer(); Image(systemName:closing ? "stop.circle" : "arrow.up.right")
                         }.padding(.horizontal,18).frame(minHeight:52)
                     }.buttonStyle(ShowerButtonStyle(primary:true,accent:NativeTheme.tint))
-                        .disabled(preview == nil && (stopped ? !shower.mayStartNext : closing ? !shower.mayFinish : !shower.mayStart))
+                        .disabled(preview == nil && !demoReady && (stopped ? !shower.mayStartNext : closing ? !shower.mayFinish : !shower.mayStart))
                         .accessibilityIdentifier(stopped ? "showerStartNext" : closing ? "finishWater" : "startWater")
                     // The page this opens says 「结算完成前，先别离开水控。」 once 结束 is tapped.
                     Text(stopped ? ShowerPageText.stoppedNote : closing ? ShowerPageText.runningNote : "授权后，按水控上的出水键。")
@@ -128,7 +128,17 @@ struct ShowerDetail: View {
     /// shower page (routes to here open that page then, so this shows mostly in passing). Read
     /// from the page's record, which follows the engine.
     private var stopped: Bool { preview == nil && shower.page.record.showerOver }
-    private var room: String { preview?.dorm ?? campus.room }
+    private var room: String { preview?.dorm ?? demoDorm ?? campus.room }
+
+    /// DEBUG demo (sh-detail-kept): the dorm of a page drawn set up and idle; its 开始洗澡 starts nothing.
+    private var demoDorm: String? {
+        #if DEBUG
+        return preview == nil ? shower.demoReadyDorm : nil
+        #else
+        return nil
+        #endif
+    }
+    private var demoReady: Bool { demoDorm != nil }
     private var lastEnded: Date? {
         guard let preview else { return shower.lastEnded }
         // The sample's last shower, as home's 最近 has it.
@@ -145,6 +155,7 @@ struct ShowerDetail: View {
     }
 
     private var headline: String {
+        if demoReady { return ShowerPageText.readyTitle }
         if shower.inspecting { return "正在核对水控" }
         if shower.busy { return "正在处理" }
         if shower.problem { return "本次待核对" }
@@ -161,6 +172,7 @@ struct ShowerDetail: View {
     /// sample's start only says it can't.
     private func perform() {
         if preview != nil { sample.perform(.startShower) {}; return }
+        if demoReady { return }
         if stopped { shower.pageEventShowingPage(.startNextTapped) }
         else if closing { shower.pageEventShowingPage(.reopen, .endTapped) }
         else { shower.pageEventShowingPage(.startTapped) }
