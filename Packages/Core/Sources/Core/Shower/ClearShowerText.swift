@@ -1,7 +1,8 @@
 import Foundation
 
 /// 清爽's 热水洗澡 page: a short headline and one plain line for each face, the button's words
-/// and the footnote under it. A problem of any kind reads 「本次待核对」 with its reason under it.
+/// and the footnote under it. A problem reads 「本次待核对」 with its reason under it; a refused
+/// start (nothing issued, nothing charged) has the refusal's own headline.
 public enum ClearShowerText {
     public static let readyTitle = "准备洗澡"
     public static let readyBody = "准备好了，靠近水控即可开始"
@@ -15,6 +16,10 @@ public enum ClearShowerText {
     public static let doneTitle = "结算完成"
     public static let doneBody = "服务器已确认结算"
     public static let problemTitle = "本次待核对"
+    /// The refused face's headline, as 暖橙's page and the lock screen have it.
+    public static let deniedTitle = ShowerAuthorizeRefusedText.title
+    /// Refused because the controller is in use: 暖橙's headline for it too.
+    public static let inUseTitle = "水控有人在用"
     public static let connectFailedBody = "蓝牙连接失败，请靠近水控并退出其他水控连接页面"
     public static let inUseBody = "水控仍在忙，已断开连接；确认停水后请稍后再试"
     public static let deniedBody = "学校未授权本次用水，未扣费；请稍后再试"
@@ -66,7 +71,7 @@ public enum ClearShowerText {
         case .settling?: return (busyTitle, endingBody, false)
         case .done?: return (doneTitle, doneBody, false)
         case .connectFailed?: return (problemTitle, connectFailedBody, true)
-        case .denied?: return (problemTitle, inUse ? inUseBody : deniedBody, true)
+        case .denied?: return (inUse ? inUseTitle : deniedTitle, inUse ? inUseBody : deniedBody, true)
         case .stopped?: return (problemTitle, inUse ? inUseBody : closeBusy ? closeBusyBody : stoppedBody, true)
         }
     }

@@ -18,7 +18,7 @@ enum ShowerPageText {
     static let connectFailedBody = "站近一点，确认蓝牙开着，再试一次。"
     static let denied = ShowerAuthorizeRefusedText.title
     static let deniedBody = "这次没扣钱。过一会儿再试，一直这样就去学校的热水记录里看看。"
-    static let inUse = "水控有人在用"
+    static let inUse = ClearShowerText.inUseTitle
     static let inUseBody = "附近的水控有人在用，现在开不了水。等它空了再试。这次没扣钱。"
     /// The ready layout's headline (the 热水洗澡 screen's).
     static let readyTitle = "准备洗澡"

@@ -12,11 +12,21 @@ final class ClearShowerTextTests: XCTestCase {
         XCTAssertEqual(title(.running), "热水已授权")
         XCTAssertEqual(title(.settling), "正在处理")
         XCTAssertEqual(title(.done), "结算完成")
-        for phase in [ShowerPagePhase.connectFailed, .denied, .stopped] {
+        for phase in [ShowerPagePhase.connectFailed, .stopped] {
             XCTAssertEqual(title(phase), "本次待核对", "\(phase)")
             XCTAssertTrue(ClearShowerText.face(phase).problem, "\(phase)")
         }
         XCTAssertFalse(ClearShowerText.face(.done).problem)
+    }
+
+    /// A refused start issued nothing and charged nothing: its own headline, the same words as
+    /// 暖橙's page, instead of 「本次待核对」.
+    func testRefusedFacesHaveTheirOwnHeadline() {
+        XCTAssertEqual(title(.denied), "水没开成")
+        XCTAssertEqual(title(.denied), ShowerAuthorizeRefusedText.title)
+        XCTAssertEqual(title(.denied, inUse: true), "水控有人在用")
+        XCTAssertTrue(ClearShowerText.face(.denied).problem, "still a notice")
+        XCTAssertTrue(ClearShowerText.face(.denied, inUse: true).problem)
     }
 
     func testLines() {

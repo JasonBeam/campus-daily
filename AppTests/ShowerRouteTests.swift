@@ -52,11 +52,12 @@ final class ShowerRouteTests: XCTestCase {
         XCTAssertNil(HomeShowerButton.caption(.stopped), "no second line on home")
     }
 
-    /// 清爽's page keeps one layout on every face: the 本次费用 card (「结算后显示」 until an
-    /// amount is read) and 最近一次用水 whenever a settled shower is kept.
+    /// 清爽's page keeps one layout: the 本次费用 card (「结算后显示」 until an amount is read) on
+    /// every face but a refused start, which charged nothing, and 最近一次用水 whenever a settled
+    /// shower is kept.
     func testClearsPageShowsCostAndLastUseOnEveryFace() {
         for phase: ShowerPagePhase? in [nil, .connecting, .running, .settling, .done, .connectFailed, .denied, .stopped] {
-            XCTAssertTrue(ClearShowerPage.showsCostCard(phase), "\(String(describing: phase))")
+            XCTAssertEqual(ClearShowerPage.showsCostCard(phase), phase != .denied, "\(String(describing: phase))")
             XCTAssertTrue(ClearShowerPage.showsLastUse(phase), "\(String(describing: phase))")
         }
     }

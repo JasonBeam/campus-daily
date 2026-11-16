@@ -24,8 +24,9 @@ struct ClearShowerPage: View {
     private var flow: ShowerPageFlow { shower.page }
     private var phase: ShowerPagePhase? { flow.pushedPhase }
 
-    /// One layout on every face: 本次费用 (「结算后显示」 until an amount is read) ...
-    static func showsCostCard(_ phase: ShowerPagePhase?) -> Bool { true }
+    /// 本次费用 (「结算后显示」 until an amount is read) on every face but a refused start, which
+    /// charged nothing ...
+    static func showsCostCard(_ phase: ShowerPagePhase?) -> Bool { phase != .denied }
     /// ... and 最近一次用水 whenever a settled shower is kept.
     static func showsLastUse(_ phase: ShowerPagePhase?) -> Bool { true }
 
