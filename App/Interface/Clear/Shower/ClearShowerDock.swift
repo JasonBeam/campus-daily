@@ -15,7 +15,16 @@ struct ClearShowerDock: View {
     let live: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    /// 开始洗澡 was tapped on the refused face; cleared when the phase moves.
+    @State private var retryTapped = false
+
     private var flow: ShowerPageFlow { shower.page }
+
+    /// The refused face's 开始洗澡: from the tap until the phase moves, 正在处理… spinning and off,
+    /// as while a start runs.
+    static func retryFace(tapped: Bool, starting: Bool) -> (title: String, spinning: Bool, enabled: Bool) {
+        tapped || starting ? (ClearShowerText.busyButton, true, false) : (ClearShowerText.deniedRetry, false, true)
+    }
 
     var body: some View {
         VStack(spacing:10) {
@@ -60,9 +69,15 @@ struct ClearShowerDock: View {
                 primary(ClearShowerText.busyButton, spinning:true, enabled:false) {}
                 note(ClearShowerText.endNote)
             case .denied? where flow.record.canStart:
-                // Nothing was issued: start again here, as after a failed connect.
-                primary(ClearShowerText.deniedRetry, symbol:"arrow.up.right", enabled:!flow.starting) { shower.pageEvent(.retryTapped) }
-                secondary(ClearShowerText.deniedClose, enabled:true) { close(.closeTapped) }
+                // Nothing was issued: start again here, as after a failed connect. The tap shows
+                // the starting look at once, without waiting for the page to move.
+                let face = Self.retryFace(tapped:retryTapped, starting:flow.starting)
+                primary(face.title, symbol:"arrow.up.right", spinning:face.spinning, enabled:face.enabled) {
+                    retryTapped = true
+                    // A demo shows the tapped look and starts nothing.
+                    if live { shower.pageEvent(.retryTapped) }
+                }
+                secondary(ClearShowerText.deniedClose, enabled:!retryTapped) { close(.closeTapped) }
             case .done?, .denied?:
                 // Both send the same answer; settled stays on the page, which turns to its ready face.
                 let button = ClearShowerText.answerButton(phase == .done ? .done : .denied)
@@ -75,6 +90,7 @@ struct ClearShowerDock: View {
             }
         }
         .animation(reduceMotion ? nil : .easeInOut(duration:0.2), value:phase)
+        .onChange(of:phase) { retryTapped = false }
         .frame(maxWidth:560)
         .padding(.horizontal,20).padding(.vertical,12)
         .frame(maxWidth:.infinity)
