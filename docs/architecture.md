@@ -3,7 +3,10 @@
 How the iOS code is organised and why. Endpoint details (params, envelopes, raw shapes) are in
 Appendix A; the Android app in `platforms/android/` is a separate Gradle project, kept exactly as the author
 has it; it reads its own copy of the school-login script from `Shared/CampusLoginAutomation.js`
-(excluded from the App and Widget targets) and `tools/stage_platform_profile.py`.
+(excluded from the App and Widget targets) and `tools/stage_platform_profile.py`. The
+online hot-water access service (`services/access`, `docs/hot-water-access.md`,
+`tools/prepare_water_access.py`) is kept unchanged for that Android app; the iOS app has no client
+for it and reads the hot-water platform profile only from the bundled file or a user import.
 
 Ground rules: the BLE frame format and the `wxcode`/MD5 signing are kept byte for byte; any
 change to signing, BLE commands or school/U净 response parsing goes in its own commit with its
@@ -563,16 +566,16 @@ Rules:
   sending, or 4002/-301) → `failed(needsReview: false)` (nothing issued); anything else, any
   other platform code included → `failed(needsReview: true)`; never re-authorize.
 - `writePending` shows as running on purpose (the controller may have accepted without acking).
-  `finish` from it: probe shows the device idle with our identity → the check face
+  `finish` from it: probe shows the device idle with our identity → the shower is over
   (`stateReviewRequired`, as from `running`: the write may have been applied with only its ack
   lost); `idle` with no charge only when the write provably never reached the controller
   (cancelled before it, or the write refused); `0xA5` → close.
 - Close is sent only after the probe returns `0xA5`; otherwise keep the session, flag review.
   A close that never reached the controller (cancelled before the write, the link unusable, or
   the write refused) goes back to the timer, so 结束 sends it again. Only a close lost after the
-  write was taken is `failed(closeUnconfirmed)`; from there a read-only review probe is
-  allowed (the unsure face's 「再查一次水控」, Settings' 检查水控状态): `0xA5` returns to
-  `running` (the close can be sent again), anything else keeps the check.
+  write was taken is `failed(closeUnconfirmed)`: the shower is over (below). From there only
+  Settings › 高级 › 检查水控状态 (a read-only probe) can return it: `0xA5` returns to `running`
+  (the close can be sent again), anything else keeps the record as it is.
 - Whose session a close ended: the consumption frame is `55`, the machine id (4 bytes) and 15
   bytes whose layout is not known; nothing in it is known to name the authorization or the
   student, so it can't be checked against `authorizationID`. `0xA5` only says water runs, not
@@ -580,22 +583,24 @@ Rules:
   consumption frame is settled by itself only for a session that got it (`running` from the
   ack). Without it (`writePending`, also when a probe later found `0xA5`), and after a probe
   found water running behind an unconfirmed close, the frame is kept (`holdSettle`):
-  `failed(settleUnconfirmed)` with the settlement not sent, settled by 「再结算一次」's two taps
-  after the user looked. An acknowledged session the controller ended by itself, followed by
+  `failed(settleUnconfirmed)` with the settlement not sent; the frame is only kept with the
+  record, never settled by the app. An acknowledged session the controller ended by itself, followed by
   someone else's on the same controller before 结束, is not caught: nothing the controller
   sends tells them apart.
-- `settling` is never auto-retried; repeat-settle idempotency is unknown, so a manual retry
-  needs a second confirmation and is counted on the record (`manualSettleAttempts`). It is 「再结算一次」 on the unsure
-  face of a settlement that failed with its consumption frame kept: the first tap arms it, the
-  second sends it.
-- A probe that finds the controller stopped under a running record sets `stateReviewRequired`:
-  the shower page shows a check face (去核对 / 「我在学校记录里核对过了」) and the home card's
-  button reads 去核对. 「再查一次水控」 on that face runs the same read-only probe again; a stopped
-  or unreachable controller is said under it. Once the controller showed the session stopped,
-  `0xA5` found later may be anyone's water (the session was most likely ended with the
-  controller's own button and someone started another): the check stands, the link is let go,
-  and 结束 is not offered (`canFinish` is false), so no close or settlement goes out under the
-  old authorization.
+- `settling` is never auto-retried, and the app offers no settle retry: repeat-settle
+  idempotency is unknown. A settlement the school refused or never answered is over like any
+  other unknown outcome (below).
+- The shower is over (`ShowerState.showerOver`) when a probe finds the controller stopped under
+  a running record (`stateReviewRequired`) or a failure's outcome is unknown (`needsReview`:
+  an unclear authorize, an unconfirmed close, a refused or unanswered settlement). The school
+  settles it; the app never settles it again and has no check page. The page goes back to the
+  layout before a start (`ShowerPagePhase.stopped`): 暖橙 「上一次洗好了」 with
+  `ShowerAuthorText.stoppedNote` under its one button 「开始下一次洗澡」, 清爽 「本次待核对」 with
+  `ClearShowerText.stoppedBody` and `nextNote`; home's button reads 「去洗澡」 (清爽's tile
+  「待核对」). Once the controller showed the session stopped, `0xA5` found later may be anyone's
+  water (the session was most likely ended with the controller's own button and someone
+  started another): the record stays over, the link is let go, and 结束 is not offered
+  (`canFinish` is false), so no close or settlement goes out under the old authorization.
 - Next use over a record that waits for its check (`canStartNext`, the same records
   `resolveManually` takes; ported as rules from upstream 0.9.0's `startNext`):
   `ShowerEngine.startNext` connects and probes first. `0xA5` → the link is let go, nothing is
@@ -609,10 +614,10 @@ Rules:
   (`ShowerRetainedSummary`: start time, controller, why each was kept; nothing when the list
   can't be read), on 清爽's 订单 tab and 暖橙's list behind 热水洗澡. A task cancelled while
   it connects or probes changes nothing, whatever the controller answered. An open shower (no
-  check pending) still ends only with 结束. 「再洗一次」 sits on the check faces only, with
-  「上一次的记录会留着，扣没扣以学校的热水记录为准。先确认水控已经停水，再点这里。」 under it; when
-  it or 「再查一次水控」 finds the controller in use the face reads 水控有人在用
-  (`ShowerPageFlow.checkInUse`, until the next look or try).
+  check pending) still ends only with 结束. 「开始下一次洗澡」 is the stopped page's one button;
+  when it finds the controller in use the page reads 水控有人在用 (清爽 `ClearShowerText.inUseBody`)
+  with one 「再查一次」, the same read-only probe (`ShowerPageFlow.foundInUse`, until the next
+  look or try).
 - `startedAt` is set when the authorization arrives and enters `writePending` (出水), not at the
   开始洗澡 tap: the ~15 s of connecting and authorizing are not shower time. The in-app timer,
   the Live Activity, the unsettled reminder and the shown duration (done page, settled lock
