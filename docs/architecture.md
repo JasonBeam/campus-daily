@@ -690,10 +690,17 @@ Rules:
 - Cancel only from an unpaid `10/17`: fresh read first, then at most one POST (persisted
   `cancelSent` first), then the same polling until `53` or another terminal status. Paid in
   between → no POST.
-- Paid but not washing with a known end (`20`, `21`, or `40` with no remaining time): while the
-  app is in front it reads the order every 45 s for up to 5 min from that first read
-  (`LaundryFollowUp`), and the laundry-done notification is set for the first paid read + the
-  program's minutes until a washing read gives the end.
+- While the app is in front, a task of the scene reads the open order (`LaundryForegroundPoll`,
+  `LaundryOrderPoller`): a 立刻洗衣 order paid or being checked, with no start tried, not washing
+  and within 10 min of 下单, every 1 s for the first 20 s in front, then every 3 s; any other open
+  order every 30 s while the laundry-done reminder is on. A failed read waits 30 s on its own
+  clock; a tick skipped because another step runs is not a read. A read can lead to
+  `control/start` (the engine's rules decide), so the task is rebuilt only when the app comes to
+  or leaves the front, the engine is rebuilt or another order opens, never on the start record or
+  a running step: rebuilding would cancel the read that is about to start the machine.
+- Paid but not washing with a known end (`20`, `21`, or `40` with no remaining time): the
+  laundry-done notification is set for the first paid read + the program's minutes until a
+  washing read gives the end (`LaundryFollowUp`).
 - `40` → Live Activity (machine, program, endsAt) + laundry-done notification at `endsAt`;
   `50`/`53`/`51`/`52` end the activity and the laundry-done notification and clear the record
   (`52` keeps a warning card until acknowledged). `LaundryDoneReminder` decides the notification.

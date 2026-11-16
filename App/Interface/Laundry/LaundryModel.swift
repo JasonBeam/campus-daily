@@ -43,6 +43,8 @@ enum LaundryLoginRefusal: Error { case otherAccount }
     /// no Live Activity, no reminder; the U净 login and saved machines stay.
     @Published private(set) var schoolEnabled: Bool
     @Published private(set) var lastOrder: LaundryLastOrder?
+    /// Counts engine rebuilds (another account, a reset): part of the polling task's identity.
+    @Published private(set) var engineGeneration = 0
 
     private var account: UjingAccountItem?
     private var engine: LaundryEngine?
@@ -50,7 +52,6 @@ enum LaundryLoginRefusal: Error { case otherAccount }
     private var lastAttempt: Date?
     private var activitySync: AnyCancellable?
     private var endCheck: (end: Date, task: Task<Void, Never>)?
-    private var startWatch: (since: Date, task: Task<Void, Never>)?
     /// Whether the app is in front (`appInFront`; a test's own).
     private let inFront: @Sendable () async -> Bool
     private static let machinesKey = PreferenceKey.laundryMachines
@@ -131,6 +132,7 @@ enum LaundryLoginRefusal: Error { case otherAccount }
     private func rebuildEngine() {
         guard !checkoutBusy else { return }
         observer?.cancel(); observer = nil; engine = nil
+        engineGeneration += 1
         do {
             let engine = try LaundryEngine(api:client, vault:vault, launcher:launcher,
                                            accountID:account?.account?.id,
@@ -253,7 +255,6 @@ enum LaundryLoginRefusal: Error { case otherAccount }
     /// After a reset cleared the stores: no U净 login, machines or order; the switch back on.
     func reloadAfterReset() {
         endCheck?.task.cancel(); endCheck = nil
-        startWatch?.task.cancel(); startWatch = nil
         schoolEnabled = SchoolLaundryPreference(storage:defaults).isOn
         lastOrder = nil; snapshot = nil; candidate = nil; checkout = nil
         issue = nil; checkoutIssue = nil; checkoutProgress = nil; lastAttempt = nil; sessionExpired = false; signOutFailed = false
@@ -324,12 +325,29 @@ enum LaundryLoginRefusal: Error { case otherAccount }
         catch { issue = readText(error) ?? "暂时连不上 U净，先显示上次的状态。" }
     }
 
-    /// Order read (foreground, back from Alipay, pull to refresh). Read only.
-    func refreshOrder() async {
-        guard let engine, !checkoutBusy, let record = checkout, record.phase != .none else { return }
+    /// Order read (foreground, back from Alipay, pull to refresh, the foreground poll). Not read
+    /// only: a paid 立刻洗衣 order may be started by it, under the engine's rules. Says how the
+    /// read went (`skipped` when another step was running or no order is open).
+    @discardableResult
+    func refreshOrder() async -> LaundryForegroundPoll.Outcome {
+        guard let engine, !checkoutBusy, let record = checkout, record.phase != .none else { return .skipped }
+        var outcome = LaundryForegroundPoll.Outcome.skipped
         await perform(progress:"正在核对订单…") {
-            record.phase == .paying ? try await engine.returnedFromPayment() : try await engine.refresh()
+            do {
+                let next = record.phase == .paying ? try await engine.returnedFromPayment() : try await engine.refresh()
+                outcome = LaundryForegroundPoll.Outcome(notice:next.notice)
+                return next
+            } catch {
+                outcome = LaundryForegroundPoll.Outcome(error:error)
+                throw error
+            }
         }
+        return outcome
+    }
+
+    /// The foreground polling task's identity (`LaundryOrderPoller`).
+    func pollIdentity(inFront: Bool) -> LaundryForegroundPoll.Identity {
+        LaundryForegroundPoll.Identity(inFront:inFront, engine:engineGeneration, record:checkout)
     }
 
     /// A user launch reads the open order the way coming back to the app does (a paid 立刻洗衣
@@ -429,7 +447,7 @@ enum LaundryLoginRefusal: Error { case otherAccount }
     // MARK: Live Activity / reminder
 
     /// Recomputes the laundry Live Activity from the current facts (also on foreground, for the minutes).
-    /// While the order runs, schedules one read-only order re-read a minute after the expected end so a
+    /// While the order runs, schedules one order re-read a minute after the expected end so a
     /// finished wash is noticed even when the laundry page is closed.
     func syncActivity() {
         // Off: nothing on the lock screen and no laundry reminder (empty facts end / cancel them).
@@ -437,7 +455,6 @@ enum LaundryLoginRefusal: Error { case otherAccount }
         if !schoolEnabled { activities?.endAll() }
         activities?.sync(facts:facts)
         reminders.syncLaundry(facts:facts)
-        syncStartWatch()
         var end: Date?
         if case .running(let value) = facts.phase() { end = value }
         guard end != endCheck?.end else { return }
@@ -446,26 +463,6 @@ enum LaundryLoginRefusal: Error { case otherAccount }
         endCheck = (end, Task { [weak self] in
             do { try await Task.sleep(for:.seconds(max(0, end.timeIntervalSinceNow) + 60)) } catch { return }
             await self?.refreshOrder()
-        })
-    }
-
-    /// Paid but not washing with a known end: re-read every `LaundryFollowUp.interval` for a few
-    /// minutes, only while the app is in front (read only). Coming back to the app reads it anyway.
-    private func syncStartWatch() {
-        let since = schoolEnabled ? checkout?.waitingSince : nil
-        guard since != startWatch?.since else { return }
-        startWatch?.task.cancel(); startWatch = nil
-        guard let since else { return }
-        startWatch = (since, Task { [weak self] in
-            var attempt: Date?
-            while true {
-                guard let record = self?.checkout,
-                      let delay = LaundryFollowUp.nextRead(record, lastAttempt:attempt, now:Date()) else { return }
-                do { try await Task.sleep(for:.seconds(delay)) } catch { return }
-                attempt = Date()
-                guard let self else { return }
-                if UIApplication.shared.applicationState == .active { await self.refreshOrder() }
-            }
         })
     }
 

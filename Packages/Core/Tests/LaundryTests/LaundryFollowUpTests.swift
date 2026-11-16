@@ -2,8 +2,8 @@ import XCTest
 import Foundation
 @testable import Core
 
-/// A paid order that is not washing yet (20, starting, or 40 without a remaining time) is read
-/// again for a few minutes, and the done reminder has a time before the washing read arrives.
+/// A paid order that is not washing yet (20, starting, or 40 without a remaining time) has a done
+/// reminder time before the washing read arrives (its reads are `LaundryForegroundPoll`'s).
 final class LaundryFollowUpTests: XCTestCase {
     typealias R = LaundryReducer
     typealias F = LaundryFollowUp
@@ -21,59 +21,10 @@ final class LaundryFollowUpTests: XCTestCase {
         return reduce(s, .orderRead(L.order(status, remain: remain), at: at))
     }
 
-    func testPaidButNotWashingIsReadAgainForAFewMinutes() {
-        let seen = t0.addingTimeInterval(60)
-        var s = paid(at: seen)
-        XCTAssertEqual(s.phase, .active)
-        XCTAssertEqual(F.nextRead(s, lastAttempt: nil, now: seen), F.interval)
-        XCTAssertEqual(F.nextRead(s, lastAttempt: nil, now: seen.addingTimeInterval(20)), F.interval - 20)
-        XCTAssertEqual(F.nextRead(s, lastAttempt: nil, now: seen.addingTimeInterval(90)), 0, "overdue: read now")
-
-        // Still 20 on every read: the reads stop once the window is used up.
-        var reads = 0
-        var now = seen
-        while let delay = F.nextRead(s, lastAttempt: nil, now: now) {
-            now = now.addingTimeInterval(delay)
-            s = reduce(s, .orderRead(L.order("20"), at: now))
-            reads += 1
-            XCTAssertLessThan(reads, 20)
-        }
-        XCTAssertGreaterThanOrEqual(reads, 4)
-        XCTAssertLessThanOrEqual(now.timeIntervalSince(seen), F.window)
-        XCTAssertGreaterThanOrEqual(F.interval, 30)
-        XCTAssertLessThanOrEqual(F.interval, 60)
-    }
-
-    func testAFailedAttemptWaitsAFullInterval() {
-        let seen = t0.addingTimeInterval(60)
-        let s = paid(at: seen)
-        let attempt = seen.addingTimeInterval(F.interval)
-        XCTAssertEqual(F.nextRead(s, lastAttempt: attempt, now: attempt), F.interval)
-    }
-
-    func testWashingWithATimeStopsTheReads() {
-        let seen = t0.addingTimeInterval(60)
-        let washing = reduce(paid(at: seen), .orderRead(L.order("40", remain: 2400), at: seen.addingTimeInterval(45)))
-        XCTAssertNil(F.nextRead(washing, lastAttempt: nil, now: seen.addingTimeInterval(50)))
-        XCTAssertNil(F.nextRead(paid("40", remain: 2400, at: seen), lastAttempt: nil, now: seen))
-    }
-
-    func testWashingWithoutATimeIsReadAgain() {
-        let seen = t0.addingTimeInterval(60)
-        let washing = reduce(paid(at: seen), .orderRead(L.order("40", remain: 2400), at: seen.addingTimeInterval(45)))
-        // At the end of the wash U净 may still say 40 with nothing left: read until it says 50.
-        let end = seen.addingTimeInterval(45 + 2460)
-        let noTime = reduce(washing, .orderRead(L.order("40", remain: 0), at: end))
-        XCTAssertEqual(F.nextRead(noTime, lastAttempt: nil, now: end), F.interval)
-        let done = reduce(noTime, .orderRead(L.order("50"), at: end.addingTimeInterval(F.interval)))
-        XCTAssertNil(F.nextRead(done, lastAttempt: nil, now: end.addingTimeInterval(F.interval)))
-    }
-
-    func testOnlyPaidOrdersAreFollowed() {
+    func testOnlyPaidOrdersHaveAnExpectedEnd() {
         var s = reduce(.empty, .confirm(L.draft, at: t0))
-        XCTAssertNil(F.nextRead(s, lastAttempt: nil, now: t0))
+        XCTAssertNil(F.expectedEnd(s))
         s = reduce(reduce(s, .created(orderID: L.orderID)), .orderRead(L.order("10"), at: t0))
-        XCTAssertNil(F.nextRead(s, lastAttempt: nil, now: t0))
         XCTAssertNil(F.expectedEnd(s))
     }
 

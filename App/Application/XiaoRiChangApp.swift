@@ -62,6 +62,12 @@ private struct LiveAppHooks: ViewModifier {
         content
             .onChange(of:campus.room, initial:true) { ShowerActivityController.shared.dorm = Theme.dorm(campus.room) ?? "" }
             .task { await LaunchReads.run(campus:campus, laundry:laundry) }
+            // The open order's reads while in front (`LaundryOrderPoller`). Its identity leaves out
+            // the start record and running steps: a read must not be cancelled by its own progress.
+            .task(id:laundry.pollIdentity(inFront:phase == .active)) {
+                guard phase == .active else { return }
+                await LaundryOrderPoller(laundry:laundry, remindersOn:{ reminders.laundryDoneWillNotify }).run()
+            }
             // The one place links are dispatched (`SampleMode.open`): the widget's go to the live
             // root (`takePendingLink`), never to a sample page; another app's answer (Alipay) is
             // the live app's, after the sample if it is on.
