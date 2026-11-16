@@ -145,19 +145,76 @@ final class LaundryStartReducerTests: XCTestCase {
         XCTAssertFalse(LaundryStartLine(kind: .ready, text: "x").isNotice)
     }
 
-    // MARK: follow-up reads
+    /// 清爽's line: the words of the original app's table, one sentence each.
+    func clearLine(_ c: LaundryCheckout) -> LaundryStartLine? { LaundryStartLine.clear(c) }
 
-    /// The 45-second re-reads run for five minutes from the start request too.
-    func testFollowUpWindowRunsFromTheStartRequest() {
+    func testClearLinesUseTheTableWords() {
+        var unpaid = reduce(.empty, .confirm(L.draft, at: t0, immediate: true)).0
+        unpaid = reduce(unpaid, .created(orderID: L.orderID)).0
+        unpaid = reduce(unpaid, .orderRead(L.order("10"), at: t0)).0
+        XCTAssertEqual(clearLine(unpaid), LaundryStartLine(kind: .armed, text: "付款后请返回校日常，核对已付款后自动发送启动指令。超过下单后10分钟请在U净手动启动。"))
+        var paying = unpaid
+        paying.phase = .paying
+        XCTAssertEqual(clearLine(paying)?.text, "付款后请返回校日常，核对已付款后自动发送启动指令。超过下单后10分钟请在U净手动启动。")
+
         var (s, _) = paid()
+        XCTAssertEqual(clearLine(s), LaundryStartLine(kind: .checking, text: "正在核对订单…"))
         s.checkingStart = false
-        let since = try! XCTUnwrap(s.waitingSince)
-        let startedAt = since.addingTimeInterval(280)
-        s.start = .accepted(at: startedAt)
-        s.orderReadAt = since.addingTimeInterval(290)
-        let now = since.addingTimeInterval(400)
-        XCTAssertNotNil(LaundryFollowUp.nextRead(s, lastAttempt: nil, now: now))
-        s.orderReadAt = startedAt.addingTimeInterval(290)
-        XCTAssertNil(LaundryFollowUp.nextRead(s, lastAttempt: nil, now: startedAt.addingTimeInterval(300)))
+        XCTAssertEqual(clearLine(s), LaundryStartLine(kind: .ready, text: "已付款，正在发送启动指令"))
+        for start in [LaundryStart.sent(at: t0), .accepted(at: t0)] {
+            s.start = start
+            XCTAssertEqual(clearLine(s), LaundryStartLine(kind: .sent, text: "启动指令已提交，等待机器响应；若未启动请到U净核对"))
+        }
+        s.start = .pending(at: t0)
+        XCTAssertEqual(clearLine(s), LaundryStartLine(kind: .uncertain, text: "启动指令结果待核对，不会重复发送；请到U净核对"))
+        s.start = .blocked(.expired)
+        XCTAssertEqual(clearLine(s), LaundryStartLine(kind: .blocked, text: "本单自动启动已过期，请在U净核对后手动启动"))
+        for reason in [LaundryStartBlock.unsupported, .offline, .selfClean, .dispenser] {
+            s.start = .blocked(reason)
+            XCTAssertEqual(clearLine(s), LaundryStartLine(kind: .blocked, text: "这台机器需在U净完成启动前检查，请使用官方订单"))
+        }
+        s.start = .blocked(.account)
+        XCTAssertEqual(clearLine(s), LaundryStartLine(kind: .blocked, text: "本单不属于当前U净账号，未自动启动；请在对应账号的U净中启动"))
+        s.start = .blocked(.price)
+        XCTAssertEqual(clearLine(s), LaundryStartLine(kind: .blocked, text: "本单金额与确认时不一致，未自动启动；请在U净核对后手动启动"))
+        s.start = .refused(message: " 设备未关门 ", at: t0)
+        XCTAssertEqual(clearLine(s), LaundryStartLine(kind: .refused, text: "U净未接受启动指令：设备未关门；请在U净手动启动"))
+        s.start = .refused(message: "", at: t0)
+        XCTAssertEqual(clearLine(s), LaundryStartLine(kind: .refused, text: "U净未接受启动指令；请在U净手动启动"))
+        s.start = .started
+        XCTAssertNil(clearLine(s))
+        s.start = .accepted(at: t0)
+        s.order = L.order("40", remain: 1800)
+        XCTAssertNil(clearLine(s), "washing")
+        XCTAssertNil(clearLine(paid(immediate: false).0), "a normal order has no line")
+    }
+
+    // MARK: reads every second
+
+    /// The foreground poll may read every second: a start is still asked for once per order,
+    /// whatever its answer was (accepted, unclear, refused).
+    func testAtMostOneStartUnderOneSecondReads() {
+        let answers: [LaundryEvent] = [.startSent(at: t0.addingTimeInterval(22)),
+                                       .startFailed(.uncertain(.ujing), at: t0.addingTimeInterval(22)),
+                                       .startFailed(.rejected(.ujing, code: "1", message: "设备未关门"), at: t0.addingTimeInterval(22))]
+        for answer in answers {
+            var (s, effects) = paid()
+            XCTAssertEqual(effects, [.readStartCheck(id: L.orderID)])
+            (s, effects) = reduce(s, .startCheckRead(L.check(), at: t0.addingTimeInterval(21)))
+            var starts = effects.filter { $0 == .startWasher(id: L.orderID) }.count
+            var checks = 1
+            (s, _) = reduce(s, answer)
+            for second in 23..<600 {
+                let now = t0.addingTimeInterval(TimeInterval(second))
+                (s, effects) = reduce(s, .refresh)
+                checks += effects.filter { $0 == .readStartCheck(id: L.orderID) }.count
+                XCTAssertEqual(effects, [.readOrder(id: L.orderID, after: 0)], "\(answer) at \(second)")
+                (s, effects) = reduce(s, .orderRead(L.order("20"), at: now))
+                starts += effects.filter { $0 == .startWasher(id: L.orderID) }.count
+                checks += effects.filter { $0 == .readStartCheck(id: L.orderID) }.count
+            }
+            XCTAssertEqual(starts, 1, "\(answer)")
+            XCTAssertEqual(checks, 1, "\(answer)")
+        }
     }
 }

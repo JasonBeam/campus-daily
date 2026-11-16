@@ -44,6 +44,26 @@ final class LaundryStartModeTests: XCTestCase {
         XCTAssertEqual(ImmediateStartLine.spoken(price), "注意，这单的价格对不上，没帮你启动。，去 U净 App 里启动。")
     }
 
+    /// The line is shared no more: 清爽 says it in the original app's words, 暖橙 keeps its own.
+    func testEachThemeHasItsOwnLine() {
+        let sent = LaundryDemo.make(.nowSent).facts
+        XCTAssertEqual(sent.clearStartLine?.text, "启动指令已提交，等待机器响应；若未启动请到U净核对")
+        XCTAssertEqual(sent.startLine?.text, "启动指令发出去了，等机器响应。")
+        let expired = LaundryDemo.make(.nowExpired).facts
+        XCTAssertEqual(expired.clearStartLine?.text, "本单自动启动已过期，请在U净核对后手动启动")
+        XCTAssertNil(expired.clearStartLine?.detail)
+        XCTAssertEqual(expired.startLine?.text, "下单超过 10 分钟，没帮你启动。")
+        XCTAssertEqual(expired.startLine?.detail, "去 U净 App 里启动。")
+        let kinds: [LaundryDemo.Kind] = [.nowUnpaid, .nowReady, .nowChecking, .nowSent, .nowUncertain, .nowUnsupported,
+                                         .nowExpired, .nowRefused, .nowAccount, .nowPrice]
+        for kind in kinds {
+            let facts = LaundryDemo.make(kind).facts
+            XCTAssertEqual(facts.clearStartLine?.kind, facts.startLine?.kind, kind.rawValue)
+            XCTAssertNotEqual(facts.clearStartLine?.text, facts.startLine?.text, kind.rawValue)
+        }
+        XCTAssertNil(LaundryDemo.make(.unpaid).facts.clearStartLine, "a normal order has no line")
+    }
+
     func testIcons() {
         XCTAssertEqual(ImmediateStartLine.symbol(.armed), "bolt")
         XCTAssertEqual(ImmediateStartLine.symbol(.ready), "bolt")

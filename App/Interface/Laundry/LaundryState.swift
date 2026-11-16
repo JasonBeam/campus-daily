@@ -160,8 +160,10 @@ struct LaundryFacts {
         if let device = record?.deviceId, record?.inFlight == true, device != snapshot.deviceID { return record?.draft?.machineName }
         return snapshot.deviceNo
     }
-    /// 立刻洗衣's line for the open order (nil for normal orders and once washing).
+    /// 立刻洗衣's line for the open order in 暖橙's words (nil for normal orders and once washing).
     var startLine: LaundryStartLine? { record.flatMap(LaundryStartLine.make) }
+    /// 清爽's words for the same line.
+    var clearStartLine: LaundryStartLine? { record.flatMap(LaundryStartLine.clear) }
     var store: String? { snapshot.map(\.storeName).flatMap { $0.isEmpty ? nil : $0 } }
     /// Program of the current record (for its duration).
     var recordProgram: WasherProgram? { record?.draft?.program ?? finished?.program }

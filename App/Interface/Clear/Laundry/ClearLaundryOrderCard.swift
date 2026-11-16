@@ -32,7 +32,7 @@ struct ClearLaundryOrderCard: View {
                 .font(.subheadline)
                 .foregroundStyle(Theme.ink)
             }
-            if let line = facts.startLine {
+            if let line = facts.clearStartLine {
                 ImmediateStartLine(line:line, style:.clear)
             }
             if let problem = ClearLaundryCopy.problemLine(phase) {
