@@ -4,7 +4,7 @@ import Core
 /// 清爽's 首次配置 checklist: two rows (学校账号, 选择宿舍与水控; laundry is not asked), the count out
 /// of those two, which step a row or the button opens, and what each says.
 final class SetupChecklistTests: XCTestCase {
-    private let fresh = SetupChecklist(signedIn:false, dorm:nil, laundry:.open, controllerBound:false, controllerChecked:false)
+    private let fresh = SetupChecklist(signedIn:false, dorm:nil, controllerBound:false, controllerChecked:false)
 
     func testNothingDoneShowsTwoRowsAndCountsTwo() {
         XCTAssertEqual(fresh.rows, [.account, .dorm])
@@ -13,13 +13,13 @@ final class SetupChecklistTests: XCTestCase {
         XCTAssertEqual(fresh.next, .account)
         XCTAssertFalse(fresh.allDone)
         XCTAssertEqual(fresh.headline, "完成首次设置")
-        XCTAssertEqual(fresh.hint, "先登录学校账号，再选择宿舍。洗衣机可以稍后添加。")
+        XCTAssertEqual(fresh.hint, "先登录学校账号，再选择宿舍。")
         XCTAssertEqual(fresh.button, "登录并连接校园卡")
         XCTAssertEqual(fresh.fraction, 0)
     }
 
     func testSignedInAsksForTheDorm() {
-        let list = SetupChecklist(signedIn:true, dorm:nil, laundry:.open, controllerBound:false, controllerChecked:false)
+        let list = SetupChecklist(signedIn:true, dorm:nil, controllerBound:false, controllerChecked:false)
         XCTAssertEqual(list.progress, "已完成 1 / 2")
         XCTAssertEqual(list.next, .dorm)
         XCTAssertEqual(list.hint, "学校账号已登录，接着选择你的宿舍。")
@@ -27,24 +27,16 @@ final class SetupChecklistTests: XCTestCase {
         XCTAssertEqual(list.fraction, 0.5)
     }
 
-    /// No laundry row: the washers never hold the count back, and only the button still says
-    /// whether one is saved.
+    /// No laundry row: the washers never hold the count back, and nothing on the page names them.
     func testLaundryIsNotAsked() {
-        let list = SetupChecklist(signedIn:true, dorm:"3 栋 108", laundry:.open, controllerBound:true, controllerChecked:false)
+        let list = SetupChecklist(signedIn:true, dorm:"3 栋 108", controllerBound:true, controllerChecked:false)
         XCTAssertTrue(list.allDone)
         XCTAssertNil(list.next)
         XCTAssertEqual(list.progress, "已完成 2 / 2")
         XCTAssertEqual(list.headline, "都准备好了")
-        XCTAssertEqual(list.hint, "宿舍已保存，可以开始使用；洗衣机按需添加。")
-        XCTAssertEqual(list.button, "完成设置，暂不绑定洗衣机")
+        XCTAssertEqual(list.hint, "宿舍已保存，可以开始使用。")
+        XCTAssertEqual(list.button, "完成设置")
         XCTAssertEqual(list.rows, [.account, .dorm])
-
-        var saved = list
-        saved.laundry = .saved(2)
-        XCTAssertEqual(saved.button, "完成设置")
-        var notUsed = list
-        notUsed.laundry = .notUsed
-        XCTAssertEqual(notUsed.button, "完成设置")
     }
 
     func testUndoneDetails() {
@@ -53,7 +45,7 @@ final class SetupChecklistTests: XCTestCase {
     }
 
     func testDoneDetails() {
-        let all = SetupChecklist(signedIn:true, dorm:"3 栋 108", laundry:.saved(2), controllerBound:true, controllerChecked:true)
+        let all = SetupChecklist(signedIn:true, dorm:"3 栋 108", controllerBound:true, controllerChecked:true)
         XCTAssertEqual(all.detail(.account), "已登录，可查询校园卡余额")
         XCTAssertEqual(all.detail(.dorm), "3栋108", "the room as one word")
     }
@@ -63,20 +55,20 @@ final class SetupChecklistTests: XCTestCase {
     func testStepsARowOpens() {
         XCTAssertEqual(fresh.step(for:.dorm), .account)
         XCTAssertEqual(fresh.step(for:.account), .account)
-        let signedIn = SetupChecklist(signedIn:true, dorm:nil, laundry:.open, controllerBound:false, controllerChecked:false)
+        let signedIn = SetupChecklist(signedIn:true, dorm:nil, controllerBound:false, controllerChecked:false)
         XCTAssertEqual(signedIn.step(for:.dorm), .dorm)
 
-        let bound = SetupChecklist(signedIn:true, dorm:"3 栋 108", laundry:.open, controllerBound:true, controllerChecked:false)
+        let bound = SetupChecklist(signedIn:true, dorm:"3 栋 108", controllerBound:true, controllerChecked:false)
         XCTAssertEqual(bound.afterDorm, .controller)
-        let checked = SetupChecklist(signedIn:true, dorm:"3 栋 108", laundry:.open, controllerBound:true, controllerChecked:true)
+        let checked = SetupChecklist(signedIn:true, dorm:"3 栋 108", controllerBound:true, controllerChecked:true)
         XCTAssertNil(checked.afterDorm)
-        let noController = SetupChecklist(signedIn:true, dorm:"3 栋 108", laundry:.open, controllerBound:false, controllerChecked:false)
+        let noController = SetupChecklist(signedIn:true, dorm:"3 栋 108", controllerBound:false, controllerChecked:false)
         XCTAssertNil(noController.afterDorm)
     }
 
     /// Signed out again: the dorm row is undone, even if a dorm is still saved.
     func testSignedOutUndoesTheDorm() {
-        let list = SetupChecklist(signedIn:false, dorm:"3 栋 108", laundry:.open, controllerBound:true, controllerChecked:true)
+        let list = SetupChecklist(signedIn:false, dorm:"3 栋 108", controllerBound:true, controllerChecked:true)
         XCTAssertFalse(list.isDone(.dorm))
         XCTAssertEqual(list.detail(.dorm), "选择楼栋房间，确认自己的设备")
         XCTAssertEqual(list.doneCount, 0)
@@ -103,8 +95,7 @@ final class SetupChecklistTests: XCTestCase {
     /// A dorm with no controller, confirmed: the checklist is done, so home's card goes too.
     func testConfirmedDormWithoutControllerFinishesSetupAndHomesCard() {
         let dormSet = SetupChecklist.isDormSet(dorm:"3 栋 108", confirmedDorm:"3 栋 108", controllerBound:false)
-        let list = SetupChecklist(signedIn:true, dorm:dormSet ? "3 栋 108" : nil, laundry:.notUsed,
-                                  controllerBound:false, controllerChecked:false)
+        let list = SetupChecklist(signedIn:true, dorm:dormSet ? "3 栋 108" : nil, controllerBound:false, controllerChecked:false)
         XCTAssertTrue(list.allDone)
         XCTAssertNil(HomeSetupCard.detail(signedIn:true, dormSet:dormSet))
     }

@@ -18,13 +18,18 @@ final class SetupWithoutLaundryTests: XCTestCase {
 
     /// 清爽's checklist: 学校账号 and 选择宿舍与水控 only, counted out of two.
     func testClearChecklistHasNoLaundryRow() {
-        let fresh = SetupChecklist(signedIn:false, dorm:nil, laundry:.open, controllerBound:false, controllerChecked:false)
+        let fresh = SetupChecklist(signedIn:false, dorm:nil, controllerBound:false, controllerChecked:false)
         XCTAssertEqual(fresh.rows, [.account, .dorm])
         XCTAssertEqual(fresh.progress, "已完成 0 / 2")
-        let done = SetupChecklist(signedIn:true, dorm:"3 栋 108", laundry:.open, controllerBound:true, controllerChecked:true)
+        let done = SetupChecklist(signedIn:true, dorm:"3 栋 108", controllerBound:true, controllerChecked:true)
         XCTAssertEqual(done.rows, [.account, .dorm])
         XCTAssertEqual(done.progress, "已完成 2 / 2")
         XCTAssertEqual(done.fraction, 1)
+        XCTAssertEqual(fresh.spokenProgress, "已完成 0 项，共两项")
+        XCTAssertEqual(done.spokenProgress, "已完成 2 项，共两项")
+        XCTAssertEqual(fresh.hint, "先登录学校账号，再选择宿舍。")
+        XCTAssertEqual(done.hint, "宿舍已保存，可以开始使用。")
+        XCTAssertEqual(done.button, "完成设置")
     }
 
     // MARK: Default

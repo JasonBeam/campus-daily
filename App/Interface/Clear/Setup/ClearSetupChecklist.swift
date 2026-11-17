@@ -14,7 +14,6 @@ struct ClearSetupChecklist: View {
     var inSheet = true
     @EnvironmentObject private var campus: CampusModel
     @EnvironmentObject private var water: ShowerModel
-    @EnvironmentObject private var laundry: LaundryModel
     @Environment(ClearNavigator.self) private var navigator
     @Environment(\.dismiss) private var dismiss
     @AppStorage(SetupChecklist.dormKey) private var confirmedDorm = ""
@@ -90,8 +89,7 @@ struct ClearSetupChecklist: View {
                 .fixedSize(horizontal:false, vertical:true)
             ProgressView(value:list.fraction).tint(Theme.accentText)
                 .accessibilityLabel("首次设置进度")
-                // TODO(copy): 「洗衣机为可选项」 dates from the laundry row; recheck now that setup no longer asks.
-                .accessibilityValue("已完成 \(list.doneCount) 项，共两项；洗衣机为可选项")
+                .accessibilityValue(list.spokenProgress)
         }
     }
 
@@ -178,11 +176,7 @@ struct ClearSetupChecklist: View {
     private var live: SetupChecklist {
         let dorm = Theme.dorm(campus.room) ?? water.binding.flatMap { Theme.dorm($0.roomLabel) }
         let confirmed = SetupChecklist.isDormSet(dorm:dorm, confirmedDorm:confirmedDorm, controllerBound:water.configured)
-        let laundryState: SetupChecklist.Laundry =
-            !laundry.schoolEnabled ? .notUsed
-            : laundry.accountConnected && !laundry.savedMachines.isEmpty ? .saved(laundry.savedMachines.count)
-            : .open
-        return SetupChecklist(signedIn:campus.configured, dorm:confirmed ? dorm : nil, laundry:laundryState,
+        return SetupChecklist(signedIn:campus.configured, dorm:confirmed ? dorm : nil,
                               controllerBound:water.configured,
                               controllerChecked:water.verifiedDevice != nil || water.binding?.peripheralID != nil)
     }

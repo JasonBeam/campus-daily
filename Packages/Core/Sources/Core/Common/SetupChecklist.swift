@@ -11,26 +11,15 @@ public struct SetupChecklist: Equatable, Sendable {
         case account, dorm, controller
     }
 
-    /// Only the button still says it (「暂不绑定洗衣机」).
-    public enum Laundry: Equatable, Sendable {
-        /// On, with no machine saved yet.
-        case open
-        /// This many machines saved.
-        case saved(Int)
-        /// 学校洗衣机 off.
-        case notUsed
-    }
-
     public var signedIn: Bool
     /// The dorm the user confirmed (「3 栋 108」); nil until then.
     public var dorm: String?
-    public var laundry: Laundry
     public var controllerBound: Bool
     /// The bound controller was checked nearby.
     public var controllerChecked: Bool
 
-    public init(signedIn: Bool, dorm: String?, laundry: Laundry, controllerBound: Bool, controllerChecked: Bool) {
-        self.signedIn = signedIn; self.dorm = dorm; self.laundry = laundry
+    public init(signedIn: Bool, dorm: String?, controllerBound: Bool, controllerChecked: Bool) {
+        self.signedIn = signedIn; self.dorm = dorm
         self.controllerBound = controllerBound; self.controllerChecked = controllerChecked
     }
 
@@ -90,17 +79,17 @@ public struct SetupChecklist: Equatable, Sendable {
 
     /// 「已完成 1 / 2」.
     public var progress: String { "已完成 \(doneCount) / \(needed.count)" }
+    /// The progress bar to VoiceOver: 「已完成 1 项，共两项」.
+    public var spokenProgress: String { "已完成 \(doneCount) 项，共两项" }
     public var headline: String { allDone ? "都准备好了" : "完成首次设置" }
     public var hint: String {
-        // TODO(copy): the two 洗衣机 halves below date from the laundry row; recheck now that setup no longer asks.
-        if !signedIn { return "先登录学校账号，再选择宿舍。洗衣机可以稍后添加。" }
+        if !signedIn { return "先登录学校账号，再选择宿舍。" }
         if !dormDone { return "学校账号已登录，接着选择你的宿舍。" }
-        return "宿舍已保存，可以开始使用；洗衣机按需添加。"
+        return "宿舍已保存，可以开始使用。"
     }
     /// The button under the rows: on to the next needed row, or done.
     public var button: String {
-        // TODO(copy): 「暂不绑定洗衣机」 dates from the laundry row; recheck now that setup no longer asks.
-        if allDone { return laundry == .open ? "完成设置，暂不绑定洗衣机" : "完成设置" }
+        if allDone { return "完成设置" }
         return signedIn ? "继续选择宿舍" : "登录并连接校园卡"
     }
 
