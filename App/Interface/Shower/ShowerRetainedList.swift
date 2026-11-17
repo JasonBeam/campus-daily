@@ -2,9 +2,11 @@ import SwiftUI
 import Core
 
 /// 暖橙's list of the showers a next use kept: two lines each, newest first (start time, then another controller · why it was
-/// kept) and what to do about them. Read-only: nothing here settles or deletes them.
+/// kept) and what to do about them, with a link to 校园卡记录 under that. Read-only: nothing here settles or deletes them.
 struct ShowerRetainedList: View {
     let summary: ShowerRetainedSummary
+    @Environment(\.showerCardRecords) private var cardRecords
+    @State private var recordsOpen = false
 
     var body: some View {
         List {
@@ -22,10 +24,14 @@ struct ShowerRetainedList: View {
                     .accessibilityLabel(line.spoken)
                 }
             } footer: {
-                Text(ShowerRetainedText.Warm.footer)
+                VStack(alignment:.leading, spacing:4) {
+                    Text(ShowerRetainedText.Warm.footer)
+                    if cardRecords.page != nil { ShowerCardRecordsLink { recordsOpen = true } }
+                }
             }
         }
         .listStyle(.insetGrouped)
+        .showerCardRecordsDestination(isPresented:$recordsOpen)
         .navigationTitle(ShowerRetainedText.Warm.listTitle)
         .navigationBarTitleDisplayMode(.inline)
         .typesettingLanguage(Theme.typesetting)

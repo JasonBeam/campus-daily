@@ -181,10 +181,11 @@ final class ShowerCloseBusyTests: XCTestCase {
     func testItsWords() {
         let s = ShowerState(phase: .failed, machineID: machine, startedAt: t0, authorizationID: "001122FF", closeSent: true,
                             failure: ShowerFailure(reason: .closeBusy, needsReview: true))
-        XCTAssertEqual(ShowerDisplay.title(s), "水控还没停，在水控上按停。费用看学校的热水记录。")
-        XCTAssertEqual(ShowerAuthorText.closeBusyStatus, "水控还没停，在水控上按停。费用看学校的热水记录。")
+        XCTAssertEqual(ShowerDisplay.title(s), "水控还没停，在水控上按停。费用看校园卡记录，扣费要 1 小时左右才出现。")
+        XCTAssertEqual(ShowerAuthorText.closeBusyBody, "结束发出去了，水控还在出水。在水控上按停就行，费用看校园卡记录，扣费要 1 小时左右才出现。")
+        XCTAssertEqual(ShowerAuthorText.closeBusyStatus, "水控还没停，在水控上按停。费用看校园卡记录，扣费要 1 小时左右才出现。")
         XCTAssertEqual(ShowerActionOutcome.after(start: false, s, notice: nil),
-                       .failure(ShowerActionFailure("水控还没停，在水控上按停。费用看学校的热水记录。")), "what Siri says after 结束")
+                       .failure(ShowerActionFailure("水控还没停，在水控上按停。费用看校园卡记录，扣费要 1 小时左右才出现。")), "what Siri says after 结束")
         XCTAssertEqual(ShowerActivityAction(s, now: t0), .unconfirmed(startedAt: t0, dismissAfter: ShowerActivityAction.unconfirmedDismissal))
         XCTAssertFalse(ShowerActivityAction(s, now: t0).endsEarlierResult)
     }

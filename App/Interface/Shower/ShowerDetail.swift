@@ -10,6 +10,8 @@ struct ShowerDetail: View {
     @EnvironmentObject private var shower: ShowerModel
     @EnvironmentObject private var campus: CampusModel
     @State private var confirmClear = false
+    @Environment(\.showerCardRecords) private var cardRecords
+    @State private var recordsOpen = false
     #if DEBUG
     @State private var demoListOpen = false
     #endif
@@ -30,6 +32,10 @@ struct ShowerDetail: View {
                     }
                     Text(demoReady ? "" : shower.inspecting ? "正在只读核对附近水控，不会出水。" : shower.status).font(.subheadline).foregroundStyle(shower.problem ? NativeTheme.notice : .fixed(Color.secondary))
                         .fixedSize(horizontal:false,vertical:true).accessibilityIdentifier("waterStatus")
+                    // A record this build can't read: its charge is on the card's records.
+                    if shower.recordUnreadable, cardRecords.page != nil {
+                        ShowerCardRecordsLink { recordsOpen = true }
+                    }
                 }
                 }
                 ViewThatFits(in:.horizontal) {
@@ -84,6 +90,7 @@ struct ShowerDetail: View {
             }.padding(20).frame(maxWidth:560).frame(maxWidth:.infinity)
         }.background(NativeTheme.background)
             .navigationTitle("热水洗澡").navigationBarTitleDisplayMode(.inline)
+            .showerCardRecordsDestination(isPresented:$recordsOpen)
             .safeAreaInset(edge:.bottom) {
                 VStack(spacing:10) {
                     Button { perform() } label: {

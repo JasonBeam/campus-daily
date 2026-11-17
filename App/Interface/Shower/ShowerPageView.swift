@@ -17,15 +17,20 @@ enum ShowerPageText {
     static let connectFailed = "没连上水控"
     static let connectFailedBody = "站近一点，确认蓝牙开着，再试一次。"
     static let denied = ShowerAuthorizeRefusedText.title
-    static let deniedBody = "这次没扣钱。过一会儿再试，一直这样就去学校的热水记录里看看。"
+    static let deniedBody = "这次没扣钱。过一会儿再试，一直这样就去校园卡记录里看看上一次扣了没有。"
     /// Refused with no 再试一次 on the page.
-    static let deniedFinalBody = "学校没让开水。先去学校的热水记录里看看有没有没结束的单，处理完再来开。"
+    static let deniedFinalBody = "学校没让开水，可能上一次还没结束。去校园卡记录里看看上一次扣了没有，过一会儿再来开。"
     static let inUse = ClearShowerText.inUseTitle
     static let inUseBody = "附近的水控有人在用，现在开不了水。等它空了再试。这次没扣钱。"
     /// The refused face's line: in use, or refused with 再试一次 under it, or without.
     static func refusedBody(inUse: Bool, retryable: Bool) -> String {
         inUse ? inUseBody : retryable ? deniedBody : deniedFinalBody
     }
+    /// The small link to 校园卡记录 under the lines that send the user there.
+    static let cardRecordsLink = "看校园卡记录"
+    /// Under the school's refusal, not under 有人在用 (no charge to look for), and only while
+    /// signed in to the school (校园卡记录 can't open otherwise).
+    static func refusedLinkShown(inUse: Bool, signedIn: Bool) -> Bool { !inUse && signedIn }
     /// The ready layout's headline (the 热水洗澡 screen's).
     static let readyTitle = "准备洗澡"
     /// The shower is over (stopped on the controller, or kept with its outcome unknown): the product
@@ -57,7 +62,7 @@ enum ShowerPageText {
     /// The way out of a saved record that can't be read, and its confirmation.
     static let unreadableClear = "清除这条记录"
     static let unreadableClearConfirm = "清除这条记录？"
-    static let unreadableClearNote = "先去学校的热水记录里看看这次扣了没有。清除以后，校日常不会再结算这一次。"
+    static let unreadableClearNote = "先去校园卡记录里看看这次扣了没有，扣费要 1 小时左右才出现。清除以后，校日常不会再结算这一次。"
     static let unreadableClearButton = "看过了，清除"
     static let unreadableKeep = "留着"
 
@@ -96,6 +101,7 @@ enum ShowerPageText {
 struct ShowerPageView: View {
     @Environment(\.appTheme) private var appTheme
     @EnvironmentObject private var shower: ShowerModel
+    @Environment(\.showerCardRecords) private var cardRecords
     let room: String
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var typeSize
@@ -239,6 +245,10 @@ struct ShowerPageView: View {
                 icon("lock.slash", Theme.ink2)
                 title(page?.denial == .inUse ? ShowerPageText.inUse : ShowerPageText.denied)
                 bodyText(ShowerPageText.refusedBody(inUse:page?.denial == .inUse, retryable:shower.deniedRetryable))
+                if ShowerPageText.refusedLinkShown(inUse:page?.denial == .inUse, signedIn:cardRecords.page != nil),
+                   let open = cardRecords.openFromCover {
+                    ShowerCardRecordsLink(action:open).padding(.top,6)
+                }
             case .stopped:
                 if flow.foundInUse {
                     // The next start (or 再查一次) found water running: the in-use page.

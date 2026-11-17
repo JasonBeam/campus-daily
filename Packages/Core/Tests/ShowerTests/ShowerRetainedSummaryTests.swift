@@ -78,10 +78,10 @@ final class ShowerRetainedSummaryTests: XCTestCase {
     // MARK: Words
 
     func testClearWords() {
-        XCTAssertEqual(ShowerRetainedText.Clear.line(count: 3), "已保留 3 笔费用待核对记录。可在学校官方热水消费明细中核对。")
+        XCTAssertEqual(ShowerRetainedText.Clear.line(count: 3), "已保留 3 笔费用待核对记录。可在校园卡消费明细中核对，扣费约 1 小时后入账。")
         XCTAssertEqual(ShowerRetainedText.Clear.spoken(count: 3), "已保留 3 笔费用待核对记录，轻点两下查看")
         XCTAssertEqual(ShowerRetainedText.Clear.sectionTitle, "待核对的热水记录")
-        XCTAssertEqual(ShowerRetainedText.Clear.footer, "可在学校官方热水消费明细中核对。")
+        XCTAssertEqual(ShowerRetainedText.Clear.footer, "可在校园卡消费明细中核对，扣费约 1 小时后入账。")
         XCTAssertEqual(ShowerRetainedText.Clear.reason(.stopped), "停水未结算")
         XCTAssertEqual(ShowerRetainedText.Clear.reason(.closeUnconfirmed), "关水未确认")
         XCTAssertEqual(ShowerRetainedText.Clear.reason(.settleUnconfirmed), "结算未确认")
@@ -90,7 +90,7 @@ final class ShowerRetainedSummaryTests: XCTestCase {
     func testWarmWords() {
         XCTAssertEqual(ShowerRetainedText.Warm.line(count: 2), "有 2 次洗澡没在 App 里结算，点开看看")
         XCTAssertEqual(ShowerRetainedText.Warm.listTitle, "没结算的洗澡")
-        XCTAssertEqual(ShowerRetainedText.Warm.footer, "这些记录只留给你核对，App 不会再为它们扣钱。去学校的热水记录里对一下。")
+        XCTAssertEqual(ShowerRetainedText.Warm.footer, "这些记录只留给你核对，App 不会再为它们扣钱。去校园卡记录里对一下，扣费要 1 小时左右才出现。")
         XCTAssertEqual(ShowerRetainedText.Warm.reason(.stopped), "在水控上按停的")
         XCTAssertEqual(ShowerRetainedText.Warm.reason(.closeUnconfirmed), "结束没确认")
         XCTAssertEqual(ShowerRetainedText.Warm.reason(.settleUnconfirmed), "结算没确认")

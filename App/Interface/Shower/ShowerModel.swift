@@ -222,7 +222,7 @@ enum ShowerProfileFiles {
         return ""
     }
     nonisolated static let platformMissingText = ShowerActionFailure.platformMissingText
-    static let recordUnreadableText = "读不到热水记录。去学校的热水记录里看看这次扣了没有。"
+    static let recordUnreadableText = "读不到热水记录。去校园卡记录里看看这次扣了没有，扣费要 1 小时左右才出现。"
 
     // MARK: Setup
 

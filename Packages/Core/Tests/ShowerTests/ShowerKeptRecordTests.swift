@@ -134,7 +134,7 @@ final class ShowerKeptRecordTests: XCTestCase {
     /// The product copy, from one place.
     func testTheWords() {
         XCTAssertEqual(ShowerAuthorText.stoppedTitle, "上一次洗好了")
-        XCTAssertEqual(ShowerAuthorText.stoppedNote, "在水控上按停就算洗完了，费用看学校的热水记录。")
+        XCTAssertEqual(ShowerAuthorText.stoppedNote, "在水控上按停就算洗完了。费用看校园卡记录，扣费要 1 小时左右才出现。")
         XCTAssertEqual(ShowerAuthorText.startNext, "开始下一次洗澡")
         XCTAssertEqual(ShowerAuthorText.homeButton, "去洗澡")
         XCTAssertEqual(ShowerAuthorText.homeButtonLabel, "去洗澡，上一次洗好了")

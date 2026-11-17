@@ -1,0 +1,71 @@
+import SwiftUI
+import Core
+
+/// What 暖橙's hot-water pages may open of the campus card: 校园卡记录, where the school's charge
+/// for a shower shows (about an hour later). Home sets it (`HomeView.showerCardRecords`); the
+/// default opens nothing.
+struct ShowerCardRecords: Sendable {
+    /// 校园卡记录's contents (as home opens it).
+    struct Page: Sendable {
+        let app: [AppActivity]
+        let source: CardRecordsSource
+    }
+
+    /// Nil while signed out of the school: 校园卡记录 can't open then, so no link shows.
+    var page: Page?
+    /// From the shower page, a cover over home: closes it and shows 校园卡记录 on home.
+    var openFromCover: (@MainActor @Sendable () -> Void)?
+}
+
+private struct ShowerCardRecordsKey: EnvironmentKey {
+    static let defaultValue = ShowerCardRecords()
+}
+
+extension EnvironmentValues {
+    var showerCardRecords: ShowerCardRecords {
+        get { self[ShowerCardRecordsKey.self] }
+        set { self[ShowerCardRecordsKey.self] = newValue }
+    }
+}
+
+/// 「看校园卡记录 ›」: a small text link under a hot-water line (the login page's web-login link's
+/// look). Left-aligned, its own width, at least 44 pt tall.
+struct ShowerCardRecordsLink: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action:action) {
+            HStack(spacing:4) {
+                Text(ShowerPageText.cardRecordsLink).scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.ink2)
+                Image(systemName:"chevron.right").scaledFont(12, .semibold, relativeTo:.subheadline).foregroundStyle(Theme.ink3)
+            }
+            .frame(minHeight:44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children:.ignore)
+        .accessibilityLabel(ShowerPageText.cardRecordsLink)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityIdentifier("showerCardRecordsLink")
+    }
+}
+
+extension View {
+    /// Pushes 校园卡记录 on this page's stack while `isPresented`.
+    func showerCardRecordsDestination(isPresented: Binding<Bool>) -> some View {
+        modifier(ShowerCardRecordsDestination(isPresented:isPresented))
+    }
+}
+
+private struct ShowerCardRecordsDestination: ViewModifier {
+    @Binding var isPresented: Bool
+    @Environment(\.showerCardRecords) private var records
+
+    func body(content: Content) -> some View {
+        content.navigationDestination(isPresented:$isPresented) {
+            if let page = records.page {
+                CardRecordsView(app:page.app, source:page.source).navOpen(.cardRecords, from:.homeButton)
+            }
+        }
+    }
+}

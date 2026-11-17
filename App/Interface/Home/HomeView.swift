@@ -264,6 +264,8 @@ struct HomeView: View {
         #if DEBUG
         .onOpenURL { if RootLink($0) == nil { handleDemo($0) } }
         #endif
+        // Outermost: the settings sheet and the shower page's cover read it too.
+        .environment(\.showerCardRecords, showerCardRecords)
     }
 
     /// The widget's link (`SampleMode.takePendingLink`: never while the sample is on, so never
