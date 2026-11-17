@@ -51,6 +51,8 @@ public final class CampusServices: @unchecked Sendable {
     public var schoolVault: StoredSchoolVault { StoredSchoolVault(store: secureStore) }
     public var showerVault: StoredShowerVault { StoredShowerVault(store: secureStore) }
     public var laundryVault: StoredLaundryVault { StoredLaundryVault(store: secureStore) }
+    /// Finished laundry orders of the last 7 days (the app's private group only).
+    public var laundryHistory: LaundryHistoryStore { LaundryHistoryStore(store: secureStore) }
     public var resetMarker: ResetMarker { ResetMarker(store: secureStore) }
 
     /// The school session and the snapshot refresher on these services (the app's "app" role).

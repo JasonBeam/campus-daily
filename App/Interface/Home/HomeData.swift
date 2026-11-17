@@ -176,7 +176,27 @@ extension HomeData {
                                           amount:facts.amount.map { Money(yuan:$0) },
                                           detail:record.draft.map { "\($0.machineName) 号机" }))
         }
+        activities += Self.historyActivities(laundry.history)
         appActivities = activities
+    }
+}
+
+extension HomeData {
+    /// Finished orders (paid with Alipay): read-only rows that never stand for a card record.
+    /// The amount only for a 50 that has one; 51/52/53 show their word instead.
+    static func historyActivities(_ entries: [LaundryHistoryEntry]) -> [AppActivity] {
+        entries.map { entry in
+            let outcome: AppActivity.Outcome?
+            switch entry.status {
+            case "51": outcome = .unpaid
+            case "52": outcome = .notStarted
+            case "53": outcome = .cancelled
+            default: outcome = nil
+            }
+            return AppActivity(id:"laundry-h-\(entry.key)", kind:.laundry(program:entry.program), date:entry.at,
+                               amount:outcome == nil ? entry.amount : nil, detail:"\(entry.machine) 号机 · 支付宝",
+                               outcome:outcome, opensPage:false, matchesCard:false)
+        }
     }
 }
 

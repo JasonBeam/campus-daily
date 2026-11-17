@@ -27,6 +27,8 @@ public enum DebugEvent: Sendable, Equatable {
     case laundryPayLaunch(opened: Bool)
     /// 立刻洗衣: the choice, the return, the pre-start read, the start and why it was not sent.
     case laundryStart(DebugLaundryStart)
+    /// The finished-order list on the phone: a step only, never what it holds.
+    case laundryHistory(DebugLaundryHistory)
 
     // MARK: School and U净 logins
     case schoolRefresh(DebugSchoolOutcome)
@@ -258,6 +260,11 @@ public enum DebugStartResult: Sendable, Equatable {
         case let e?: self = .unknown(DebugErrorKind(e))
         }
     }
+}
+
+/// What happened to the finished-order list (`LaundryHistoryStore`).
+public enum DebugLaundryHistory: String, Sendable, CaseIterable {
+    case appended, cleared, writeFailed
 }
 
 /// Why `control/start` was not sent.

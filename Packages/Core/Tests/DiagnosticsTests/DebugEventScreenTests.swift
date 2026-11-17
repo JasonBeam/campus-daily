@@ -10,7 +10,7 @@ final class DebugEventScreenTests: XCTestCase {
     enum Kind: CaseIterable {
         case showerAction, showerPhase, showerRestore, showerNote, bleConnect, bleProbe, bleAuthWrite, bleClose
         case lxtAuthorize, lxtSettle
-        case laundryPhase, laundryRequest, laundryOrder, laundryPayLaunch, laundryStart
+        case laundryPhase, laundryRequest, laundryOrder, laundryPayLaunch, laundryStart, laundryHistory
         case schoolRefresh, schoolCredentialExpired, schoolSavedLogin, schoolRenew, ujingLogin
         case topUpWeChat
         case schoolWebLogin, schoolDirectLogin
@@ -34,6 +34,7 @@ final class DebugEventScreenTests: XCTestCase {
         case .laundryOrder: return .laundryOrder
         case .laundryPayLaunch: return .laundryPayLaunch
         case .laundryStart: return .laundryStart
+        case .laundryHistory: return .laundryHistory
         case .schoolRefresh: return .schoolRefresh
         case .schoolCredentialExpired: return .schoolCredentialExpired
         case .schoolSavedLogin: return .schoolSavedLogin
@@ -153,6 +154,7 @@ final class DebugEventScreenTests: XCTestCase {
                                         .laundryOrder(status: status, moduleType: nil, order: nil)] }
         e += [DebugEvent.laundryPayLaunch(opened: true), .laundryPayLaunch(opened: false)]
         e += laundryStarts.map(DebugEvent.laundryStart)
+        e += DebugLaundryHistory.allCases.map(DebugEvent.laundryHistory)
         e += schoolOutcomes.map(DebugEvent.schoolRefresh)
         e += schoolOutcomes.map(DebugEvent.schoolRenew)
         e += [DebugCredential.card, .portal].flatMap { kind in

@@ -123,7 +123,16 @@ final class KeychainStoreTests: XCTestCase {
         XCTAssertEqual(StoreKey.sharedCredentialLog.service, "org.zaxh.xiaorichang.shared.credentialLog.v1")
         XCTAssertEqual(StoreKey.sharedResetMarker.service, "org.zaxh.xiaorichang.shared.resetMarker.v1")
         XCTAssertEqual(StoreKey.showerRetained.service, "org.zaxh.xiaorichang.water.retained.v1")
-        XCTAssertEqual(StoreKey.allCases.count, 14, "a new item needs its stored name pinned here")
+        XCTAssertEqual(StoreKey.laundryHistory.service, "org.zaxh.xiaorichang.laundry.history.v1")
+        XCTAssertEqual(StoreKey.laundryHistorySalt.service, "org.zaxh.xiaorichang.laundry.historySalt.v1")
+        XCTAssertEqual(StoreKey.allCases.count, 16, "a new item needs its stored name pinned here")
+    }
+
+    /// The finished-order list and its salt stay in the app's private group: the widget can't read them.
+    func testLaundryHistoryItemsAreNotShared() {
+        XCTAssertFalse(StoreKey.laundryHistory.isShared)
+        XCTAssertFalse(StoreKey.laundryHistorySalt.isShared)
+        XCTAssertEqual(StoreKey.laundryHistorySalt.accessibility, .afterFirstUnlockThisDeviceOnly)
     }
 
     /// The Swift names say shower; the stored names stay what installed builds already wrote.

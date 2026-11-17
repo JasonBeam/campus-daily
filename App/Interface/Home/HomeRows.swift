@@ -129,7 +129,12 @@ struct RecentRow: View {
         .padding(.vertical,8).frame(minHeight:56)
         .padding(.horizontal,24)
         .accessibilityElement(children:.ignore)
-        .accessibilityLabel([item.title, subtitle, accentWord ?? item.spokenAmount].compactMap { $0 }.joined(separator:"，"))
+        .accessibilityLabel(spokenLabel)
+    }
+    /// Title, time and detail, then the notice word, the finished order's word or the amount.
+    var spokenLabel: String {
+        [item.title, subtitle, accentWord ?? item.outcome?.word(clear:false) ?? item.spokenAmount]
+            .compactMap { $0 }.joined(separator:"，")
     }
     private var titles: some View {
         VStack(alignment:.leading, spacing:2) {
@@ -140,6 +145,8 @@ struct RecentRow: View {
     @ViewBuilder private var amountView: some View {
         if let accentWord {
             Text(accentWord).scaledFont(17, .medium).foregroundStyle(Theme.notice)
+        } else if let outcome = item.outcome {
+            Text(outcome.word(clear:false)).scaledFont(17, .medium).foregroundStyle(Theme.ink2)
         } else if let amount = item.amountText {
             Text(amount).scaledFont(16, .medium, relativeTo:.callout).monospacedDigit().foregroundStyle(Theme.ink)
                 .lineLimit(1).minimumScaleFactor(0.7)

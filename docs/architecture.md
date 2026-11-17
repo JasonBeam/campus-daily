@@ -736,6 +736,18 @@ Rules:
 - `40` → Live Activity (machine, program, endsAt) + laundry-done notification at `endsAt`;
   `50`/`53`/`51`/`52` end the activity and the laundry-done notification and clear the record
   (`52` keeps a warning card until acknowledged). `LaundryDoneReminder` decides the notification.
+- Finished orders (`LaundryHistory`, `LaundryHistoryStore`): the step that ends the record's
+  own order on a terminal read (50/51/53 clearing it, 52 moving it into `attention`) files one
+  entry, only after the checkout record is saved. The write is best effort: a failure logs
+  `laundry.history writeFailed` and never blocks or unlocks anything. An entry holds salted tags
+  of the order and the account (HMAC-SHA256 with a 32-byte per-install salt), the local confirm
+  time, program, machine, status and, for 50 only, the price of that read. At most 30, newest
+  first; entries older than 7 days or dated in the future are dropped on write and hidden on
+  read. Only the signed-in account's entries show, without the open order's, on 最近 and in
+  校园卡记录 / 订单 as read-only rows (「3 号机 · 支付宝」; 51/52/53 show 没付款/没启动/已取消,
+  清爽 未付款/未启动/已取消), never matched to a card record and never in a day's total. Signing
+  out of U净, or another account signing in, deletes them; a salt that is missing while entries
+  exist hides them and is never made again over them.
 
 ### 3.3 校园充值 (card and electricity)
 
@@ -777,6 +789,7 @@ The debug log notes only `topUp.weChat opened=yes|no`.
 | CAS login device id | Keychain `school.device` | AfterFirstUnlockThisDeviceOnly | **yes** (the widget's login shows the same browser id) |
 | water binding, shower session, records kept by a next use | Keychain `water.binding`, `water.session`, `water.retained` | AfterFirstUnlockThisDeviceOnly | never (private group) |
 | U净 account, checkout record | Keychain `laundry.account`, `laundry.checkout` | AfterFirstUnlockThisDeviceOnly | never (private group) |
+| finished laundry orders (7 days, ≤ 30) and their tag salt | Keychain `laundry.history`, `laundry.historySalt` | AfterFirstUnlockThisDeviceOnly | never (private group) |
 | home snapshot (balances, meter, room label, per-tile error, fetchedAt, needsLogin) | Keychain `shared.snapshot` (≤64 KiB JSON) | AfterFirstUnlockThisDeviceOnly | **yes** |
 | reminder thresholds mirrored for widget | Keychain `shared.reminderLines` | same | **yes** |
 | credential-lifetime lines from older builds (deleted at launch, never written) | Keychain `shared.credentialLog` | same | **yes** |

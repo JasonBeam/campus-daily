@@ -35,8 +35,10 @@ public enum UjingSignOut {
     /// Writes the signed-out login. The finished order's outcome and the last-order note go too
     /// (`LaundryCheckout.clearsLastOrder`). Throws `Refusal` with an order open, and the vault's
     /// error when the login can't be written (then nothing else changed).
+    /// The finished-order list (`history`) goes with the account; its salt stays.
     public static func perform(vault: LaundryVault, preferences: any PreferenceStorage,
-                               checkout: LaundryCheckout?, debugLog: any DebugLogSink = NoDebugLog()) throws -> Outcome {
+                               checkout: LaundryCheckout?, history: LaundryHistoryStore? = nil,
+                               debugLog: any DebugLogSink = NoDebugLog()) throws -> Outcome {
         if let refusal = refusal(orderOpen: (checkout?.phase ?? .none) != .none, busy: false) { throw refusal }
         let item = try vault.accountItem()
         let forget = LaundryCheckout.clearsLastOrder(record: checkout, signedInAs: nil, stored: item?.account?.id)
@@ -45,6 +47,10 @@ public enum UjingSignOut {
         if forget {
             if checkout?.lastOutcome != nil, (try? vault.saveCheckout(nil)) != nil { cleared = true }
             preferences.set(nil, forKey: PreferenceKey.laundryLastOrder)
+            if let history {
+                // Hidden by account anyway if this fails; the next sign-out tries again.
+                debugLog.record(.laundryHistory((try? history.clear()) != nil ? .cleared : .writeFailed))
+            }
         }
         // The TestFlight log goes with the login, and its salt with it.
         debugLog.clear()

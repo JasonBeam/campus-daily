@@ -20,6 +20,7 @@ extension DebugEvent {
         case .laundryOrder: return "laundry.order"
         case .laundryPayLaunch: return "laundry.payLaunch"
         case .laundryStart: return "laundry.start"
+        case .laundryHistory: return "laundry.history"
         case .schoolRefresh: return "school.refresh"
         case .schoolCredentialExpired: return "school.credentialExpired"
         case .schoolSavedLogin: return "school.savedLogin"
@@ -112,6 +113,8 @@ extension DebugEvent {
             case .result(.unknown(let kind)): f["result"] = "unknown"; f["kind"] = kind.rawValue
             case .skipped(let reason): f.word("skipped"); f["reason"] = reason.rawValue
             }
+        case .laundryHistory(let step):
+            f.word(step.rawValue)
         case .schoolRefresh(let o), .schoolRenew(let o):
             f.school(o)
         case .schoolCredentialExpired(let kind, let age, let alive):

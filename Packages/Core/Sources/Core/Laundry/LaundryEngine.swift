@@ -25,6 +25,8 @@ public actor LaundryEngine {
     let vault: LaundryVault
     let launcher: PaymentLauncher
     let accountID: String?
+    /// Where a finished order is filed (best effort, after the checkout record that ends it is saved).
+    let history: (any LaundryHistoryRecording)?
     let inFront: @Sendable () async -> Bool
     let now: @Sendable () -> Date
     let sleep: @Sendable (TimeInterval) async throws -> Void
@@ -41,12 +43,12 @@ public actor LaundryEngine {
     /// `resetMarker`: while a reset runs, no order is created (`AppReset.InProgress`).
     /// `accountID`: the signed-in U净 account `api` sends as; a new order records it.
     public init(api: LaundryOrdering, vault: LaundryVault, launcher: PaymentLauncher,
-                accountID: String? = nil, resetMarker: ResetMarker? = nil,
+                accountID: String? = nil, history: (any LaundryHistoryRecording)? = nil, resetMarker: ResetMarker? = nil,
                 inFront: @escaping @Sendable () async -> Bool = { false }, now: @escaping @Sendable () -> Date = Date.init,
                 sleep: @escaping @Sendable (TimeInterval) async throws -> Void = { s in
                     try await Task.sleep(nanoseconds: UInt64(max(0, s) * 1_000_000_000))
                 }, debugLog: any DebugLogSink = NoDebugLog()) throws {
-        self.api = api; self.vault = vault; self.launcher = launcher; self.accountID = accountID
+        self.api = api; self.vault = vault; self.launcher = launcher; self.accountID = accountID; self.history = history
         self.inFront = inFront; self.now = now; self.sleep = sleep; self.debugLog = debugLog
         self.resetMarker = resetMarker
         let persisted: LaundryCheckout?
@@ -172,11 +174,25 @@ public actor LaundryEngine {
                 throw error
             }
             logStart(event, before: before, after: next, effects: effects)
+            fileHistory(before: before, event: event, after: next)
             for effect in effects {
                 if let follow = await perform(effect) { queue.append(follow) }
             }
         }
         return state
+    }
+
+    /// Files the order this step ended. Runs only after its checkout record was saved; a failure
+    /// is logged and changes nothing else (the history never blocks the order flow).
+    private func fileHistory(before: LaundryCheckout, event: LaundryEvent, after: LaundryCheckout) {
+        guard let history,
+              let finished = LaundryHistory.finished(before: before, event: event, after: after, accountID: accountID) else { return }
+        do {
+            try history.record(finished, now: now())
+            debugLog.record(.laundryHistory(.appended))
+        } catch {
+            debugLog.record(.laundryHistory(.writeFailed))
+        }
     }
 
     /// Persist, then publish. A failed write blocks every later side effect.

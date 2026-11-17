@@ -43,6 +43,9 @@ enum LaundryLoginRefusal: Error { case otherAccount }
     /// no Live Activity, no reminder; the U净 login and saved machines stay.
     @Published private(set) var schoolEnabled: Bool
     @Published private(set) var lastOrder: LaundryLastOrder?
+    /// The signed-in account's finished orders of the last 7 days, without the open one's
+    /// (read-only rows on 最近 and in 订单). Empty when signed out or unreadable.
+    @Published private(set) var history: [LaundryHistoryEntry] = []
     /// Counts engine rebuilds (another account, a reset): part of the polling task's identity.
     @Published private(set) var engineGeneration = 0
 
@@ -114,6 +117,7 @@ enum LaundryLoginRefusal: Error { case otherAccount }
         } ?? savedMachines.first?.id
         configured = accountConnected && selectedMachine != nil
         rebuildEngine()
+        reloadHistory()
     }
 
     private var selectedMachine: SavedWasher? { savedMachines.first { $0.id == selectedMachineID } }
@@ -136,6 +140,7 @@ enum LaundryLoginRefusal: Error { case otherAccount }
         do {
             let engine = try LaundryEngine(api:client, vault:vault, launcher:launcher,
                                            accountID:account?.account?.id,
+                                           history:services.laundryHistory,
                                            resetMarker:services.resetMarker,
                                            inFront:services.laundryInFront(live:inFront),
                                            debugLog:services.debugLog)
@@ -164,6 +169,14 @@ enum LaundryLoginRefusal: Error { case otherAccount }
             }
         }
         if checkout != next { checkout = next }
+        reloadHistory()
+    }
+
+    /// Rereads the finished orders (after each engine step, a login, a sign-out, a read).
+    func reloadHistory(now: Date = Date()) {
+        let open = checkout.flatMap { $0.phase != .none ? $0.orderID : nil }
+        let entries = services.laundryHistory.entries(accountID:account?.account?.id, openOrderID:open, now:now)
+        if entries != history { history = entries }
     }
 
     // MARK: Login (UjingLoginView)
@@ -205,6 +218,7 @@ enum LaundryLoginRefusal: Error { case otherAccount }
         configured = selectedMachine != nil
         issue = nil; lastAttempt = nil
         rebuildEngine()
+        reloadHistory()
         // The open order is readable again (read only).
         if reread { Task { await refreshOrder() } }
     }
@@ -229,7 +243,7 @@ enum LaundryLoginRefusal: Error { case otherAccount }
         guard signOutRefusal == nil else { return }
         guard !storageBlocked,
               let outcome = try? UjingSignOut.perform(vault:vault, preferences:defaults, checkout:checkout,
-                                                             debugLog:services.debugLog)
+                                                             history:services.laundryHistory, debugLog:services.debugLog)
         else { signOutFailed = true; return }
         signOutFailed = false
         account = account.map { UjingAccountItem(mobileID:$0.mobileID) }
@@ -239,6 +253,7 @@ enum LaundryLoginRefusal: Error { case otherAccount }
         if outcome.clearedCheckout { checkout = nil }
         if outcome.forgotLastOrder { lastOrder = nil }
         rebuildEngine()
+        history = []
     }
 
     /// The finished order's outcome and the last-order note belong to the account that placed
@@ -250,6 +265,9 @@ enum LaundryLoginRefusal: Error { case otherAccount }
         }
         lastOrder = nil
         defaults.removeObject(forKey:Self.lastOrderKey)
+        // The finished orders go with it (hidden by account anyway if this can't be written).
+        services.debugLog.record(.laundryHistory((try? services.laundryHistory.clear()) != nil ? .cleared : .writeFailed))
+        history = []
     }
 
     /// After a reset cleared the stores: no U净 login, machines or order; the switch back on.
@@ -317,6 +335,7 @@ enum LaundryLoginRefusal: Error { case otherAccount }
     /// Machine state (scan + programs). Throttled to once a minute unless forced.
     func refresh(force: Bool = false) async {
         syncActivity()
+        reloadHistory()
         guard schoolEnabled, configured, let machine = selectedMachine, !loading else { return }
         if !force, let lastAttempt, Date().timeIntervalSince(lastAttempt) < 60 { return }
         loading = true; issue = nil; lastAttempt = Date()
