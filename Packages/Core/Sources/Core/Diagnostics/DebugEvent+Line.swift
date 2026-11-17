@@ -25,6 +25,8 @@ extension DebugEvent {
         case .schoolSavedLogin: return "school.savedLogin"
         case .schoolRenew: return "school.renew"
         case .ujingLogin: return "ujing.login"
+        case .schoolWebLogin: return "school.webLogin"
+        case .schoolDirectLogin: return "school.directLogin"
         case .topUpWeChat: return "topUp.weChat"
         case .http: return "http"
         case .navOpen: return "nav.open"
@@ -124,6 +126,11 @@ extension DebugEvent {
             }
         case .ujingLogin(let o):
             f.outcome(o)
+        case .schoolWebLogin(let step):
+            f.word(step.rawValue)
+        case .schoolDirectLogin(let failure):
+            f["cause"] = failure.cause
+            f["kind"] = failure.kind
         case .http(let h):
             f.word(h.service.rawValue)
             f.word(h.post ? "POST" : "GET")

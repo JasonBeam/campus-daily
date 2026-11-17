@@ -107,6 +107,25 @@ final class DebugEventLineTests: XCTestCase {
         XCTAssertEqual(line(.topUpWeChat(opened: false)), "opened=no")
     }
 
+    /// The web login page: opened, completed or cancelled, one word.
+    func testAWebLoginLineIsOneWord() {
+        XCTAssertEqual(DebugEvent.schoolWebLogin(.opened).name, "school.webLogin")
+        XCTAssertEqual(DebugWebLogin.allCases.map { line(.schoolWebLogin($0)) }, ["opened", "completed", "cancelled"])
+    }
+
+    /// A direct login that failed: its category only, from the failure the form saw.
+    func testADirectLoginLineIsItsCauseOnly() {
+        XCTAssertEqual(DebugEvent.schoolDirectLogin(.locked).name, "school.directLogin")
+        let lines = [SchoolLoginFailure.cannotLoginDirectly(.locked), .cannotLoginDirectly(.captcha), .cannotLoginDirectly(.mfa),
+                     .cannotLoginDirectly(.passwordChange), .cannotLoginDirectly(.unknown), .wrongCredentials, .noAnswer, .offline]
+            .map { line(.schoolDirectLogin(DebugDirectLogin($0)!)) }
+        XCTAssertEqual(lines, ["cause=locked", "cause=needsSchoolSite kind=captcha", "cause=needsSchoolSite kind=mfa",
+                               "cause=needsSchoolSite kind=pwChange", "cause=unknown", "cause=wrong", "cause=noAnswer", "cause=offline"])
+        for failure in [SchoolLoginFailure.busy, .cannotSave, .differentAccount, .unreadableAccount] {
+            XCTAssertNil(DebugDirectLogin(failure), "not the school's answer: \(failure)")
+        }
+    }
+
     func testANavLineIsAPageAndAnEntry() {
         XCTAssertEqual(DebugEvent.navOpen(.feedback, from: .settings).name, "nav.open")
         XCTAssertEqual(line(.navOpen(.feedback, from: .settings)), "page=feedback from=settings")

@@ -13,6 +13,7 @@ final class DebugEventScreenTests: XCTestCase {
         case laundryPhase, laundryRequest, laundryOrder, laundryPayLaunch, laundryStart
         case schoolRefresh, schoolCredentialExpired, schoolSavedLogin, schoolRenew, ujingLogin
         case topUpWeChat
+        case schoolWebLogin, schoolDirectLogin
         case http, navOpen
     }
 
@@ -39,6 +40,8 @@ final class DebugEventScreenTests: XCTestCase {
         case .schoolRenew: return .schoolRenew
         case .ujingLogin: return .ujingLogin
         case .topUpWeChat: return .topUpWeChat
+        case .schoolWebLogin: return .schoolWebLogin
+        case .schoolDirectLogin: return .schoolDirectLogin
         case .http: return .http
         case .navOpen: return .navOpen
         }
@@ -161,6 +164,9 @@ final class DebugEventScreenTests: XCTestCase {
             .map(DebugEvent.schoolSavedLogin)
         e += outcomes.map(DebugEvent.ujingLogin)
         e += [DebugEvent.topUpWeChat(opened: true), .topUpWeChat(opened: false)]
+        e += DebugWebLogin.allCases.map(DebugEvent.schoolWebLogin)
+        e += ([DebugDirectLogin.locked, .unknown, .wrong, .noAnswer, .offline]
+              + [SchoolLoginBlock.captcha, .mfa, .passwordChange].map(DebugDirectLogin.needsSchoolSite)).map(DebugEvent.schoolDirectLogin)
         e += https.map(DebugEvent.http)
         e += DebugPage.allCases.flatMap { page in DebugEntry.allCases.map { DebugEvent.navOpen(page, from: $0) } }
         e.append(.laundryOrder(status: DebugCode("20"), moduleType: 7, order: washer))

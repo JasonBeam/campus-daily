@@ -35,6 +35,10 @@ public enum DebugEvent: Sendable, Equatable {
     /// The portal token traded for a new card session.
     case schoolRenew(DebugSchoolOutcome)
     case ujingLogin(DebugOutcome)
+    /// The school's web login page: opened, signed in on it, or closed without signing in.
+    case schoolWebLogin(DebugWebLogin)
+    /// The login form's account-and-password login did not sign in: the kind of failure only.
+    case schoolDirectLogin(DebugDirectLogin)
 
     // MARK: 校园充值
     /// 「打开微信」: whether WeChat opened. Never what was copied.
@@ -300,6 +304,67 @@ public enum DebugSchoolOutcome: Sendable, Equatable {
 }
 
 public enum DebugCredential: String, Sendable { case card, portal }
+
+/// What happened to the school's web login page.
+public enum DebugWebLogin: String, Sendable, CaseIterable {
+    case opened, completed, cancelled
+}
+
+/// Why the form's password login did not sign in, as a fixed category: never the school's words,
+/// the account or the password.
+public enum DebugDirectLogin: Sendable, Equatable {
+    case locked
+    /// Captcha, an extra check or a password change: the school's site clears it.
+    case needsSchoolSite(SchoolLoginBlock)
+    /// A page or reply we don't recognise.
+    case unknown
+    case wrong
+    /// The password was sent and no answer came back.
+    case noAnswer
+    /// Nothing was sent (no network, or the school's server failing before the password went).
+    case offline
+
+    /// The category for a login failure; nil for the ones that are not the school's answer
+    /// (busy, storage, another account).
+    public init?(_ failure: SchoolLoginFailure) {
+        switch failure {
+        case .wrongCredentials: self = .wrong
+        case .cannotLoginDirectly(let block):
+            switch block {
+            case .locked: self = .locked
+            case .unknown: self = .unknown
+            case .captcha, .mfa, .passwordChange: self = .needsSchoolSite(block)
+            }
+        case .noAnswer: self = .noAnswer
+        case .offline: self = .offline
+        case .differentAccount, .busy, .unreadableAccount, .cannotSave: return nil
+        }
+    }
+
+    /// `kind` as written in the log, for `needsSchoolSite`: `pwChange`, since the log's last
+    /// check drops any line with the word password in it.
+    public var kind: String? {
+        guard case .needsSchoolSite(let block) = self else { return nil }
+        switch block {
+        case .captcha: return "captcha"
+        case .mfa: return "mfa"
+        case .passwordChange: return "pwChange"
+        case .locked, .unknown: return nil
+        }
+    }
+
+    /// `cause` as written in the log.
+    public var cause: String {
+        switch self {
+        case .locked: return "locked"
+        case .needsSchoolSite: return "needsSchoolSite"
+        case .unknown: return "unknown"
+        case .wrong: return "wrong"
+        case .noAnswer: return "noAnswer"
+        case .offline: return "offline"
+        }
+    }
+}
 
 public enum DebugPasswordStep: Sendable, Equatable {
     public enum Reason: String, Sendable { case noLoginDeviceID, credentialsChanged, deviceIDNotSaved }
