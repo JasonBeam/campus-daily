@@ -247,7 +247,7 @@ struct ShowerPageView: View {
                 bodyText(ShowerPageText.refusedBody(inUse:page?.denial == .inUse, retryable:shower.deniedRetryable))
                 if ShowerPageText.refusedLinkShown(inUse:page?.denial == .inUse, signedIn:cardRecords.page != nil),
                    let open = cardRecords.openFromCover {
-                    ShowerCardRecordsLink(action:open).padding(.top,6)
+                    ShowerCardRecordsLink(action:open).padding(.top,ShowerCardRecordsLink.gap)
                 }
             case .stopped:
                 if flow.foundInUse {

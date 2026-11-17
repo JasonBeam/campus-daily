@@ -6,8 +6,8 @@ import Core
 /// `ThemeStore`), so a switch redraws both page trees and nothing global holds the theme. A
 /// shape style wherever a `Color` was one, and a view (a fill of its frame) wherever a `Color`
 /// was drawn as one. Code that needs a plain `Color` asks `color(_:)` with the environment's theme.
-struct ThemeColor: ShapeStyle {
-    enum Token: Sendable {
+struct ThemeColor: ShapeStyle, Equatable {
+    enum Token: Sendable, Equatable {
         case bg, group, ink, ink2, ink3, separator, fill
         case accent, accentLarge, accentText, accentInk
         case redLarge, redText, pill, pillInk, notice

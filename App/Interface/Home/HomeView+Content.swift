@@ -159,6 +159,9 @@ extension HomeView {
         return ["洗衣", laundryTitle(data), data.laundry.spokenValue(), subtitle].compactMap { $0 }.joined(separator:"，")
     }
 
+    /// 「全部 ›」's look, which other small links in 暖橙 share.
+    static let allRecordsStyle = AccentChevronLabel.Style(size:13, relativeTo:.footnote)
+
     /// 「最近」 and, while signed in, 「全部 ›」 to 校园卡记录.
     func recentsHeader(all: Bool) -> some View {
         HStack(alignment:.firstTextBaseline) {
@@ -167,15 +170,11 @@ extension HomeView {
             Spacer(minLength:8)
             if all {
                 NavigationLink(value:HomeRoute.records) {
-                    HStack(alignment:.firstTextBaseline, spacing:3) {
-                        Text("全部").scaledFont(13, .medium, relativeTo:.footnote)
-                        Image(systemName:"chevron.right").scaledFont(11, .semibold, relativeTo:.footnote)
-                    }
-                    .foregroundStyle(Theme.accentText)
-                    // 44 pt to tap without moving 「最近」.
-                    .padding(.vertical,12).padding(.leading,8)
-                    .contentShape(Rectangle())
-                    .padding(.vertical,-12)
+                    AccentChevronLabel(text:"全部", style:Self.allRecordsStyle)
+                        // 44 pt to tap without moving 「最近」.
+                        .padding(.vertical,12).padding(.leading,8)
+                        .contentShape(Rectangle())
+                        .padding(.vertical,-12)
                 }
                 .buttonStyle(RowPressStyle())
                 .accessibilityElement(children:.ignore)

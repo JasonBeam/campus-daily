@@ -30,11 +30,13 @@ struct ShowerDetail: View {
                         else { Circle().fill(shower.problem ? NativeTheme.notice : NativeTheme.tint).frame(width:7,height:7).accessibilityHidden(true) }
                         Text(headline).font(.title2.bold()).accessibilityIdentifier("waterHeadline")
                     }
-                    Text(demoReady ? "" : shower.inspecting ? "正在只读核对附近水控，不会出水。" : shower.status).font(.subheadline).foregroundStyle(shower.problem ? NativeTheme.notice : .fixed(Color.secondary))
-                        .fixedSize(horizontal:false,vertical:true).accessibilityIdentifier("waterStatus")
-                    // A record this build can't read: its charge is on the card's records.
-                    if shower.recordUnreadable, cardRecords.page != nil {
-                        ShowerCardRecordsLink { recordsOpen = true }
+                    VStack(alignment:.leading, spacing:ShowerCardRecordsLink.gap) {
+                        Text(demoReady ? "" : shower.inspecting ? "正在只读核对附近水控，不会出水。" : shower.status).font(.subheadline).foregroundStyle(shower.problem ? NativeTheme.notice : .fixed(Color.secondary))
+                            .fixedSize(horizontal:false,vertical:true).accessibilityIdentifier("waterStatus")
+                        // A record this build can't read: its charge is on the card's records.
+                        if shower.recordUnreadable, cardRecords.page != nil {
+                            ShowerCardRecordsLink { recordsOpen = true }
+                        }
                     }
                 }
                 }

@@ -34,21 +34,22 @@ extension EnvironmentValues {
     }
 }
 
-/// 「看校园卡记录 ›」: a small text link under a hot-water line (the login page's web-login link's
-/// look). Left-aligned, its own width, at least 44 pt tall.
+/// 「看校园卡记录 ›」: a small text link under a hot-water line, drawn as home's 「全部 ›」 at 15 pt.
+/// It goes `gap` under its line, left-aligned at its own width; its text is at the top of a
+/// frame at least 44 pt tall, so the space to tap reaches down, never up into the line.
 struct ShowerCardRecordsLink: View {
+    static let style = AccentChevronLabel.Style(size:15, relativeTo:.subheadline)
+    /// From the line above to the link.
+    static let gap: CGFloat = 12
     let action: () -> Void
 
     var body: some View {
         Button(action:action) {
-            HStack(spacing:4) {
-                Text(ShowerPageText.cardRecordsLink).scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.ink2)
-                Image(systemName:"chevron.right").scaledFont(12, .semibold, relativeTo:.subheadline).foregroundStyle(Theme.ink3)
-            }
-            .frame(minHeight:44)
-            .contentShape(Rectangle())
+            AccentChevronLabel(text:ShowerPageText.cardRecordsLink, style:Self.style)
+                .frame(minHeight:44, alignment:.top)
+                .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(RowPressStyle())
         .accessibilityElement(children:.ignore)
         .accessibilityLabel(ShowerPageText.cardRecordsLink)
         .accessibilityAddTraits(.isButton)

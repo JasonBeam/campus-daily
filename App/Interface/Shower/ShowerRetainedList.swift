@@ -28,7 +28,7 @@ struct ShowerRetainedList: View {
                     .accessibilityLabel(line.spoken)
                 }
             } footer: {
-                VStack(alignment:.leading, spacing:4) {
+                VStack(alignment:.leading, spacing:ShowerCardRecordsLink.gap) {
                     Text(ShowerRetainedText.Warm.footer)
                     if cardRecords.page != nil { ShowerCardRecordsLink { recordsOpen = true } }
                 }
