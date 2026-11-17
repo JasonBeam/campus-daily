@@ -65,10 +65,20 @@ public struct LxtClient: ShowerDirectory, ShowerGateway {
             fields.append((k, v))
         }
         fields.append(("random", random(LxtSigning.userMsgAlphabet)))
-        let root = try await read(LxtEndpoints.userMsg, fields, requestType: true)
+        // Only a read of who the student is: a refusal code (a low balance, say) that still
+        // carries the identity does not stop the dorm from being bound.
+        let root = try await read(LxtEndpoints.userMsg, fields, requestType: true, acceptsRefusal: { Self.identity(in: $0) != nil })
         guard let data = ResponseDecoding.data(root), data.object != nil else { throw ServiceError.malformed(.lxt6, "Data") }
         guard let student = data["studentid"]?.text, Self.isIdentifier(student) else { throw ServiceError.malformed(.lxt6, "Data.studentid") }
         guard let school = data["schoolid"]?.text, Self.isIdentifier(school) else { throw ServiceError.malformed(.lxt6, "Data.schoolid") }
+        return ShowerUser(studentId: student, schoolId: school)
+    }
+
+    /// The `Data` student and school ids, when both are there and well formed.
+    static func identity(in root: JSONValue) -> ShowerUser? {
+        guard let data = ResponseDecoding.data(root), data.object != nil,
+              let student = data["studentid"]?.text, isIdentifier(student),
+              let school = data["schoolid"]?.text, isIdentifier(school) else { return nil }
         return ShowerUser(studentId: student, schoolId: school)
     }
 
@@ -135,13 +145,14 @@ public struct LxtClient: ShowerDirectory, ShowerGateway {
         return nodes
     }
 
-    private func read(_ path: String, _ fields: [(String, String)], requestType: Bool = false) async throws -> JSONValue {
+    private func read(_ path: String, _ fields: [(String, String)], requestType: Bool = false,
+                      acceptsRefusal: (JSONValue) -> Bool = { _ in false }) async throws -> JSONValue {
         let query = LxtSigning.signedForm(fields, secret: profile.secret, sid: profile.sid, requestType: requestType)
         guard let url = URL(string: LxtEndpoints.base + "/" + path + "?" + query) else { throw ServiceError.badRequest(.lxt6) }
         let req = HTTPRequest(service: .lxt6, method: .get, url: url,
                               headers: ["Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json"],
                               bodyLimit: HTTPRequest.largeBodyLimit, logName: url.lastPathComponent)
-        return try Self.decodeRead(try await http.send(req))
+        return try Self.decodeRead(try await http.send(req), acceptsRefusal: acceptsRefusal)
     }
 
     private func operation(_ path: String, _ b: ShowerBinding, frame: Data, name: String) async throws -> JSONValue {
@@ -182,13 +193,15 @@ public struct LxtClient: ShowerDirectory, ShowerGateway {
         throw ServiceError.rejection(.lxt6, code: code, message: ResponseDecoding.message(root))
     }
 
-    /// Reads: non-2xx → `rejected("HTTP n")`; unreadable → `malformed`.
-    static func decodeRead(_ response: HTTPResponse) throws -> JSONValue {
+    /// Reads: non-2xx → `rejected("HTTP n")`; unreadable → `malformed`. A non-zero code is
+    /// mapped by `check` unless `acceptsRefusal` takes the body as it is.
+    static func decodeRead(_ response: HTTPResponse, acceptsRefusal: (JSONValue) -> Bool = { _ in false }) throws -> JSONValue {
         guard (200..<300).contains(response.status) else {
             throw ServiceError.rejected(.lxt6, code: "HTTP \(response.status)", message: "")
         }
         guard let root = root(response.body) else { throw ServiceError.malformed(.lxt6, "$") }
         guard let code = ResponseDecoding.code(root), Int(code) != nil else { throw ServiceError.malformed(.lxt6, "code") }
+        if code != "0", acceptsRefusal(root) { return root }
         try check(root, code: code)
         return root
     }

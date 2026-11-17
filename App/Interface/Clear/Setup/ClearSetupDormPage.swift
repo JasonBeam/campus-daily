@@ -170,7 +170,7 @@ struct ClearSetupDormPage: View {
     static func next(after result: DormSetupFlow.AutoBind) -> BindNext {
         switch result {
         case .bound, .unavailable: return .confirm
-        case .failed(let reason): return .stay(note:reason)
+        case .failed(let why): return .stay(note:why.clearText)
         case .needsChoice: return .choose
         }
     }

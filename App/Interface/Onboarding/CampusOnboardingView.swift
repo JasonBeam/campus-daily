@@ -228,6 +228,8 @@ struct CampusOnboardingView: View {
     @Published private(set) var busy = false
     @Published private(set) var saved = false
     @Published var issue: String?
+    /// Why the hot-water account read failed, when it did.
+    private(set) var identityFailure: ShowerIdentityFailure?
     private var directory: ShowerDirectory?
     /// Whose school login `identity` came from: a binding is saved only while that person is
     /// still the one signed in.
@@ -237,7 +239,7 @@ struct CampusOnboardingView: View {
 
     func reset() {
         identity = nil; options = [[],[],[],[]]; selected = []; machines = []; saved = false; issue = nil
-        autoMatched = false; directory = nil; campus = nil; personStamp = nil
+        identityFailure = nil; autoMatched = false; directory = nil; campus = nil; personStamp = nil
     }
 
     enum AutoBind: Equatable {
@@ -247,16 +249,16 @@ struct CampusOnboardingView: View {
         case unavailable
         /// Needs the user: several rooms/controllers, or nothing matched.
         case needsChoice
-        /// The hot-water account could not be read (the reason): the dorm screen can't fix that,
-        /// so nothing is chosen there; hot water is bound later from 设置 › 热水.
-        case failed(String)
+        /// The hot-water account could not be read (why): the dorm screen can't fix that, so
+        /// nothing is chosen there; hot water is bound later from 设置 › 热水.
+        case failed(ShowerIdentityFailure)
     }
 
-    /// What the identity read alone decides: no platform, or a read that failed; nil when the
-    /// rooms and controllers decide.
-    static func readOutcome(identityRead: Bool, issue: String?) -> AutoBind? {
+    /// What the identity read alone decides: no platform, or a read that failed (`failure`, or
+    /// `.other` when unknown); nil when the rooms and controllers decide.
+    static func readOutcome(identityRead: Bool, issue: String?, failure: ShowerIdentityFailure?) -> AutoBind? {
         guard !identityRead, let issue else { return nil }
-        return issue == ShowerModel.platformMissingText ? .unavailable : .failed(issue)
+        return issue == ShowerModel.platformMissingText ? .unavailable : .failed(failure ?? .other)
     }
 
     /// First-run guide: the user confirmed the dorm read from the school account. Bind its
@@ -265,7 +267,7 @@ struct CampusOnboardingView: View {
         if water.configured { return .bound }
         guard campus.configured else { return .needsChoice }
         await prepare(campus:campus, water:water)
-        if let outcome = Self.readOutcome(identityRead:identity != nil, issue:issue) { return outcome }
+        if let outcome = Self.readOutcome(identityRead:identity != nil, issue:issue, failure:identityFailure) { return outcome }
         guard autoMatched, machines.count == 1, let machine = machines.first else { return .needsChoice }
         await save(machine, water:water)
         return saved ? .bound : .needsChoice
@@ -293,6 +295,7 @@ struct CampusOnboardingView: View {
                 issue = ShowerModel.platformMissingText
             }
         } catch {
+            if identity == nil { identityFailure = ShowerIdentityFailure(error) }
             issue = (error as? ServiceError)?.userMessage ?? "暂时读不到宿舍，稍后再试。"
         }
     }

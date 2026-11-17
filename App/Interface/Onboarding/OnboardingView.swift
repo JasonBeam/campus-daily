@@ -510,7 +510,7 @@ struct OnboardingView: View {
     static func next(after result: DormSetupFlow.AutoBind) -> BindNext {
         switch result {
         case .bound, .unavailable: return .advance(note:nil)
-        case .failed(let reason): return .advance(note:reason)
+        case .failed(let why): return .advance(note:why.warmText)
         case .needsChoice: return .choose
         }
     }
