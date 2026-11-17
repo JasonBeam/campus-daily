@@ -2,7 +2,8 @@ import Foundation
 
 /// Why setup could not read the hot-water account (`LxtClient.userInfo`), as it tells the user:
 /// the hot-water platform turning it down over the balance, or anything else (the school's
-/// hand-off included). Hot water is then bound later from 设置 › 热水.
+/// hand-off included). Hot water is then bound later from
+/// 设置 › 热水 (暖橙) or 设置 › 校园登录与宿舍 › 宿舍热水 (清爽).
 public enum ShowerIdentityFailure: Equatable, Sendable {
     case lowBalance, other
 
@@ -26,8 +27,8 @@ public enum ShowerIdentityFailure: Equatable, Sendable {
     /// 清爽's setup line.
     public var clearText: String {
         switch self {
-        case .lowBalance: return "热水平台提示余额不足，暂未绑定热水；充值后可在设置 › 热水中重新绑定，电费与校园卡不受影响"
-        case .other: return "热水账号读取失败，暂未绑定热水；可在设置 › 热水中重新绑定，电费与校园卡不受影响"
+        case .lowBalance: return "热水平台提示余额不足，暂未绑定热水；充值后可在设置 › 校园登录与宿舍 › 宿舍热水中重新绑定，电费与校园卡不受影响"
+        case .other: return "热水账号读取失败，暂未绑定热水；可在设置 › 校园登录与宿舍 › 宿舍热水中重新绑定，电费与校园卡不受影响"
         }
     }
 }

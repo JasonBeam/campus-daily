@@ -13,9 +13,10 @@ struct ClearSetupDormPage: View {
     @StateObject private var dormFlow = DormSetupFlow()
     @State private var bindingWater = false
     /// Automatic binding already needed the dorm screen once; the next 「就是这间」 just confirms
-    /// (hot water can be finished later from 设置 › 热水).
+    /// (hot water can be finished later from 设置 › 校园登录与宿舍 › 宿舍热水).
     @State private var bindTried = false
-    /// Why hot water was not bound (the account read failed); 设置 › 热水 binds it later.
+    /// Why hot water was not bound (the account read failed); 设置 › 校园登录与宿舍 › 宿舍热水
+    /// binds it later.
     @State private var waterNote: String?
     @State private var dormPicker = false
     /// Same-name apartment picked (candidate id); confirmed by 「就是这间」.

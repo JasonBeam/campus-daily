@@ -30,9 +30,9 @@ final class DormAutoBindTests: XCTestCase {
 
     func testClearSetupKeepsTheReasonOnItsPageAfterAFailedRead() {
         XCTAssertEqual(ClearSetupDormPage.next(after:.failed(.lowBalance)),
-                       .stay(note:"热水平台提示余额不足，暂未绑定热水；充值后可在设置 › 热水中重新绑定，电费与校园卡不受影响"))
+                       .stay(note:"热水平台提示余额不足，暂未绑定热水；充值后可在设置 › 校园登录与宿舍 › 宿舍热水中重新绑定，电费与校园卡不受影响"))
         XCTAssertEqual(ClearSetupDormPage.next(after:.failed(.other)),
-                       .stay(note:"热水账号读取失败，暂未绑定热水；可在设置 › 热水中重新绑定，电费与校园卡不受影响"))
+                       .stay(note:"热水账号读取失败，暂未绑定热水；可在设置 › 校园登录与宿舍 › 宿舍热水中重新绑定，电费与校园卡不受影响"))
         XCTAssertEqual(ClearSetupDormPage.next(after:.bound), .confirm)
         XCTAssertEqual(ClearSetupDormPage.next(after:.unavailable), .confirm)
         XCTAssertEqual(ClearSetupDormPage.next(after:.needsChoice), .choose)
