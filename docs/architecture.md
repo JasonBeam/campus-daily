@@ -751,7 +751,7 @@ The debug log notes only `topUp.weChat opened=yes|no`.
   colour, announced once; it says the name is copied and to open WeChat by hand) until the next
   tap. Back to active after the tap took the user out of the app, the balances are read once in
   the background (`CampusModel.refresh(force:)`), with nothing on screen. In the sample
-  (先看看示例) the button copies nothing, opens nothing and reads nothing.
+  (先看看示例) the button copies and opens the same, and nothing is read after coming back.
 - The old signed-in web top-up (`RechargeWebSession`, `RechargeNavigation`) has no entry in the
   app any more; its Core code and tests stay until they are removed on their own.
 

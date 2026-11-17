@@ -31,7 +31,8 @@ public struct CampusTopUpFlow: Sendable, Equatable {
     }
 
     public private(set) var line = Line.none
-    /// 先看看示例: nothing is copied, nothing opens and nothing is read from the school.
+    /// 先看看示例: the button works the same (it touches no account); nothing is read from the
+    /// school after coming back.
     public let sample: Bool
     /// The button was tapped and may have taken the user out of the app.
     private var awaitingReturn = false
@@ -43,7 +44,6 @@ public struct CampusTopUpFlow: Sendable, Equatable {
     public mutating func handle(_ event: CampusTopUpEvent) -> [CampusTopUpEffect] {
         switch event {
         case .weChatTapped:
-            guard !sample else { return [] }
             line = .copied; awaitingReturn = true
             // Copy first: WeChat takes the app out of the front.
             return [.copy(CampusTopUp.serviceName), .open(CampusTopUp.weChat)]

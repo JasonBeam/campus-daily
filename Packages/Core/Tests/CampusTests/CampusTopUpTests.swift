@@ -121,12 +121,18 @@ final class CampusTopUpTests: XCTestCase {
 
     // MARK: 先看看示例
 
-    /// The sample neither copies nor opens WeChat, and reads nothing from the school after.
-    func testTheSampleDoesNothing() {
+    /// The sample's button works as everywhere else (it touches no account): it copies the name,
+    /// opens WeChat and shows the same lines. Only the balances are not read after coming back.
+    func testTheSampleCopiesAndOpensButNeverRefreshes() {
         var flow = CampusTopUpFlow(sample: true)
-        XCTAssertEqual(flow.handle(.weChatTapped), [])
-        XCTAssertEqual(flow.line, .none)
+        XCTAssertEqual(flow.handle(.weChatTapped), [.copy("e广工商大办事大厅"), .open(URL(string: "weixin://")!)])
+        XCTAssertEqual(flow.line, .copied)
+        XCTAssertEqual(flow.handle(.weChatOpened(false)), [.announceFailure])
+        XCTAssertEqual(flow.line, .weChatFailed)
+        _ = flow.handle(.weChatTapped)
+        XCTAssertEqual(flow.handle(.weChatOpened(true)), [])
+        XCTAssertEqual(flow.line, .copied)
         XCTAssertEqual(flow.handle(.scene(active: false)), [])
-        XCTAssertEqual(flow.handle(.scene(active: true)), [])
+        XCTAssertEqual(flow.handle(.scene(active: true)), [], "the sample reads nothing from the school")
     }
 }
