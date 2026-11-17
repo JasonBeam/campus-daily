@@ -26,7 +26,7 @@ struct SchoolWebLoginLink: View {
         case .warm:
             HStack(spacing:4) {
                 Text(SchoolLoginText.webLogin(appTheme)).scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.ink2)
-                Image(systemName:"chevron.right").font(.system(size:12, weight:.semibold)).foregroundStyle(Theme.ink3)
+                Image(systemName:"chevron.right").scaledFont(12, .semibold, relativeTo:.subheadline).foregroundStyle(Theme.ink3)
             }
         case .clear:
             Text(SchoolLoginText.webLogin(appTheme)).font(.footnote).foregroundStyle(Theme.accentText)

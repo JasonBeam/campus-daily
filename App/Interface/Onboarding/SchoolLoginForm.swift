@@ -138,6 +138,8 @@ struct SchoolLoginForm: View {
     /// The small 「用学校网页登录」 link under the form.
     var webLogin: () -> Void
     @State private var reveal = false
+    /// The eye in the password row grows with the text, up to 32 pt (its button stays 44 pt).
+    @ScaledMetric(relativeTo:.body) private var eyeSize: CGFloat = 20
 
     var body: some View {
         VStack(alignment:.leading, spacing:0) {
@@ -174,7 +176,7 @@ struct SchoolLoginForm: View {
                         if typing { focus.wrappedValue = .password }
                     } label: {
                         Image(systemName:reveal ? "eye" : "eye.slash")
-                            .font(.system(size:20)).foregroundStyle(Theme.ink2)
+                            .font(.system(size:min(eyeSize, 32))).foregroundStyle(Theme.ink2)
                             .frame(width:44, height:44)
                     }
                     .buttonStyle(.plain)
@@ -251,18 +253,21 @@ struct CheckToggleStyle: ToggleStyle {
 private struct CheckMark: View {
     let on: Bool
     @Environment(\.isEnabled) private var enabled
+    /// Grows with the text, up to 36 pt.
+    @ScaledMetric(relativeTo:.body) private var scaled: CGFloat = 22
+    private var side: CGFloat { min(scaled, 36) }
     var body: some View {
         ZStack {
             if on {
                 Circle().fill(Theme.accentText)
-                Image(systemName:"checkmark").font(.system(size:12, weight:.bold))
+                Image(systemName:"checkmark").font(.system(size:12 * side / 22, weight:.bold))
                     // White in light, #111 in dark, resolved by the asset from the trait collection.
                     .foregroundStyle(Theme.accentInk)
             } else {
                 Circle().strokeBorder(Theme.ink3, lineWidth:1.5)
             }
         }
-        .frame(width:22, height:22)
+        .frame(width:side, height:side)
         .opacity(enabled ? 1 : 0.5)
         .accessibilityHidden(true)
     }
