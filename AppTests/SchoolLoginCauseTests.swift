@@ -2,10 +2,10 @@ import XCTest
 import Core
 @testable import XiaoRiChang
 
-/// A password login the school did not call wrong is said by its cause, in both themes: a lock
-/// (wait 5 minutes), something for the school's site (「去学校官网处理」 opens Safari), or a page we
-/// don't know. Each time 登录 stays the primary button and can be sent again; the web login is
-/// only the small link under the form.
+/// A password login the school did not call wrong is said by its cause, in both themes: a
+/// temporary lock (wait a few minutes), something for the school's site (「去学校官网处理」 opens
+/// Safari), or a page we don't know. Each time 登录 stays the primary button and can be sent
+/// again; the web login is only the small link under the form.
 final class SchoolLoginCauseTests: XCTestCase {
     func state(_ block: SchoolLoginBlock) -> SchoolLoginState {
         SchoolLoginState(after:SchoolLoginFailure.cannotLoginDirectly(block))
@@ -22,7 +22,7 @@ final class SchoolLoginCauseTests: XCTestCase {
     }
 
     func testTheWarmLines() {
-        XCTAssertEqual(state(.locked).message(.warm), "错的次数太多，学校把账号锁了。等 5 分钟再登。")
+        XCTAssertEqual(state(.locked).message(.warm), "错的次数太多，学校把账号暂时锁了。过几分钟再登。")
         XCTAssertEqual(state(.captcha).message(.warm), "学校要你先在官网处理一下，比如验证或改密码。弄好了回来再登。")
         XCTAssertEqual(state(.unknown).message(.warm), "这次没法直接登录，可能是学校登录页变了。过一会儿再试，急的话用下面的学校网页登录。")
         XCTAssertEqual(SchoolLoginText.schoolSite(.warm), "去学校官网处理")
@@ -31,11 +31,17 @@ final class SchoolLoginCauseTests: XCTestCase {
     }
 
     func testTheClearLines() {
-        XCTAssertEqual(state(.locked).message(.clear), "账号已被锁定，请 5 分钟后再登录")
+        XCTAssertEqual(state(.locked).message(.clear), "账号已被临时锁定，请过几分钟再登录")
         XCTAssertEqual(state(.mfa).message(.clear), "学校要求先在官网完成验证或修改密码，完成后返回重新登录")
         XCTAssertEqual(state(.unknown).message(.clear), "暂时无法直接登录，可稍后重试或使用学校网页登录")
         XCTAssertEqual(SchoolLoginText.schoolSite(.clear), "前往学校官网")
         XCTAssertEqual(SchoolLoginText.webLogin(.clear), "使用学校网页登录")
+    }
+
+    /// The re-login sheet's line under its title: Clear has its own, warm keeps the first-run line.
+    func testTheReloginSheetSubtitlePerTheme() {
+        XCTAssertEqual(SchoolLoginText.reloginSubtitle(.warm), "用你在学校官网登录时的账号和密码。")
+        XCTAssertEqual(SchoolLoginText.reloginSubtitle(.clear), "与学校官网登录使用的账号和密码相同")
     }
 
     /// Only the school-site cause has the Safari button, and it opens the school's own login page.

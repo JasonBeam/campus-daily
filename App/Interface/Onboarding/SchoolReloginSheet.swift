@@ -51,7 +51,7 @@ struct SchoolReloginSheet: View {
                         .fixedSize(horizontal:false, vertical:true)
                         .accessibilityAddTraits(.isHeader)
                     if !keyboardUp {
-                        Text("用你在学校官网登录时的账号和密码。").scaledFont(17).foregroundStyle(Theme.ink2)
+                        Text(SchoolLoginText.reloginSubtitle(appTheme)).scaledFont(17).foregroundStyle(Theme.ink2)
                             .fixedSize(horizontal:false, vertical:true).padding(.top,8)
                     }
                     SchoolLoginForm(account:$account, password:$password, savePassword:$savePassword,

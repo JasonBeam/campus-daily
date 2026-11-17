@@ -14,6 +14,11 @@ enum SchoolLoginText {
     /// VoiceOver hint of the web-login link.
     static let webLoginHint = "打开学校官网登录页"
 
+    /// The line under the re-login sheet's title.
+    static func reloginSubtitle(_ theme: AppTheme) -> String {
+        theme == .clear ? "与学校官网登录使用的账号和密码相同" : "用你在学校官网登录时的账号和密码。"
+    }
+
     /// The small link under the form.
     static func webLogin(_ theme: AppTheme) -> String {
         theme == .clear ? "使用学校网页登录" : "用学校网页登录"
@@ -27,8 +32,8 @@ enum SchoolLoginText {
     /// Why a password login was not taken, when the school did not call it wrong.
     static func blocked(_ cause: SchoolLoginCause, theme: AppTheme) -> String {
         switch (cause, theme) {
-        case (.locked, .warm): return "错的次数太多，学校把账号锁了。等 5 分钟再登。"
-        case (.locked, .clear): return "账号已被锁定，请 5 分钟后再登录"
+        case (.locked, .warm): return "错的次数太多，学校把账号暂时锁了。过几分钟再登。"
+        case (.locked, .clear): return "账号已被临时锁定，请过几分钟再登录"
         case (.needsSchoolSite, .warm): return "学校要你先在官网处理一下，比如验证或改密码。弄好了回来再登。"
         case (.needsSchoolSite, .clear): return "学校要求先在官网完成验证或修改密码，完成后返回重新登录"
         case (.unknown, .warm): return "这次没法直接登录，可能是学校登录页变了。过一会儿再试，急的话用下面的学校网页登录。"
@@ -55,7 +60,7 @@ enum SchoolLoginText {
 
 /// What the form says when the school would not take the password and did not call it wrong.
 enum SchoolLoginCause: Equatable {
-    /// Wait 5 minutes (the school's lock); the form stays as it is.
+    /// The school's temporary lock: wait a few minutes; the form stays as it is.
     case locked
     /// Captcha, extra check, password change or activation: 「去学校官网处理」 opens Safari.
     case needsSchoolSite
