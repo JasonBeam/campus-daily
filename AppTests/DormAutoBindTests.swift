@@ -18,19 +18,28 @@ final class DormAutoBindTests: XCTestCase {
         XCTAssertNil(DormSetupFlow.readOutcome(identityRead:false, issue:nil, failure:nil))
     }
 
-    func testTheGuideGoesOnWithTheReasonAfterAFailedRead() {
+    /// A failed read keeps the guide on 「你住哪间」 with the reason under it; the next tap goes on
+    /// (the water step is skipped, nothing is bound).
+    func testTheGuideStaysOnTheDormStepWithTheReasonAfterAFailedRead() {
         XCTAssertEqual(OnboardingView.next(after:.failed(.lowBalance)),
-                       .advance(note:"热水平台说余额不足，这次没绑上热水。在热水小程序充值后，到设置的「热水」里再绑。电费和校园卡照常用。"))
+                       .stay(note:"学校校园卡系统说余额不足，这次没绑上热水。给校园卡充值后，到设置的「热水」里再绑。电费和校园卡余额照常能看。"))
         XCTAssertEqual(OnboardingView.next(after:.failed(.other)),
-                       .advance(note:"这次没读到热水账号，先跳过。之后到设置的「热水」里再绑，电费和校园卡照常用。"))
-        XCTAssertEqual(OnboardingView.next(after:.bound), .advance(note:nil))
-        XCTAssertEqual(OnboardingView.next(after:.unavailable), .advance(note:nil))
+                       .stay(note:"这次没读到热水账号，先跳过。之后到设置的「热水」里再绑，电费和校园卡照常用。"))
+        XCTAssertEqual(OnboardingView.next(after:.bound), .advance)
+        XCTAssertEqual(OnboardingView.next(after:.unavailable), .advance)
         XCTAssertEqual(OnboardingView.next(after:.needsChoice), .choose)
+    }
+
+    /// The note is said under the dorm step only, never on a later page.
+    func testTheWaterNoteShowsOnTheDormStepOnly() {
+        for step in OnboardingView.Step.allCases {
+            XCTAssertEqual(OnboardingView.showsWaterNote(on:step), step == .dorm, "\(step)")
+        }
     }
 
     func testClearSetupKeepsTheReasonOnItsPageAfterAFailedRead() {
         XCTAssertEqual(ClearSetupDormPage.next(after:.failed(.lowBalance)),
-                       .stay(note:"热水平台提示余额不足，暂未绑定热水；充值后可在设置 › 校园登录与宿舍 › 宿舍热水中重新绑定，电费与校园卡不受影响"))
+                       .stay(note:"校园卡系统提示余额不足，暂未绑定热水；校园卡充值后可在设置 › 校园登录与宿舍 › 宿舍热水中重新绑定，电费与校园卡余额查询不受影响"))
         XCTAssertEqual(ClearSetupDormPage.next(after:.failed(.other)),
                        .stay(note:"热水账号读取失败，暂未绑定热水；可在设置 › 校园登录与宿舍 › 宿舍热水中重新绑定，电费与校园卡不受影响"))
         XCTAssertEqual(ClearSetupDormPage.next(after:.bound), .confirm)

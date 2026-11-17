@@ -69,7 +69,7 @@ struct OnboardingView: View {
     @State private var dormPicker = false
     @State private var washer = false
     @State private var issue: String?
-    /// Why hot water was not bound on the dorm step, shown on the steps after it.
+    /// Why hot water was not bound, said under 「你住哪间」 until the next tap goes on.
     @State private var waterNote: String?
     /// Same-name apartment picked on the dorm step (candidate id); confirmed by 「就是这间」.
     @State private var apartment: String?
@@ -241,7 +241,7 @@ struct OnboardingView: View {
                 Text(issue).scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.redText)
                     .fixedSize(horizontal:false, vertical:true).padding(.top,16)
             }
-            if let waterNote, step.rawValue > Step.dorm.rawValue {
+            if let waterNote, Self.showsWaterNote(on:step) {
                 Text(waterNote).scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.notice)
                     .fixedSize(horizontal:false, vertical:true).padding(.top,16)
                     .accessibilityIdentifier("waterSkippedNote")
@@ -494,26 +494,29 @@ struct OnboardingView: View {
             let result = await dormFlow.autoBind(campus:campus, water:water)
             bindingWater = false
             switch Self.next(after:result) {
-            case .advance(let note):
-                advance()
-                // Said on the next page (the water step is skipped without a controller).
-                waterNote = note
+            case .advance: advance()
+            case .stay(let note):
+                // Said here; the next 「就是这间」 goes on (the water step is skipped: nothing bound).
+                bindTried = true; waterNote = note
             case .choose: bindTried = true; openDormPicker()
             }
         }
     }
 
-    /// After 「就是这间」's binding: on with the guide (with why hot water was skipped), or the
-    /// dorm screen for a real choice.
-    enum BindNext: Equatable { case advance(note: String?), choose }
+    /// After 「就是这间」's binding: on with the guide, here with why hot water was not bound (the
+    /// next tap goes on), or the dorm screen for a real choice.
+    enum BindNext: Equatable { case advance, stay(note: String), choose }
 
     static func next(after result: DormSetupFlow.AutoBind) -> BindNext {
         switch result {
-        case .bound, .unavailable: return .advance(note:nil)
-        case .failed(let why): return .advance(note:why.warmText)
+        case .bound, .unavailable: return .advance
+        case .failed(let why): return .stay(note:why.warmText)
         case .needsChoice: return .choose
         }
     }
+
+    /// The hot-water note is said under 「你住哪间」 only.
+    static func showsWaterNote(on step: Step) -> Bool { step == .dorm }
 
     /// 不用: laundry hidden everywhere (changeable in 设置); on to the dorm.
     private func skipLaundry() {
