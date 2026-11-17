@@ -31,12 +31,20 @@ extension ClearHomeView {
     }
 
     func laundryTile(_ data: HomeData) -> some View {
-        let detail = data.laundryBound ? "常用 · \(data.laundryMachine ?? "")号" : "登录与扫码绑定"
-        return ClearServiceTile(symbol:"washer", title:"洗衣机", detail:detail,
-                                action:{ navigator.push(data.laundryBound ? .laundry : .washerSetup) }) {
-            if data.laundryBound { ClearLaundryTileStatus(value:data.laundry.value) }
+        let card = HomeLaundryCard(data)
+        return ClearServiceTile(symbol:"washer", title:HomeLaundryCard.clearTitle, detail:card.clearDetail(machine:data.laundryMachine),
+                                action:{ openLaundry(card) }) {
+            ClearLaundryTileStatus(value:card == .bound ? data.laundry.value : card.clearValue)
         }
         .accessibilityIdentifier("clearLaundryTile")
+    }
+
+    func openLaundry(_ card: HomeLaundryCard) {
+        switch card.action {
+        case .ujingLogin: ujingLogin = true
+        case .washerSetup: navigator.push(.washerSetup)
+        case .laundry: navigator.push(.laundry)
+        }
     }
 
     /// The 热水 page: as it stands while a shower is going on (the model brings it up), otherwise

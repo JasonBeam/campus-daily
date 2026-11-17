@@ -90,6 +90,8 @@ struct HomeData {
     var laundryEnabled = true
     /// The 学校洗衣机 switch can't be turned off yet (an order is unfinished).
     var laundryLocked = false
+    /// Signed in to U净 (false: home's laundry row leads into the U净 login).
+    var laundrySignedIn = true
     var laundryBound = false
     var laundryMachine: String?
     var laundry = Laundry.unknown
@@ -159,6 +161,7 @@ extension HomeData {
 
         laundryEnabled = laundry.schoolEnabled
         laundryLocked = laundry.schoolSwitchLocked
+        laundrySignedIn = laundry.accountConnected
         laundryBound = laundry.configured
         if let device = laundry.snapshot { laundryMachine = device.deviceNo }
         let facts = LaundryFacts(model:laundry)

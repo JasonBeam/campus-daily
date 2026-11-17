@@ -32,6 +32,9 @@ enum HomeDemo: String, CaseIterable {
     case unconfirmedRow = "unconfirmed-row"
     /// Showering while the authorization write is unconfirmed (stage .authorizationWritePending).
     case showerUnconfirmed = "shower-unconfirmed"
+    /// 洗衣 with U净 not signed in / signed in without a machine bound.
+    case laundrySignedOut = "home-laundry-signedout"
+    case laundryUnbound = "home-laundry-unbound"
     case laundryRun = "home-laundry-run"
     case laundryCheck = "home-laundry-check"
     /// Hot-water row when the build has no bundled platform profile (OnboardingError.platform).
@@ -129,6 +132,10 @@ enum HomeDemo: String, CaseIterable {
         case .settingsLaundryLocked:
             data.laundryLocked = true
             data.laundry = .running(program:"标准洗", end:now.addingTimeInterval(18 * 60 - 30))
+            return (data, nil)
+        case .laundrySignedOut, .laundryUnbound:
+            data.laundrySignedIn = self == .laundryUnbound
+            data.laundryBound = false; data.laundryMachine = nil; data.laundry = .unknown
             return (data, nil)
         case .laundryRun:
             data.laundry = .running(program:"标准洗", end:now.addingTimeInterval(18 * 60 - 30))

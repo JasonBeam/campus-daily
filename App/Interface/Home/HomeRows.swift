@@ -11,6 +11,8 @@ enum RowValue: Equatable {
     case countdown(end: Date)
     /// Order amount: 20 semibold rounded, ink (laundry 「这笔订单」).
     case amount(String)
+    /// Where a tap leads, in the accent colour with ›: 「登录 U净」 (laundry not signed in).
+    case action(String)
     case dash
 }
 
@@ -88,6 +90,12 @@ struct StatusRow: View {
         case .amount(let text)?:
             Text(text).scaledFont(20, .semibold, design:appTheme.numberDesign, relativeTo:.title3).monospacedDigit()
                 .foregroundStyle(Theme.ink).lineLimit(1).minimumScaleFactor(0.7)
+        case .action(let word)?:
+            HStack(alignment:.firstTextBaseline, spacing:3) {
+                Text(word).scaledFont(15, .semibold, relativeTo:.subheadline)
+                Image(systemName:"chevron.right").scaledFont(12, .semibold, relativeTo:.subheadline)
+            }
+            .foregroundStyle(Theme.accentText).lineLimit(1)
         case .dash?:
             Text("—").scaledFont(17, .medium).foregroundStyle(Theme.ink3)
         case nil:

@@ -17,6 +17,8 @@ struct ClearHomeView: View {
     /// The dorm confirmed on the checklist (a dorm may have no controller to bind).
     @AppStorage(SetupChecklist.dormKey) var confirmedDorm = ""
     @State private var settingsShown = false
+    /// 「登录 U净」, from the 洗衣机 tile while U净 is not signed in.
+    @State var ujingLogin = false
 
     var body: some View {
         let data = navigator.data(campus:campus, shower:shower, laundry:laundry)
@@ -49,6 +51,7 @@ struct ClearHomeView: View {
             }
         }
         .sheet(isPresented:$settingsShown) { settingsSheet }
+        .sheet(isPresented:$ujingLogin) { UjingLoginView() }
         // A settings row that opens a page on 日常 (热水, 继续设置) takes the sheet down.
         .onChange(of:navigator.homePath) { _, _ in settingsShown = false }
         .onChange(of:navigator.tab) { _, _ in settingsShown = false }

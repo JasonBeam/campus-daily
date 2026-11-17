@@ -21,6 +21,8 @@ struct HomeView: View {
     @State var settings = false
     /// The sign-in form, from the expired-login line.
     @State var relogin = false
+    /// 「登录 U净」, from the 洗衣 row while U净 is not signed in.
+    @State var ujingLogin = false
     @State var onboarding: OnboardingRequest?
     @State var scrolledPastDate = false
     /// For 「最近」 (`recentCount`): the visible height, where it starts, its header's height and each row's height.
@@ -198,6 +200,7 @@ struct HomeView: View {
         .sheet(isPresented:$settings, onDismiss:{
             if let routes = pathAfterSettings { pathAfterSettings = nil; path = routes }
         }) { settingsSheet.navOpen(.settings, from:.homeButton).sampleChrome().typesettingLanguage(Theme.typesetting) }
+        .sheet(isPresented:$ujingLogin) { UjingLoginView() }
         .sheet(isPresented:$relogin) { SchoolReloginSheet().navOpen(.signIn, from:.updateLine).typesettingLanguage(Theme.typesetting) }
         // The shower page: down only by its own buttons, or a swipe while water runs (收起).
         .fullScreenCover(isPresented:Binding(get:{ pageCover },

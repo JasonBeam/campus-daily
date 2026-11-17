@@ -2,7 +2,8 @@ import SwiftUI
 import Core
 
 /// The 洗衣 tile's status line: 「空闲」, 「待付款」, 「还剩 18 分钟」 counting down (「18 分钟」 on a
-/// narrow tile, `ClearTileStatusLine`), or 「待核对」 in the notice colour. VoiceOver reads the
+/// narrow tile, `ClearTileStatusLine`), 「待核对」 in the notice colour, or 「登录 U净」 in the accent
+/// colour while U净 is not signed in. VoiceOver reads the
 /// whole words.
 struct ClearLaundryTileStatus: View {
     let value: RowValue?
@@ -13,6 +14,8 @@ struct ClearLaundryTileStatus: View {
             ClearTileStatusLine(forms:[Text(word)]).foregroundStyle(Theme.ink2)
         case .accentWord(let word)?:
             ClearTileStatusLine(forms:[Text(word)]).foregroundStyle(Theme.notice)
+        case .action(let word)?:
+            ClearTileStatusLine(forms:[Text(word)]).foregroundStyle(Theme.accentText)
         case .countdown(let end)?:
             TimelineView(minuteSchedule(to:end)) { context in
                 let minutes = "\(LaundryFormat.minutesLeft(until:end, now:context.date)) 分钟"

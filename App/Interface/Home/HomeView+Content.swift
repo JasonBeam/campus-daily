@@ -30,7 +30,7 @@ extension HomeView {
             showerSection(data).padding(.top,28)
             if data.laundryEnabled {
                 HomeSectionHeader(text:"洗衣").padding(.top,30)
-                rowLink(data.laundryBound ? .laundry : .washerSetup, label:laundryLabel(data)) { laundryRow(data) }
+                laundryEntry(data)
             }
             let recents = data.recents
             if !recents.isEmpty {
@@ -124,17 +124,36 @@ extension HomeView {
             .accessibilityAddTraits(.isButton)
     }
 
+    /// The 洗衣 row, one tap target: the U净 login while not signed in, 常用洗衣机 while no machine
+    /// is bound, the laundry page otherwise.
+    @ViewBuilder func laundryEntry(_ data: HomeData) -> some View {
+        let card = HomeLaundryCard(data)
+        switch card.action {
+        case .ujingLogin:
+            Button { ujingLogin = true } label: { laundryRow(data) }
+                .buttonStyle(RowPressStyle())
+                .accessibilityElement(children:.ignore)
+                .accessibilityLabel(laundryLabel(data))
+                .accessibilityAddTraits(.isButton)
+                .accessibilityIdentifier("homeLaundryRow")
+        case .washerSetup:
+            rowLink(.washerSetup, label:laundryLabel(data)) { laundryRow(data) }.accessibilityIdentifier("homeLaundryRow")
+        case .laundry:
+            rowLink(.laundry, label:laundryLabel(data)) { laundryRow(data) }.accessibilityIdentifier("homeLaundryRow")
+        }
+    }
     func laundryTitle(_ data: HomeData) -> String {
-        guard data.laundryBound, let machine = data.laundryMachine else { return "洗衣" }
+        guard data.laundryBound, let machine = data.laundryMachine else { return HomeLaundryCard(data).warmTitle }
         return "\(machine) 号机"
     }
     func laundryRow(_ data: HomeData) -> some View {
-        StatusRow(symbol:"washer", title:laundryTitle(data),
-                  subtitle:data.laundryBound ? data.laundry.subtitle : "扫机身上的码来绑定",
-                  value:data.laundryBound ? data.laundry.value : nil)
+        let card = HomeLaundryCard(data)
+        return StatusRow(symbol:"washer", title:laundryTitle(data),
+                         subtitle:card.warmSubtitle ?? data.laundry.subtitle,
+                         value:card == .bound ? data.laundry.value : card.warmValue)
     }
     func laundryLabel(_ data: HomeData) -> String {
-        guard data.laundryBound else { return "洗衣，扫机身上的码来绑定" }
+        if let label = HomeLaundryCard(data).warmLabel { return label }
         var subtitle = data.laundry.subtitle
         if case .running(let program, let end) = data.laundry { subtitle = program + "，" + LaundryFormat.spokenClock(end) + "洗完" }
         return ["洗衣", laundryTitle(data), data.laundry.spokenValue(), subtitle].compactMap { $0 }.joined(separator:"，")
