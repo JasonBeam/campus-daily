@@ -6,12 +6,9 @@ import Foundation
 public enum ShowerIdentityFailure: Equatable, Sendable {
     case lowBalance, other
 
-    /// Words in the platform's refusal that mean the balance.
-    static let balanceWords = ["余额不足", "欠费", "充值"]
-
     public init(_ error: Error) {
         if case .rejected(.lxt6, _, let message)? = error as? ServiceError,
-           Self.balanceWords.contains(where: { message.contains($0) }) {
+           HTTPReplyNote.balanceWords.contains(where: { message.contains($0) }) {
             self = .lowBalance
         } else {
             self = .other

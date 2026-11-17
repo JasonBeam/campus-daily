@@ -132,6 +132,7 @@ extension DebugEvent {
             f["ms"] = String(h.milliseconds)
             if let code = h.code { f["code"] = code.text }
             if let failure = h.failure { f["error"] = failure.rawValue }
+            if let note = h.note { f["note"] = note.rawValue }
         case .navOpen(let page, let entry):
             f["page"] = page.rawValue
             f["from"] = entry.rawValue

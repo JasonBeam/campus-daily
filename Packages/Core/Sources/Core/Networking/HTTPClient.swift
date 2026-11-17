@@ -17,15 +17,20 @@ public struct HTTPRequest: Sendable {
     public var logName: String
     /// A shorter wait than the client's own for a request that may be given up early; nil = the client's.
     public var timeout: TimeInterval?
+    /// For the request log only: the kind of refusal the reply was (status, body), as a fixed
+    /// word. Nil (the default) for every request that doesn't ask.
+    public var replyNote: (@Sendable (_ status: Int, _ body: Data) -> HTTPReplyNote?)?
 
     public static let defaultBodyLimit = 64 * 1024
     public static let largeBodyLimit = 1024 * 1024
 
     public init(service: Service, method: HTTPMethod, url: URL, headers: [String: String] = [:], body: Data? = nil,
-                bodyLimit: Int = HTTPRequest.defaultBodyLimit, isStateChanging: Bool = false, logName: String? = nil) {
+                bodyLimit: Int = HTTPRequest.defaultBodyLimit, isStateChanging: Bool = false, logName: String? = nil,
+                replyNote: (@Sendable (_ status: Int, _ body: Data) -> HTTPReplyNote?)? = nil) {
         self.service = service; self.method = method; self.url = url; self.headers = headers; self.body = body
         self.bodyLimit = bodyLimit; self.isStateChanging = isStateChanging
         self.logName = logName ?? url.lastPathComponent
+        self.replyNote = replyNote
     }
 
     /// JSON POST with a sorted-key body.

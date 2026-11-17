@@ -62,6 +62,20 @@ final class DebugEventLineTests: XCTestCase {
         XCTAssertEqual(h("settle", error: "rejected(lxt6, \"3\", \"重复结算\")"), "lxt6 POST host=lxt6 name=settle ms=153 error=other")
     }
 
+    /// A refusal's kind is one fixed word after the code; the server's words never make it in.
+    func testAnHTTPLineKeepsTheReplyNote() {
+        let entry = HTTPLogEntry(service: .lxt6, method: "GET", host: "isv.lxt6.cn", name: "getUserMsg", status: 200,
+                                 milliseconds: 80, code: "1", error: nil, note: .msgBalance)
+        XCTAssertEqual(entry.line, "lxt6 GET isv.lxt6.cn getUserMsg → 200 80ms code=1 note=msgBalance")
+        XCTAssertEqual(line(.http(DebugHTTP(entry))), "lxt6 GET host=lxt6 name=getUserMsg status=200 ms=80 code=1 note=msgBalance")
+        XCTAssertEqual(Set(HTTPReplyNote.allCases.map(\.rawValue)),
+                       ["casNoError", "casWrong", "casBlocked", "casSoftBlocked", "casVagueWrong", "casUnrecognised",
+                        "msgEmpty", "msgBalance", "msgOther"])
+        for note in HTTPReplyNote.allCases {
+            XCTAssertNotNil(note.rawValue.range(of: "^[A-Za-z]+$", options: .regularExpression), "fixed ASCII words only")
+        }
+    }
+
     func testAShowerPhaseLineHasTheFlagsAndNoIds() {
         var s = ShowerState(phase: .failed, machineID: machine, peripheralID: "PERIPHERAL-A", authorizeSent: true, authorizationID: "A1B2C3D4")
         s.failure = ShowerFailure(reason: .settleRefused, needsReview: true, error: .rejected(.lxt6, code: "3", message: "重复结算"))

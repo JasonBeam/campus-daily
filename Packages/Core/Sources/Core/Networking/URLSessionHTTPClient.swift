@@ -113,7 +113,9 @@ public final class URLSessionHTTPClient: HTTPClient, @unchecked Sendable {
             if let k = k as? String, let v = v as? String { headers[k] = v }
         }
         let result = HTTPResponse(status: http.statusCode, headers: headers, body: data)
-        log.record(entry(status: http.statusCode, code: Self.decodedCode(data)))
+        var line = entry(status: http.statusCode, code: Self.decodedCode(data))
+        line.note = request.replyNote?(http.statusCode, data)
+        log.record(line)
         return result
     }
 

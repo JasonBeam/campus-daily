@@ -4,7 +4,7 @@ import os
 #endif
 
 /// One log line per request: method, host, the request's log name, status, latency, decoded
-/// `code`. Never the path (it can hold ids), query strings, bodies or headers.
+/// `code` and, when the request asks, the kind of refusal (`HTTPReplyNote`). Never the path (it can hold ids), query strings, bodies or headers.
 public struct HTTPLogEntry: Sendable, Equatable {
     public var service: Service
     public var method: String
@@ -15,11 +15,12 @@ public struct HTTPLogEntry: Sendable, Equatable {
     public var milliseconds: Int
     public var code: String?
     public var error: String?
+    public var note: HTTPReplyNote?
 
     public init(service: Service, method: String, host: String, name: String, status: Int?, milliseconds: Int,
-                code: String?, error: String?) {
+                code: String?, error: String?, note: HTTPReplyNote? = nil) {
         self.service = service; self.method = method; self.host = host; self.name = name
-        self.status = status; self.milliseconds = milliseconds; self.code = code; self.error = error
+        self.status = status; self.milliseconds = milliseconds; self.code = code; self.error = error; self.note = note
     }
 
     public var line: String {
@@ -28,6 +29,7 @@ public struct HTTPLogEntry: Sendable, Equatable {
         s += " \(milliseconds)ms"
         if let code { s += " code=\(code)" }
         if let error { s += " error=\(error)" }
+        if let note { s += " note=\(note.rawValue)" }
         return s
     }
 }

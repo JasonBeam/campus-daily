@@ -396,6 +396,8 @@ public struct DebugHTTP: Sendable, Equatable {
     public var milliseconds: Int
     public var code: DebugCode?
     public var failure: Failure?
+    /// The kind of refusal (a fixed word), for the requests that note one.
+    public var note: HTTPReplyNote?
 
     public init(_ entry: HTTPLogEntry) {
         service = entry.service
@@ -413,6 +415,7 @@ public struct DebugHTTP: Sendable, Equatable {
         milliseconds = entry.milliseconds
         code = entry.code.map(DebugCode.init)
         failure = entry.error.map { Failure(rawValue: $0) ?? .other }
+        note = entry.note
     }
 }
 

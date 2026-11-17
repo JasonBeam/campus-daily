@@ -67,7 +67,8 @@ public struct LxtClient: ShowerDirectory, ShowerGateway {
         fields.append(("random", random(LxtSigning.userMsgAlphabet)))
         // Only a read of who the student is: a refusal code (a low balance, say) that still
         // carries the identity does not stop the dorm from being bound.
-        let root = try await read(LxtEndpoints.userMsg, fields, requestType: true, acceptsRefusal: { Self.identity(in: $0) != nil })
+        let root = try await read(LxtEndpoints.userMsg, fields, requestType: true, acceptsRefusal: { Self.identity(in: $0) != nil },
+                                  replyNote: { _, body in HTTPReplyNote.envelope(body) })
         guard let data = ResponseDecoding.data(root), data.object != nil else { throw ServiceError.malformed(.lxt6, "Data") }
         guard let student = data["studentid"]?.text, Self.isIdentifier(student) else { throw ServiceError.malformed(.lxt6, "Data.studentid") }
         guard let school = data["schoolid"]?.text, Self.isIdentifier(school) else { throw ServiceError.malformed(.lxt6, "Data.schoolid") }
@@ -146,12 +147,13 @@ public struct LxtClient: ShowerDirectory, ShowerGateway {
     }
 
     private func read(_ path: String, _ fields: [(String, String)], requestType: Bool = false,
-                      acceptsRefusal: (JSONValue) -> Bool = { _ in false }) async throws -> JSONValue {
+                      acceptsRefusal: (JSONValue) -> Bool = { _ in false },
+                      replyNote: (@Sendable (_ status: Int, _ body: Data) -> HTTPReplyNote?)? = nil) async throws -> JSONValue {
         let query = LxtSigning.signedForm(fields, secret: profile.secret, sid: profile.sid, requestType: requestType)
         guard let url = URL(string: LxtEndpoints.base + "/" + path + "?" + query) else { throw ServiceError.badRequest(.lxt6) }
         let req = HTTPRequest(service: .lxt6, method: .get, url: url,
                               headers: ["Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json"],
-                              bodyLimit: HTTPRequest.largeBodyLimit, logName: url.lastPathComponent)
+                              bodyLimit: HTTPRequest.largeBodyLimit, logName: url.lastPathComponent, replyNote: replyNote)
         return try Self.decodeRead(try await http.send(req), acceptsRefusal: acceptsRefusal)
     }
 

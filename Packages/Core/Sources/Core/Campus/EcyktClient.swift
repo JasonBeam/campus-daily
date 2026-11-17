@@ -64,7 +64,7 @@ public struct EcyktClient: Sendable {
         // The captured official request sends `timestamp: ""` here.
         let data = try await call("/api/customer/getSignData", s, validating: true, extra: [
             "custid": .string(custid), "timestamp": .string(""),
-        ])
+        ], replyNote: { _, body in HTTPReplyNote.envelope(body) })
         guard let app = data["appdata"], app.object != nil else { throw ServiceError.malformed(.ecykt, "data.appdata") }
         func f(_ k: String) throws -> String {
             guard let v = app[k]?.text, !v.isEmpty else { throw ServiceError.malformed(.ecykt, "data.appdata.\(k)") }
@@ -199,7 +199,7 @@ public struct EcyktClient: Sendable {
 
     private func call(_ path: String, _ s: EcyktSession, validating: Bool, timeout: TimeInterval? = nil, extra: [String: JSONValue],
                       referer: Referer = .recharge, bodyLimit: Int = HTTPRequest.defaultBodyLimit,
-                      name: String? = nil) async throws -> JSONValue {
+                      name: String? = nil, replyNote: (@Sendable (_ status: Int, _ body: Data) -> HTTPReplyNote?)? = nil) async throws -> JSONValue {
         var body = extra
         body["syscustid"] = .string(s.syscustid)
         body["acc_token"] = .string(s.token)
@@ -208,6 +208,7 @@ public struct EcyktClient: Sendable {
                                        headers: baseHeaders(userAgent: s.userAgent, referer: referer, token: s.token),
                                        json: body, bodyLimit: bodyLimit, logName: name ?? url.lastPathComponent)
         req.timeout = timeout
+        req.replyNote = replyNote
         return try await decode(try await http.send(req), validating: validating)
     }
 

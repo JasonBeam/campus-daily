@@ -109,7 +109,8 @@ public struct CASLoginClient: SchoolPasswordLogin {
         let post = try await send(HTTPRequest(service: .cas, method: .post, url: loginURL, headers: [
             "Content-Type": "application/x-www-form-urlencoded", "Accept": "text/html",
             "Origin": "https://" + SchoolEndpoints.casHost,
-        ], body: Data(body.utf8), bodyLimit: HTTPRequest.largeBodyLimit, logName: "casLoginSubmit"), jar: &jar, carriesPassword: true)
+        ], body: Data(body.utf8), bodyLimit: HTTPRequest.largeBodyLimit, logName: "casLoginSubmit", replyNote: CASPage.replyNote),
+                                  jar: &jar, carriesPassword: true)
 
         switch post.status {
         case 302, 303:
@@ -301,13 +302,26 @@ enum CASPage {
     /// still to come); anything else mentioned goes to the school's page; a bare 认证失败 or
     /// 登录失败 is a wrong password.
     static func classify(errors: [String]?) -> SchoolLoginFailure {
+        switch reason(errors: errors) {
+        case .casWrong, .casVagueWrong: return .wrongCredentials
+        default: return .cannotLoginDirectly
+        }
+    }
+
+    /// Which rule of `classify` the errors met, as the request log's word for it.
+    static func reason(errors: [String]?) -> HTTPReplyNote {
         let text = (errors ?? []).joined(separator: " ")
-        guard !text.isEmpty else { return .cannotLoginDirectly }
+        guard !text.isEmpty else { return .casNoError }
         func has(_ words: [String]) -> Bool { words.contains { text.localizedCaseInsensitiveContains($0) } }
-        if has(blockers) { return .cannotLoginDirectly }
-        if has(wrongWords) { return .wrongCredentials }
-        if has(softBlockers) { return .cannotLoginDirectly }
-        return has(vagueWrongWords) ? .wrongCredentials : .cannotLoginDirectly
+        if has(blockers) { return .casBlocked }
+        if has(wrongWords) { return .casWrong }
+        if has(softBlockers) { return .casSoftBlocked }
+        return has(vagueWrongWords) ? .casVagueWrong : .casUnrecognised
+    }
+
+    /// The password POST's note: the rule a refused page (200 or 401) met; nothing otherwise.
+    @Sendable static func replyNote(status: Int, body: Data) -> HTTPReplyNote? {
+        status == 200 || status == 401 ? reason(errors: errors(in: body)) : nil
     }
 }
 
