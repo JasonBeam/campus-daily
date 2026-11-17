@@ -235,7 +235,7 @@ final class LaundryEngineTests: XCTestCase {
         let e = try await createdEngine()
         api.methods = [.ok([PayChannel(channel: "alipay")])]
         api.arguments = [.ok(PaymentArguments(.object(["payInfo": .object(["orderInfo": .string(
-            "method=alipay.trade.app.pay&biz_content=%7B%22total_amount%22%3A%220.01%22%7D")])])))]
+            "method=alipay.trade.app.pay&biz_content=%7B%22total_amount%22%3A%220.01%22%7D&sign=SYNTHETIC")])])))]
         let s = try await e.pay()
         XCTAssertEqual(s.phase, .created)
         XCTAssertEqual(s.notice, .launchRefused(.amountMismatch))

@@ -707,8 +707,10 @@ Rules:
   `https://qr.alipay.com/<code>`; the U净 F2F link `alipays://platformapi/startApp?appId=20000042
   &actionType=WebView&followType=PUBLIC&url=https://openauth.alipay.com/oauth2/publicAppAuthorize.htm?…
   redirect_uri=https://wx.zhinengxiyifang.cn/static/commonWasher/index.html…` (no user/port/
-  fragment, no duplicate parameters); or a signed `alipay.trade.app.pay` string for AlipaySDK whose
-  `biz_content.total_amount` **equals** the order amount. Any amount parameter in a link (also
+  fragment, no duplicate parameters); or a signed `alipay.trade.app.pay` string for AlipaySDK with
+  exactly one `method`, one non-empty `sign` and one `biz_content` whose `total_amount` (strict
+  yuan, above zero) **equals** the order amount. Such a signed string goes first; one that fails
+  the check is not used, and the links are checked as before. Any amount parameter in a link (also
   nested) must equal it too. Anything else (other hosts/schemes, `weixin://`, unknown amount)
   is refused and nothing opens. `skipPay`/`jumpToQuery` → poll directly.
 - On return (the AlipaySDK reporting back, which also covers its own in-app web page when Alipay

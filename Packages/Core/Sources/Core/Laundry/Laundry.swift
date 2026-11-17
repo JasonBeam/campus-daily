@@ -286,6 +286,8 @@ public enum PaymentLaunchRefusal: String, Error, Sendable, Codable, Equatable {
 /// - `https://qr.alipay.com/<code>` checkout pages;
 /// - the U净 Alipay F2F link `alipays://platformapi/startApp?appId=20000042&actionType=WebView&followType=PUBLIC&url=<https://openauth.alipay.com/oauth2/publicAppAuthorize.htm?…redirect_uri=https://wx.zhinengxiyifang.cn/static/commonWasher/index.html…>`;
 /// - a signed `alipay.trade.app.pay` order string for AlipaySDK.
+/// A signed order that passes `signedOrder` (one method, one non-empty `sign`, one
+/// `biz_content`) at the order amount wins over a link; otherwise the links are checked as before.
 /// Any amount carried by the link (`total_amount`/`totalAmount`/`amount`, also inside nested
 /// URLs) or by the signed order (`biz_content.total_amount`) must equal the order amount.
 public enum PaymentLaunchPolicy {
@@ -302,6 +304,11 @@ public enum PaymentLaunchPolicy {
         if flag(data["skipPay"]) == true || flag(data["jumpToQuery"]) == true { return .query }
         guard let orderAmount, orderAmount.fen > 0 else { throw PaymentLaunchRefusal.unknownAmount }
 
+        let signed = [data["payInfo"]?["orderInfo"]?.text, data["orderInfo"]?.text]
+            .compactMap { $0 }.first { !$0.isEmpty && URL(string: $0)?.scheme == nil }
+        let signedAmount = signed.flatMap(signedOrder)
+        if let signed, signedAmount == orderAmount { return .sdk(signed) }
+
         var strings: [String] = []
         collectStrings(data, into: &strings)
         var sawLink = false
@@ -312,13 +319,8 @@ public enum PaymentLaunchPolicy {
             guard linkAmountsMatch(url, orderAmount) else { throw PaymentLaunchRefusal.amountMismatch }
             return .checkout(url)
         }
-        let signed = [data["payInfo"]?["orderInfo"]?.text, data["orderInfo"]?.text]
-            .compactMap { $0 }.first { !$0.isEmpty && URL(string: $0)?.scheme == nil }
-        if let signed {
-            guard let amount = signedOrderAmount(signed) else { throw PaymentLaunchRefusal.unavailable }
-            guard amount == orderAmount else { throw PaymentLaunchRefusal.amountMismatch }
-            return .sdk(signed)
-        }
+        if signedAmount != nil { throw PaymentLaunchRefusal.amountMismatch }
+        if signed != nil { throw PaymentLaunchRefusal.unavailable }
         throw sawLink ? PaymentLaunchRefusal.disallowedLink : PaymentLaunchRefusal.unavailable
     }
 
@@ -355,6 +357,16 @@ public enum PaymentLaunchPolicy {
             }
         }
         return true
+    }
+
+    /// `biz_content.total_amount` (strict yuan, above zero) of a signed `alipay.trade.app.pay`
+    /// string with exactly one non-empty `sign`, or nil when it is not such a string.
+    public static func signedOrder(_ value: String) -> Money? {
+        guard let parts = URLComponents(string: "https://localhost/?" + value), let items = parts.queryItems,
+              items.filter({ $0.name == "sign" }).count == 1,
+              items.first(where: { $0.name == "sign" })?.value?.isEmpty == false,
+              let amount = signedOrderAmount(value), amount.fen > 0 else { return nil }
+        return amount
     }
 
     /// `biz_content.total_amount` of a signed `alipay.trade.app.pay` string (single `method` and
