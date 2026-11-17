@@ -95,4 +95,29 @@ final class ShowerRetainedSummaryTests: XCTestCase {
         XCTAssertEqual(ShowerRetainedText.Warm.reason(.closeUnconfirmed), "结束没确认")
         XCTAssertEqual(ShowerRetainedText.Warm.reason(.settleUnconfirmed), "结算没确认")
     }
+
+    // MARK: The card's charge
+
+    /// One kept shower the card's records show charged: a third line, the same in both themes,
+    /// and VoiceOver hears it at the end of the row.
+    func testAChargedShowerGetsItsLine() {
+        XCTAssertEqual(ShowerRetainedText.charged(Money(fen: 132)), "校园卡已扣 ¥1.32")
+        XCTAssertEqual(ShowerRetainedText.chargedSpoken(Money(fen: 132)), "校园卡已扣 1.32 元")
+        XCTAssertEqual(ShowerRetainedText.charged(Money(fen: 1)), "校园卡已扣 ¥0.01")
+        let later = t0.addingTimeInterval(3600)
+        let summary = ShowerRetainedSummary(records: [stopped, failed(.closeUnconfirmed, at: later)], currentMachine: "11223344")
+        let lines = ShowerRetainedText.lines(summary, reason: ShowerRetainedText.Warm.reason, time: { $0 == t0 ? "early" : "late" },
+                                             charge: { $0 == t0 ? Money(fen: 132) : nil })
+        XCTAssertEqual(lines.map(\.charge), [nil, "校园卡已扣 ¥1.32"])
+        XCTAssertEqual(lines[1].spoken, "early，水控 AABBCCDD · 在水控上按停的，校园卡已扣 1.32 元")
+        XCTAssertEqual(lines[0].spoken, "late，结束没确认", "nothing said when nothing matched")
+    }
+
+    /// Without a charge (or no ledger) the rows are as before.
+    func testNoChargeLeavesTheRowsAlone() {
+        let summary = ShowerRetainedSummary(records: [stopped])
+        let lines = ShowerRetainedText.lines(summary, reason: ShowerRetainedText.Clear.reason, time: { _ in "T" })
+        XCTAssertEqual(lines, [ShowerRetainedText.Line(title: "T", detail: "水控 AABBCCDD · 停水未结算")])
+        XCTAssertNil(lines[0].charge)
+    }
 }

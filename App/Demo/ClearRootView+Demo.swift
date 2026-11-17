@@ -76,7 +76,10 @@ extension ClearRootView {
             navigator.demo = normal
             navigator.recordsDemo = .list
             recordsDemoRun += 1
-            shower.demoRetained = HomeView.ShowerPageDemo.retained()
+            let kept = HomeView.ShowerPageDemo.retained()
+            shower.demoRetained = kept
+            // The newest kept shower charged on the card's records, the others not.
+            navigator.demo = navigator.demo.map { HomeView.ShowerPageDemo.charging($0, started:HomeView.ShowerPageDemo.chargedStart(kept)) }
             popAll(from:.deepLink)
             navigator.showRetained(from:.deepLink)
             return

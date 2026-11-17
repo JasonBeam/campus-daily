@@ -123,6 +123,13 @@ extension HomeView {
                 if record.showerOver { demo?.shower = .stopped }
                 shower.showDemoPage(record)
                 ShowerPageDemo.apply(url.lastPathComponent, to:shower)
+                // The card's records show one shower charged: the stopped one, or the newest kept.
+                if url.lastPathComponent == "sh-detail-stopped-charged" {
+                    demo = demo.map { ShowerPageDemo.charging($0, started:record.startedAt) }
+                }
+                if let kept = shower.demoRetained {
+                    demo = demo.map { ShowerPageDemo.charging($0, started:ShowerPageDemo.chargedStart(kept)) }
+                }
                 if url.lastPathComponent == "sh-endfail" { shower.page.endFailed = .noConnection }
                 if url.lastPathComponent == "sh-stopped-busy-rechecking" { shower.page.rechecking = true }
                 if url.lastPathComponent.hasPrefix("sh-detail") {
@@ -157,13 +164,15 @@ extension HomeView {
     /// unsure (a settlement without an answer: the same stopped page), stopped-busy (the next
     /// start found the controller in use), stopped-busy-rechecking (再查一次 running), and
     /// detail-stopped (the 热水洗澡 screen over the stopped record).
-    /// Also sh-denied-final (the refused face without its retry), and sh-detail-kept /
-    /// sh-detail-kept-list (热水洗澡 ready, with three synthetic kept showers; -list opens 暖橙's
-    /// list over it).
+    /// Also sh-denied-final (the refused face without its retry), sh-detail-kept /
+    /// sh-detail-kept-list (热水洗澡 ready, with three synthetic kept showers, the newest charged
+    /// on the card's records; -list opens 暖橙's list over it), and sh-detail-stopped-charged
+    /// (detail-stopped with its charge on the card's records).
     enum ShowerPageDemo {
         static func record(_ name: String, now: Date = Date()) -> ShowerState? {
             switch name {
             case "sh-denied-final": return SampleData.showerRecord("sh-denied", now:now)
+            case "sh-detail-stopped-charged": return SampleData.showerRecord("sh-detail-stopped", now:now)
             case "sh-detail-kept", "sh-detail-kept-list": return .idle
             default: return SampleData.showerRecord(name, now:now)
             }
@@ -183,6 +192,24 @@ extension HomeView {
         }
 
         static func isKept(_ name: String?) -> Bool { name?.hasPrefix("sh-detail-kept") == true }
+
+        /// The kept shower the demos show charged: the newest that started.
+        static func chargedStart(_ kept: ShowerRetainedSummary) -> Date? { kept.entries.compactMap(\.started).max() }
+
+        /// `data` with a synthetic ¥1.32 hot-water payment on the card stamped with `started` (the
+        /// school's calendar, as the school writes it): 「校园卡已扣 ¥1.32」 for the shower started then.
+        static func charging(_ data: HomeData, started: Date?) -> HomeData {
+            var data = data
+            guard let started, var activity = data.snapshot.activity.value else { return data }
+            let school = SchoolCalendar.shanghai
+            let c = school.dateComponents([.year, .month, .day, .hour, .minute, .second], from:started)
+            activity.records.append(CardRecord(date:String(format:"%04d%02d%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0),
+                                               time:String(format:"%02d%02d%02d", c.hour ?? 0, c.minute ?? 0, c.second ?? 0),
+                                               title:"蓝牙热水", amount:Money(fen:132), balanceAfter:nil, direction:"1"))
+            activity.records.sort { ($0.moment(calendar:school) ?? .distantPast) > ($1.moment(calendar:school) ?? .distantPast) }
+            data.snapshot.activity.succeed(activity, at:data.snapshot.activity.fetchedAt ?? Date())
+            return data
+        }
 
         /// 订单 under a page demo: the synthetic list for the kept showers (their line opens it),
         /// nil to leave it as it is.

@@ -58,7 +58,8 @@ struct ClearRecentOrdersSections: View {
         retainedSection
     }
 
-    /// Read-only rows, two lines each (when, then 机器 · 原因), newest first; each read as one sentence.
+    /// Read-only rows, two lines each (when, then 机器 · 原因; then 「校园卡已扣 ¥x」 when the card's
+    /// records show the charge), newest first; each read as one sentence.
     @ViewBuilder private var retainedSection: some View {
         if orders.retained != nil {
             Section {
@@ -67,6 +68,9 @@ struct ClearRecentOrdersSections: View {
                         Text(line.title).font(.body).foregroundStyle(Color.primary)
                         if let detail = line.detail {
                             Text(detail).font(.subheadline).foregroundStyle(Color.secondary)
+                        }
+                        if let charge = line.charge {
+                            Text(charge).font(.subheadline.weight(.medium)).monospacedDigit().foregroundStyle(Color.primary)
                         }
                     }
                     .fixedSize(horizontal:false, vertical:true)

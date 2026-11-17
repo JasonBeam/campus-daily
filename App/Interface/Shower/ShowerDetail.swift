@@ -128,6 +128,10 @@ struct ShowerDetail: View {
             Text(Theme.yuan(cost)).font(.title2.weight(.semibold)).monospacedDigit().accessibilityIdentifier("settlementCost")
         } else if shower.state.phase == .done {
             Text("没拿到金额").font(.subheadline).foregroundStyle(.secondary)
+        } else if stopped, let charge = cardRecords.charge(started:shower.page.record.startedAt) {
+            // Over without the app's settlement: the card's records show what the school took.
+            Text(ShowerRetainedText.charged(charge)).font(.subheadline.weight(.medium)).monospacedDigit().foregroundStyle(Theme.ink)
+                .accessibilityLabel(ShowerRetainedText.chargedSpoken(charge)).accessibilityIdentifier("showerCardCharge")
         } else { Text("结算后显示").font(.subheadline) }
     }
     private var closing: Bool { preview == nil && shower.state.canFinish }

@@ -1,9 +1,10 @@
 import SwiftUI
 import Core
 
-/// What 暖橙's hot-water pages may open of the campus card: 校园卡记录, where the school's charge
-/// for a shower shows (about an hour later). Home sets it (`HomeView.showerCardRecords`); the
-/// default opens nothing.
+/// What 暖橙's hot-water pages may open and read of the campus card: 校园卡记录, where the
+/// school's charge for a shower shows (about an hour later), and home's recent card records to
+/// show a kept or stopped shower's charge. Home sets it (`HomeView.showerCardRecords`); the
+/// default opens and shows nothing.
 struct ShowerCardRecords: Sendable {
     /// 校园卡记录's contents (as home opens it).
     struct Page: Sendable {
@@ -15,6 +16,11 @@ struct ShowerCardRecords: Sendable {
     var page: Page?
     /// From the shower page, a cover over home: closes it and shows 校园卡记录 on home.
     var openFromCover: (@MainActor @Sendable () -> Void)?
+    /// Home's last read of the card's recent records (nil while signed out or unread).
+    var records: [CardRecord]?
+
+    /// The card's charge for the shower started at `started`, when exactly one matched.
+    func charge(started: Date?) -> Money? { ShowerCardCharge.amount(started:started, records:records) }
 }
 
 private struct ShowerCardRecordsKey: EnvironmentKey {

@@ -32,12 +32,15 @@ struct ClearRecentOrders: Equatable {
     var showerOpen: ClearOpenItem?
     var showerSettled: Settled?
     var retained: ShowerRetainedSummary?
+    /// The card's recent records, for a kept shower's 「校园卡已扣」 (nil while unread).
+    var cardRecords: [CardRecord]?
 
     /// Finished orders stay listed this long (as the laundry page's line).
     private static let recentWindow: TimeInterval = 3 * 3600
 
     init(data: HomeData, laundry facts: LaundryFacts, retained: ShowerRetainedSummary? = nil, now: Date = Date()) {
         self.retained = retained
+        cardRecords = data.snapshot.activity.value?.records
         if data.laundryEnabled { laundry = Self.laundry(facts, now:now) }
         showerOpen = ClearOpenItem.shower(data.shower)
         let shower = data.recentActivities
@@ -52,9 +55,15 @@ struct ClearRecentOrders: Equatable {
          showerSettled.map { _ in Section.showerSettled }, retained.map { _ in Section.showerRetained }].compactMap { $0 }
     }
 
-    /// Two lines per kept shower, newest first: the start time, then 「水控 编号 · 原因」 (the dorm's own controller left out).
+    /// Two lines per kept shower, newest first: the start time, then 「水控 编号 · 原因」 (the dorm's own controller left out);
+    /// a third, 「校园卡已扣 ¥x」, when the card's records show its charge.
     func retainedLines(time: (Date) -> String = { ShowerRetainedText.time($0) }) -> [ShowerRetainedText.Line] {
-        retained.map { ShowerRetainedText.lines($0, reason:ShowerRetainedText.Clear.reason, time:time) } ?? []
+        let records = cardRecords
+        return retained.map { summary in
+            ShowerRetainedText.lines(summary, reason:ShowerRetainedText.Clear.reason, time:time) { started in
+                ShowerCardCharge.amount(started:started, records:records)
+            }
+        } ?? []
     }
 
     /// The id a section is scrolled to by (`ClearNavigator.recordsScroll`).

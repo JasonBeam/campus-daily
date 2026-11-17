@@ -37,24 +37,40 @@ public enum ShowerRetainedText {
         }
     }
 
+    /// 「校园卡已扣 ¥1.32」: a kept or stopped shower the campus card's records show charged
+    /// (`ShowerCardCharge`), in both themes. Nothing is said when none matched.
+    public static func charged(_ amount: Money) -> String { "校园卡已扣 ¥" + amount.yuanText }
+    /// What VoiceOver reads for it.
+    public static func chargedSpoken(_ amount: Money) -> String { "校园卡已扣 \(amount.yuanText) 元" }
+
     /// One kept shower on a list: the start time (or, without one, the reason), then
     /// 「水控 编号 · 原因」, the controller left out when it is the dorm's own (and the line left out
-    /// when nothing is left for it). Read by VoiceOver as one sentence.
+    /// when nothing is left for it), then the card's charge when one matched. Read by VoiceOver
+    /// as one sentence.
     public struct Line: Equatable, Sendable {
         public let title: String
         public let detail: String?
+        /// 「校园卡已扣 ¥1.32」, or nil.
+        public let charge: String?
+        let chargeSpoken: String?
 
-        public init(title: String, detail: String?) { self.title = title; self.detail = detail }
+        public init(title: String, detail: String?, charge: Money? = nil) {
+            self.title = title; self.detail = detail
+            self.charge = charge.map(ShowerRetainedText.charged)
+            self.chargeSpoken = charge.map(ShowerRetainedText.chargedSpoken)
+        }
 
-        public var spoken: String { [title, detail].compactMap { $0 }.joined(separator: "，") }
+        public var spoken: String { [title, detail, chargeSpoken].compactMap { $0 }.joined(separator: "，") }
     }
 
     /// 「水控 AABBCCDD」: a controller other than the dorm's own.
     public static func machine(_ id: String) -> String { "水控 " + id }
 
     /// The kept showers newest first; those without a start time after the rest, as kept.
+    /// `charge`: the card's charge for a shower started then, if one matched.
     public static func lines(_ summary: ShowerRetainedSummary, reason: (ShowerRetainedSummary.Reason) -> String,
-                             time: (Date) -> String = { ShowerRetainedText.time($0) }) -> [Line] {
+                             time: (Date) -> String = { ShowerRetainedText.time($0) },
+                             charge: (Date) -> Money? = { _ in nil }) -> [Line] {
         let dated = summary.entries.enumerated().filter { $0.element.started != nil }
             .sorted { ($0.element.started!, $1.offset) > ($1.element.started!, $0.offset) }.map(\.element)
         let undated = summary.entries.filter { $0.started == nil }
@@ -62,7 +78,8 @@ public enum ShowerRetainedText {
             let why = reason(entry.reason)
             let other = entry.machine.flatMap { $0.uppercased() == summary.currentMachine ? nil : machine($0) }
             guard let started = entry.started else { return Line(title: why, detail: other) }
-            return Line(title: time(started), detail: [other, why].compactMap { $0 }.joined(separator: " · "))
+            return Line(title: time(started), detail: [other, why].compactMap { $0 }.joined(separator: " · "),
+                        charge: charge(started))
         }
     }
 
