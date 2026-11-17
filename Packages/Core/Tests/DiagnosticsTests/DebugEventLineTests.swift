@@ -100,6 +100,13 @@ final class DebugEventLineTests: XCTestCase {
         XCTAssertEqual(line(.showerAction(.shortcutStart(next: false))), "shortcutStart next=no")
     }
 
+    /// 校园充值's 打开微信: whether WeChat opened, nothing else (never what was copied).
+    func testATopUpLineSaysOnlyWhetherWeChatOpened() {
+        XCTAssertEqual(DebugEvent.topUpWeChat(opened: true).name, "topUp.weChat")
+        XCTAssertEqual(line(.topUpWeChat(opened: true)), "opened=yes")
+        XCTAssertEqual(line(.topUpWeChat(opened: false)), "opened=no")
+    }
+
     func testANavLineIsAPageAndAnEntry() {
         XCTAssertEqual(DebugEvent.navOpen(.feedback, from: .settings).name, "nav.open")
         XCTAssertEqual(line(.navOpen(.feedback, from: .settings)), "page=feedback from=settings")

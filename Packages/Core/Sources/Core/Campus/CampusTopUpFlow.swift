@@ -1,8 +1,8 @@
 import Foundation
 
 public enum CampusTopUpEvent: Sendable, Equatable {
+    /// 「打开微信」.
     case weChatTapped
-    case webTapped
     /// What `UIApplication.open` answered for WeChat.
     case weChatOpened(Bool)
     /// The scene became active (true) or left it (inactive or background).
@@ -10,6 +10,8 @@ public enum CampusTopUpEvent: Sendable, Equatable {
 }
 
 public enum CampusTopUpEffect: Sendable, Equatable {
+    /// Put the text on the general pasteboard. Always comes before `open`.
+    case copy(String)
     case open(URL)
     /// VoiceOver hears the failure line, once per failure.
     case announceFailure
@@ -19,11 +21,19 @@ public enum CampusTopUpEffect: Sendable, Equatable {
 
 /// The 校园充值 page's own state.
 public struct CampusTopUpFlow: Sendable, Equatable {
-    /// WeChat did not open: the footnote turns into the failure line.
-    public private(set) var weChatFailed = false
-    /// 先看看示例: nothing is read from the school.
+    /// The line under the button.
+    public enum Line: Sendable, Equatable {
+        case none
+        /// The name was copied (kept for when the user comes back).
+        case copied
+        /// WeChat did not open; the name is still copied.
+        case weChatFailed
+    }
+
+    public private(set) var line = Line.none
+    /// 先看看示例: nothing is copied, nothing opens and nothing is read from the school.
     public let sample: Bool
-    /// A button was tapped and may have taken the user out of the app.
+    /// The button was tapped and may have taken the user out of the app.
     private var awaitingReturn = false
     /// The app left the active state since that tap.
     private var left = false
@@ -33,17 +43,16 @@ public struct CampusTopUpFlow: Sendable, Equatable {
     public mutating func handle(_ event: CampusTopUpEvent) -> [CampusTopUpEffect] {
         switch event {
         case .weChatTapped:
-            weChatFailed = false; awaitingReturn = true
-            return [.open(CampusTopUp.weChat)]
-        case .webTapped:
-            weChatFailed = false; awaitingReturn = true
-            return [.open(CampusTopUp.web)]
+            guard !sample else { return [] }
+            line = .copied; awaitingReturn = true
+            // Copy first: WeChat takes the app out of the front.
+            return [.copy(CampusTopUp.serviceName), .open(CampusTopUp.weChat)]
         case .weChatOpened(let opened):
             guard !opened else { return [] }
             // Nothing took the user away: coming back later is not from this tap.
             if !left { awaitingReturn = false }
-            guard !weChatFailed else { return [] }
-            weChatFailed = true
+            guard line != .weChatFailed else { return [] }
+            line = .weChatFailed
             return [.announceFailure]
         case .scene(active: false):
             if awaitingReturn { left = true }

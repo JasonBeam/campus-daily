@@ -12,6 +12,7 @@ final class DebugEventScreenTests: XCTestCase {
         case lxtAuthorize, lxtSettle
         case laundryPhase, laundryRequest, laundryOrder, laundryPayLaunch, laundryStart
         case schoolRefresh, schoolCredentialExpired, schoolSavedLogin, schoolRenew, ujingLogin
+        case topUpWeChat
         case http, navOpen
     }
 
@@ -37,6 +38,7 @@ final class DebugEventScreenTests: XCTestCase {
         case .schoolSavedLogin: return .schoolSavedLogin
         case .schoolRenew: return .schoolRenew
         case .ujingLogin: return .ujingLogin
+        case .topUpWeChat: return .topUpWeChat
         case .http: return .http
         case .navOpen: return .navOpen
         }
@@ -158,6 +160,7 @@ final class DebugEventScreenTests: XCTestCase {
         e += ([DebugPasswordStep.sent] + reasons.map(DebugPasswordStep.deferred) + reasons.map(DebugPasswordStep.skipped))
             .map(DebugEvent.schoolSavedLogin)
         e += outcomes.map(DebugEvent.ujingLogin)
+        e += [DebugEvent.topUpWeChat(opened: true), .topUpWeChat(opened: false)]
         e += https.map(DebugEvent.http)
         e += DebugPage.allCases.flatMap { page in DebugEntry.allCases.map { DebugEvent.navOpen(page, from: $0) } }
         e.append(.laundryOrder(status: DebugCode("20"), moduleType: 7, order: washer))

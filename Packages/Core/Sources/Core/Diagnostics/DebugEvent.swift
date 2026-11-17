@@ -36,6 +36,10 @@ public enum DebugEvent: Sendable, Equatable {
     case schoolRenew(DebugSchoolOutcome)
     case ujingLogin(DebugOutcome)
 
+    // MARK: 校园充值
+    /// 「打开微信」: whether WeChat opened. Never what was copied.
+    case topUpWeChat(opened: Bool)
+
     // MARK: Network and pages
     case http(DebugHTTP)
     case navOpen(DebugPage, from: DebugEntry)

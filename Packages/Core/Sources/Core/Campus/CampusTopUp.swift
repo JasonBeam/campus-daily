@@ -1,12 +1,15 @@
 import Foundation
 
-/// 校园充值: the school's own top-up, opened outside the app. The app never handles money: it
-/// opens the school's WeChat service (「e广工商大办事大厅」) or the school's web hand-off page in
-/// Safari, and reads the balances again once the user comes back.
+/// 校园充值: the school's own top-up in WeChat. The app never handles money: it copies the name of
+/// the school's WeChat service (「e广工商大办事大厅」), opens WeChat, where the user finds the
+/// service by pulling down the chat list (or pastes the name into the search), and reads the
+/// balances again once the user comes back.
+///
+/// WeChat's ticket links for the service work for one user only (the next person is told the
+/// link was already used), so the app holds none and opens plain WeChat.
 public enum CampusTopUp {
-    /// Issued by the school's own mini-program (Add to Home Screen), as upstream 0.9.0's
-    /// OfficialCampusRechargeView has it.
-    public static let weChat = URL(string: "weixin://dl/business/?t=I0xUgrvZt1g")!
-    /// The school's hand-off page for the same service, opened in Safari.
-    public static let web = URL(string: "https://wxmpurl.cn/I0xUgrvZt1g")!
+    /// What goes on the pasteboard before WeChat opens.
+    public static let serviceName = "e广工商大办事大厅"
+    /// Plain WeChat, no ticket.
+    public static let weChat = URL(string: "weixin://")!
 }

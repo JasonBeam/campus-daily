@@ -732,22 +732,26 @@ Rules:
 ### 3.3 校园充值 (card and electricity)
 
 The app handles no money and no school session for a top-up. One page, 校园充值, serves the card
-and the electricity: 「打开微信」 opens the school's WeChat service (`CampusTopUp.weChat`,
-`weixin://dl/business/?t=I0xUgrvZt1g`, issued by the school's own mini-program; the same
-address as upstream 0.9.0's OfficialCampusRechargeView) and 「用网页打开」 opens the school's
-hand-off page for it in Safari (`CampusTopUp.web`, `https://wxmpurl.cn/I0xUgrvZt1g`). Both go
-through `UIApplication.open`; `canOpenURL` is not used, so `LSApplicationQueriesSchemes` needs
-no `weixin` entry. Nothing opens by itself.
+and the electricity: 「打开微信」 first puts the name of the school's WeChat service
+「e广工商大办事大厅」 (`CampusTopUp.serviceName`) on the general pasteboard, then opens plain
+`weixin://` (`CampusTopUp.weChat`); in WeChat the user pulls down the chat list and taps the
+service, or pastes the name into the search. WeChat's ticket links for the service work for one
+user only (the next person is told the link was already used), so the app holds none and there
+is no web hand-off button; `CampusTopUpTicketScanTests` fails if one comes back in `App/` or
+`Packages/Core/Sources`. The open goes through `UIApplication.open`; `canOpenURL` is not used,
+so `LSApplicationQueriesSchemes` needs no `weixin` entry. Nothing is copied or opened by itself.
+The debug log notes only `topUp.weChat opened=yes|no`.
 
 - Entries (`CampusTopUpEntry`): 暖橙's card balance → the page once signed in; its electricity
   → the page with a meter bound, else the meter picker; signed out → the login step. 清爽's
   balance card shows 「充值 ›」 under each under the same conditions. Widgets and notifications
   are unchanged.
-- `CampusTopUpFlow`: WeChat answering `false` turns the footnote into the failure line (notice
-  colour, announced once) until the next tap of either button. Back to active after either
-  button took the user out of the app, the balances are read once in the background
-  (`CampusModel.refresh(force:)`), with nothing on screen; the sample (先看看示例) opens the same
-  addresses and reads nothing.
+- `CampusTopUpFlow`: a tap emits `.copy(serviceName)` then `.open(weChat)` and shows the copied
+  line under the button; WeChat answering `false` turns it into the failure line (notice
+  colour, announced once; it says the name is copied and to open WeChat by hand) until the next
+  tap. Back to active after the tap took the user out of the app, the balances are read once in
+  the background (`CampusModel.refresh(force:)`), with nothing on screen. In the sample
+  (先看看示例) the button copies nothing, opens nothing and reads nothing.
 - The old signed-in web top-up (`RechargeWebSession`, `RechargeNavigation`) has no entry in the
   app any more; its Core code and tests stay until they are removed on their own.
 

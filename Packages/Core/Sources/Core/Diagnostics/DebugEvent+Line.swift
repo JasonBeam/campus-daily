@@ -25,6 +25,7 @@ extension DebugEvent {
         case .schoolSavedLogin: return "school.savedLogin"
         case .schoolRenew: return "school.renew"
         case .ujingLogin: return "ujing.login"
+        case .topUpWeChat: return "topUp.weChat"
         case .http: return "http"
         case .navOpen: return "nav.open"
         }
@@ -92,7 +93,7 @@ extension DebugEvent {
             f["status"] = status.text
             if let module { f["moduleType"] = String(module) }
             if let order { f["order"] = tag(order) }
-        case .laundryPayLaunch(let opened):
+        case .laundryPayLaunch(let opened), .topUpWeChat(let opened):
             f.flag("opened", opened)
         case .laundryStart(let step):
             switch step {

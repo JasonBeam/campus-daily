@@ -2,12 +2,13 @@ import SwiftUI
 import UIKit
 import Core
 
-/// 校园充值 in 清爽: what to do in the school's WeChat service, 「打开学校微信入口」 and the
-/// school's web hand-off page. Nothing opens until a tap; back in the app after one, the
-/// balances are read again once in the background (`CampusTopUpFlow`).
+/// 校园充值 in 清爽: what to do in the school's WeChat service and 「打开微信」, which copies the
+/// service's name and then opens WeChat. Nothing happens until a tap; back in the app after
+/// WeChat, the balances are read again once in the background (`CampusTopUpFlow`).
 struct ClearCampusTopUpView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(SampleMode.self) private var sample
+    @Environment(\.campusServices) private var services
     @EnvironmentObject private var campus: CampusModel
     @State private var flow: CampusTopUpFlow?
 
@@ -24,16 +25,19 @@ struct ClearCampusTopUpView: View {
                 Button(ClearCampusTopUpText.openWeChat) { send(.weChatTapped) }
                     .buttonStyle(.borderedProminent)
                     .accessibilityIdentifier("campusTopUpWeChat")
-                if current.weChatFailed {
+                switch current.line {
+                case .none:
+                    EmptyView()
+                case .copied:
+                    Label(ClearCampusTopUpText.copied, systemImage:"checkmark.circle")
+                        .font(.footnote).foregroundStyle(.secondary)
+                        .fixedSize(horizontal:false, vertical:true)
+                        .accessibilityIdentifier("campusTopUpCopied")
+                case .weChatFailed:
                     Text(ClearCampusTopUpText.failed).font(.footnote).foregroundStyle(.orange)
                         .fixedSize(horizontal:false, vertical:true)
                         .accessibilityIdentifier("campusTopUpFailed")
                 }
-                Button(ClearCampusTopUpText.openWeb) { send(.webTapped) }
-                    .accessibilityIdentifier("campusTopUpWeb")
-                Text(ClearCampusTopUpText.footnote).font(.footnote).foregroundStyle(.secondary)
-                    .fixedSize(horizontal:false, vertical:true)
-                    .accessibilityIdentifier("campusTopUpFootnote")
             }
             .padding(20)
             .frame(maxWidth:560, alignment:.leading)
@@ -54,10 +58,14 @@ struct ClearCampusTopUpView: View {
         flow = next
         for effect in effects {
             switch effect {
+            case .copy(let text):
+                // Before the open below: WeChat takes the app out of the front.
+                UIPasteboard.general.string = text
             case .open(let url):
                 Task {
                     let opened = await UIApplication.shared.open(url)
-                    if url == CampusTopUp.weChat { send(.weChatOpened(opened)) }
+                    services.debugLog.record(.topUpWeChat(opened:opened))
+                    send(.weChatOpened(opened))
                 }
             case .announceFailure:
                 AccessibilityNotification.Announcement(ClearCampusTopUpText.failed).post()
@@ -73,10 +81,11 @@ enum ClearCampusTopUpText {
     static let title = "校园充值"
     static let headline = "前往学校官方微信服务"
     static let body = "进入“e广工商大办事大厅”后，选择校园卡或电费充值；充值电费时请核对宿舍和金额。"
-    /// The entry is a shared link: it says it may not open for everyone.
-    static let note = "校日常只负责打开学校入口，该入口不一定对所有人有效。付款和到账以学校官方结果为准；返回后会刷新余额。"
-    static let openWeChat = "打开学校微信入口"
-    static let failed = "未能打开微信，请确认已安装微信，或使用下方官方中转页。"
-    static let openWeb = "使用学校官方中转页"
-    static let footnote = "若入口失效，可在微信搜索“e广工商大办事大厅”，或使用学校官方小程序码。"
+    /// What the tap does and where to find the service in WeChat.
+    static let note = "点击后将复制“e广工商大办事大厅”并打开微信；在聊天列表下拉点击该小程序，未显示时可搜索并粘贴。付款和到账以学校官方结果为准；返回后会刷新余额。"
+    static let openWeChat = "打开微信"
+    /// Under the button once the name is copied.
+    static let copied = "已复制“e广工商大办事大厅”"
+    /// Under the button when WeChat does not open (the name is still copied).
+    static let failed = "未能打开微信，小程序名称已复制；请确认已安装微信后手动打开并搜索。"
 }
