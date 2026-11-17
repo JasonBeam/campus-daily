@@ -89,4 +89,60 @@ final class PaymentLaunchTests: XCTestCase {
         XCTAssertEqual(refusal(#"{"url":"\#(withAmount)"}"#), .amountMismatch)
         XCTAssertEqual(refusal(#"{"url":"https://qr.alipay.com/test0000?amount=abc"}"#), .amountMismatch)
     }
+    // MARK: - Signed order first
+
+    static let link = "https://qr.alipay.com/test0000"
+    static let biz400 = "%7B%22total_amount%22%3A%224.00%22%7D"
+
+    func signed(method: String = "alipay.trade.app.pay", biz: String = biz400, signs: [String] = ["SYNTHETIC_SIGNATURE"]) -> String {
+        (["app_id=2000000000000000", "method=" + method, "biz_content=" + biz] + signs.map { "sign=" + $0 })
+            .joined(separator: "&")
+    }
+
+    func both(_ signedOrder: String) -> String {
+        #"{"payInfo":{"orderInfo":"\#(signedOrder)"},"url":"\#(Self.link)"}"#
+    }
+
+    func testSignedPreferredOverLink() throws {
+        let order = signed()
+        XCTAssertEqual(try launch(both(order)), .sdk(order))
+    }
+
+    func testSignedWithoutSignFallsBackToLink() throws {
+        XCTAssertEqual(try launch(both(signed(signs: []))), .checkout(URL(string: Self.link)!))
+        XCTAssertEqual(refusal(#"{"orderInfo":"\#(signed(signs: []))"}"#), .unavailable)
+    }
+
+    func testTwoSignsRejected() throws {
+        let order = signed(signs: ["A", "B"])
+        XCTAssertEqual(try launch(both(order)), .checkout(URL(string: Self.link)!))
+        XCTAssertEqual(refusal(#"{"orderInfo":"\#(order)"}"#), .unavailable)
+    }
+
+    func testEmptySignRejected() throws {
+        let order = signed(signs: [""])
+        XCTAssertEqual(try launch(both(order)), .checkout(URL(string: Self.link)!))
+        XCTAssertEqual(refusal(#"{"orderInfo":"\#(order)"}"#), .unavailable)
+    }
+
+    func testWrongMethodRejected() throws {
+        let order = signed(method: "alipay.trade.page.pay")
+        XCTAssertEqual(try launch(both(order)), .checkout(URL(string: Self.link)!))
+        XCTAssertEqual(refusal(#"{"orderInfo":"\#(order)"}"#), .unavailable)
+    }
+
+    func testSignedAmountAboveOrderRejected() throws {
+        let order = signed(biz: "%7B%22total_amount%22%3A%225.00%22%7D")
+        XCTAssertEqual(refusal(#"{"orderInfo":"\#(order)"}"#), .amountMismatch)
+        XCTAssertEqual(try launch(both(order)), .checkout(URL(string: Self.link)!))
+        XCTAssertEqual(refusal(#"{"orderInfo":"\#(signed(biz: "%7B%22total_amount%22%3A%220.00%22%7D"))"}"#), .unavailable)
+    }
+
+    func testLinkStillCheckedWhenNoSigned() {
+        XCTAssertEqual(refusal(#"{"url":"https://qr.alipay.com/test0000?total_amount=5.00"}"#), .amountMismatch)
+        XCTAssertEqual(refusal(#"{"url":"https://pay.example.com/x"}"#), .disallowedLink)
+        // An unusable signed order leaves the link check as it was.
+        XCTAssertEqual(refusal(both(signed(signs: [])).replacingOccurrences(of: "test0000", with: "test0000?amount=3.00")),
+                       .amountMismatch)
+    }
 }

@@ -201,14 +201,14 @@ extension HomeView {
             .background(alignment:.top) { recentMeasure(items, all:all) }
     }
 
-    /// The app's own showers and orders open their page; card records are plain rows.
+    /// The app's own showers and open orders open their page; finished orders and card records are plain rows.
     @ViewBuilder func recentRows(_ items: [RecentItem]) -> some View {
         let shown = items.prefix(recentCount(items))
         VStack(spacing:0) {
             ForEach(Array(shown.enumerated()), id:\.element.id) { index, item in
                 VStack(spacing:0) {
                     if index > 0 { RowSeparator() }
-                    if item.source == .app {
+                    if item.source == .app, item.opensPage {
                         // A button, not a link: the page says it came from 最近.
                         let route = item.kind == .laundry ? HomeRoute.laundry : HomeRoute.shower
                         Button { mark(.recents, [route.debugPage]); path.append(route) } label: { RecentRow(item:item) }

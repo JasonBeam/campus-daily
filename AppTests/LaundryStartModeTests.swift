@@ -12,7 +12,7 @@ final class LaundryStartModeTests: XCTestCase {
         XCTAssertEqual(LaundryStartCopy.normalNote, "付完款，照常到机器上启动。")
         XCTAssertEqual(LaundryStartCopy.immediate + "（" + LaundryStartCopy.trial + "）", "立刻洗衣（试用）")
         XCTAssertEqual(LaundryStartCopy.immediateNotes.map(\.text).joined(),
-                       "先放好衣服和洗衣液，关好门。付完款回到校日常，它会帮你启动机器。下单后 10 分钟内有效，没启动的话去 U净 App 里启动。")
+                       "先放好衣服和洗衣液，关好门。付完款校日常会帮你启动机器；系统可能提前暂停，没启动就回到校日常。下单后 10 分钟内有效，没启动的话去 U净 App 里启动。")
         XCTAssertEqual(LaundryStartCopy.immediateNotes.map(\.symbol), ["tshirt", "arrow.uturn.backward", "clock"])
         XCTAssertEqual(LaundryStartCopy.amountNote, "实际金额以支付宝里显示的为准。")
         XCTAssertTrue(ClearLaundryCopy.caution.hasSuffix(LaundryStartCopy.amountNote))

@@ -25,6 +25,8 @@ public actor LaundryEngine {
     let vault: LaundryVault
     let launcher: PaymentLauncher
     let accountID: String?
+    /// Where a finished order is filed (best effort, after the checkout record that ends it is saved).
+    let history: (any LaundryHistoryRecording)?
     let inFront: @Sendable () async -> Bool
     let now: @Sendable () -> Date
     let sleep: @Sendable (TimeInterval) async throws -> Void
@@ -34,6 +36,9 @@ public actor LaundryEngine {
     public private(set) var state: LaundryCheckout
     public private(set) var storageBlocked = false
     private var busy = false
+    /// 立刻洗衣's window after the Alipay launch (`openPaymentWindow`): this order may be started
+    /// out of the front until `until`. In memory only: a relaunch has none.
+    private var paymentWindow: (orderID: String, until: Date)?
     private let resetMarker: ResetMarker?
     private var observers: [UUID: AsyncStream<LaundryCheckout>.Continuation] = [:]
 
@@ -41,12 +46,12 @@ public actor LaundryEngine {
     /// `resetMarker`: while a reset runs, no order is created (`AppReset.InProgress`).
     /// `accountID`: the signed-in U净 account `api` sends as; a new order records it.
     public init(api: LaundryOrdering, vault: LaundryVault, launcher: PaymentLauncher,
-                accountID: String? = nil, resetMarker: ResetMarker? = nil,
+                accountID: String? = nil, history: (any LaundryHistoryRecording)? = nil, resetMarker: ResetMarker? = nil,
                 inFront: @escaping @Sendable () async -> Bool = { false }, now: @escaping @Sendable () -> Date = Date.init,
                 sleep: @escaping @Sendable (TimeInterval) async throws -> Void = { s in
                     try await Task.sleep(nanoseconds: UInt64(max(0, s) * 1_000_000_000))
                 }, debugLog: any DebugLogSink = NoDebugLog()) throws {
-        self.api = api; self.vault = vault; self.launcher = launcher; self.accountID = accountID
+        self.api = api; self.vault = vault; self.launcher = launcher; self.accountID = accountID; self.history = history
         self.inFront = inFront; self.now = now; self.sleep = sleep; self.debugLog = debugLog
         self.resetMarker = resetMarker
         let persisted: LaundryCheckout?
@@ -152,6 +157,26 @@ public actor LaundryEngine {
         return try await run(.resolveManually)
     }
 
+    // MARK: Payment window
+
+    /// Opens 立刻洗衣's window for the open order, right before Alipay opens: until `until`
+    /// (at most `LaundryPaymentWindow.maxDuration` from now), a pre-start read and the start may
+    /// go out while the app is not in front. Only for a 立刻洗衣 order of the signed-in account
+    /// that is about to be paid and not tried yet; replaces an earlier window.
+    @discardableResult
+    public func openPaymentWindow(until: Date) -> Bool {
+        let at = now()
+        guard state.immediate, state.start == nil, state.phase == .created || state.phase == .paying,
+              let id = state.orderID, ownsOrder,
+              until > at, until <= at.addingTimeInterval(LaundryPaymentWindow.maxDuration)
+        else { return false }
+        paymentWindow = (id, until)
+        return true
+    }
+
+    /// Ends the window at once (iOS took the time back, the order or the engine changed).
+    public func closePaymentWindow() { paymentWindow = nil }
+
     // MARK: Loop
 
     private func guardIdle() throws {
@@ -172,11 +197,25 @@ public actor LaundryEngine {
                 throw error
             }
             logStart(event, before: before, after: next, effects: effects)
+            fileHistory(before: before, event: event, after: next)
             for effect in effects {
                 if let follow = await perform(effect) { queue.append(follow) }
             }
         }
         return state
+    }
+
+    /// Files the order this step ended. Runs only after its checkout record was saved; a failure
+    /// is logged and changes nothing else (the history never blocks the order flow).
+    private func fileHistory(before: LaundryCheckout, event: LaundryEvent, after: LaundryCheckout) {
+        guard let history,
+              let finished = LaundryHistory.finished(before: before, event: event, after: after, accountID: accountID) else { return }
+        do {
+            try history.record(finished, now: now())
+            debugLog.record(.laundryHistory(.appended))
+        } catch {
+            debugLog.record(.laundryHistory(.writeFailed))
+        }
     }
 
     /// Persist, then publish. A failed write blocks every later side effect.
@@ -277,6 +316,7 @@ public actor LaundryEngine {
         case .readOrder(let id, let after):
             if after > 0 {
                 do { try await sleep(after) } catch { return nil }  // cancelled: stop polling, record kept
+                guard !Task.isCancelled else { return nil }
             }
             do { return .orderRead(try await api.order(id), at: now()) }
             catch { return .orderReadFailed(Self.serviceError(error, stateChanging: false)) }
@@ -319,15 +359,22 @@ public actor LaundryEngine {
             guard ownsOrder else { return .startBlocked(.account) }
             if let skip = await frontGate() { debugLog.record(.laundryStart(.skipped(skip))); return .startNotNow }
             debugLog.record(.laundryStart(.handed))
-            do { try await api.startWasher(id); return .startSent(at: now()) }
+            // Handed over, the request runs to its answer even if this task is cancelled (the
+            // window ending, the app leaving the front): its outcome is stored either way.
+            let api = self.api
+            do { try await Task { try await api.startWasher(id) }.value; return .startSent(at: now()) }
             catch { return .startFailed(Self.serviceError(error, stateChanging: true), at: now()) }
         }
     }
 
-    /// Nil when a 立刻洗衣 request may go out now: the task is live and the app is in front.
+    /// Nil when a 立刻洗衣 request may go out now: the task is live and the app is in front, or
+    /// this order's payment window is open (same order, the account that placed it, in time).
     private func frontGate() async -> DebugStartSkip? {
         guard !Task.isCancelled else { return .cancelled }
-        guard await inFront() else { return .notFront }
+        if await !inFront() {
+            guard let window = paymentWindow else { return .notFront }
+            guard window.orderID == state.orderID, now() < window.until, ownsOrder else { return .windowClosed }
+        }
         return Task.isCancelled ? .cancelled : nil
     }
 

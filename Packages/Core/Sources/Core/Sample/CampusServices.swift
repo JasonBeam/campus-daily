@@ -51,6 +51,8 @@ public final class CampusServices: @unchecked Sendable {
     public var schoolVault: StoredSchoolVault { StoredSchoolVault(store: secureStore) }
     public var showerVault: StoredShowerVault { StoredShowerVault(store: secureStore) }
     public var laundryVault: StoredLaundryVault { StoredLaundryVault(store: secureStore) }
+    /// Finished laundry orders of the last 7 days (the app's private group only).
+    public var laundryHistory: LaundryHistoryStore { LaundryHistoryStore(store: secureStore) }
     public var resetMarker: ResetMarker { ResetMarker(store: secureStore) }
 
     /// The school session and the snapshot refresher on these services (the app's "app" role).
@@ -61,8 +63,9 @@ public final class CampusServices: @unchecked Sendable {
                                   debugLog: role == "widget" ? NoDebugLog() : debugLog)
     }
 
-    /// Whether the laundry engine may treat the app as in front (立刻洗衣 starts only then):
-    /// `live` for the live app; never for a sample, so a sample order can't reach a start.
+    /// Whether the laundry engine may treat the app as in front (立刻洗衣 starts then, or inside
+    /// the live app's payment window): `live` for the live app; never for a sample, which opens
+    /// no payment window either, so a sample order can't reach a start.
     public func laundryInFront(live: @escaping @Sendable () async -> Bool) -> @Sendable () async -> Bool {
         guard kind == .live else { return { @Sendable in false } }
         return live

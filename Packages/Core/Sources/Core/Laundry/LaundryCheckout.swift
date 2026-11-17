@@ -292,7 +292,8 @@ public enum LaundryEvent: Sendable, Equatable {
     case startSent(at: Date)
     /// `control/start` failed (after it was handed to the network).
     case startFailed(ServiceError, at: Date)
-    /// The app is not in front (or the task was cancelled): nothing was sent.
+    /// The app is not in front and no payment window is open for it (or the task was
+    /// cancelled): nothing was sent.
     case startNotNow
     /// The engine won't start this order (another account): nothing was sent.
     case startBlocked(LaundryStartBlock)
@@ -309,9 +310,11 @@ public enum LaundryEffect: Sendable, Equatable {
     /// Open Alipay (checked launch) → `.launched`.
     case launch(PayLaunch)
     case cancelOrder(id: String)
-    /// 立刻洗衣's pre-start read, only while the app is in front → `.startCheckRead`/`.startCheckFailed`/`.startNotNow`.
+    /// 立刻洗衣's pre-start read, only while the app is in front or inside the order's payment
+    /// window (`LaundryEngine.openPaymentWindow`) → `.startCheckRead`/`.startCheckFailed`/`.startNotNow`.
     case readStartCheck(id: String)
-    /// `control/start`, only while the app is in front → `.startSent`/`.startFailed`/`.startNotNow`.
+    /// `control/start`, under the same rule, checked again right before it is handed over
+    /// → `.startSent`/`.startFailed`/`.startNotNow`.
     case startWasher(id: String)
 }
 

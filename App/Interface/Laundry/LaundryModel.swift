@@ -43,6 +43,9 @@ enum LaundryLoginRefusal: Error { case otherAccount }
     /// no Live Activity, no reminder; the U净 login and saved machines stay.
     @Published private(set) var schoolEnabled: Bool
     @Published private(set) var lastOrder: LaundryLastOrder?
+    /// The signed-in account's finished orders of the last 7 days, without the open one's
+    /// (read-only rows on 最近 and in 订单). Empty when signed out or unreadable.
+    @Published private(set) var history: [LaundryHistoryEntry] = []
     /// Counts engine rebuilds (another account, a reset): part of the polling task's identity.
     @Published private(set) var engineGeneration = 0
 
@@ -54,16 +57,20 @@ enum LaundryLoginRefusal: Error { case otherAccount }
     private var endCheck: (end: Date, task: Task<Void, Never>)?
     /// Whether the app is in front (`appInFront`; a test's own).
     private let inFront: @Sendable () async -> Bool
+    /// 立刻洗衣's background window after the Alipay launch, while it runs.
+    private let paymentWindow: LaundryPaymentWindowRunner
     private static let machinesKey = PreferenceKey.laundryMachines
     private static let selectedKey = PreferenceKey.laundrySelected
     nonisolated static let lastOrderKey = PreferenceKey.laundryLastOrder
 
     init(services: CampusServices, reminders: Reminders, activities: LaundryActivityController?,
-         inFront: @escaping @Sendable () async -> Bool = LaundryModel.appInFront) {
+         inFront: @escaping @Sendable () async -> Bool = LaundryModel.appInFront,
+         paymentWindow: LaundryPaymentWindowRunner = LaundryPaymentWindowRunner()) {
         self.services = services
         self.reminders = reminders
         self.activities = activities
         self.inFront = inFront
+        self.paymentWindow = paymentWindow
         schoolEnabled = SchoolLaundryPreference(storage:services.defaults).isOn
         lastOrder = services.defaults.data(forKey:LaundryModel.lastOrderKey).flatMap { try? JSONDecoder().decode(LaundryLastOrder.self, from:$0) }
         reloadAccount()
@@ -114,6 +121,7 @@ enum LaundryLoginRefusal: Error { case otherAccount }
         } ?? savedMachines.first?.id
         configured = accountConnected && selectedMachine != nil
         rebuildEngine()
+        reloadHistory()
     }
 
     private var selectedMachine: SavedWasher? { savedMachines.first { $0.id == selectedMachineID } }
@@ -131,11 +139,13 @@ enum LaundryLoginRefusal: Error { case otherAccount }
 
     private func rebuildEngine() {
         guard !checkoutBusy else { return }
+        paymentWindow.stop()
         observer?.cancel(); observer = nil; engine = nil
         engineGeneration += 1
         do {
             let engine = try LaundryEngine(api:client, vault:vault, launcher:launcher,
                                            accountID:account?.account?.id,
+                                           history:services.laundryHistory,
                                            resetMarker:services.resetMarker,
                                            inFront:services.laundryInFront(live:inFront),
                                            debugLog:services.debugLog)
@@ -164,6 +174,14 @@ enum LaundryLoginRefusal: Error { case otherAccount }
             }
         }
         if checkout != next { checkout = next }
+        reloadHistory()
+    }
+
+    /// Rereads the finished orders (after each engine step, a login, a sign-out, a read).
+    func reloadHistory(now: Date = Date()) {
+        let open = checkout.flatMap { $0.phase != .none ? $0.orderID : nil }
+        let entries = services.laundryHistory.entries(accountID:account?.account?.id, openOrderID:open, now:now)
+        if entries != history { history = entries }
     }
 
     // MARK: Login (UjingLoginView)
@@ -205,6 +223,7 @@ enum LaundryLoginRefusal: Error { case otherAccount }
         configured = selectedMachine != nil
         issue = nil; lastAttempt = nil
         rebuildEngine()
+        reloadHistory()
         // The open order is readable again (read only).
         if reread { Task { await refreshOrder() } }
     }
@@ -227,9 +246,10 @@ enum LaundryLoginRefusal: Error { case otherAccount }
     /// written stays signed in rather than coming back at the next launch, and says so.
     func signOut() {
         guard signOutRefusal == nil else { return }
+        paymentWindow.stop()
         guard !storageBlocked,
               let outcome = try? UjingSignOut.perform(vault:vault, preferences:defaults, checkout:checkout,
-                                                             debugLog:services.debugLog)
+                                                             history:services.laundryHistory, debugLog:services.debugLog)
         else { signOutFailed = true; return }
         signOutFailed = false
         account = account.map { UjingAccountItem(mobileID:$0.mobileID) }
@@ -239,6 +259,7 @@ enum LaundryLoginRefusal: Error { case otherAccount }
         if outcome.clearedCheckout { checkout = nil }
         if outcome.forgotLastOrder { lastOrder = nil }
         rebuildEngine()
+        history = []
     }
 
     /// The finished order's outcome and the last-order note belong to the account that placed
@@ -250,11 +271,15 @@ enum LaundryLoginRefusal: Error { case otherAccount }
         }
         lastOrder = nil
         defaults.removeObject(forKey:Self.lastOrderKey)
+        // The finished orders go with it (hidden by account anyway if this can't be written).
+        services.debugLog.record(.laundryHistory((try? services.laundryHistory.clear()) != nil ? .cleared : .writeFailed))
+        history = []
     }
 
     /// After a reset cleared the stores: no U净 login, machines or order; the switch back on.
     func reloadAfterReset() {
         endCheck?.task.cancel(); endCheck = nil
+        paymentWindow.stop()
         schoolEnabled = SchoolLaundryPreference(storage:defaults).isOn
         lastOrder = nil; snapshot = nil; candidate = nil; checkout = nil
         issue = nil; checkoutIssue = nil; checkoutProgress = nil; lastAttempt = nil; sessionExpired = false; signOutFailed = false
@@ -317,6 +342,7 @@ enum LaundryLoginRefusal: Error { case otherAccount }
     /// Machine state (scan + programs). Throttled to once a minute unless forced.
     func refresh(force: Bool = false) async {
         syncActivity()
+        reloadHistory()
         guard schoolEnabled, configured, let machine = selectedMachine, !loading else { return }
         if !force, let lastAttempt, Date().timeIntervalSince(lastAttempt) < 60 { return }
         loading = true; issue = nil; lastAttempt = Date()
@@ -325,11 +351,16 @@ enum LaundryLoginRefusal: Error { case otherAccount }
         catch { issue = readText(error) ?? "暂时连不上 U净，先显示上次的状态。" }
     }
 
-    /// Order read (foreground, back from Alipay, pull to refresh, the foreground poll). Not read
-    /// only: a paid 立刻洗衣 order may be started by it, under the engine's rules. Says how the
-    /// read went (`skipped` when another step was running or no order is open).
+    /// Who asks for an order read: the app (foreground, back from Alipay, pull to refresh, the
+    /// foreground poll, a launch) or 立刻洗衣's payment window, which the others yield to.
+    enum OrderReadSource { case app, paymentWindow }
+
+    /// Order read. Not read only: a paid 立刻洗衣 order may be started by it, under the engine's
+    /// rules. Says how the read went (`skipped` when another step was running, no order is open,
+    /// or the payment window runs and the read is not its own).
     @discardableResult
-    func refreshOrder() async -> LaundryForegroundPoll.Outcome {
+    func refreshOrder(source: OrderReadSource = .app) async -> LaundryForegroundPoll.Outcome {
+        guard source == .paymentWindow || !paymentWindow.isActive else { return .skipped }
         guard let engine, !checkoutBusy, let record = checkout, record.phase != .none else { return .skipped }
         var outcome = LaundryForegroundPoll.Outcome.skipped
         await perform(progress:"正在核对订单…") {
@@ -392,20 +423,46 @@ enum LaundryLoginRefusal: Error { case otherAccount }
     }
 
     /// 去付款 confirmed in the sheet: first payment, or a re-pay (both confirmations are the sheet).
+    /// 立刻洗衣: the payment window is asked for first; refused, the order waits for the app
+    /// as before.
     func pay() async {
         guard let engine, !checkoutBusy, let record = checkout else { return }
-        if record.canPay {
+        let first = record.canPay
+        guard first || record.canRepay(at:Date()) else { return }
+        let windowed = await openPaymentWindow(record, engine:engine)
+        if first {
             await perform(progress:"正在打开支付宝…") { try await engine.pay() }
-        } else if record.canRepay(at:Date()) {
+        } else {
             await perform(progress:"正在打开支付宝…") {
                 _ = try await engine.requestRepay()
                 return try await engine.confirmRepay()
             }
         }
+        // Alipay didn't open (refused, no channel, a failed request): nothing to wait for.
+        if windowed, checkout?.phase != .paying, checkout?.phase != .verifying { paymentWindow.stop() }
+    }
+
+    /// Opens the engine's window, then the background task that reads the order in it. Live
+    /// app only (a sample opens none). False when there is none: the order waits for the app.
+    private func openPaymentWindow(_ record: LaundryCheckout, engine: LaundryEngine) async -> Bool {
+        guard services.kind == .live, !paymentWindow.isActive,
+              let window = LaundryPaymentWindow(record:record, engineGeneration:engineGeneration, now:Date()),
+              await engine.openPaymentWindow(until:window.until) else { return false }
+        let granted = paymentWindow.start(tick:{ [weak self] in
+            guard let self, window.shouldContinue(self.checkout, engineGeneration:self.engineGeneration, now:Date())
+            else { return false }
+            await self.refreshOrder(source:.paymentWindow)
+            return window.shouldContinue(self.checkout, engineGeneration:self.engineGeneration, now:Date())
+        }, onStop:{
+            Task { await engine.closePaymentWindow() }
+        })
+        if !granted { await engine.closePaymentWindow() }
+        return granted
     }
 
     func cancelOrder() async {
         guard mayCancel, let engine else { return }
+        paymentWindow.stop()
         await perform(progress:nil) { try await engine.cancel() }
         await refresh(force:true)
     }

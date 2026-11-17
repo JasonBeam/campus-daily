@@ -88,12 +88,12 @@ struct CardRecordsView: View {
         }
     }
 
-    /// The app's own showers and orders open their page; card records are plain rows.
+    /// The app's own showers and open orders open their page; finished orders and card records are plain rows.
     private func rows(_ day: CardDay) -> some View {
         VStack(spacing:0) {
             ForEach(Array(day.items.enumerated()), id:\.element.id) { index, item in
                 if index > 0 { RowSeparator() }
-                if item.source == .app {
+                if item.source == .app, item.opensPage {
                     NavigationLink(value:item.kind == .laundry ? HomeRoute.laundry : HomeRoute.shower) {
                         RecentRow(item:item, clockOnly:true)
                     }

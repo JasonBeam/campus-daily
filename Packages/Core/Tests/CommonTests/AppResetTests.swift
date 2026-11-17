@@ -52,7 +52,10 @@ final class AppResetTests: XCTestCase {
     /// A new Keychain item is cleared by reset too; this count makes adding one a conscious step.
     func testResetCoversEveryKeychainItem() {
         XCTAssertEqual(Set(AppReset.keychainItems), Set(StoreKey.allCases))
-        XCTAssertEqual(AppReset.keychainItems.count, 14, "a new item: check reset clears it, then update this count")
+        XCTAssertEqual(AppReset.keychainItems.count, 16, "a new item: check reset clears it, then update this count")
+        // The finished laundry orders go, and so does their salt.
+        XCTAssertTrue(AppReset.keychainItems.contains(.laundryHistory))
+        XCTAssertTrue(AppReset.keychainItems.contains(.laundryHistorySalt))
         XCTAssertEqual(AppReset.keychainItems.last, .sharedResetMarker, "the marker goes last")
         // The credential times live inside the card session and portal token items, so they
         // go with them.

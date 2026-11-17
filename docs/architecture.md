@@ -707,10 +707,20 @@ Rules:
   `https://qr.alipay.com/<code>`; the U净 F2F link `alipays://platformapi/startApp?appId=20000042
   &actionType=WebView&followType=PUBLIC&url=https://openauth.alipay.com/oauth2/publicAppAuthorize.htm?…
   redirect_uri=https://wx.zhinengxiyifang.cn/static/commonWasher/index.html…` (no user/port/
-  fragment, no duplicate parameters); or a signed `alipay.trade.app.pay` string for AlipaySDK whose
-  `biz_content.total_amount` **equals** the order amount. Any amount parameter in a link (also
+  fragment, no duplicate parameters); or a signed `alipay.trade.app.pay` string for AlipaySDK with
+  exactly one `method`, one non-empty `sign` and one `biz_content` whose `total_amount` (strict
+  yuan, above zero) **equals** the order amount. Such a signed string goes first; one that fails
+  the check is not used, and the links are checked as before. Any amount parameter in a link (also
   nested) must equal it too. Anything else (other hosts/schemes, `weixin://`, unknown amount)
   is refused and nothing opens. `skipPay`/`jumpToQuery` → poll directly.
+- Launch (`AlipayBridge`): a checked link goes to the SDK's `payInterceptor` as the original
+  string; taken over, nothing else opens, even if the SDK fails later; declined, the same link
+  opens outside once. Each `pay` or link begins a new attempt (`PaymentCallbackGate`): an SDK
+  callback reaches only its own attempt, at most once (one made before the interceptor decides
+  waits for the decision and is dropped on a decline). A `safepay` return URL can't say whose it
+  is: it goes to the SDK only while the current attempt is the SDK's and never counts as that
+  attempt's callback. Callbacks and SDK results are never read as paid; they only ask for an
+  order read.
 - On return (the AlipaySDK reporting back, which also covers its own in-app web page when Alipay
   is not installed, the app becoming active, or after 10 s foreground) poll `order(id)` after 2, 4, 8, 15, 15, 15 s (≈ 1 min);
   still unpaid → back to `created` with "付款未确认". Paid = `payFlag 1` or any non-10/17 status.
@@ -728,12 +738,38 @@ Rules:
   `control/start` (the engine's rules decide), so the task is rebuilt only when the app comes to
   or leaves the front, the engine is rebuilt or another order opens, never on the start record or
   a running step: rebuilding would cancel the read that is about to start the machine.
+- 立刻洗衣 start rule: the pre-start read and `control/start` go out only while the app is in
+  front, or inside the order's payment window. Right before Alipay opens for a 立刻洗衣 order of
+  the signed-in account (not tried yet), the live app asks iOS for a background task
+  (`LaundryPaymentWindowRunner`) and opens the engine's window (`LaundryEngine.openPaymentWindow`,
+  in memory, at most 45 s, never renewed or restored at launch). Refused by iOS: nothing changes,
+  the order waits for the app. While it runs it reads the order once a second through the same
+  engine (one step at a time, `busy`), and the scene's poll and other reads yield to it. It ends,
+  once, at 45 s, when iOS takes the time back, when the start was tried, the order washes or
+  ended, the launch failed, or the account, order or engine changed (a rebuild, a sign-out, a
+  reset, a cancel); ending it cancels the read in progress (no read leaves after that) instead of
+  waiting for it. The engine checks the window's order, account and deadline at both gates on its
+  own; `start` is stored as sent before the request leaves, a request already handed over runs to
+  its answer, and an unknown outcome is never retried. iOS may end the window early: the order
+  card says so (「系统可能提前暂停，没启动就回 App 看看」).
 - Paid but not washing with a known end (`20`, `21`, or `40` with no remaining time): the
   laundry-done notification is set for the first paid read + the program's minutes until a
   washing read gives the end (`LaundryFollowUp`).
 - `40` → Live Activity (machine, program, endsAt) + laundry-done notification at `endsAt`;
   `50`/`53`/`51`/`52` end the activity and the laundry-done notification and clear the record
   (`52` keeps a warning card until acknowledged). `LaundryDoneReminder` decides the notification.
+- Finished orders (`LaundryHistory`, `LaundryHistoryStore`): the step that ends the record's
+  own order on a terminal read (50/51/53 clearing it, 52 moving it into `attention`) files one
+  entry, only after the checkout record is saved. The write is best effort: a failure logs
+  `laundry.history writeFailed` and never blocks or unlocks anything. An entry holds salted tags
+  of the order and the account (HMAC-SHA256 with a 32-byte per-install salt), the local confirm
+  time, program, machine, status and, for 50 only, the price of that read. At most 30, newest
+  first; entries older than 7 days or dated in the future are dropped on write and hidden on
+  read. Only the signed-in account's entries show, without the open order's, on 最近 and in
+  校园卡记录 / 订单 as read-only rows (「3 号机 · 支付宝」; 51/52/53 show 没付款/没启动/已取消,
+  清爽 未付款/未启动/已取消), never matched to a card record and never in a day's total. Signing
+  out of U净, or another account signing in, deletes them; a salt that is missing while entries
+  exist hides them and is never made again over them.
 
 ### 3.3 校园充值 (card and electricity)
 
@@ -775,6 +811,7 @@ The debug log notes only `topUp.weChat opened=yes|no`.
 | CAS login device id | Keychain `school.device` | AfterFirstUnlockThisDeviceOnly | **yes** (the widget's login shows the same browser id) |
 | water binding, shower session, records kept by a next use | Keychain `water.binding`, `water.session`, `water.retained` | AfterFirstUnlockThisDeviceOnly | never (private group) |
 | U净 account, checkout record | Keychain `laundry.account`, `laundry.checkout` | AfterFirstUnlockThisDeviceOnly | never (private group) |
+| finished laundry orders (7 days, ≤ 30) and their tag salt | Keychain `laundry.history`, `laundry.historySalt` | AfterFirstUnlockThisDeviceOnly | never (private group) |
 | home snapshot (balances, meter, room label, per-tile error, fetchedAt, needsLogin) | Keychain `shared.snapshot` (≤64 KiB JSON) | AfterFirstUnlockThisDeviceOnly | **yes** |
 | reminder thresholds mirrored for widget | Keychain `shared.reminderLines` | same | **yes** |
 | credential-lifetime lines from older builds (deleted at launch, never written) | Keychain `shared.credentialLog` | same | **yes** |

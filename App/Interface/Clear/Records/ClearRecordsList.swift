@@ -79,9 +79,9 @@ struct ClearRecordsList: View {
         .accessibilityAddTraits(.isHeader)
     }
 
-    /// The app's own showers and orders open their page on 日常; card records are plain rows.
+    /// The app's own showers and open orders open their page on 日常; finished orders and card records are plain rows.
     @ViewBuilder private func row(_ item: RecentItem) -> some View {
-        if item.source == .app {
+        if item.source == .app, item.opensPage {
             Button {
                 navigator.openOnHome(item.kind == .laundry ? .laundry : .shower, laundry:laundry.checkout?.phase, from:.cardRecords)
             } label: {

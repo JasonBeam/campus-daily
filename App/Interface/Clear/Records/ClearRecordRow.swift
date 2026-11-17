@@ -22,7 +22,12 @@ struct ClearRecordRow: View {
         }
         .padding(.vertical,4)
         .accessibilityElement(children:.ignore)
-        .accessibilityLabel([item.title, subtitle, item.spokenAmount].compactMap { $0 }.joined(separator:"，"))
+        .accessibilityLabel(spokenLabel)
+    }
+
+    /// Title, time and detail, then the finished order's word or the amount.
+    var spokenLabel: String {
+        [item.title, subtitle, item.outcome?.word(clear:true) ?? item.spokenAmount].compactMap { $0 }.joined(separator:"，")
     }
 
     private var titles: some View {
@@ -34,7 +39,9 @@ struct ClearRecordRow: View {
     }
 
     @ViewBuilder private var amount: some View {
-        if let text = item.amountText {
+        if let outcome = item.outcome {
+            Text(outcome.word(clear:true)).font(.body).foregroundStyle(Color.secondary)
+        } else if let text = item.amountText {
             Text(text).font(.body).monospacedDigit().foregroundStyle(Color.primary)
                 .lineLimit(1).minimumScaleFactor(0.7)
         }

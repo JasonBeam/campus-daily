@@ -209,7 +209,7 @@ final class LaundryReducerTests: XCTestCase {
         XCTAssertEqual(r.notice, .launchRefused(.disallowedLink))
         XCTAssertEqual(rfx, [], "nothing is opened")
 
-        let signed = "method=alipay.trade.app.pay&biz_content=%7B%22total_amount%22%3A%225.00%22%7D"
+        let signed = "method=alipay.trade.app.pay&biz_content=%7B%22total_amount%22%3A%225.00%22%7D&sign=SYNTHETIC"
         XCTAssertEqual(reduce(p, .paymentArguments(PaymentArguments(.object(["orderInfo": .string(signed)])))).0.notice,
                        .launchRefused(.amountMismatch))
 

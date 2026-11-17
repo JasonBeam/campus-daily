@@ -243,7 +243,7 @@ struct LaundryDetail: View {
                           accentWord:"待核对")
             }
         case .unpaid:
-            // 立刻洗衣: the order group shows its line (「付完款回到这里，就帮你启动机器。」).
+            // 立刻洗衣: the order group shows its line (「付完款就帮你启动机器。…」).
             if facts.startLine != nil { orderRows(facts, phase:phase) }
         case .empty, .unknown:
             EmptyView()

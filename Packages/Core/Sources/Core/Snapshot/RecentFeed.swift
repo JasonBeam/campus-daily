@@ -7,15 +7,36 @@ public struct AppActivity: Sendable, Equatable {
         case shower(minutes: Int?)
         case laundry(program: String)
     }
+    /// How a finished order ended without being paid and run (its row shows the word, no amount).
+    public enum Outcome: Sendable, Equatable {
+        case unpaid, notStarted, cancelled
+
+        /// 暖橙's word (`clear` false) or 清爽's.
+        public func word(clear: Bool) -> String {
+            switch self {
+            case .unpaid: return clear ? "未付款" : "没付款"
+            case .notStarted: return clear ? "未启动" : "没启动"
+            case .cancelled: return "已取消"
+            }
+        }
+    }
     public var id: String
     public var kind: Kind
     /// When it ended (shower) or was paid (laundry).
     public var date: Date
     public var amount: Money?
     public var detail: String?
+    public var outcome: Outcome?
+    /// A tap opens the shower or laundry page; false for a finished order (read-only row).
+    public var opensPage: Bool
+    /// May stand for a card record of the same event (and borrow its amount); false for an
+    /// order paid with Alipay, which the card never saw.
+    public var matchesCard: Bool
 
-    public init(id: String, kind: Kind, date: Date, amount: Money?, detail: String? = nil) {
+    public init(id: String, kind: Kind, date: Date, amount: Money?, detail: String? = nil,
+                outcome: Outcome? = nil, opensPage: Bool = true, matchesCard: Bool = true) {
         self.id = id; self.kind = kind; self.date = date; self.amount = amount; self.detail = detail
+        self.outcome = outcome; self.opensPage = opensPage; self.matchesCard = matchesCard
     }
 
     var recordKind: CardRecordKind {
@@ -40,12 +61,17 @@ public struct RecentItem: Sendable, Equatable, Identifiable {
     public var source: Source
     /// For a card record, from its name, sign and flag; otherwise in for a top-up, else out.
     public var flow: CardFlow
+    /// A finished order that was not paid and run: the row shows its word instead of an amount.
+    public var outcome: AppActivity.Outcome?
+    /// The app's own row opens its page; a finished order's row is read-only.
+    public var opensPage: Bool
 
     public init(id: String, kind: CardRecordKind, title: String, date: Date, detail: String?, amount: Money?,
-                source: Source, flow: CardFlow? = nil) {
+                source: Source, flow: CardFlow? = nil, outcome: AppActivity.Outcome? = nil, opensPage: Bool = true) {
         self.id = id; self.kind = kind; self.title = title; self.date = date
         self.detail = detail; self.amount = amount; self.source = source
         self.flow = flow ?? (kind == .topUp ? .moneyIn : .moneyOut)
+        self.outcome = outcome; self.opensPage = opensPage
     }
 
     public var symbol: String { kind.symbol }
@@ -106,7 +132,7 @@ public enum RecentFeed {
         for activity in app {
             let kind = activity.recordKind
             // The closest unused card record of the same event, if any, is dropped.
-            let match = cardItems.indices
+            let match: Int? = !activity.matchesCard ? nil : cardItems.indices
                 .filter { i in
                     let c = cardItems[i]
                     return !c.used && c.0.kind == kind
@@ -123,7 +149,7 @@ public enum RecentFeed {
             }
             out.append(RecentItem(id: "app-" + activity.id, kind: kind, title: title, date: activity.date,
                                   detail: activity.detail, amount: activity.amount ?? match.flatMap { cardItems[$0].0.amount },
-                                  source: .app))
+                                  source: .app, outcome: activity.outcome, opensPage: activity.opensPage))
         }
         out += cardItems.filter { !$0.used }.map(\.0)
         // Stable: equal times keep app records first, then the server's order.

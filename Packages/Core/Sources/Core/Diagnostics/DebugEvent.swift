@@ -27,6 +27,8 @@ public enum DebugEvent: Sendable, Equatable {
     case laundryPayLaunch(opened: Bool)
     /// 立刻洗衣: the choice, the return, the pre-start read, the start and why it was not sent.
     case laundryStart(DebugLaundryStart)
+    /// The finished-order list on the phone: a step only, never what it holds.
+    case laundryHistory(DebugLaundryHistory)
 
     // MARK: School and U净 logins
     case schoolRefresh(DebugSchoolOutcome)
@@ -260,10 +262,18 @@ public enum DebugStartResult: Sendable, Equatable {
     }
 }
 
+/// What happened to the finished-order list (`LaundryHistoryStore`).
+public enum DebugLaundryHistory: String, Sendable, CaseIterable {
+    case appended, cleared, writeFailed
+}
+
 /// Why `control/start` was not sent.
 public enum DebugStartSkip: String, Sendable {
-    /// The app was not in front, or the task was cancelled before the request.
+    /// The app was not in front (and no payment window was open), or the task was cancelled
+    /// before the request.
     case notFront, cancelled
+    /// Not in front, and the payment window had ended or was for another order or account.
+    case windowClosed
     /// More than 10 minutes after the order was confirmed.
     case expired
     /// The signed-in U净 account did not place the order.

@@ -16,6 +16,10 @@ public enum StoreKey: String, Sendable, CaseIterable {
     case showerRetained = "water.retained"
     case laundryAccount = "laundry.account"
     case laundryCheckout = "laundry.checkout"
+    /// Finished laundry orders of the last 7 days (`LaundryHistoryStore`), under salted tags.
+    case laundryHistory = "laundry.history"
+    /// The per-install salt of those tags. Never shared, logged or replaced while entries exist.
+    case laundryHistorySalt = "laundry.historySalt"
     case sharedSnapshot = "shared.snapshot"
     case sharedReminderLines = "shared.reminderLines"
     /// The credential-lifetime lines (kind and minutes only) for the exported diagnostics.
@@ -46,7 +50,8 @@ public enum StoreKey: String, Sendable, CaseIterable {
         switch self {
         case .sharedSnapshot, .sharedReminderLines, .sharedCredentialLog, .sharedResetMarker, .schoolEcykt, .schoolPortal, .schoolProfile, .schoolPassword, .schoolDevice:
             return true
-        case .showerBinding, .showerSession, .showerRetained, .laundryAccount, .laundryCheckout: return false
+        case .showerBinding, .showerSession, .showerRetained, .laundryAccount, .laundryCheckout, .laundryHistory, .laundryHistorySalt:
+            return false
         }
     }
 }
