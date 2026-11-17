@@ -39,9 +39,9 @@ public enum LaundryDoneReminder {
             guard let order = c.order else { return .keep }
             return order.isUnpaid ? .cancel : waiting(c, scheduled: scheduled)
         case .active:
-            if let order = c.order, order.status.isWashing, let seconds = order.remainSeconds, seconds > 0 {
+            if let end = c.washEnd(now: now) {
                 guard let id = c.orderID else { return .keep }
-                return .schedule(Plan(orderID: id, end: (c.orderReadAt ?? now).addingTimeInterval(TimeInterval(seconds))))
+                return .schedule(Plan(orderID: id, end: end))
             }
             return waiting(c, scheduled: scheduled)
         }

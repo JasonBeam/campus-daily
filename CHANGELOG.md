@@ -65,6 +65,7 @@
 
 ### Fixed
 
+- Keep the laundry countdown and the 「衣服洗好了」 reminder at the end first read when U净 sends the same time left again (same order, same status): the end was counted from each read and moved later with every repeated value. A new value, status or order sets the end from that read.
 - Open the laundry page with the usual slide after 保存为常用机器 (or a tap on a saved machine) on 常用洗衣机 opened from home's unbound 洗衣 row, in both themes; it replaced the page in one frame. Back from it now returns to 常用洗衣机.
 - Give 反馈问题's send 30 s to get an answer instead of 15 s: the first send of an app run could give up while the connection to the feedback service was still being set up and say 「没发出去，检查一下网络再试一次。」, though a second tap went through. It is still one send, never repeated by itself.
 - Slide the rows of 常用洗衣机 (both themes) when a scanned or picked code is read: 「正在识别机器…」 and then 「核对并保存」 came in at once as the scanner went down, so the page jumped.

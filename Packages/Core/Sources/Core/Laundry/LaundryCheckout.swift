@@ -98,6 +98,10 @@ public struct LaundryCheckout: Sendable, Equatable, Codable {
     public var orderID: String?
     public var order: LaundryOrder?
     public var orderReadAt: Date?
+    /// The read that first gave the order's current remaining time (same order, status and
+    /// seconds left since): the wash ends that long after it. U净 can repeat a value read after
+    /// read, and counting from each read would push the end later every time.
+    public var remainReadAt: Date?
     /// Reconcile: the unfinished order U净 reported for this machine, being checked.
     public var candidateOrderID: String?
     /// Set (and persisted) right before `payment/arguments` leaves.
@@ -130,13 +134,15 @@ public struct LaundryCheckout: Sendable, Equatable, Codable {
                 order: LaundryOrder? = nil, orderReadAt: Date? = nil, candidateOrderID: String? = nil,
                 paymentRequestedAt: Date? = nil, repayArmed: Bool = false, cancelSent: Bool = false, pollAttempt: Int = 0,
                 lastOutcome: LaundryOutcome? = nil, notice: LaundryNotice? = nil, accountID: String? = nil,
-                paidAt: Date? = nil, waitingSince: Date? = nil, immediate: Bool = false, start: LaundryStart? = nil) {
+                paidAt: Date? = nil, waitingSince: Date? = nil, immediate: Bool = false, start: LaundryStart? = nil,
+                remainReadAt: Date? = nil) {
         self.phase = phase; self.draft = draft; self.createdAt = createdAt; self.orderID = orderID; self.order = order
         self.orderReadAt = orderReadAt; self.candidateOrderID = candidateOrderID; self.paymentRequestedAt = paymentRequestedAt
         self.repayArmed = repayArmed; self.cancelSent = cancelSent; self.pollAttempt = pollAttempt
         self.lastOutcome = lastOutcome; self.notice = notice; self.accountID = accountID
         self.paidAt = paidAt; self.waitingSince = waitingSince
         self.immediate = immediate; self.start = start; self.checkingStart = false; self.startPollAttempt = nil
+        self.remainReadAt = remainReadAt
     }
 
     public init(from decoder: Decoder) throws {
@@ -158,7 +164,8 @@ public struct LaundryCheckout: Sendable, Equatable, Codable {
                   paidAt: try c.decodeIfPresent(Date.self, forKey: .paidAt),
                   waitingSince: try c.decodeIfPresent(Date.self, forKey: .waitingSince),
                   immediate: try c.decodeIfPresent(Bool.self, forKey: .immediate) ?? false,
-                  start: try c.decodeIfPresent(LaundryStart.self, forKey: .start))
+                  start: try c.decodeIfPresent(LaundryStart.self, forKey: .start),
+                  remainReadAt: try c.decodeIfPresent(Date.self, forKey: .remainReadAt))
     }
 
     public static let empty = LaundryCheckout()
@@ -173,6 +180,13 @@ public struct LaundryCheckout: Sendable, Equatable, Codable {
     public static let adoptWindow: TimeInterval = 120
     /// 立刻洗衣 starts only this long after the order was confirmed.
     public static let startWindow: TimeInterval = 600
+
+    /// When the washing order ends: its remaining time from the read that first gave it
+    /// (`remainReadAt`, else the last read, else `now`). Nil unless washing with time left.
+    public func washEnd(now: Date) -> Date? {
+        guard let order, order.status.isWashing, let seconds = order.remainSeconds, seconds > 0 else { return nil }
+        return (remainReadAt ?? orderReadAt ?? now).addingTimeInterval(TimeInterval(seconds))
+    }
 
     /// A new order may be confirmed.
     public var canCreate: Bool { phase == .none }
@@ -641,6 +655,12 @@ public enum LaundryReducer {
     static func apply(_ order: LaundryOrder, at: Date, to state: LaundryCheckout,
                       checkStart: Bool = true) -> (LaundryCheckout, [LaundryEffect]) {
         var s = state
+        // The same reading again keeps its anchor; anything new is anchored at this read.
+        if let last = state.order, last.id == order.id, last.status == order.status, last.remainSeconds == order.remainSeconds {
+            s.remainReadAt = state.remainReadAt ?? state.orderReadAt ?? at
+        } else {
+            s.remainReadAt = at
+        }
         s.order = order
         s.orderReadAt = at
         let id = s.orderID ?? order.id

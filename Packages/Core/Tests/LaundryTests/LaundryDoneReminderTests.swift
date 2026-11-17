@@ -86,4 +86,62 @@ final class LaundryDoneReminderTests: XCTestCase {
         let old = D.Plan(orderID: "OLDORDER1", end: seen)
         XCTAssertEqual(D.step(s, scheduled: old, now: seen.addingTimeInterval(90)), .schedule(fallback))
     }
+
+    // MARK: The end stays where the remaining time was first read
+
+    /// U净 can repeat a remaining time read after read: the end is the first read's + that time,
+    /// not each read's, so it doesn't move later with every read.
+    func testRepeatedReadOfTheSameRemainKeepsTheEnd() {
+        let first = seen.addingTimeInterval(300)
+        var s = reduce(paid(at: seen), .orderRead(L.order("40", remain: 600), at: first))
+        for later in [60.0, 120, 400] {
+            s = reduce(s, .orderRead(L.order("40", remain: 600), at: first.addingTimeInterval(later)))
+            XCTAssertEqual(D.step(s, scheduled: nil, now: first.addingTimeInterval(later)),
+                           .schedule(D.Plan(orderID: L.orderID, end: first.addingTimeInterval(600))), "read \(later) s later")
+        }
+    }
+
+    /// A new remaining time anchors the end at the read that brought it.
+    func testChangedRemainReanchors() {
+        let first = seen.addingTimeInterval(300)
+        var s = reduce(paid(at: seen), .orderRead(L.order("40", remain: 600), at: first))
+        s = reduce(s, .orderRead(L.order("40", remain: 600), at: first.addingTimeInterval(60)))
+        let moved = first.addingTimeInterval(130)
+        s = reduce(s, .orderRead(L.order("40", remain: 480), at: moved))
+        XCTAssertEqual(D.step(s, scheduled: nil, now: moved), .schedule(D.Plan(orderID: L.orderID, end: moved.addingTimeInterval(480))))
+        s = reduce(s, .orderRead(L.order("40", remain: 480), at: moved.addingTimeInterval(90)))
+        XCTAssertEqual(D.step(s, scheduled: nil, now: moved.addingTimeInterval(90)),
+                       .schedule(D.Plan(orderID: L.orderID, end: moved.addingTimeInterval(480))), "and stays there while repeated")
+    }
+
+    /// Another status (paid, then washing) is a new reading even with the same number.
+    func testStatusChangeReanchors() {
+        let first = seen.addingTimeInterval(30)
+        var s = reduce(paid(remain: 600, at: seen), .orderRead(L.order("20", remain: 600), at: first))
+        let washing = first.addingTimeInterval(200)
+        s = reduce(s, .orderRead(L.order("40", remain: 600), at: washing))
+        XCTAssertEqual(D.step(s, scheduled: nil, now: washing), .schedule(D.Plan(orderID: L.orderID, end: washing.addingTimeInterval(600))))
+    }
+
+    /// Another order's read starts its own end, whatever the number left before.
+    func testNewOrderResetsTheAnchor() {
+        let first = seen.addingTimeInterval(300)
+        let old = LaundryCheckout(phase: .active, orderID: L.orderID, order: L.order("40", id: "OLDORDER1", remain: 600),
+                                  orderReadAt: first)
+        let read = first.addingTimeInterval(120)
+        let s = LaundryReducer.apply(L.order("40", remain: 600), at: read, to: old).0
+        XCTAssertEqual(D.step(s, scheduled: nil, now: read), .schedule(D.Plan(orderID: L.orderID, end: read.addingTimeInterval(600))))
+    }
+
+    /// The anchor is kept with the record: after a relaunch a repeated read still keeps the end.
+    func testTheAnchorSurvivesARelaunch() throws {
+        let first = seen.addingTimeInterval(300)
+        var s = reduce(paid(at: seen), .orderRead(L.order("40", remain: 600), at: first))
+        s = reduce(s, .orderRead(L.order("40", remain: 600), at: first.addingTimeInterval(60)))
+        let stored = try JSONDecoder().decode(LaundryCheckout.self, from: JSONEncoder().encode(s.persistable))
+        var back = LaundryReducer.restore(stored)
+        back = reduce(back, .orderRead(L.order("40", remain: 600), at: first.addingTimeInterval(200)))
+        XCTAssertEqual(D.step(back, scheduled: nil, now: first.addingTimeInterval(200)),
+                       .schedule(D.Plan(orderID: L.orderID, end: first.addingTimeInterval(600))))
+    }
 }

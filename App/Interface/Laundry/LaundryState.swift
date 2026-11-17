@@ -102,10 +102,7 @@ struct LaundryFacts {
                 guard let order = record.order else { return .check(failedStart:false) }
                 return order.isUnpaid ? .unpaid(payable:false) : .starting
             case .active:
-                guard let order = record.order else { return .starting }
-                if order.status.isWashing, let seconds = order.remainSeconds, seconds > 0 {
-                    return .running(end:(record.orderReadAt ?? now).addingTimeInterval(TimeInterval(seconds)))
-                }
+                if let end = record.washEnd(now:now) { return .running(end:end) }
                 return .starting
             }
             if let outcome = record.lastOutcome, outcome.status.isDone, now.timeIntervalSince(outcome.at) < 30 * 60 {
