@@ -15,7 +15,7 @@ enum LaundryStartCopy {
     /// The immediate note, split at its sentences (not a word changed).
     static let immediateNotes: [(symbol: String, text: String)] = [
         ("tshirt", "先放好衣服和洗衣液，关好门。"),
-        ("arrow.uturn.backward", "付完款回到校日常，它会帮你启动机器。"),
+        ("arrow.uturn.backward", "付完款校日常会帮你启动机器；系统可能提前暂停，没启动就回到校日常。"),
         ("clock", "下单后 10 分钟内有效，没启动的话去 U净 App 里启动。"),
     ]
     /// Kept under either choice.

@@ -32,6 +32,7 @@
 
 ### Changed
 
+- 立刻洗衣 can start the machine while you are still in Alipay: right before Alipay opens, the app asks iOS for up to 45 seconds in the background and reads the order in that time; once U净 says it is paid it asks U净 once to start the machine, under the same rules as in front (the account that placed it, within 10 minutes of 下单, the confirmed price). iOS may refuse or end that time sooner; the order then waits for the app as before, and the order card and pay sheet say so. Only the order you chose 立刻洗衣 for, never restored after a relaunch, and the start is still never asked for twice.
 - A laundry checkout link goes to the Alipay SDK first, unchanged; when the SDK takes it, no web page opens, and only when it doesn't does the link open as before. A report from one payment never reaches a later one and asks for the order read at most once; it is never taken as paid.
 - Laundry payment hands a signed Alipay order to the Alipay app before trying a checkout link when U净 sends both, and only when the order carries exactly one non-empty signature, the app-pay method and an amount equal to the order's; a signed order without a usable signature is never opened, and the link is checked as before.
 - First-run setup no longer asks about laundry (both themes): 暖橙's guide drops 「宿舍用学校的洗衣机吗？」 (three page dots) and 清爽's 首次配置 drops 「洗衣机（可选）」; 清爽's 「继续设置」 card waits only for the account and the dorm. Laundry is on for a new install, and an answer given before is kept; the 学校洗衣机 switch in Settings still turns it off.

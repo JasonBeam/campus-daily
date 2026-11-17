@@ -36,6 +36,9 @@ public actor LaundryEngine {
     public private(set) var state: LaundryCheckout
     public private(set) var storageBlocked = false
     private var busy = false
+    /// 立刻洗衣's window after the Alipay launch (`openPaymentWindow`): this order may be started
+    /// out of the front until `until`. In memory only: a relaunch has none.
+    private var paymentWindow: (orderID: String, until: Date)?
     private let resetMarker: ResetMarker?
     private var observers: [UUID: AsyncStream<LaundryCheckout>.Continuation] = [:]
 
@@ -153,6 +156,26 @@ public actor LaundryEngine {
         guard state.canResolveManually else { throw LaundryEngineError.notAllowed }
         return try await run(.resolveManually)
     }
+
+    // MARK: Payment window
+
+    /// Opens 立刻洗衣's window for the open order, right before Alipay opens: until `until`
+    /// (at most `LaundryPaymentWindow.maxDuration` from now), a pre-start read and the start may
+    /// go out while the app is not in front. Only for a 立刻洗衣 order of the signed-in account
+    /// that is about to be paid and not tried yet; replaces an earlier window.
+    @discardableResult
+    public func openPaymentWindow(until: Date) -> Bool {
+        let at = now()
+        guard state.immediate, state.start == nil, state.phase == .created || state.phase == .paying,
+              let id = state.orderID, ownsOrder,
+              until > at, until <= at.addingTimeInterval(LaundryPaymentWindow.maxDuration)
+        else { return false }
+        paymentWindow = (id, until)
+        return true
+    }
+
+    /// Ends the window at once (iOS took the time back, the order or the engine changed).
+    public func closePaymentWindow() { paymentWindow = nil }
 
     // MARK: Loop
 
@@ -293,6 +316,7 @@ public actor LaundryEngine {
         case .readOrder(let id, let after):
             if after > 0 {
                 do { try await sleep(after) } catch { return nil }  // cancelled: stop polling, record kept
+                guard !Task.isCancelled else { return nil }
             }
             do { return .orderRead(try await api.order(id), at: now()) }
             catch { return .orderReadFailed(Self.serviceError(error, stateChanging: false)) }
@@ -335,15 +359,22 @@ public actor LaundryEngine {
             guard ownsOrder else { return .startBlocked(.account) }
             if let skip = await frontGate() { debugLog.record(.laundryStart(.skipped(skip))); return .startNotNow }
             debugLog.record(.laundryStart(.handed))
-            do { try await api.startWasher(id); return .startSent(at: now()) }
+            // Handed over, the request runs to its answer even if this task is cancelled (the
+            // window ending, the app leaving the front): its outcome is stored either way.
+            let api = self.api
+            do { try await Task { try await api.startWasher(id) }.value; return .startSent(at: now()) }
             catch { return .startFailed(Self.serviceError(error, stateChanging: true), at: now()) }
         }
     }
 
-    /// Nil when a 立刻洗衣 request may go out now: the task is live and the app is in front.
+    /// Nil when a 立刻洗衣 request may go out now: the task is live and the app is in front, or
+    /// this order's payment window is open (same order, the account that placed it, in time).
     private func frontGate() async -> DebugStartSkip? {
         guard !Task.isCancelled else { return .cancelled }
-        guard await inFront() else { return .notFront }
+        if await !inFront() {
+            guard let window = paymentWindow else { return .notFront }
+            guard window.orderID == state.orderID, now() < window.until, ownsOrder else { return .windowClosed }
+        }
         return Task.isCancelled ? .cancelled : nil
     }
 

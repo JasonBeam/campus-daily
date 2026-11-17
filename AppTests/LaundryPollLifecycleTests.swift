@@ -1,6 +1,7 @@
 import Combine
 import XCTest
 import Core
+import UIKit
 @testable import XiaoRiChang
 
 /// The foreground order poll on the live laundry model, fake stores and a scripted U净, with a
@@ -188,6 +189,35 @@ final class LaundryPollLifecycleTests: XCTestCase {
     }
 }
 
+extension LaundryPollLifecycleTests {
+    /// While 立刻洗衣's window runs, the scene's poll and other reads yield to it (`refreshOrder`
+    /// skips them); once it ends they read again and the order is started once.
+    func testPollerYieldsWhileWindowActiveThenResumes() async {
+        let ujing = PollUjing()
+        let runner = LaundryPaymentWindowRunner(system: .init(begin: { _ in UIBackgroundTaskIdentifier(rawValue: 1) },
+                                                              end: { _ in },
+                                                              sleep: { try await Task.sleep(for: .seconds($0)) }))
+        let world = PollWorld(record: PollFixture.paid(), ujing: ujing, front: HeldFront { false }, paymentWindow: runner)
+        let laundry = await world.launch()
+        // Begun once the engine is built (a rebuild ends any window).
+        XCTAssertTrue(runner.start(tick: { true }, onStop: {}))
+        let host = PollHost(laundry: laundry, remindersOn: false)
+        defer { host.stop(); runner.stop() }
+
+        await pause(300)
+        XCTAssertEqual(ujing.count(UjingEndpoints.detail(PollFixture.orderID)), 0, "the poll yields")
+        XCTAssertEqual(ujing.count(UjingEndpoints.startCheck(PollFixture.orderID)), 0)
+        let skipped = await laundry.refreshOrder()
+        XCTAssertEqual(skipped, .skipped, "the scene's read yields too")
+
+        runner.stop()
+        await waitFor(seconds: 8) { laundry.checkout?.start == .started }
+        XCTAssertEqual(ujing.count(UjingEndpoints.startWasher(PollFixture.orderID)), 1)
+        await pause(300)
+        XCTAssertEqual(ujing.count(UjingEndpoints.startWasher(PollFixture.orderID)), 1)
+    }
+}
+
 // MARK: - Fixtures
 
 private enum PollFixture {
@@ -219,8 +249,10 @@ private enum PollFixture {
     let front: HeldFront
     var vault: StoredLaundryVault { StoredLaundryVault(store: store) }
 
-    init(record: LaundryCheckout, ujing: PollUjing, front: HeldFront) {
-        self.ujing = ujing; self.front = front
+    let paymentWindow: LaundryPaymentWindowRunner?
+
+    init(record: LaundryCheckout, ujing: PollUjing, front: HeldFront, paymentWindow: LaundryPaymentWindowRunner? = nil) {
+        self.ujing = ujing; self.front = front; self.paymentWindow = paymentWindow
         try! vault.saveAccountItem(UjingAccountItem(mobileID: "00000000-0000-4000-8000-000000000001",
                                                     account: UjingAccount(id: PollFixture.accountID, userId: "1", token: "test-token")))
         try! vault.saveCheckout(record)
@@ -236,7 +268,8 @@ private enum PollFixture {
                                       applicationSupport: nil, sharedDidChange: {})
         let front = front
         let laundry = LaundryModel(services: services, reminders: Reminders.sample(defaults: defaults), activities: nil,
-                                   inFront: { await front.check() })
+                                   inFront: { await front.check() },
+                                   paymentWindow: paymentWindow ?? LaundryPaymentWindowRunner())
         await waitFor { laundry.checkout != nil }
         return laundry
     }

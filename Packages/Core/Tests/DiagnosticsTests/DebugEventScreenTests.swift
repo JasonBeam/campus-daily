@@ -95,7 +95,7 @@ final class DebugEventScreenTests: XCTestCase {
 
     static var laundryStarts: [DebugLaundryStart] {
         let skips: [DebugStartSkip] = [.notFront, .cancelled, .expired, .account, .unsupported, .offline, .selfClean, .dispenser,
-                                       .otherOrder, .status, .price, .notSaved]
+                                       .otherOrder, .status, .price, .notSaved, .windowClosed]
         let checks: [DebugLaundryStart] = [DebugPriceCheck.ok, .mismatch, .unreadable].flatMap { price in
             codes.map { DebugLaundryStart.check(paid: true, status: $0, price: price, moduleType: 7, order: order) }
         } + [.check(paid: false, status: DebugCode("10"), price: .unreadable, moduleType: nil, order: nil)]

@@ -103,7 +103,7 @@ final class LaundryStartReducerTests: XCTestCase {
         var unpaid = reduce(.empty, .confirm(L.draft, at: t0, immediate: true)).0
         unpaid = reduce(unpaid, .created(orderID: L.orderID)).0
         unpaid = reduce(unpaid, .orderRead(L.order("10"), at: t0)).0
-        XCTAssertEqual(line(unpaid), LaundryStartLine(kind: .armed, text: "付完款回到这里，就帮你启动机器。"))
+        XCTAssertEqual(line(unpaid), LaundryStartLine(kind: .armed, text: "付完款就帮你启动机器。系统可能提前暂停，没启动就回 App 看看。"))
 
         var (s, _) = paid()
         XCTAssertEqual(line(s), LaundryStartLine(kind: .checking, text: "正在核对机器…"))

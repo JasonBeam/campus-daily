@@ -1,7 +1,9 @@
 import Foundation
 
 // 立刻洗衣: after the user paid, the app asks U净 once to start the machine (`control/start`),
-// only for an order the user chose it for, only while the app is in front, and never twice.
+// only for an order the user chose it for, only while the app is in front or inside the short
+// window after the Alipay launch (`LaundryPaymentWindow`, at most 45 s, never renewed), and never
+// twice.
 
 /// Why the app won't start this order itself (the user starts it in the U净 app).
 public enum LaundryStartBlock: String, Sendable, Codable, Equatable {
@@ -165,7 +167,7 @@ extension LaundryStartLine {
         guard c.immediate else { return nil }
         switch c.phase {
         case .created, .paying, .verifying:
-            return LaundryStartLine(kind: .armed, text: "付完款回到这里，就帮你启动机器。")
+            return LaundryStartLine(kind: .armed, text: "付完款就帮你启动机器。系统可能提前暂停，没启动就回 App 看看。")
         case .active:
             break
         default:

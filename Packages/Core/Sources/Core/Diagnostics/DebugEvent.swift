@@ -269,8 +269,11 @@ public enum DebugLaundryHistory: String, Sendable, CaseIterable {
 
 /// Why `control/start` was not sent.
 public enum DebugStartSkip: String, Sendable {
-    /// The app was not in front, or the task was cancelled before the request.
+    /// The app was not in front (and no payment window was open), or the task was cancelled
+    /// before the request.
     case notFront, cancelled
+    /// Not in front, and the payment window had ended or was for another order or account.
+    case windowClosed
     /// More than 10 minutes after the order was confirmed.
     case expired
     /// The signed-in U净 account did not place the order.

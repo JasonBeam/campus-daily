@@ -738,6 +738,20 @@ Rules:
   `control/start` (the engine's rules decide), so the task is rebuilt only when the app comes to
   or leaves the front, the engine is rebuilt or another order opens, never on the start record or
   a running step: rebuilding would cancel the read that is about to start the machine.
+- 立刻洗衣 start rule: the pre-start read and `control/start` go out only while the app is in
+  front, or inside the order's payment window. Right before Alipay opens for a 立刻洗衣 order of
+  the signed-in account (not tried yet), the live app asks iOS for a background task
+  (`LaundryPaymentWindowRunner`) and opens the engine's window (`LaundryEngine.openPaymentWindow`,
+  in memory, at most 45 s, never renewed or restored at launch). Refused by iOS: nothing changes,
+  the order waits for the app. While it runs it reads the order once a second through the same
+  engine (one step at a time, `busy`), and the scene's poll and other reads yield to it. It ends,
+  once, at 45 s, when iOS takes the time back, when the start was tried, the order washes or
+  ended, the launch failed, or the account, order or engine changed (a rebuild, a sign-out, a
+  reset, a cancel); ending it cancels the read in progress (no read leaves after that) instead of
+  waiting for it. The engine checks the window's order, account and deadline at both gates on its
+  own; `start` is stored as sent before the request leaves, a request already handed over runs to
+  its answer, and an unknown outcome is never retried. iOS may end the window early: the order
+  card says so (「系统可能提前暂停，没启动就回 App 看看」).
 - Paid but not washing with a known end (`20`, `21`, or `40` with no remaining time): the
   laundry-done notification is set for the first paid read + the program's minutes until a
   washing read gives the end (`LaundryFollowUp`).
