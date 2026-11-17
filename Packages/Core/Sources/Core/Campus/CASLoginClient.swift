@@ -121,7 +121,8 @@ public struct CASLoginClient: SchoolPasswordLogin {
             }
             if let expiresAt = token.expiresAt, expiresAt <= now() { throw SchoolLoginFailure.cannotLoginDirectly }
             return token
-        case 200:
+        case 200, 401:
+            // Apereo CAS re-renders the login page with 401 after a refused password.
             throw CASPage.classify(errors: CASPage.errors(in: post.body))
         case 500...599:
             // The school may have counted the attempt before its server failed.
@@ -168,8 +169,8 @@ struct CASCookieJar {
     }
 }
 
-/// Reading the CAS HTML: the password form's `execution`, and the `var errors = [...]` the page
-/// shows after a refused login.
+/// Reading the CAS HTML: the password form's `execution`, and the error the page shows after a
+/// refused login (`var errors = [...]`, or the error element of the usual CAS markup).
 enum CASPage {
     static func execution(in body: Data) -> String? {
         let html = String(decoding: body, as: UTF8.self)
@@ -183,9 +184,14 @@ enum CASPage {
         return String(value)
     }
 
-    /// Every string inside `var errors = [...]`, or nil when the page has no such list.
+    /// Every string inside `var errors = [...]`; without that list, the text of each error
+    /// element (`errors(markupIn:)`). Nil when the page has neither.
     static func errors(in body: Data) -> [String]? {
         let html = String(decoding: body, as: UTF8.self)
+        return scriptErrors(html) ?? markupErrors(html)
+    }
+
+    private static func scriptErrors(_ html: String) -> [String]? {
         guard let start = html.range(of: #"var\s+errors\s*=\s*\["#, options: .regularExpression) else { return nil }
         var depth = 0, inString = false, escaped = false
         var end = html.index(before: start.upperBound)
@@ -214,15 +220,94 @@ enum CASPage {
         return texts
     }
 
-    /// Captcha, lock or extra verification wins over a wrong password: the user must go to the
-    /// school's page either way, and retrying here would only count towards the lock.
+    /// Apereo CAS puts a refusal in `<div id="msg" class="errors">`, `<span id="password.errors">`,
+    /// `<div class="alert alert-danger">` or `id="errormsg"`: an element whose class has the word
+    /// `errors` or `alert-danger`, or whose id is `errormsg` or ends in `errors`. Each one's visible
+    /// text (tags, scripts and styles dropped, spaces collapsed); empty ones are skipped.
+    static func markupErrors(_ html: String) -> [String]? {
+        let open = #"<([A-Za-z][A-Za-z0-9]*)\b([^>]*)>"#
+        guard let regex = try? NSRegularExpression(pattern: open) else { return nil }
+        let ns = html as NSString
+        var texts: [String] = []
+        var searchFrom = 0
+        while searchFrom < ns.length,
+              let m = regex.firstMatch(in: html, range: NSRange(location: searchFrom, length: ns.length - searchFrom)) {
+            searchFrom = m.range.location + m.range.length
+            let name = ns.substring(with: m.range(at: 1)).lowercased()
+            let attributes = ns.substring(with: m.range(at: 2))
+            guard !["script", "style", "input", "meta", "link"].contains(name), isErrorElement(attributes),
+                  let close = closingTag(name, in: ns, from: searchFrom) else { continue }
+            let inner = ns.substring(with: NSRange(location: searchFrom, length: close - searchFrom))
+            let text = visibleText(inner)
+            if !text.isEmpty { texts.append(text) }
+            searchFrom = close
+        }
+        return texts.isEmpty ? nil : texts
+    }
+
+    private static func attribute(_ name: String, in attributes: String) -> String? {
+        let pattern = "\\b" + name + #"\s*=\s*["']([^"']*)["']"#
+        guard let r = attributes.range(of: pattern, options: [.regularExpression, .caseInsensitive]) else { return nil }
+        let match = String(attributes[r])
+        guard let q = match.firstIndex(where: { $0 == "\"" || $0 == "'" }) else { return nil }
+        return String(match[match.index(after: q)..<match.index(before: match.endIndex)])
+    }
+
+    private static func isErrorElement(_ attributes: String) -> Bool {
+        let classes = (attribute("class", in: attributes) ?? "").lowercased().split(separator: " ").map(String.init)
+        if classes.contains("errors") || classes.contains("alert-danger") { return true }
+        let id = (attribute("id", in: attributes) ?? "").lowercased()
+        return id == "errormsg" || id.hasSuffix("errors")
+    }
+
+    /// Where the element opened before `start` ends, counting nested elements of the same name.
+    private static func closingTag(_ name: String, in ns: NSString, from start: Int) -> Int? {
+        guard let regex = try? NSRegularExpression(pattern: "<(/?)" + name + #"\b[^>]*>"#, options: .caseInsensitive) else { return nil }
+        var depth = 1
+        for m in regex.matches(in: ns as String, range: NSRange(location: start, length: ns.length - start)) {
+            let closing = m.range(at: 1).length > 0
+            let selfClosing = ns.substring(with: m.range).hasSuffix("/>")
+            if closing { depth -= 1 } else if !selfClosing { depth += 1 }
+            if depth == 0 { return m.range.location }
+        }
+        return nil
+    }
+
+    /// The text a person sees: no scripts, styles or tags, a few entities decoded, spaces collapsed.
+    static func visibleText(_ html: String) -> String {
+        var s = html
+        for pattern in [#"(?is)<script\b.*?</script>"#, #"(?is)<style\b.*?</style>"#, #"(?s)<!--.*?-->"#] {
+            s = s.replacingOccurrences(of: pattern, with: " ", options: .regularExpression)
+        }
+        s = s.replacingOccurrences(of: #"<[^>]*>"#, with: " ", options: .regularExpression)
+        for (entity, text) in [("&nbsp;", " "), ("&lt;", "<"), ("&gt;", ">"), ("&quot;", "\""), ("&#39;", "'"), ("&amp;", "&")] {
+            s = s.replacingOccurrences(of: entity, with: text)
+        }
+        return s.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+    }
+
+    /// A lock, captcha or check already in force: retrying here would only count towards it.
+    static let blockers = ["验证码", "captcha", "已锁定", "已被锁定", "已冻结", "已被冻结", "安全验证", "二次", "频繁", "次数过多",
+                           "is locked", "has been locked", "account locked"]
+    /// Wording that says the account or password is wrong; it wins over a lock still to come.
+    static let wrongWords = ["账号或密码", "用户名或密码", "帐号或密码", "账号或者密码", "用户名或者密码", "帐号或者密码",
+                             "密码错误", "密码不正确", "账号不存在", "用户不存在", "invalid credentials", "bad credentials"]
+    /// Other things the page may mention (a lock to come, SMS or phone login, an odd account).
+    static let softBlockers = ["锁定", "冻结", "异常", "短信", "手机", "邮箱", "lock"]
+    /// Vaguer refusals: a wrong password only when nothing else is mentioned.
+    static let vagueWrongWords = ["认证失败", "登录失败"]
+
+    /// A lock, captcha or check in force wins; then wrong-password wording (even next to a lock
+    /// still to come); anything else mentioned goes to the school's page; a bare 认证失败 or
+    /// 登录失败 is a wrong password.
     static func classify(errors: [String]?) -> SchoolLoginFailure {
         let text = (errors ?? []).joined(separator: " ")
         guard !text.isEmpty else { return .cannotLoginDirectly }
-        let blockers = ["验证码", "锁定", "冻结", "安全验证", "异常", "短信", "手机", "邮箱", "二次", "频繁", "captcha", "lock"]
-        if blockers.contains(where: { text.localizedCaseInsensitiveContains($0) }) { return .cannotLoginDirectly }
-        let wrong = ["账号或密码", "用户名或密码", "帐号或密码", "密码错误", "密码不正确", "账号不存在", "用户不存在"]
-        return wrong.contains(where: { text.contains($0) }) ? .wrongCredentials : .cannotLoginDirectly
+        func has(_ words: [String]) -> Bool { words.contains { text.localizedCaseInsensitiveContains($0) } }
+        if has(blockers) { return .cannotLoginDirectly }
+        if has(wrongWords) { return .wrongCredentials }
+        if has(softBlockers) { return .cannotLoginDirectly }
+        return has(vagueWrongWords) ? .wrongCredentials : .cannotLoginDirectly
     }
 }
 

@@ -146,7 +146,7 @@ struct SchoolReloginSheet: View {
         let name = account, secret = password, save = savePassword
         Task {
             let next = await campus.submitLogin(account:name, password:secret, savePassword:save)
-            if next == .idle || next == .wrong { password = "" }
+            if next.clearsTypedPassword { password = "" }
             if next == .idle { await signedIn() }
             state = next
             if next == .wrong { focus = .password }

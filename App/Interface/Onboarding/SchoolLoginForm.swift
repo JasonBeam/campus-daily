@@ -45,6 +45,9 @@ enum SchoolLoginState: Equatable {
         case .failed(let text): return text
         }
     }
+
+    /// The typed password was used up: signed in, or refused as wrong (typed again from empty).
+    var clearsTypedPassword: Bool { self == .idle || self == .wrong }
 }
 
 enum SchoolLoginField: Hashable { case account, password }
