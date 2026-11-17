@@ -713,6 +713,14 @@ Rules:
   the check is not used, and the links are checked as before. Any amount parameter in a link (also
   nested) must equal it too. Anything else (other hosts/schemes, `weixin://`, unknown amount)
   is refused and nothing opens. `skipPay`/`jumpToQuery` → poll directly.
+- Launch (`AlipayBridge`): a checked link goes to the SDK's `payInterceptor` as the original
+  string; taken over, nothing else opens, even if the SDK fails later; declined, the same link
+  opens outside once. Each `pay` or link begins a new attempt (`PaymentCallbackGate`): an SDK
+  callback reaches only its own attempt, at most once (one made before the interceptor decides
+  waits for the decision and is dropped on a decline). A `safepay` return URL can't say whose it
+  is: it goes to the SDK only while the current attempt is the SDK's and never counts as that
+  attempt's callback. Callbacks and SDK results are never read as paid; they only ask for an
+  order read.
 - On return (the AlipaySDK reporting back, which also covers its own in-app web page when Alipay
   is not installed, the app becoming active, or after 10 s foreground) poll `order(id)` after 2, 4, 8, 15, 15, 15 s (≈ 1 min);
   still unpaid → back to `created` with "付款未确认". Paid = `payFlag 1` or any non-10/17 status.
