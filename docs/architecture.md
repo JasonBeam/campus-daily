@@ -171,12 +171,18 @@ the form's `execution`), `GET /cas/jwt/publicKey` (PEM), then one `POST /cas/log
 `"__RSA__" + base64(RSA PKCS#1 v1.5(password))`, `failN=0`, an empty captcha and the install's
 random `fpVisitorId`; the redirect is not followed. Its `Location` carries the CAS `ticket`, a JWT
 whose payload `idToken` is the **portal token** (with its own `exp`, about 8 h). Then step 2 below.
-A refused login with 账号或密码 in the page's `errors` is `wrongCredentials`; captcha, lock,
-extra verification, a missing `execution`, a page without errors or any other shape is
-`cannotLoginDirectly` (the UI offers the web login). Never retried: 30 failures lock the account.
+A refused login with 账号或密码 in the page's `errors` is `wrongCredentials`; anything else is
+`cannotLoginDirectly(SchoolLoginBlock)`, read from the page's `errors` only: `locked` (锁定, 冻结,
+次数过多: the form says wait 5 minutes), `captcha`, `mfa` (二次, 安全验证, 短信, 手机, 邮箱) or
+`passwordChange` (修改密码, 过期, 弱密码, 激活), which the form sends to the school's site in
+Safari, and `unknown` for a missing `execution`, a page without errors or any other shape. The form
+keeps 登录 as its primary button in every case; the web login is the small link under it. The
+debug log notes the category only (`school.directLogin cause=… kind=…`). Never retried: 30
+failures lock the account for 300 s (the school's setting; the reply does not say how long).
 The password is sent only to CAS, kept only if the user opts in (`school.password`), never logged.
 
-**Login (interactive, WKWebView).** The fallback. CAS uses a JS-encrypted password form; on this
+**Login (interactive, WKWebView).** The fallback, opened only from the small 「用学校网页登录」
+link under the password form (the debug log notes `school.webLogin opened|completed|cancelled`). CAS uses a JS-encrypted password form; on this
 path we never see the password. The app opens the CAS login for the portal service in a non-persistent
 `WKWebsiteDataStore`, the user signs in, then:
 

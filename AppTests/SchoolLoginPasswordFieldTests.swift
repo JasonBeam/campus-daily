@@ -8,12 +8,14 @@ final class SchoolLoginPasswordFieldTests: XCTestCase {
     func testAWrongPasswordIsClearedLikeASignIn() {
         XCTAssertTrue(SchoolLoginState.wrong.clearsTypedPassword)
         XCTAssertTrue(SchoolLoginState.idle.clearsTypedPassword)
-        XCTAssertEqual(SchoolLoginState.wrong.message, SchoolLoginText.wrong)
+        XCTAssertEqual(SchoolLoginState.wrong.message(.warm), SchoolLoginText.wrong)
+        XCTAssertEqual(SchoolLoginState.wrong.message(.clear), SchoolLoginText.wrong)
         XCTAssertEqual(SchoolLoginText.wrong, "账号或密码不对，再试一次。")
     }
 
     func testOtherAnswersKeepThePassword() {
-        for state: SchoolLoginState in [.loading, .cannotDirect, .failed(SchoolLoginText.busy)] {
+        for state: SchoolLoginState in [.loading, .blocked(.locked), .blocked(.needsSchoolSite),
+                                         .blocked(.unknown), .failed(SchoolLoginText.busy)] {
             XCTAssertFalse(state.clearsTypedPassword, "\(state)")
         }
     }

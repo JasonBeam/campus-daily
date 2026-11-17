@@ -1,8 +1,10 @@
 import SwiftUI
 import Core
 
+/// The school's web login page (the small 「用学校网页登录」 link under the password form).
 struct CampusLoginSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.campusServices) private var services
     @StateObject private var browser = CampusBrowserState()
     @State private var manual = false
     /// The automatic read and the manual 读取 button can both produce a login: deliver it once.
@@ -20,6 +22,7 @@ struct CampusLoginSheet: View {
     private func deliver(_ config: CampusWebLogin) {
         guard !delivered else { return }
         delivered = true
+        if !holdOpening { services.debugLog.record(.schoolWebLogin(.completed)) }
         browser.progress.delivered()
         // Not cancelled by the time limit: a slow read finishes after the sheet has closed.
         Task { await receive(config); close() }
@@ -86,9 +89,16 @@ struct CampusLoginSheet: View {
                     }
                 }
         }
+        .onAppear { if !holdOpening { services.debugLog.record(.schoolWebLogin(.opened)) } }
+        .onDisappear {
+            if !holdOpening, let event = Self.closingEvent(delivered:delivered) { services.debugLog.record(.schoolWebLogin(event)) }
+        }
         // An account-switch alert waits until this sheet has closed.
         .holdsAccountSwitchAlert()
     }
+    /// The debug line when the page closes: nothing after it signed in (`completed` was written
+    /// then), `cancelled` otherwise.
+    static func closingEvent(delivered: Bool) -> DebugWebLogin? { delivered ? nil : .cancelled }
     /// Spinner instead of the page (a stalled automation shows the page and its buttons).
     private var hidden: Bool { browser.progress.concealed && !browser.stalled }
 }
@@ -96,10 +106,9 @@ struct CampusLoginSheet: View {
 struct CampusOnboardingView: View {
     @EnvironmentObject private var campus: CampusModel
     @EnvironmentObject private var water: ShowerModel
+    /// The account-and-password sheet, signed in or not (the web page is the small link on it),
+    /// so a saved password is checked and kept instead of silently dropped by a web sign-in.
     @State private var login = false
-    /// 重新登录 once signed in: the account-and-password sheet (the web page is its fallback), so
-    /// a saved password is checked and kept instead of silently dropped by a web sign-in.
-    @State private var relogin = false
     @State private var offeredLogin = false
     @State private var importingPlatform = false
     /// Dorm → hot-water controller binding; shared with the first-run guide's dorm step.
@@ -129,7 +138,7 @@ struct CampusOnboardingView: View {
             }
             AutomaticPowerSection()
             Section {
-                Button { if campus.configured { relogin = true } else { login = true } } label: {
+                Button { login = true } label: {
                     Label(campus.configured ? "重新登录" : "登录并连接校园卡",systemImage:"person.crop.circle")
                 }
                     .accessibilityIdentifier("officialCampusLogin").disabled(flow.busy)
@@ -172,22 +181,12 @@ struct CampusOnboardingView: View {
             .fileImporter(isPresented:$importingPlatform,allowedContentTypes:[.json,.data]) {result in
                 do {
                     try water.importConfig(result.get()); flow.issue = nil
-                    if campus.configured {Task {try? await Task.sleep(for:.milliseconds(300)); await flow.prepare(campus:campus,water:water)}}
-                    else {login = true}
+                    if Self.opensLoginAfterImport(configured:campus.configured) {login = true}
+                    else {Task {try? await Task.sleep(for:.milliseconds(300)); await flow.prepare(campus:campus,water:water)}}
                 } catch {flow.issue = "没导入成功。选热水平台给的配置文件，别用别人的完整配置。"}
             }
-            .sheet(isPresented:$login) { CampusLoginSheet { value in
-                do {
-                    try await campus.adoptWebState(value)
-                    flow.reset()
-                    await campus.refresh(force:true)
-                    Task { await flow.prepare(campus:campus,water:water) }
-                } catch {
-                    // The widget is refreshing (and may be signing in): nothing was stored.
-                    flow.issue = error as? SchoolLoginFailure == .busy ? SchoolLoginText.busy : "这次没登录上，再试一次。"
-                }
-            } }
-            .sheet(isPresented:$relogin) {
+            .sheet(isPresented:$login) {
+                // Signed in (password or the web link): on to the card and dorm, as before.
                 SchoolReloginSheet(signedIn:{
                     flow.reset()
                     Task { await flow.prepare(campus:campus,water:water) }
@@ -196,13 +195,18 @@ struct CampusOnboardingView: View {
             .task {
                 if campus.configured {
                     if !water.configured && flow.identity == nil { await flow.prepare(campus:campus,water:water) }
-                } else if !offeredLogin {
+                } else if Self.opensLoginOnOpen(configured:campus.configured, offered:offeredLogin) {
                     offeredLogin = true
                     login = true
                 }
             }
             .scrollContentBackground(.hidden).background(NativeTheme.background).tint(NativeTheme.tint)
     }
+    /// Not signed in: the page opens the password form once by itself.
+    static func opensLoginOnOpen(configured: Bool, offered: Bool) -> Bool { !configured && !offered }
+    /// 导入热水配置 without a school login: the password form next.
+    static func opensLoginAfterImport(configured: Bool) -> Bool { !configured }
+
     private var dormMenus: some View {
         ForEach(0..<4,id:\.self) {level in
             if !flow.options[level].isEmpty {

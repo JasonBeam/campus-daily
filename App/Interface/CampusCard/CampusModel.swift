@@ -235,19 +235,19 @@ struct PowerChoice: Identifiable, Equatable {
 
     /// 登录 on the login form (first run and 重新登录学校账号): one login, never retried (failures
     /// count towards the school's lock), then a forced refresh. Returns the form's next state:
-    /// `.idle` once signed in, `.wrong` (clear and focus the password), `.cannotDirect` (offer the
-    /// school's web page) or `.failed` with the text to show.
+    /// `.idle` once signed in, `.wrong` (clear and focus the password), `.blocked` with the cause
+    /// the school's reply showed, or `.failed` with the text to show. A failed login leaves its
+    /// category in the debug log (`school.directLogin`), never what the school said.
     func submitLogin(account: String, password: String, savePassword: Bool) async -> SchoolLoginState {
         do {
             try await signIn(account:account.trimmingCharacters(in:.whitespaces), password:password, savePassword:savePassword)
             await refresh(force:true)
             return .idle
-        } catch SchoolLoginFailure.wrongCredentials {
-            return .wrong
-        } catch SchoolLoginFailure.cannotLoginDirectly {
-            return .cannotDirect
         } catch {
-            return .failed(SchoolLoginText.text(error))
+            if let failure = error as? SchoolLoginFailure, let category = DebugDirectLogin(failure) {
+                services.debugLog.record(.schoolDirectLogin(category))
+            }
+            return SchoolLoginState(after:error)
         }
     }
 

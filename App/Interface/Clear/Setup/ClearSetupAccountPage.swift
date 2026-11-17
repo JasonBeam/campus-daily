@@ -51,21 +51,14 @@ struct ClearSetupAccountPage: View {
         ClearSetupStep(navTitle:"连接校园卡", heading:"登录学校账号",
                        message:"填写学校学工号和密码，登录后自动同步校园卡。") {
             SchoolLoginForm(account:$account, password:$password, savePassword:$savePassword,
-                            state:loginState, focus:$focus, submit:submit)
+                            state:loginState, focus:$focus, submit:submit, webLogin:openWebLogin)
             if let issue {
                 Label { ClearNoticeText(issue).fixedSize(horizontal:false, vertical:true) } icon: { Image(systemName:"exclamationmark.circle") }
                     .font(.footnote).foregroundStyle(Theme.notice)
             }
         } buttons: {
-            if loginState == .cannotDirect {
-                ClearSetupButton(title:SchoolLoginText.webLogin, symbol:"arrow.up.right", action:openWebLogin)
-            } else {
-                ClearSetupButton(title:loggingIn ? "正在登录…" : "登录", busy:loggingIn, action:submit)
-                    .disabled(loggingIn || !ready)
-                ClearSetupTextButton(title:SchoolLoginText.webLogin, action:openWebLogin)
-                    .disabled(loggingIn)
-                    .accessibilityIdentifier("webLogin")
-            }
+            ClearSetupButton(title:SchoolLoginText.primary(loggingIn:loggingIn), busy:loggingIn, action:submit)
+                .disabled(loggingIn || !ready)
             // As on 暖橙's login step: synthetic data, nothing stored or sent; the root closes this.
             // Shut while the real shower is not over or its record not read (`LiveShowerGate`).
             if sampleAllowed {
@@ -105,9 +98,9 @@ struct ClearSetupAccountPage: View {
 
     /// One login with the form's account and password; never retried (failures count towards
     /// the school's lock). Wrong → password cleared and focused; anything the school put in the
-    /// way → the primary button becomes the web login.
+    /// way → said by cause under the fields, and 登录 can be tried again.
     private func submit() {
-        guard ready, !loggingIn else { return }
+        guard ready, loginState.allowsDirectLogin else { return }
         if previewing { done(); return }
         focus = nil
         loginState = .loading

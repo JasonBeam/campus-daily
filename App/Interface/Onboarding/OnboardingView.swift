@@ -229,7 +229,7 @@ struct OnboardingView: View {
             }
             if step == .login {
                 SchoolLoginForm(account:$account, password:$password, savePassword:$savePassword,
-                                state:loginState, focus:$loginFocus, submit:submitLogin)
+                                state:loginState, focus:$loginFocus, submit:submitLogin, webLogin:openWebLogin)
                     .padding(.top,keyboardUp ? 20 : 28)
             }
             if step == .dorm, !previewing, !campus.powerChoices.isEmpty {
@@ -389,11 +389,6 @@ struct OnboardingView: View {
                 }
                 if step == .login && !keyboardUp {
                     VStack(spacing:0) {
-                        if loginState != .cannotDirect {
-                            secondary(SchoolLoginText.webLogin) { openWebLogin() }
-                                .disabled(loggingIn)
-                                .accessibilityIdentifier("webLogin")
-                        }
                         // For a look without an account (App Review): synthetic data, nothing stored or sent.
                         // Shut while the real shower is not over or its record not read (`LiveShowerGate`);
                         // `water` is observed, so the line follows its record.
@@ -424,8 +419,7 @@ struct OnboardingView: View {
     private var primaryTitle: String {
         switch step {
         case .login:
-            if loggingIn { return "正在登录…" }
-            return loginState == .cannotDirect ? SchoolLoginText.webLogin : "登录"
+            return SchoolLoginText.primary(loggingIn:loggingIn)
         case .dorm: return bindingWater ? "正在找宿舍的水控…" : dorm != nil ? "就是这间" : "选宿舍"
         case .washer: return SchoolLaundryPreference.Onboarding.yes
         case .water:
@@ -442,10 +436,9 @@ struct OnboardingView: View {
 
     private var loggingIn: Bool { step == .login && loginState == .loading }
 
-    /// Login: dimmed until both fields are filled, and while logging in. After 「没法直接登录」
-    /// it is the web login and always available.
+    /// Login: dimmed until both fields are filled, and while logging in.
     private var primaryDimmed: Bool {
-        if step == .login { return loginState != .cannotDirect && (loggingIn || !loginReady) }
+        if step == .login { return loggingIn || !loginReady }
         if step == .water { return waterChecking && waterBlocked == nil }
         return waitingForApartment
     }
@@ -460,7 +453,7 @@ struct OnboardingView: View {
     private func primary() {
         switch step {
         case .login:
-            if loginState == .cannotDirect { openWebLogin() } else { submitLogin() }
+            submitLogin()
         case .dorm:
             if choosingApartment {
                 guard let apartment else { return }
@@ -526,9 +519,9 @@ struct OnboardingView: View {
 
     /// One login with the form's account and password; never retried (failures count towards
     /// the school's lock). Wrong → password cleared and focused; anything the school put in the
-    /// way → the primary button becomes the web login.
+    /// way → said by cause under the fields, and 登录 can be tried again.
     private func submitLogin() {
-        guard step == .login, loginReady, loginState != .loading else { return }
+        guard step == .login, loginReady, loginState.allowsDirectLogin else { return }
         if previewing { advance(); return }
         loginFocus = nil
         loginState = .loading

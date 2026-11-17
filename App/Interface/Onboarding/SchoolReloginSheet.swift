@@ -1,9 +1,9 @@
 import SwiftUI
 import Core
 
-/// 「重新登录学校账号」 from Settings and the top-up page: the first-run login
-/// form in a full-height sheet, account and password first, the school's web page as the
-/// fallback. No mascot, no page dots.
+/// 「重新登录学校账号」 from Settings and the top-up page, and the login of 学校账号与宿舍: the
+/// first-run login form in a full-height sheet, account and password first, the school's web
+/// page as the small link under it. No mascot, no page dots.
 struct SchoolReloginSheet: View {
     @Environment(\.appTheme) private var appTheme
     @EnvironmentObject private var campus: CampusModel
@@ -29,9 +29,8 @@ struct SchoolReloginSheet: View {
     private var keyboardUp: Bool { focus != nil }
     private var ready: Bool { !account.trimmingCharacters(in:.whitespaces).isEmpty && !password.isEmpty }
     private var loggingIn: Bool { state == .loading }
-    /// Primary dimmed until both fields are filled and while logging in; after 「没法直接登录」
-    /// it is the web login and always available.
-    private var dimmed: Bool { state != .cannotDirect && (loggingIn || !ready) }
+    /// Primary dimmed until both fields are filled and while logging in.
+    private var dimmed: Bool { loggingIn || !ready }
     private var passwordSaved: Bool { preview.map { $0.password != nil } ?? campus.passwordSaved }
     private var savedAccount: SchoolAccount? { preview ?? campus.account }
 
@@ -56,7 +55,7 @@ struct SchoolReloginSheet: View {
                             .fixedSize(horizontal:false, vertical:true).padding(.top,8)
                     }
                     SchoolLoginForm(account:$account, password:$password, savePassword:$savePassword,
-                                    state:state, focus:$focus, submit:submit)
+                                    state:state, focus:$focus, submit:submit, webLogin:openWebLogin)
                         .padding(.top,keyboardUp ? 20 : 28)
                 }
                 .padding(.horizontal,24).padding(.top,24)
@@ -116,30 +115,19 @@ struct SchoolReloginSheet: View {
             .buttonStyle(PressScaleStyle())
             .disabled(dimmed)
             .accessibilityIdentifier("reloginPrimary")
-            if !keyboardUp && state != .cannotDirect {
-                Button(SchoolLoginText.webLogin) { openWebLogin() }
-                    .scaledFont(17, .medium).foregroundStyle(Theme.ink2)
-                    .frame(minHeight:44).padding(.top,4)
-                    .disabled(loggingIn)
-                    .accessibilityIdentifier("reloginWeb")
-            }
         }
         .padding(.horizontal,20)
         .padding(.bottom,keyboardUp ? 12 : 4)
     }
 
-    private var primaryTitle: String {
-        if loggingIn { return "正在登录…" }
-        return state == .cannotDirect ? SchoolLoginText.webLogin : "登录"
-    }
+    private var primaryTitle: String { SchoolLoginText.primary(loggingIn:loggingIn) }
 
-    private func primary() {
-        if state == .cannotDirect { openWebLogin() } else { submit() }
-    }
+    private func primary() { submit() }
 
-    /// One login, never retried (failures count towards the school's lock).
+    /// One login, never retried (failures count towards the school's lock). After any failure,
+    /// a lock or a page we don't know included, it can be sent again.
     private func submit() {
-        guard ready, !loggingIn, state != .cannotDirect else { return }
+        guard ready, state.allowsDirectLogin else { return }
         if preview != nil { return }
         focus = nil
         state = .loading

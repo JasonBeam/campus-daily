@@ -2,7 +2,7 @@
 import SwiftUI
 import Core
 
-/// campusdaily://demo/onboard/{1,1-filled,1-saved,1-loading,1-wrong,1-fallback,2,3,3-nolocation,3-missing,3-samename,
+/// campusdaily://demo/onboard/{1,1-filled,1-saved,1-loading,1-wrong,1-locked,1-site,1-unknown,2,3,3-nolocation,3-missing,3-samename,
 /// 3-samename-picked,4,4-checking,4-showering,4-stopped,4-ok,4-miss,4-bt,4-busy,done}
 /// Synthetic account and dorm; the primary button only moves to the next step.
 enum OnboardingDemo {
@@ -47,11 +47,16 @@ enum OnboardingDemo {
         case "4-ok", "4-miss", "4-bt", "4-busy":
             preview.waterOutcome = ["4-ok":.verified, "4-miss":.notFound, "4-bt":.bluetoothOff, "4-busy":.inUse][name]
             return (.water, preview)
-        case "1-filled", "1-loading", "1-wrong", "1-fallback":
+        case "1-filled", "1-loading", "1-wrong", "1-locked", "1-site", "1-unknown", "1-fallback":
+            // The login form's states; 1-locked, 1-site and 1-unknown are the causes a refused
+            // login is said by (1-fallback, the old name, is 1-unknown). Nothing is sent.
             preview.account = "99100991"
             preview.password = name == "1-wrong" ? "" : "demo-password"
             preview.savePassword = name != "1-wrong"
-            preview.loginState = ["1-loading":.loading, "1-wrong":.wrong, "1-fallback":.cannotDirect][name] ?? .idle
+            let states: [String: SchoolLoginState] = ["1-loading":.loading, "1-wrong":.wrong, "1-locked":.blocked(.locked),
+                                                      "1-site":.blocked(.needsSchoolSite), "1-unknown":.blocked(.unknown),
+                                                      "1-fallback":.blocked(.unknown)]
+            preview.loginState = states[name] ?? .idle
             return (.login, preview)
         case "1-saved":
             // A password saved on this phone: the account is filled in and the box ticked.
