@@ -6,7 +6,7 @@ extension SchoolSession {
     /// One login from the form or Settings. Nothing is sent when the lease was lost before a
     /// new device id could be stored (`busy`) or the id could not be stored (`cannotSave`).
     func passwordLoginOnce(account: String, password: String, owning: LeaseOwnership) async throws -> PortalToken {
-        guard let passwordLogin else { throw SchoolLoginFailure.cannotLoginDirectly }
+        guard let passwordLogin else { throw SchoolLoginFailure.cannotLoginDirectly(.unknown) }
         let visitorID: String
         switch loginDeviceID(owning: owning) {
         case .id(let id): visitorID = id

@@ -19,7 +19,7 @@ final class FakePasswordLogin: SchoolPasswordLogin {
     func login(account: String, password: String, visitorID: String) async throws -> PortalToken {
         let result: Result<PortalToken, SchoolLoginFailure> = state.withLock {
             $0.calls.append(Call(account: account, password: password, visitorID: visitorID))
-            return $0.results.isEmpty ? .failure(.cannotLoginDirectly) : $0.results.removeFirst()
+            return $0.results.isEmpty ? .failure(.cannotLoginDirectly(.unknown)) : $0.results.removeFirst()
         }
         if let run = inFlight.withLock({ $0 }) { await run() }
         return try result.get()
@@ -105,7 +105,7 @@ final class SchoolPasswordSignInTests: XCTestCase {
     }
 
     func testRefusedSignInSavesNothingAndIsNotRetried() async throws {
-        for failure in [SchoolLoginFailure.wrongCredentials, .cannotLoginDirectly, .offline] {
+        for failure in [SchoolLoginFailure.wrongCredentials, .cannotLoginDirectly(.locked), .offline] {
             let login = FakePasswordLogin(.failure(failure))
             let h = harness(login)
             do { _ = try await h.session().signIn(account: "99100991", password: "x", savePassword: true, owning: .unchecked); XCTFail() }

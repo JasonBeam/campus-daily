@@ -326,7 +326,7 @@ final class LoginUnderLeaseTests: XCTestCase {
         XCTAssertTrue(SchoolLoginFailure.offline.keepsTypedPassword)
         XCTAssertTrue(SchoolLoginFailure.noAnswer.keepsTypedPassword)
         XCTAssertFalse(SchoolLoginFailure.wrongCredentials.keepsTypedPassword)
-        XCTAssertFalse(SchoolLoginFailure.cannotLoginDirectly.keepsTypedPassword)
+        XCTAssertFalse(SchoolLoginFailure.cannotLoginDirectly(.locked).keepsTypedPassword)
         XCTAssertFalse(SchoolLoginFailure.differentAccount.keepsTypedPassword)
     }
 

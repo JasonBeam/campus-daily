@@ -4,7 +4,8 @@ import CoreTestSupport
 
 /// A refused password, however the school's page says it: an HTTP 401 re-rendered login page,
 /// the error in the page's markup instead of `var errors`, or wording that also mentions a lock
-/// still to come. Only a lock, captcha or check already in force sends people to the web page.
+/// still to come. Only a lock, captcha or check already in force (or a page we don't know) is not
+/// a wrong password, and then the failure says which (`SchoolLoginBlock`).
 final class CASWrongPasswordPageTests: XCTestCase {
     /// The login page as Apereo CAS re-renders it after a refused password, error in its markup.
     static func refusedPage(_ errorMarkup: String) -> Data {
@@ -35,11 +36,11 @@ final class CASWrongPasswordPageTests: XCTestCase {
 
     func testA401PageWithoutAKnownErrorStillGoesToTheWebPage() async throws {
         let empty = try await post(status: 401, body: CASFake.page())
-        XCTAssertEqual(empty, .cannotLoginDirectly)
+        XCTAssertEqual(empty, .cannotLoginDirectly(.unknown))
         let unknown = try await post(status: 401, body: Self.refusedPage(#"<div class="alert alert-danger">出了点问题</div>"#))
-        XCTAssertEqual(unknown, .cannotLoginDirectly)
+        XCTAssertEqual(unknown, .cannotLoginDirectly(.unknown))
         let forbidden = try await post(status: 403, body: Self.refusedPage(#"<div id="msg" class="errors">密码错误</div>"#))
-        XCTAssertEqual(forbidden, .cannotLoginDirectly, "only 200 and 401 are the login page answering")
+        XCTAssertEqual(forbidden, .cannotLoginDirectly(.unknown), "only 200 and 401 are the login page answering")
     }
 
     func testAWrongPasswordInTheMarkupOfA200PageIsAWrongPassword() async throws {
@@ -67,10 +68,14 @@ final class CASWrongPasswordPageTests: XCTestCase {
         }
     }
 
-    func testALockCaptchaOrCheckInForceStillGoesToTheWebPage() {
-        for text in ["账号已锁定", "请输入验证码", "账号或密码错误次数过多，账号已锁定", "登录失败，请输入验证码", "登录失败，账号已冻结",
-                     "认证失败，请使用手机验证", "需要安全验证", "登录过于频繁"] {
-            XCTAssertEqual(CASPage.classify(errors: [text]), .cannotLoginDirectly, text)
+    func testALockCaptchaOrCheckInForceIsNotAWrongPassword() {
+        let cases: [(String, SchoolLoginBlock)] = [
+            ("账号已锁定", .locked), ("请输入验证码", .captcha), ("账号或密码错误次数过多，账号已锁定", .locked),
+            ("登录失败，请输入验证码", .captcha), ("登录失败，账号已冻结", .locked), ("认证失败，请使用手机验证", .mfa),
+            ("需要安全验证", .mfa), ("登录过于频繁", .unknown),
+        ]
+        for (text, block) in cases {
+            XCTAssertEqual(CASPage.classify(errors: [text]), .cannotLoginDirectly(block), text)
         }
     }
 
@@ -78,7 +83,7 @@ final class CASWrongPasswordPageTests: XCTestCase {
         for text in ["用户名或者密码错误", "账号或者密码不正确", "认证失败", "登录失败", "Invalid credentials.", "Bad credentials"] {
             XCTAssertEqual(CASPage.classify(errors: [text]), .wrongCredentials, text)
         }
-        XCTAssertEqual(CASPage.classify(errors: ["系统维护中"]), .cannotLoginDirectly)
-        XCTAssertEqual(CASPage.classify(errors: []), .cannotLoginDirectly)
+        XCTAssertEqual(CASPage.classify(errors: ["系统维护中"]), .cannotLoginDirectly(.unknown))
+        XCTAssertEqual(CASPage.classify(errors: []), .cannotLoginDirectly(.unknown))
     }
 }

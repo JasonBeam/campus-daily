@@ -115,15 +115,18 @@ final class CASLoginClientTests: XCTestCase {
         XCTAssertEqual(server.requests(path: "/cas/login").filter { $0.method == "POST" }.count, 1)
     }
 
-    func testCaptchaLockAndVerificationSendPeopleToTheWebPage() async throws {
-        for errors in [#"["请输入验证码"]"#, #"["账号或密码错误次数过多，账号已锁定"]"#, #"[{"message":"需要安全验证"}]"#,
-                       #"["出了点问题"]"#, "[]"] {
+    func testCaptchaLockAndVerificationSayWhatIsInTheWay() async throws {
+        let cases: [(String, SchoolLoginBlock)] = [
+            (#"["请输入验证码"]"#, .captcha), (#"["账号或密码错误次数过多，账号已锁定"]"#, .locked),
+            (#"[{"message":"需要安全验证"}]"#, .mfa), (#"["出了点问题"]"#, .unknown), ("[]", .unknown),
+        ]
+        for (errors, block) in cases {
             let s = StubServer()
             let (_, pem) = try CASFake.keyPair()
             CASFake.serveForm(s, pem: pem)
             s.respond("POST", CASFake.loginURL, headers: ["Content-Type": "text/html"], body: CASFake.page(errors: errors))
             do { _ = try await CASLoginClient(http: s.makeClient()).login(account: "99100991", password: "x", visitorID: CASFake.visitor); XCTFail(errors) }
-            catch { XCTAssertEqual(error as? SchoolLoginFailure, .cannotLoginDirectly, errors) }
+            catch { XCTAssertEqual(error as? SchoolLoginFailure, .cannotLoginDirectly(block), errors) }
         }
     }
 
@@ -132,21 +135,21 @@ final class CASLoginClientTests: XCTestCase {
         CASFake.serveForm(server, pem: pem)
         server.respond("POST", CASFake.loginURL, headers: ["Content-Type": "text/html"], body: CASFake.page())
         let result = await login()
-        XCTAssertEqual(failure(result), .cannotLoginDirectly)
+        XCTAssertEqual(failure(result), .cannotLoginDirectly(.unknown))
     }
 
     func testMissingExecutionStopsBeforeSendingThePassword() async throws {
         let (_, pem) = try CASFake.keyPair()
         CASFake.serveForm(server, page: CASFake.page(execution: nil), pem: pem)
         let result = await login()
-        XCTAssertEqual(failure(result), .cannotLoginDirectly)
+        XCTAssertEqual(failure(result), .cannotLoginDirectly(.unknown))
         XCTAssertTrue(server.requests.allSatisfy { $0.method == "GET" })
     }
 
     func testUnreadableKeyOrTicketCannotLoginDirectly() async throws {
         CASFake.serveForm(server, pem: Data("-----BEGIN PUBLIC KEY-----\nAAAA\n-----END PUBLIC KEY-----".utf8))
         let result = await login()
-        XCTAssertEqual(failure(result), .cannotLoginDirectly)
+        XCTAssertEqual(failure(result), .cannotLoginDirectly(.unknown))
         XCTAssertTrue(server.requests.allSatisfy { $0.method == "GET" })
 
         let other = StubServer()
@@ -154,7 +157,7 @@ final class CASLoginClientTests: XCTestCase {
         CASFake.serveForm(other, pem: pem)
         other.respond("POST", CASFake.loginURL, status: 302, headers: ["Location": "https://portal.gdbtu.edu.cn/?ticket=not-a-jwt"], body: Data())
         do { _ = try await CASLoginClient(http: other.makeClient()).login(account: "a", password: "b", visitorID: CASFake.visitor); XCTFail() }
-        catch { XCTAssertEqual(error as? SchoolLoginFailure, .cannotLoginDirectly) }
+        catch { XCTAssertEqual(error as? SchoolLoginFailure, .cannotLoginDirectly(.unknown)) }
     }
 
     func testNoNetworkIsOffline() async {

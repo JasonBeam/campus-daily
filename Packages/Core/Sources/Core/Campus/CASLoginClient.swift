@@ -6,9 +6,10 @@ import Security
 public enum SchoolLoginFailure: Error, Sendable, Equatable {
     /// The school said the account or password is wrong.
     case wrongCredentials
-    /// Anything else the school put in the way (captcha, lock, extra verification, a page we
-    /// don't recognise). The user signs in on the school's own web page instead.
-    case cannotLoginDirectly
+    /// Anything else the school put in the way, and what it was as far as the reply shows: a
+    /// lock (wait it out), a captcha, extra check or password change (the school's site clears
+    /// it), or a page we don't recognise.
+    case cannotLoginDirectly(SchoolLoginBlock)
     /// No network, or a school server error (5xx), before the password was sent: nothing was tried.
     case offline
     /// The password was sent and no answer came back (timeout, lost connection, cancelled, a 5xx).
@@ -90,14 +91,14 @@ public struct CASLoginClient: SchoolPasswordLogin {
                                               bodyLimit: HTTPRequest.largeBodyLimit, logName: "casLoginPage"), jar: &jar)
         if (500...599).contains(page.status) { throw SchoolLoginFailure.offline }
         guard page.status == 200, let execution = CASPage.execution(in: page.body) else {
-            throw SchoolLoginFailure.cannotLoginDirectly
+            throw SchoolLoginFailure.cannotLoginDirectly(.unknown)
         }
 
         let keyURL = URL(string: "https://" + SchoolEndpoints.casHost + "/cas/jwt/publicKey")!
         let key = try await send(HTTPRequest(service: .cas, method: .get, url: keyURL, logName: "casPublicKey"), jar: &jar)
         if (500...599).contains(key.status) { throw SchoolLoginFailure.offline }
         guard key.status == 200, let encrypted = CASPassword.encrypt(password, publicKeyPEM: key.body) else {
-            throw SchoolLoginFailure.cannotLoginDirectly
+            throw SchoolLoginFailure.cannotLoginDirectly(.unknown)
         }
 
         let fields: [(String, String)] = [
@@ -118,9 +119,9 @@ public struct CASLoginClient: SchoolPasswordLogin {
                   location.scheme == "https", location.host?.lowercased() == SchoolEndpoints.portalHost,
                   let ticket = CASTicket.extract(from: location),
                   let token = CASTicketClaims.portalToken(fromTicket: ticket) else {
-                throw SchoolLoginFailure.cannotLoginDirectly
+                throw SchoolLoginFailure.cannotLoginDirectly(.unknown)
             }
-            if let expiresAt = token.expiresAt, expiresAt <= now() { throw SchoolLoginFailure.cannotLoginDirectly }
+            if let expiresAt = token.expiresAt, expiresAt <= now() { throw SchoolLoginFailure.cannotLoginDirectly(.unknown) }
             return token
         case 200, 401:
             // Apereo CAS re-renders the login page with 401 after a refused password.
@@ -129,12 +130,12 @@ public struct CASLoginClient: SchoolPasswordLogin {
             // The school may have counted the attempt before its server failed.
             throw SchoolLoginFailure.noAnswer
         default:
-            throw SchoolLoginFailure.cannotLoginDirectly
+            throw SchoolLoginFailure.cannotLoginDirectly(.unknown)
         }
     }
 
     /// One request with this login's cookies; transport failures become `offline` or
-    /// `cannotLoginDirectly`, never a retry. Once the password may have left the phone
+    /// `cannotLoginDirectly(.unknown)`, never a retry. Once the password may have left the phone
     /// (`carriesPassword`), any failure to hear back, cancellation included, is `noAnswer`.
     private func send(_ request: HTTPRequest, jar: inout CASCookieJar, carriesPassword: Bool = false) async throws -> HTTPResponse {
         var r = request
@@ -146,7 +147,7 @@ public struct CASLoginClient: SchoolPasswordLogin {
         catch let e as ServiceError {
             switch e {
             case .offline, .timedOut, .tls: throw SchoolLoginFailure.offline
-            default: throw SchoolLoginFailure.cannotLoginDirectly
+            default: throw SchoolLoginFailure.cannotLoginDirectly(.unknown)
             }
         } catch { throw SchoolLoginFailure.offline }
         jar.take(response, from: request.url)
@@ -299,13 +300,36 @@ enum CASPage {
     static let vagueWrongWords = ["认证失败", "登录失败"]
 
     /// A lock, captcha or check in force wins; then wrong-password wording (even next to a lock
-    /// still to come); anything else mentioned goes to the school's page; a bare 认证失败 or
-    /// 登录失败 is a wrong password.
+    /// still to come); anything else mentioned is in the way (`block(errors:)` says what); a bare
+    /// 认证失败 or 登录失败 is a wrong password.
     static func classify(errors: [String]?) -> SchoolLoginFailure {
         switch reason(errors: errors) {
         case .casWrong, .casVagueWrong: return .wrongCredentials
-        default: return .cannotLoginDirectly
+        default: return .cannotLoginDirectly(block(errors: errors))
         }
+    }
+
+    /// A lock (waiting is the only way past it, the school's site included).
+    static let lockWords = ["锁定", "冻结", "次数过多", "is locked", "has been locked", "account locked"]
+    /// A password to change or an account to activate on the school's site.
+    static let passwordChangeWords = ["修改密码", "更改密码", "重置密码", "密码已过期", "密码过期", "弱密码", "初始密码", "激活",
+                                      "change your password", "password expired"]
+    /// An extra check: a code by SMS, phone or email, a security check, a second factor.
+    static let mfaWords = ["二次", "安全验证", "短信", "手机", "邮箱", "多因素", "动态码", "mfa"]
+    /// A captcha (after the extra checks: 短信验证码 is one of those).
+    static let captchaWords = ["验证码", "captcha"]
+
+    /// What is in the way of a refusal that is not a wrong password, first match wins: a lock,
+    /// a password change, an extra check, a captcha; anything else (频繁, 异常, no error at all)
+    /// is a page we don't recognise.
+    static func block(errors: [String]?) -> SchoolLoginBlock {
+        let text = (errors ?? []).joined(separator: " ")
+        func has(_ words: [String]) -> Bool { words.contains { text.localizedCaseInsensitiveContains($0) } }
+        if has(lockWords) { return .locked }
+        if has(passwordChangeWords) { return .passwordChange }
+        if has(mfaWords) { return .mfa }
+        if has(captchaWords) { return .captcha }
+        return .unknown
     }
 
     /// Which rule of `classify` the errors met, as the request log's word for it.
