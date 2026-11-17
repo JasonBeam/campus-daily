@@ -15,6 +15,8 @@ struct ClearSetupDormPage: View {
     /// Automatic binding already needed the dorm screen once; the next 「就是这间」 just confirms
     /// (hot water can be finished later from 设置 › 热水).
     @State private var bindTried = false
+    /// Why hot water was not bound (the account read failed); 设置 › 热水 binds it later.
+    @State private var waterNote: String?
     @State private var dormPicker = false
     /// Same-name apartment picked (candidate id); confirmed by 「就是这间」.
     @State private var apartment: String?
@@ -55,8 +57,8 @@ struct ClearSetupDormPage: View {
         ClearSetupStep(navTitle:SetupChecklist.title(.dorm), heading:heading, message:message) {
             if !choosingApartment, let dorm { dormCard(dorm) }
             if choosingApartment { apartmentList }
-            if let issue = dormFlow.issue {
-                Label { ClearNoticeText(issue).fixedSize(horizontal:false, vertical:true) } icon: { Image(systemName:"exclamationmark.circle") }
+            if let note = waterNote ?? dormFlow.issue {
+                Label { ClearNoticeText(note).fixedSize(horizontal:false, vertical:true) } icon: { Image(systemName:"exclamationmark.circle") }
                     .font(.footnote).foregroundStyle(Theme.notice)
             }
         } buttons: {
@@ -150,10 +152,26 @@ struct ClearSetupDormPage: View {
         Task {
             let result = await dormFlow.autoBind(campus:campus, water:water)
             bindingWater = false
-            switch result {
-            case .bound, .unavailable: confirm()
-            case .needsChoice: bindTried = true; openDormPicker()
+            switch Self.next(after:result) {
+            case .confirm: confirm()
+            case .stay(let note):
+                // The dorm is confirmed; the next 「就是这间」 goes back to the checklist.
+                if let dorm { confirmedDorm = dorm }
+                bindTried = true; waterNote = note
+            case .choose: bindTried = true; openDormPicker()
             }
+        }
+    }
+
+    /// After 「就是这间」's binding: back to the checklist, here with why hot water was not
+    /// bound (read on this page, not lost behind it), or the dorm screen for a real choice.
+    enum BindNext: Equatable { case confirm, stay(note: String), choose }
+
+    static func next(after result: DormSetupFlow.AutoBind) -> BindNext {
+        switch result {
+        case .bound, .unavailable: return .confirm
+        case .failed(let reason): return .stay(note:reason)
+        case .needsChoice: return .choose
         }
     }
 

@@ -69,6 +69,8 @@ struct OnboardingView: View {
     @State private var dormPicker = false
     @State private var washer = false
     @State private var issue: String?
+    /// Why hot water was not bound on the dorm step, shown on the steps after it.
+    @State private var waterNote: String?
     /// Same-name apartment picked on the dorm step (candidate id); confirmed by 「就是这间」.
     @State private var apartment: String?
     /// The meter question last asked on the dorm step and the row picked (kept across the step).
@@ -238,6 +240,11 @@ struct OnboardingView: View {
             if let issue {
                 Text(issue).scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.redText)
                     .fixedSize(horizontal:false, vertical:true).padding(.top,16)
+            }
+            if let waterNote, step.rawValue > Step.dorm.rawValue {
+                Text(waterNote).scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.notice)
+                    .fixedSize(horizontal:false, vertical:true).padding(.top,16)
+                    .accessibilityIdentifier("waterSkippedNote")
             }
         }
         .padding(.horizontal,24)
@@ -486,10 +493,25 @@ struct OnboardingView: View {
         Task {
             let result = await dormFlow.autoBind(campus:campus, water:water)
             bindingWater = false
-            switch result {
-            case .bound, .unavailable: advance()
-            case .needsChoice: bindTried = true; openDormPicker()
+            switch Self.next(after:result) {
+            case .advance(let note):
+                advance()
+                // Said on the next page (the water step is skipped without a controller).
+                waterNote = note
+            case .choose: bindTried = true; openDormPicker()
             }
+        }
+    }
+
+    /// After 「就是这间」's binding: on with the guide (with why hot water was skipped), or the
+    /// dorm screen for a real choice.
+    enum BindNext: Equatable { case advance(note: String?), choose }
+
+    static func next(after result: DormSetupFlow.AutoBind) -> BindNext {
+        switch result {
+        case .bound, .unavailable: return .advance(note:nil)
+        case .failed(let reason): return .advance(note:reason)
+        case .needsChoice: return .choose
         }
     }
 

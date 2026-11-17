@@ -245,8 +245,18 @@ struct CampusOnboardingView: View {
         case bound
         /// Hot water isn't available for this account/build: nothing to bind.
         case unavailable
-        /// Needs the user: several rooms/controllers, nothing matched, or a read failed (`issue`).
+        /// Needs the user: several rooms/controllers, or nothing matched.
         case needsChoice
+        /// The hot-water account could not be read (the reason): the dorm screen can't fix that,
+        /// so nothing is chosen there; hot water is bound later from 设置 › 热水.
+        case failed(String)
+    }
+
+    /// What the identity read alone decides: no platform, or a read that failed; nil when the
+    /// rooms and controllers decide.
+    static func readOutcome(identityRead: Bool, issue: String?) -> AutoBind? {
+        guard !identityRead, let issue else { return nil }
+        return issue == ShowerModel.platformMissingText ? .unavailable : .failed(issue)
     }
 
     /// First-run guide: the user confirmed the dorm read from the school account. Bind its
@@ -255,7 +265,7 @@ struct CampusOnboardingView: View {
         if water.configured { return .bound }
         guard campus.configured else { return .needsChoice }
         await prepare(campus:campus, water:water)
-        if identity == nil && issue == ShowerModel.platformMissingText { return .unavailable }
+        if let outcome = Self.readOutcome(identityRead:identity != nil, issue:issue) { return outcome }
         guard autoMatched, machines.count == 1, let machine = machines.first else { return .needsChoice }
         await save(machine, water:water)
         return saved ? .bound : .needsChoice
