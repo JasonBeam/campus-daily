@@ -166,7 +166,6 @@ extension ClearRootView {
     func setupRow(_ step: OnboardingView.Step) -> ClearSetupRow? {
         switch step {
         case .login: .account
-        case .washer: .laundry
         case .dorm: .dorm
         case .water: .controller
         case .done: nil

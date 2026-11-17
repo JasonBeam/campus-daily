@@ -19,6 +19,20 @@ final class SchoolLaundryPreferenceTests: XCTestCase {
         XCTAssertEqual(storage.values[SchoolLaundryPreference.key] as? Bool, false)
     }
 
+    /// Setup no longer asks: a fresh install has laundry on, and whatever an earlier first-run
+    /// answer or the switch stored is read back unchanged (nothing is migrated).
+    func testFreshInstallIsOnAndAStoredAnswerIsKept() {
+        let fresh = MemoryPreferences()
+        XCTAssertTrue(SchoolLaundryPreference(storage:fresh).isOn)
+        XCTAssertTrue(fresh.values.isEmpty, "reading writes nothing")
+        for answer in [true, false] {
+            let storage = MemoryPreferences()
+            storage.values[SchoolLaundryPreference.key] = answer
+            XCTAssertEqual(SchoolLaundryPreference(storage:storage).isOn, answer)
+            XCTAssertEqual(storage.values[SchoolLaundryPreference.key] as? Bool, answer, "kept as stored")
+        }
+    }
+
     func testSwitchRoundTripsAndOnlyTouchesItsOwnKey() {
         let storage = MemoryPreferences()
         storage.values["xrc.laundry.machines"] = Data([1, 2, 3])
@@ -68,10 +82,6 @@ final class SchoolLaundryPreferenceTests: XCTestCase {
         XCTAssertEqual(SchoolLaundryPreference.footer(isOn:true, locked:false), "学校洗衣机关掉后，首页和提醒里都不显示洗衣。")
         XCTAssertEqual(SchoolLaundryPreference.footer(isOn:false, locked:false), "打开后就能扫码洗衣。")
         XCTAssertEqual(SchoolLaundryPreference.footer(isOn:true, locked:true), "洗衣还有一笔没处理完，处理完再关。")
-        XCTAssertEqual(SchoolLaundryPreference.Onboarding.title, "宿舍用学校的洗衣机吗？")
-        XCTAssertEqual(SchoolLaundryPreference.Onboarding.yes, "用，接着设置")
-        XCTAssertEqual(SchoolLaundryPreference.Onboarding.no, "不用")
-        XCTAssertEqual(SchoolLaundryPreference.Onboarding.note, "以后可以在设置里改。")
         XCTAssertEqual(PreferenceKey.schoolLaundry, "xrc.laundry.school")
     }
 }

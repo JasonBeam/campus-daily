@@ -39,7 +39,7 @@ enum LaundryLoginRefusal: Error { case otherAccount }
     @Published private(set) var sessionExpired = false
     /// The last 退出 U净 didn't go through: said under the button until one does.
     @Published private(set) var signOutFailed = false
-    /// 「学校洗衣机」 (Settings / first-run question). Off: laundry hidden everywhere, no reads,
+    /// 「学校洗衣机」 (the Settings switch; on unless turned off). Off: laundry hidden everywhere, no reads,
     /// no Live Activity, no reminder; the U净 login and saved machines stay.
     @Published private(set) var schoolEnabled: Bool
     @Published private(set) var lastOrder: LaundryLastOrder?

@@ -1,13 +1,13 @@
 import XCTest
 import Core
 
-/// 清爽's 首次配置 checklist: three rows (学校账号, 选择宿舍与水控, 洗衣机（可选）), the count out of
-/// the two that are needed, which step a row or the button opens, and what each says.
+/// 清爽's 首次配置 checklist: two rows (学校账号, 选择宿舍与水控; laundry is not asked), the count out
+/// of those two, which step a row or the button opens, and what each says.
 final class SetupChecklistTests: XCTestCase {
     private let fresh = SetupChecklist(signedIn:false, dorm:nil, laundry:.open, controllerBound:false, controllerChecked:false)
 
-    func testNothingDoneShowsThreeRowsAndCountsTwo() {
-        XCTAssertEqual(fresh.rows, [.account, .dorm, .laundry])
+    func testNothingDoneShowsTwoRowsAndCountsTwo() {
+        XCTAssertEqual(fresh.rows, [.account, .dorm])
         XCTAssertEqual(fresh.doneCount, 0)
         XCTAssertEqual(fresh.progress, "已完成 0 / 2")
         XCTAssertEqual(fresh.next, .account)
@@ -27,8 +27,9 @@ final class SetupChecklistTests: XCTestCase {
         XCTAssertEqual(list.fraction, 0.5)
     }
 
-    /// The laundry row is optional: it never holds the count back.
-    func testLaundryIsOptional() {
+    /// No laundry row: the washers never hold the count back, and only the button still says
+    /// whether one is saved.
+    func testLaundryIsNotAsked() {
         let list = SetupChecklist(signedIn:true, dorm:"3 栋 108", laundry:.open, controllerBound:true, controllerChecked:false)
         XCTAssertTrue(list.allDone)
         XCTAssertNil(list.next)
@@ -36,29 +37,25 @@ final class SetupChecklistTests: XCTestCase {
         XCTAssertEqual(list.headline, "都准备好了")
         XCTAssertEqual(list.hint, "宿舍已保存，可以开始使用；洗衣机按需添加。")
         XCTAssertEqual(list.button, "完成设置，暂不绑定洗衣机")
-        XCTAssertFalse(list.isDone(.laundry))
+        XCTAssertEqual(list.rows, [.account, .dorm])
 
         var saved = list
         saved.laundry = .saved(2)
         XCTAssertEqual(saved.button, "完成设置")
-        XCTAssertTrue(saved.isDone(.laundry))
+        var notUsed = list
+        notUsed.laundry = .notUsed
+        XCTAssertEqual(notUsed.button, "完成设置")
     }
 
     func testUndoneDetails() {
         XCTAssertEqual(fresh.detail(.account), "登录后自动同步校园卡余额")
         XCTAssertEqual(fresh.detail(.dorm), "选择楼栋房间，确认自己的设备")
-        XCTAssertEqual(fresh.detail(.laundry), "可以跳过，需要时再登录 U净并扫码添加")
     }
 
     func testDoneDetails() {
         let all = SetupChecklist(signedIn:true, dorm:"3 栋 108", laundry:.saved(2), controllerBound:true, controllerChecked:true)
         XCTAssertEqual(all.detail(.account), "已登录，可查询校园卡余额")
         XCTAssertEqual(all.detail(.dorm), "3栋108", "the room as one word")
-        XCTAssertEqual(all.detail(.laundry), "已保存 2 台机器")
-        var notUsed = all
-        notUsed.laundry = .notUsed
-        XCTAssertEqual(notUsed.detail(.laundry), "不用学校的洗衣机")
-        XCTAssertTrue(notUsed.isDone(.laundry), "「不用」 is an answer")
     }
 
     /// Before signing in, the dorm row opens the account step; the dorm step is followed by the
@@ -66,7 +63,6 @@ final class SetupChecklistTests: XCTestCase {
     func testStepsARowOpens() {
         XCTAssertEqual(fresh.step(for:.dorm), .account)
         XCTAssertEqual(fresh.step(for:.account), .account)
-        XCTAssertEqual(fresh.step(for:.laundry), .laundry)
         let signedIn = SetupChecklist(signedIn:true, dorm:nil, laundry:.open, controllerBound:false, controllerChecked:false)
         XCTAssertEqual(signedIn.step(for:.dorm), .dorm)
 
@@ -110,14 +106,13 @@ final class SetupChecklistTests: XCTestCase {
         let list = SetupChecklist(signedIn:true, dorm:dormSet ? "3 栋 108" : nil, laundry:.notUsed,
                                   controllerBound:false, controllerChecked:false)
         XCTAssertTrue(list.allDone)
-        XCTAssertNil(HomeSetupCard.detail(signedIn:true, dormSet:dormSet, laundryEnabled:false, laundryBound:false))
+        XCTAssertNil(HomeSetupCard.detail(signedIn:true, dormSet:dormSet))
     }
 
     func testCopy() {
         XCTAssertEqual(SetupChecklist.navTitle, "首次配置")
         XCTAssertEqual(SetupChecklist.title(.account), "学校账号")
         XCTAssertEqual(SetupChecklist.title(.dorm), "选择宿舍与水控")
-        XCTAssertEqual(SetupChecklist.title(.laundry), "洗衣机（可选）")
         XCTAssertEqual(SetupChecklist.title(.controller), "水控")
         XCTAssertEqual(SetupChecklist.later, "稍后设置")
         XCTAssertEqual(SetupChecklist.footnote, "这里只读取和保存配置，不会出水、下单或付款。")

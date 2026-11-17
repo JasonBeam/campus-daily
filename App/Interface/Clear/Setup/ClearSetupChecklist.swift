@@ -90,6 +90,7 @@ struct ClearSetupChecklist: View {
                 .fixedSize(horizontal:false, vertical:true)
             ProgressView(value:list.fraction).tint(Theme.accentText)
                 .accessibilityLabel("首次设置进度")
+                // TODO(copy): 「洗衣机为可选项」 dates from the laundry row; recheck now that setup no longer asks.
                 .accessibilityValue("已完成 \(list.doneCount) 项，共两项；洗衣机为可选项")
         }
     }
@@ -137,23 +138,15 @@ struct ClearSetupChecklist: View {
         switch item {
         case .account: ClearSetupAccountPage(preview:preview, done:back)
         case .dorm: ClearSetupDormPage(preview:preview, done:afterDorm)
-        case .laundry:
-            if preview != nil { WasherSetupView(onDone:back, preview:demoWashers) }
-            else { WasherSetupView(onDone:back, laundrySwitch:laundrySwitch) }
         case .controller: ClearSetupControllerPage(preview:preview, done:back)
         }
         #else
         switch item {
         case .account: ClearSetupAccountPage(done:back)
         case .dorm: ClearSetupDormPage(done:afterDorm)
-        case .laundry: WasherSetupView(onDone:back, laundrySwitch:laundrySwitch)
         case .controller: ClearSetupControllerPage(done:back)
         }
         #endif
-    }
-
-    private var laundrySwitch: SchoolLaundrySwitch {
-        SchoolLaundrySwitch(laundry:laundry, preview:nil, previewOn:.constant(nil))
     }
 
     private var previewing: Bool {
@@ -200,8 +193,5 @@ struct ClearSetupChecklist: View {
         guard inSheet, let values = navigator.setup?.preview else { return nil }
         return ClearSetupDemo(values:values, start:start)
     }
-
-    /// The demo's 洗衣机 step: two machines saved.
-    private var demoWashers: WasherSetupDemo { .twoSaved }
     #endif
 }

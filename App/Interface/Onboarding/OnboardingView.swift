@@ -1,12 +1,16 @@
 import SwiftUI
 import Core
 
-/// First-run guide, presented as a full-screen cover: 登录 → 学校洗衣机 → 宿舍 → 水控 → 好了.
+/// First-run guide, presented as a full-screen cover: 登录 → 宿舍 → 水控 → 好了. Laundry is not
+/// asked: it is on unless the 学校洗衣机 switch in 设置 says otherwise.
 struct OnboardingView: View {
     @Environment(\.appTheme) private var appTheme
-    enum Step: Int, CaseIterable { case login, washer, dorm, water, done }
+    enum Step: Int, CaseIterable { case login, dorm, water, done }
     /// Steps with a page dot (好了 has none).
-    static let dotted = 4
+    static let dotted = 3
+
+    /// VoiceOver for the page dots.
+    static func dotsLabel(_ step: Step) -> String { "第 \(step.rawValue + 1) 步，共 \(dotted) 步" }
 
     #if DEBUG
     /// DEBUG demo values (`App/Demo`); when set, no real login or picker is opened.
@@ -51,7 +55,6 @@ struct OnboardingView: View {
     #endif
 
     @EnvironmentObject private var campus: CampusModel
-    @EnvironmentObject private var laundry: LaundryModel
     @EnvironmentObject private var water: ShowerModel
     /// 「先看看示例」: the root closes this guide over the sample.
     @Environment(SampleMode.self) private var sample
@@ -65,9 +68,7 @@ struct OnboardingView: View {
     @Environment(\.dynamicTypeSize) private var typeSize
     @State private var step: Step
     @State private var login = false
-    @State private var ujing = false
     @State private var dormPicker = false
-    @State private var washer = false
     @State private var issue: String?
     /// Why hot water was not bound, said under 「你住哪间」 until the next tap goes on.
     @State private var waterNote: String?
@@ -101,7 +102,6 @@ struct OnboardingView: View {
     private var savedAccount: SchoolAccount? { previewing ? preview?.saved : campus.account }
     private var dorm: String? { previewing ? preview?.dorm : Theme.dorm(campus.room) }
     private var dormLocation: String? { previewing ? preview?.dormLocation : campus.profile?.directoryDormLocation }
-    private var laundryConnected: Bool { preview?.laundryConnected ?? laundry.accountConnected }
     private var waterChecking: Bool { preview?.waterChecking ?? water.inspecting }
     /// A shower is open or waits for its check: no check now, the step can be skipped.
     private var waterBlocked: String? { previewing ? preview?.waterBlocked : water.inspectionBlockedText }
@@ -115,7 +115,6 @@ struct OnboardingView: View {
     private var savedAccount: SchoolAccount? { campus.account }
     private var dorm: String? { Theme.dorm(campus.room) }
     private var dormLocation: String? { campus.profile?.directoryDormLocation }
-    private var laundryConnected: Bool { laundry.accountConnected }
     private var waterChecking: Bool { water.inspecting }
     private var waterBlocked: String? { water.inspectionBlockedText }
     private var lastInspection: ShowerModel.InspectionOutcome? { water.inspectionOutcome }
@@ -146,7 +145,6 @@ struct OnboardingView: View {
             }
             .toolbar(.hidden, for:.navigationBar)
             .navigationDestination(isPresented:$dormPicker) { CampusOnboardingView() }
-            .navigationDestination(isPresented:$washer) { WasherSetupView(onDone:{ washer = false }) }
             .navigationDestination(isPresented:$meterPage) { CampusPowerSetupView(start:meterHalted) }
         }
         .tint(Theme.accentText)
@@ -166,7 +164,6 @@ struct OnboardingView: View {
                 }
             }
         }
-        .sheet(isPresented:$ujing) { UjingLoginView() }
         .onAppear {
             // The saved account is filled in, and its saved password stays saved on a new
             // sign-in unless the box is unticked.
@@ -178,10 +175,6 @@ struct OnboardingView: View {
         .onChange(of:account) { old, new in
             // Another account typed in: somebody else's password is not kept unless they tick it.
             savePassword = SchoolAccount.savePassword(savePassword, afterEditFrom:old, to:new, saved:savedAccount)
-        }
-        // Every save, the same machine again included, or a switch finishes the step.
-        .onChange(of:laundry.machineChoices) { old, new in
-            if !previewing, step == .washer, WasherSetupExit.finishesSetupStep(savedAt:new, lastSeen:old) { advance() }
         }
     }
 
@@ -260,7 +253,6 @@ struct OnboardingView: View {
         switch step {
         case .login: Mascot(size:52)
         case .done: Mascot(size:76)
-        case .washer: symbol("washer.fill")
         case .dorm: symbol("house.fill")
         case .water: symbol("drop.fill")
         }
@@ -274,7 +266,6 @@ struct OnboardingView: View {
     private var title: String {
         switch step {
         case .login: return "登录学校账号"
-        case .washer: return SchoolLaundryPreference.Onboarding.title
         case .dorm where choosingApartment: return SameNameText.titleLead + SameNameText.titleAccent + SameNameText.titleTail
         case .dorm: return "你住哪间？"
         case .water: return "核对宿舍的水控"
@@ -285,7 +276,6 @@ struct OnboardingView: View {
     private var bodyText: String? {
         switch step {
         case .login: return "用你在学校官网登录时的账号和密码。"
-        case .washer: return SchoolLaundryPreference.Onboarding.subtitle
         case .dorm where choosingApartment: return SameNameText.hint(apartmentChoices)
         case .dorm: return dorm != nil ? "电量和热水都按这间宿舍来。" : "没读到你的宿舍，手动选一下。"
         case .water: return "站在水控旁边，打开蓝牙。只读编号，不会开水。"
@@ -347,7 +337,7 @@ struct OnboardingView: View {
                         Circle().fill(index == step.rawValue ? Theme.ink : Theme.ink3).frame(width:7, height:7)
                     }
                 }
-                .accessibilityElement().accessibilityLabel("第 \(step.rawValue + 1) 步，共 \(Self.dotted) 步")
+                .accessibilityElement().accessibilityLabel(Self.dotsLabel(step))
                 .padding(.bottom,18)
             }
             Button(action:primary) {
@@ -374,14 +364,6 @@ struct OnboardingView: View {
             ZStack(alignment:.top) {
                 if step == .dorm && dorm != nil {
                     secondary(choosingApartment ? "都不是，换一间" : "换一间") { openDormPicker() }
-                }
-                if step == .washer {
-                    VStack(spacing:0) {
-                        secondary(SchoolLaundryPreference.Onboarding.no, action:skipLaundry)
-                        Text(SchoolLaundryPreference.Onboarding.note)
-                            .scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
-                            .multilineTextAlignment(.center).fixedSize(horizontal:false, vertical:true)
-                    }
                 }
                 if step == .water && waterOutcome != .verified && waterBlocked == nil {
                     secondary("以后再核对") { advance() }
@@ -421,7 +403,6 @@ struct OnboardingView: View {
         case .login:
             return SchoolLoginText.primary(loggingIn:loggingIn)
         case .dorm: return bindingWater ? "正在找宿舍的水控…" : dorm != nil ? "就是这间" : "选宿舍"
-        case .washer: return SchoolLaundryPreference.Onboarding.yes
         case .water:
             if waterChecking { return "正在核对…" }
             if waterBlocked != nil { return "先跳过" }
@@ -463,12 +444,6 @@ struct OnboardingView: View {
                 guard let candidate = campus.powerChoices.first(where:{ $0.id == apartment }) else { self.apartment = nil; return }
                 Task { if await campus.choosePower(candidate) { bindWaterThenAdvance() } }
             } else if dorm != nil { bindWaterThenAdvance() } else { openDormPicker() }
-        case .washer:
-            // 用，接着设置: the U净 login / scan flow as before.
-            if previewing { advance(); return }
-            laundry.setSchoolEnabled(true)
-            if laundryConnected { washer = true }
-            else { ujing = true }
         case .water:
             if waterOutcome == .verified || waterBlocked != nil || previewing { advance(); return }
             waterChecked = true
@@ -510,12 +485,6 @@ struct OnboardingView: View {
 
     /// The hot-water note is said under 「你住哪间」 only.
     static func showsWaterNote(on step: Step) -> Bool { step == .dorm }
-
-    /// 不用: laundry hidden everywhere (changeable in 设置); on to the dorm.
-    private func skipLaundry() {
-        if !previewing { laundry.setSchoolEnabled(false) }
-        advance()
-    }
 
     /// One login with the form's account and password; never retried (failures count towards
     /// the school's lock). Wrong → password cleared and focused; anything the school put in the

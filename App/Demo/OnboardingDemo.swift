@@ -2,7 +2,7 @@
 import SwiftUI
 import Core
 
-/// campusdaily://demo/onboard/{1,1-filled,1-saved,1-loading,1-wrong,1-locked,1-site,1-unknown,2,3,3-nolocation,3-missing,3-samename,
+/// campusdaily://demo/onboard/{1,1-filled,1-saved,1-loading,1-wrong,1-locked,1-site,1-unknown,3,3-nolocation,3-missing,3-samename,
 /// 3-samename-picked,4,4-checking,4-showering,4-stopped,4-ok,4-miss,4-bt,4-busy,done}
 /// Synthetic account and dorm; the primary button only moves to the next step.
 enum OnboardingDemo {
@@ -12,7 +12,6 @@ enum OnboardingDemo {
         var preview = OnboardingView.Preview(dorm:"3 栋 108")
         let name = parts.count > 1 ? parts[1] : "1"
         switch name {
-        case "2": return (.washer, preview)
         case "3": preview.dormLocation = "北校区 · 东苑公寓 · 3 栋 · 108"; return (.dorm, preview)
         case "3-nolocation": return (.dorm, preview)
         case "3-missing": preview.dorm = nil; return (.dorm, preview)

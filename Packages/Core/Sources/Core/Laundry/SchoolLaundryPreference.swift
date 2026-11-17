@@ -4,7 +4,8 @@ import Foundation
 /// (home, reminders, Live Activity, quick setup) but keeps the U净 login and saved machines, so
 /// turning it back on restores everything at once.
 ///
-/// Default on; only an explicit 「不用」 (first-run question or the settings switch) turns it off.
+/// Default on; only the settings switch turns it off (first-run setup no longer asks). An answer
+/// stored by an earlier build's first-run question is read as it is.
 public struct SchoolLaundryPreference {
     public static let key = PreferenceKey.schoolLaundry
     private let storage: any PreferenceStorage
@@ -42,13 +43,5 @@ public struct SchoolLaundryPreference {
     public static func footer(isOn: Bool, locked: Bool) -> String {
         if locked { return footerLocked }
         return isOn ? footerOn : footerOff
-    }
-
-    public enum Onboarding {
-        public static let title = "宿舍用学校的洗衣机吗？"
-        public static let subtitle = "有的宿舍换成了自己买的洗衣机。不用的话，洗衣就不显示了。"
-        public static let yes = "用，接着设置"
-        public static let no = "不用"
-        public static let note = "以后可以在设置里改。"
     }
 }

@@ -8,7 +8,6 @@ extension OnboardingView {
         var dorm: String?
         /// The dorm's full directory location under the room (nil: the line is left out).
         var dormLocation: String?
-        var laundryConnected = false
         /// Same-name meter locations for the dorm step's picker.
         var powerChoices: [LocationChoice] = []
         /// The same-name row already picked (design `ob-dorm-picked`).

@@ -73,8 +73,7 @@ struct ClearHomeView: View {
     @ViewBuilder func setupCard(_ data: HomeData) -> some View {
         let dormSet = SetupChecklist.isDormSet(dorm:data.dorm, confirmedDorm:confirmedDorm,
                                                controllerBound:data.shower != .unconfigured)
-        if let detail = HomeSetupCard.detail(signedIn:data.signedIn, dormSet:dormSet,
-                                             laundryEnabled:data.laundryEnabled, laundryBound:data.laundryBound) {
+        if let detail = HomeSetupCard.detail(signedIn:data.signedIn, dormSet:dormSet) {
             ClearSetupCard(detail:detail) { navigator.push(.setupChecklist) }
         }
     }
