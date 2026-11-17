@@ -109,14 +109,15 @@ fun HomeScreen(s:CampusUiState,padding:PaddingValues,navigate:(String)->Unit,ref
 }
 
 @Composable
-fun RechargeMenuScreen(padding:PaddingValues,open:(Boolean)->Unit) = Page(padding,spacing=16.dp) {
+fun RechargeMenuScreen(padding:PaddingValues,showCode:()->Unit={},open:(Boolean)->Unit) = Page(padding,spacing=16.dp) {
     Group {
         NativeText("前往学校官方微信服务",style=MaterialTheme.typography.titleMedium)
         NativeText("进入“e广工商大办事大厅”后，选择校园卡或电费充值；充值电费时请核对宿舍和金额。")
-        Hint("校日常只负责打开学校入口。付款和到账以学校官方结果为准；返回后可刷新余额。")
-        ActionButton("打开学校微信入口"){open(false)}
-        TextButton({open(true)}){NativeText("使用学校官方中转页")}
-        Hint("若入口失效，可在微信搜索“e广工商大办事大厅”，或使用学校官方小程序码。")
+        Hint("请在微信中搜索学校服务名称。付款和到账以学校官方结果为准；返回后可刷新余额。")
+        ActionButton("打开微信，搜索学校服务"){open(false)}
+        TextButton({open(true)}){NativeText("复制学校服务名称")}
+        TextButton(showCode){NativeText("查看学校官方小程序码")}
+        Hint("微信 → 搜索“e广工商大办事大厅” → 核对学校身份后进入充值。也可使用学校正式提供的小程序码。")
     }
 }
 
@@ -522,6 +523,7 @@ data class LaundryActions(val select:(SavedWasher)->Unit={},val read:(String)->U
 
 @Composable
 fun OrdersScreen(s:CampusUiState,padding:PaddingValues,navigate:(String)->Unit,refresh:()->Unit,cancel:()->Unit,pay:()->Unit) = Page(padding,spacing=0.dp,top=0.dp) {
+    Group { PlainAction("近7天本机记录"){navigate("localHistory")} }
     val r=s.checkout
     if(r==null && s.waterSession==null)Group {Icon(Icons.Default.History,null,tint=MaterialTheme.colorScheme.onSurfaceVariant);NativeText("还没有使用记录",style=MaterialTheme.typography.titleLarge);Hint("在本 App 使用热水或洗衣后，最近记录会显示在这里。")}
     if(r!=null){
@@ -616,5 +618,40 @@ fun WasherSetupScreen(s:CampusUiState,padding:PaddingValues,actions:LaundryActio
         NativeText("也可以粘贴二维码链接",style=MaterialTheme.typography.bodyMedium)
         OutlinedTextField(qr,{qr=it},label={NativeText("U净机身二维码链接")},modifier=Modifier.fillMaxWidth(),minLines=2)
         ActionButton("读取并保存",enabled=!busy && qr.isNotBlank()){actions.read(qr)}
+    }
+}
+
+@Composable
+fun LocalOrderHistoryScreen(s:CampusUiState,padding:PaddingValues,refresh:()->Unit) = Page(padding,spacing=16.dp) {
+    LaunchedEffect(s.campus.cardOwner,s.account?.id,s.water.studentId,s.water.schoolId){refresh()}
+    Group {
+        Hint("仅显示最近7×24小时在校日常保存的记录，不含官方小程序内产生的消费。状态为本机最后保存的结果。旧版未保存的记录无法补回；缺少账号归属的旧热水记录不纳入列表。")
+        TextButton(refresh){NativeText("刷新本机记录")}
+        s.localHistoryIssue?.let{Hint(it)}
+    }
+    val records=com.beamjason.xiaorichang.data.LocalOrderRecord.recent(s.localHistory,mapOf(
+        "water" to com.beamjason.xiaorichang.data.LocalOrderRecord.waterOwner(s.water.schoolId,s.water.studentId),"laundry" to (s.account?.id ?: "")))
+    if(records.isEmpty())Group{Hint("近7天暂无可读取的本机记录")}
+    records.forEach {record->
+        Group {
+            NativeText(record.title,style=MaterialTheme.typography.titleMedium)
+            Hint(time(record.startedAt))
+            NativeText(record.status)
+            NativeText(record.amount?.let{"¥${money(it)}"} ?: "金额未确认")
+            Hint(record.amountLabel)
+        }
+    }
+}
+
+@Composable
+fun SchoolMiniProgramCodeScreen(padding:PaddingValues,openGuide:()->Unit) = Page(padding,spacing=16.dp) {
+    Group {
+        NativeText("e广工商大办事大厅",style=MaterialTheme.typography.titleMedium)
+        androidx.compose.foundation.Image(androidx.compose.ui.res.painterResource(com.beamjason.xiaorichang.R.drawable.school_miniprogram_code),
+            "学校官网提供的小程序码",Modifier.fillMaxWidth().height(280.dp).background(androidx.compose.ui.graphics.Color.White).padding(12.dp),
+            contentScale=androidx.compose.ui.layout.ContentScale.Fit)
+        NativeText("截图后，在微信扫一扫中从相册选择识别。进入后核对学校名称和认证主体。")
+        TextButton(openGuide){NativeText("查看学校官网使用说明")}
+        Hint("来源：学校信息技术中心。首次进入后可添加到微信“我的小程序”，下次从微信下拉即可找到。")
     }
 }

@@ -20,15 +20,15 @@ enum class ShowerStage { AUTHORIZATION_PENDING, AUTHORIZATION_ISSUED, AUTHORIZAT
     CLOSE_WRITE_PENDING, SETTLEMENT_PENDING, SETTLED }
 data class ShowerSession(val stage:ShowerStage,val machineId:String,val peripheralAddress:String,
                          val authorizationId:String?=null,val consumption:String?=null,val payFen:Long?=null,val endedAt:Long?=null,
-                         val stateReviewRequired:Boolean=false,val startedAt:Long=System.currentTimeMillis(),val waitingForRelease:Boolean=false) {
+                         val stateReviewRequired:Boolean=false,val startedAt:Long=System.currentTimeMillis(),val waitingForRelease:Boolean=false,val historyOwner:String?=null) {
     fun json()=JSONObject().put("stage",stage.name).put("machineId",machineId).put("peripheralAddress",peripheralAddress)
         .put("authorizationId",authorizationId).put("consumption",consumption).put("payFen",payFen).put("endedAt",endedAt)
         .put("stateReviewRequired",stateReviewRequired)
-        .put("startedAt",startedAt).put("waitingForRelease",waitingForRelease)
+        .put("startedAt",startedAt).put("waitingForRelease",waitingForRelease).put("historyOwner",historyOwner)
     companion object {
         fun read(j:JSONObject)=ShowerSession(ShowerStage.valueOf(j.getString("stage")),j.getString("machineId"),j.getString("peripheralAddress"),
             j.optString("authorizationId").takeUnless{it.isBlank() || it=="null"},j.optString("consumption").takeUnless{it.isBlank() || it=="null"},
-            (j.opt("payFen") as? Number)?.toLong(),(j.opt("endedAt") as? Number)?.toLong(),j.optBoolean("stateReviewRequired",false),j.optLong("startedAt",0),j.optBoolean("waitingForRelease",false))
+            (j.opt("payFen") as? Number)?.toLong(),(j.opt("endedAt") as? Number)?.toLong(),j.optBoolean("stateReviewRequired",false),j.optLong("startedAt",0),j.optBoolean("waitingForRelease",false),j.optString("historyOwner").takeUnless{it.isBlank() || it=="null"})
     }
 }
 
@@ -40,6 +40,7 @@ internal interface WaterSessionPersistence {
 }
 private class ShowerSessionStore(context:Context):WaterSessionPersistence {
     private val storage=SecureStore(context)
+    private val history=com.beamjason.xiaorichang.data.LocalOrderHistoryStore(context)
     override fun load():ShowerSession? {
         val bytes=storage.get("water.session") ?: return null
         val j=JSONObject(bytes.toString(Charsets.UTF_8))
@@ -47,6 +48,7 @@ private class ShowerSessionStore(context:Context):WaterSessionPersistence {
     }
     override fun save(session:ShowerSession) {
         storage.put("water.session",session.json().toString().toByteArray())
+        history.record(com.beamjason.xiaorichang.data.LocalOrderRecord.water(session))
     }
     override fun archive(session:ShowerSession) {
         val bytes=session.json().toString().toByteArray()
@@ -105,7 +107,7 @@ class WaterController internal constructor(private val transport:WaterTransport,
                 try{store.archive(old)}catch(t:Throwable){blocked=true;throw IllegalStateException("上一笔用水记录未能安全保留",t)}
                 if(old !in archivedSessions)archivedSessions=archivedSessions+old
             }
-            var current=ShowerSession(ShowerStage.AUTHORIZATION_PENDING,machine,target.address); persist(current)
+            var current=ShowerSession(ShowerStage.AUTHORIZATION_PENDING,machine,target.address,historyOwner=com.beamjason.xiaorichang.data.LocalOrderRecord.waterOwner(profile.schoolId,profile.studentId)); persist(current)
             val auth=provider.authorize(profile,target.identityFrame)
             check(auth.machineId.equals(machine,true)) { "服务器授权的设备编号不匹配" }
             check(auth.payload.size==15); WaterProtocol.closeCommand(auth.authorizationId)

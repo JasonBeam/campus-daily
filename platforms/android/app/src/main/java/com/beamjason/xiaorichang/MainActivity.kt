@@ -200,7 +200,7 @@ private fun CampusApp(activity:ComponentActivity,vm:CampusViewModel=viewModel())
     LaunchedEffect(state.message) {state.message?.let {snackbar.showSnackbar(it);vm.notice(null)}}
     BackHandler(page.isNotBlank()) {page=if(page=="scanner")"laundry" else if(page in setOf("rechargeCard","rechargePower"))"recharge" else ""}
     if(page=="scanner") {BarcodeCamera(onFound={page="laundry";vm.scanWasher(it)},onClose={page="laundry"},onError=vm::notice);return}
-    val titles=mapOf("water" to "热水洗澡","laundry" to "洗衣机","setup" to "首次配置","dorm" to "宿舍与水控","powerSetup" to "绑定宿舍电表","login" to "连接校园卡","laundryLogin" to "U净登录","recharge" to "校园充值","rechargeCard" to "校园卡充值","rechargePower" to "宿舍电费充值","import" to "导入热水配置","washerSetup" to "常用洗衣机","reminders" to "洗衣提醒","updates" to "版本与更新","advanced" to "故障排查","usage" to "快捷使用")
+    val titles=mapOf("schoolCode" to "学校官方小程序码","localHistory" to "近7天本机记录","water" to "热水洗澡","laundry" to "洗衣机","setup" to "首次配置","dorm" to "宿舍与水控","powerSetup" to "绑定宿舍电表","login" to "连接校园卡","laundryLogin" to "U净登录","recharge" to "校园充值","rechargeCard" to "校园卡充值","rechargePower" to "宿舍电费充值","import" to "导入热水配置","washerSetup" to "常用洗衣机","reminders" to "洗衣提醒","updates" to "版本与更新","advanced" to "故障排查","usage" to "快捷使用")
     // WebView draws through Android's native view hierarchy. Do not record its
     // content into the Compose glass backdrop; vendor GPU paths can retain a
     // blank frame while the DOM continues loading normally.
@@ -212,15 +212,29 @@ private fun CampusApp(activity:ComponentActivity,vm:CampusViewModel=viewModel())
         val contentModifier=Modifier.fillMaxSize().then(if(nativeBrowserPage)Modifier else Modifier.layerBackdrop(backdrop))
         Box(contentModifier.background(MaterialTheme.colorScheme.background)) {
         when(page) {
+            "localHistory"->LocalOrderHistoryScreen(state,padding,vm::loadLocalHistory)
             "reminders"->ReminderSettingsScreen(padding,remindersEnabled,::setLaundryReminders){runCatching{laundryReminders.test()}.onSuccess{vm.notice("已安排10秒测试提醒，请切到后台查看")}.onFailure{vm.notice(message(it))}}
             "updates"->UpdateSettingsScreen(padding,updateState,{updates.setEnabled(it)},{scope.launch{updates.check(true)}},::openUpdate,{activity.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://jasonbeam.github.io/campus-daily/")))})
             "advanced"->AdvancedSettingsScreen(state,padding,::navigate,glassEnabled,{enabled->glassEnabled=enabled;appearance.edit().putBoolean("glass",enabled).apply();mode=glassMode(activity,enabled)},::exportDiagnostics,{navigate("water");withBle("review")},::exportPassive)
             "usage"->Page(padding){Group{NativeText("在日常页打开热水或洗衣机，使用已保存的配置。");Hint("更换宿舍、重新登录或添加机器，可进入账号与设备设置。")}}
-            "recharge"->RechargeMenuScreen(padding){browser->
-                val target=if(browser)"https://wxmpurl.cn/I0xUgrvZt1g" else "weixin://dl/business/?t=I0xUgrvZt1g"
-                try { activity.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(target))) }
-                catch(_:android.content.ActivityNotFoundException){vm.notice("未能打开微信，请确认已安装微信，或使用官方中转页。")}
-                catch(_:SecurityException){vm.notice("系统阻止打开入口，请在微信搜索学校官方服务。")}
+            "schoolCode"->SchoolMiniProgramCodeScreen(padding){
+                try { activity.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://xxzxo.gdbtu.edu.cn/contents/3039/51848.html"))) }
+                catch(_:Exception){vm.notice("学校说明页暂时无法打开，请在微信搜索学校服务名称。")}
+            }
+            "recharge"->RechargeMenuScreen(padding,{navigate("schoolCode")}){copyName->
+                if(copyName) {
+                    val clipboard=activity.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                    clipboard.setPrimaryClip(android.content.ClipData.newPlainText("学校官方服务","e广工商大办事大厅"))
+                    vm.notice("已复制，请在微信中搜索“e广工商大办事大厅”。")
+                } else {
+                    try {
+                        val intent=activity.packageManager.getLaunchIntentForPackage("com.tencent.mm")
+                        if(intent==null) vm.notice("未找到微信，请手动打开微信并搜索学校服务名称。")
+                        else activity.startActivity(intent)
+                    }
+                    catch(_:android.content.ActivityNotFoundException){vm.notice("未能打开微信，请手动搜索学校服务名称。")}
+                    catch(_:SecurityException){vm.notice("系统阻止打开微信，请手动搜索学校服务名称。")}
+                }
             }
             "water"->WaterScreen(state,padding,::navigate,inspect={withBle("inspect")},review={withBle("review")}){finish->withBle(if(finish)"finish" else "start")}
             "setup"->SetupScreen(state,padding,::navigate)

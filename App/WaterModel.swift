@@ -14,6 +14,7 @@ import WaterCore
     @Published private(set) var hasReceipt = false
     @Published private(set) var pendingHistoryCount = 0
     private var controller: WaterController?
+    var historyOwner: String? { config?.historyOwner }
     private var config: WaterConfig?
     @Published private var importedPlatform: WaterPlatformProfile?
     @Published private var reviewingIdentity = false

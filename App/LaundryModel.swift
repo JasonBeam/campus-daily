@@ -40,10 +40,12 @@ import WaterCore
     private var candidateConfig: LaundryConfig?
     var selectedMachineID: String? { config?.deviceId }
     private var controller: LaundryCheckoutController?
+    var historyOwner: String? { config?.credentialIdentity }
     private var config: LaundryConfig?
     private var connection: UjingConnection?
     private var lastAttempt: Date?
     private var foregroundPollingStartedAt = Date()
+    private let paymentWatcher = LaundryPaymentWatcher(runtime: IOSLaundryPaymentRuntime())
     private let provider = LaundryProvider { path, status, data in
         // Own transaction responses only; never persist request credentials or SDK callbacks.
         let folder = FileManager.default.urls(for:.applicationSupportDirectory,in:.userDomainMask)[0]
@@ -344,30 +346,47 @@ import WaterCore
                 checkoutProgress = nil
             case .sdk(let signed):
                 checkoutProgress = "正在打开支付宝…"
-                AlipayBridge.shared.pay(signed) { [weak self] status, memo in
-                    Task {
-                        self?.checkoutProgress = "正在核对订单状态…"
-                        await self?.refreshOrder()
-                        self?.checkoutProgress = nil
-                        if status == "6001" { self?.checkoutIssue = "你已退出支付宝付款，请核对订单状态" }
-                        else if status != "9000" && status != "8000" {
-                            self?.checkoutIssue = memo.isEmpty ? "支付宝未完成付款，请核对订单状态" : "支付宝返回：" + String(memo.prefix(160))
-                        }
-                    }
+                beginPaymentWatch()
+                AlipayBridge.shared.pay(signed) { [weak self] status,memo in
+                    self?.handlePaymentReturn(status:status,memo:memo)
                 }
             case .checkout(let url):
                 checkoutProgress = "正在打开支付宝…"
-                AlipayBridge.shared.openCheckout(url) { [weak self] opened in
-                    if opened { self?.checkoutProgress = "已打开支付宝，完成后返回核对订单" }
-                    else {
+                beginPaymentWatch()
+                AlipayBridge.shared.openCheckout(url,onPaymentResult:{ [weak self] status,memo in
+                    self?.handlePaymentReturn(status:status,memo:memo)
+                }) { [weak self] launch in
+                    switch launch {
+                    case .sdk:
+                        self?.checkoutProgress = "已接入支持回跳的付款流程，付款后将核对U净订单"
+                    case .external:
+                        self?.checkoutProgress = record.immediateStart == true
+                            ? "此收银台需手动返回；将尝试后台核对，未启动请回校日常"
+                            : "此收银台需手动返回，付款后请回校日常核对订单"
+                    case .failed:
+                        self?.paymentWatcher.stop()
                         self?.checkoutProgress = nil
                         self?.checkoutIssue = "未能打开支付宝收银台，请核对订单状态"
                     }
                 }
             }
         } catch {
+            paymentWatcher.stop()
             checkoutProgress = nil
             checkoutIssue = (error as? LocalizedError)?.errorDescription ?? "付款结果待核对，请刷新订单"
+        }
+    }
+    private func handlePaymentReturn(status: String, memo: String) {
+        Task {
+            checkoutProgress = "正在核对订单状态…"
+            await refreshOrder()
+            checkoutProgress = nil
+            if status == "6001" {
+                paymentWatcher.stop(); checkoutIssue = "你已退出支付宝付款，请核对订单状态"
+            } else if status != "9000" && status != "8000" {
+                paymentWatcher.stop()
+                checkoutIssue = memo.isEmpty ? "支付宝未完成付款，请核对订单状态" : "支付宝返回：" + String(memo.prefix(160))
+            }
         }
     }
     var mayCancel: Bool {
@@ -377,6 +396,7 @@ import WaterCore
     }
     func cancelOrder() async {
         guard mayCancel, let config, let controller else { return }
+        paymentWatcher.stop()
         checkoutBusy = true; checkoutIssue = nil; checkoutProgress = nil
         defer { checkout = controller.record; checkoutBusy = false }
         do {
@@ -389,7 +409,8 @@ import WaterCore
         catch { checkoutIssue = (error as? LocalizedError)?.errorDescription ?? "取消结果待核对，请刷新订单" }
         await refresh(force:true)
     }
-    func refreshOrder() async {
+    func refreshOrder(fromPaymentWatch: Bool = false) async {
+        guard fromPaymentWatch || !paymentWatcher.isRunning else { return }
         guard !checkoutBusy, let config, let controller, controller.record?.belongs(to:config) == true else { return }
         checkoutBusy = true; checkoutIssue = nil; checkoutProgress = "正在核对订单状态…"
         defer { checkout = controller.record; checkoutBusy = false; checkoutProgress = nil; reminderStatus = LaundryReminders.shared.status }
@@ -413,6 +434,21 @@ import WaterCore
     }
     var needsImmediateStartRefresh: Bool {
         LaundryImmediatePolling.needed(controller?.record)
+    }
+    private func beginPaymentWatch() {
+        guard let config, let record = controller?.record, record.immediateStart == true,
+              record.stage == .paymentRequested, let id = record.orderId,
+              record.credentialIdentity == config.credentialIdentity, record.belongs(to:config) else { return }
+        let owner = config.credentialIdentity
+        paymentWatcher.start(shouldContinue: { [weak self] in
+            guard let self, let current = self.controller?.record, let activeConfig = self.config else { return false }
+            return activeConfig.credentialIdentity == owner && current.credentialIdentity == owner &&
+                current.orderId == id && current.belongs(to:activeConfig) &&
+                LaundryImmediatePolling.needed(current)
+        }, refresh: { [weak self] in
+            // Same controller/checkoutBusy gate as foreground checks, never a second start executor.
+            await self?.refreshOrder(fromPaymentWatch:true)
+        })
     }
     var immediatePollingKey: String {
         guard needsImmediateStartRefresh, let record = checkout else { return "regular" }
@@ -451,5 +487,6 @@ import WaterCore
     }
     func save(_ value: LaundryCheckoutRecord) throws {
         try JSONEncoder().encode(value).write(to:file,options:[.atomic,.completeFileProtectionUntilFirstUserAuthentication])
+        LocalOrderHistoryStore.record(.laundry(value))
     }
 }

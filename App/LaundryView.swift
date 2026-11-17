@@ -155,7 +155,7 @@ struct LaundryDetail: View {
             if record.immediateStart == true {
                 Label("立刻洗衣 · 本单已开启",systemImage:"bolt.fill").font(.subheadline)
                 if record.startAttempt == nil, record.order?.running != true, record.stage != .completed {
-                    Text("付款后请返回校日常，核对已付款后自动发送启动指令。超过下单后10分钟请在U净手动启动。")
+                    Text("付款时会尝试短时后台核对，确认已付款后启动；若机器未启动，请返回校日常继续核对。超过下单后10分钟请在U净手动启动。")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
             }
@@ -178,7 +178,8 @@ struct LaundryDetail: View {
             }
             if let order = record.order, order.running, let seconds = order.remainTime, seconds >= 0 {
                 TimelineView(.periodic(from:.now,by:1)) { context in
-                    let left = max(0,seconds - Int(context.date.timeIntervalSince(record.orderUpdatedAt ?? record.createdAt)))
+                    let end = record.countdownDeadline ?? (record.orderUpdatedAt ?? record.createdAt).addingTimeInterval(Double(seconds))
+                    let left = max(0,Int(ceil(end.timeIntervalSince(context.date))))
                     Text(left > 0 ? String(format:"剩余 %02d:%02d",left / 60,left % 60) : "倒计时已结束，请查看机器")
                         .font(.subheadline).monospacedDigit()
                 }
@@ -262,7 +263,7 @@ private struct LaundryReviewSheet: View {
                         Text("立刻洗衣（试用）").tag(true)
                     }.pickerStyle(.segmented).accessibilityIdentifier("laundryStartMode")
                     if immediateStart {
-                        Text("请先放好衣物、投放洗衣液并关紧门盖。付款后返回校日常，确认已付款且机器可启动后，会为本单发送一次启动指令。试用失败请到U净启动。")
+                        Text("请先放好衣物、投放洗衣液并关紧门盖。付款时会尝试短时后台核对，确认已付款且机器可启动后，为本单发送一次启动指令。系统可能提前暂停后台运行，若未启动请返回校日常；仍失败请到U净核对。")
                             .font(.subheadline).foregroundStyle(.secondary)
                     }
                     Text("确认后将预约这台机器并前往支付宝。付款可能扣款并启动设备，请提前放好衣物，实际金额以收银台为准。")

@@ -123,7 +123,7 @@ private actor CheckoutAPI: LaundryOrdering {
     func testPaymentAmountAndMethodAreCheckedBeforeSDKHandoff() {
         func signed(_ amount: String, method: String = "alipay.trade.app.pay") -> String {
             var parts = URLComponents()
-            parts.queryItems = [URLQueryItem(name:"method",value:method),URLQueryItem(name:"biz_content",value:"{\"total_amount\":\"\(amount)\"}")]
+            parts.queryItems = [URLQueryItem(name:"sign",value:"offline-fixture"),URLQueryItem(name:"method",value:method),URLQueryItem(name:"biz_content",value:"{\"total_amount\":\"\(amount)\"}")]
             return parts.percentEncodedQuery!
         }
         XCTAssertTrue(LaundryPayment.validSignedOrder(signed("1.90"),maximum:Decimal(string:"1.90")!))

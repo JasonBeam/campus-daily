@@ -12,6 +12,8 @@ private actor ImmediateAPI: LaundryOrdering {
     var enterRunning = true
     var wrongDetails = false
     var calls: [String] = []
+    var detailsHook: (@Sendable () async -> Void)?
+    func onDetails(_ hook: (@Sendable () async -> Void)?) { detailsHook = hook }
     func setup(status: String = "20", paid: Int = 1, module: Int = 7, detailsStatus: String? = nil, clean: Bool = false, fail: Bool = false, running: Bool = true, wrong: Bool = false) {
         self.status = status; self.paid = paid; self.module = module; self.detailsStatus = detailsStatus ?? status
         requiresClean = clean; throwStart = fail; enterRunning = running; wrongDetails = wrong
@@ -28,6 +30,7 @@ private actor ImmediateAPI: LaundryOrdering {
     }
     func startDetails(config: LaundryConfig, id: String) async throws -> LaundryStartDetails {
         calls.append("details")
+        await detailsHook?()
         return try JSONDecoder().decode(LaundryStartDetails.self,from:data(status:detailsStatus,wrong:wrongDetails))
     }
     func startWasher(config: LaundryConfig, id: String) async throws {
@@ -46,6 +49,12 @@ private actor ImmediateAPI: LaundryOrdering {
         value = next
     }
 }
+@MainActor private final class ExpiringPaymentRuntime: LaundryPaymentRuntime {
+    var expiration: (@MainActor @Sendable () -> Void)?
+    func begin(maximumDuration: TimeInterval, expiration: @escaping @MainActor @Sendable () -> Void) -> Bool { self.expiration = expiration; return true }
+    func end() { expiration = nil }
+    func expire() { expiration?() }
+}
 @MainActor final class LaundryImmediateStartTests: XCTestCase {
     private func fixture(armed: Bool? = true, age: TimeInterval = 0) throws -> (LaundryConfig, ImmediateStore, ImmediateAPI, LaundryCheckoutController) {
         let config = LaundryConfig(headers:["Authorization":"Bearer fake-only-for-unit-testing"],qrCode:"https://q.ujing.com.cn/ucqrc/index.html?cd=123456789012345678",deviceId:"fixture")
@@ -54,6 +63,22 @@ private actor ImmediateAPI: LaundryOrdering {
         record.orderId = "12345"; record.credentialIdentity = config.credentialIdentity; record.immediateStart = armed
         store.value = record
         return (config,store,api,try LaundryCheckoutController(store:store,api:api))
+    }
+    func testExpiredBackgroundPaidReadCannotStartAndForegroundResumesOnce() async throws {
+        let (config,store,api,c) = try fixture()
+        let runtime = ExpiringPaymentRuntime(); let watcher = LaundryPaymentWatcher(runtime:runtime)
+        await api.onDetails { await runtime.expire() }
+        var readFinished = false
+        watcher.start(shouldContinue:{LaundryImmediatePolling.needed(c.record)},refresh:{try? await c.refresh(config:config); readFinished = true})
+        for _ in 0..<200 { if !watcher.isRunning { break }; await Task.yield() }
+        for _ in 0..<200 { if readFinished { break }; await Task.yield() }
+        XCTAssertTrue(readFinished)
+        let before = await api.startCount
+        XCTAssertFalse(watcher.isRunning); XCTAssertEqual(before,0); XCTAssertNil(store.value?.startAttempt)
+        await api.onDetails(nil)
+        try await c.refresh(config:config); try await c.refresh(config:config)
+        let after = await api.startCount
+        XCTAssertEqual(after,1); XCTAssertEqual(store.value?.startAttempt,.confirmed)
     }
     func testPaidWaitingOrderStartsAndConfirmsOnce() async throws {
         let (config,store,api,c) = try fixture()

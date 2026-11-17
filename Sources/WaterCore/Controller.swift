@@ -149,6 +149,7 @@ extension SessionStore {
             }
         }
         var value = WaterSession(stage: .authorizationPending, machineID: config.machineID.uppercased(), peripheralID: id)
+        value.historyOwner = config.historyOwner
         try persist(value)
         try Task.checkCancellation()
         let auth = try await provider.authorize(config: config, frame: frame)

@@ -88,6 +88,7 @@ public struct WaterSession: Codable, Equatable, Sendable {
     public var consumption: Data?
     public let startedAt: Date
     public var endedAt: Date?
+    public var historyOwner: String?
     public var receipt: SettlementReceipt?
     /// Persist an observed mismatch so relaunch cannot present a stale authorization as current.
     public var stateReviewRequired: Bool?

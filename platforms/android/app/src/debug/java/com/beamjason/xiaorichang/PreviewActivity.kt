@@ -61,7 +61,7 @@ fun PreviewLayout(initial:String,mode:GlassMode=GlassMode.LIQUID,refined:Boolean
                     "devices"->DevicesScreen(s,padding,{page=it})
                     "reminders"->ReminderSettingsScreen(padding,true,{},{})
                     "updates"->UpdateSettingsScreen(padding,com.beamjason.xiaorichang.data.UpdateState(),{},{},{})
-                    "recharge"->RechargeMenuScreen(padding,{})
+                    "recharge"->RechargeMenuScreen(padding,open={})
                     "advanced"->AdvancedSettingsScreen(s,padding,{page=it},true,{},{},{},{})
                     else->HomeScreen(s,padding,{page=it},{})
                 }

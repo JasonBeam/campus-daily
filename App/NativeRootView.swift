@@ -16,6 +16,7 @@ private struct RecentOrdersView: View {
     var body: some View {
         NavigationStack {
             List {
+                Section { NavigationLink("近7天本机记录") { LocalOrderHistoryView() } }
                 if let record = laundry.checkout {
                     Section("最近洗衣订单") {
                         NavigationLink { LaundryDetail() } label: {

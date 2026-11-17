@@ -99,15 +99,18 @@ public struct LaundryPayment: Decodable, Sendable {
     }
     public func destination(maximum: Decimal) throws -> Destination {
         if skipPay == true || jumpToQuery == true { return .query }
-        // A QR checkout can itself occupy orderInfo; do not feed that URL to the app-pay SDK.
-        if let checkoutURL { return .checkout(checkoutURL) }
+        // Prefer a genuine App payment string, whose SDK call registers our return scheme.
+        // A QR checkout can itself occupy orderInfo; it never passes the signed-order check.
         if let signed = signedOrder, Self.validSignedOrder(signed,maximum:maximum) { return .sdk(signed) }
+        if let checkoutURL { return .checkout(checkoutURL) }
         throw LaundryCheckoutError.checkoutUnavailable
     }
     public static func validSignedOrder(_ value: String, maximum: Decimal) -> Bool {
         guard let parts = URLComponents(string:"https://localhost/?" + value), let items = parts.queryItems,
               items.filter({ $0.name == "method" }).count == 1,
               items.first(where: { $0.name == "method" })?.value == "alipay.trade.app.pay",
+              items.filter({ $0.name == "sign" }).count == 1,
+              items.first(where: { $0.name == "sign" })?.value?.isEmpty == false,
               items.filter({ $0.name == "biz_content" }).count == 1,
               let content = items.first(where: { $0.name == "biz_content" })?.value,
               let data = content.data(using:.utf8),
@@ -256,6 +259,13 @@ extension LaundryProvider: LaundryOrdering {
 }
 
 public enum LaundryCheckoutStage: String, Codable, Sendable { case creating, created, paymentRequested, cancellationRequested, completed }
+/// Bounded local timing evidence; excludes account, device and order identifiers.
+public struct LaundryCountdownSample: Codable, Sendable {
+    public let observedAt: Date
+    public let status: String
+    public let remaining: Int?
+    public let deadline: Date?
+}
 public struct LaundryCheckoutRecord: Codable, Sendable {
     public let deviceId: String
     public let programId: Int
@@ -266,12 +276,33 @@ public struct LaundryCheckoutRecord: Codable, Sendable {
     public var orderId: String?
     public var order: LaundryOrder?
     public var orderUpdatedAt: Date? = nil
+    /// Stable deadline for the last running countdown, shared by the UI and reminder.
+    public var countdownDeadline: Date? = nil
+    public var countdownSamples: [LaundryCountdownSample]? = nil
     public var credentialIdentity: String? = nil
     public var immediateStart: Bool? = nil
     public var startAttempt: LaundryStartAttempt? = nil
     public var startMessage: String? = nil
     public func belongs(to config: LaundryConfig) -> Bool {
         deviceId == config.deviceId && (credentialIdentity == nil || credentialIdentity == config.credentialIdentity)
+    }
+    public mutating func observeOrder(_ fresh: LaundryOrder, at time: Date) {
+        if fresh.running, let seconds = fresh.remainTime, (0...86400).contains(seconds) {
+            let prior = order
+            let sameObservation = prior?.id == fresh.id && prior?.status.text == fresh.status.text && prior?.remainTime == seconds
+            if !sameObservation || countdownDeadline == nil {
+                if sameObservation, let observed = orderUpdatedAt {
+                    countdownDeadline = observed.addingTimeInterval(Double(seconds))
+                } else {
+                    countdownDeadline = time.addingTimeInterval(Double(seconds))
+                }
+            }
+        }
+        order = fresh
+        orderUpdatedAt = time
+        var samples = countdownSamples ?? []
+        samples.append(LaundryCountdownSample(observedAt:time,status:fresh.status.text,remaining:fresh.remainTime,deadline:countdownDeadline))
+        countdownSamples = Array(samples.suffix(128))
     }
 }
 @MainActor public protocol LaundryCheckoutStore {
@@ -326,7 +357,7 @@ public enum LaundryCheckoutError: String, Error, LocalizedError {
         let order = try await api.order(config:config,id:receipt.id)
         guard order.deviceId == config.deviceId, order.id == receipt.id,
               order.deviceWashModelId == next.programId else { throw LaundryCheckoutError.uncertain }
-        next.order = order; next.orderUpdatedAt = Date(); next.stage = order.terminal ? .completed : .created
+        next.observeOrder(order, at:Date()); next.stage = order.terminal ? .completed : .created
         try store.save(next); record = next
     }
     public func payment(config: LaundryConfig) async throws -> LaundryPayment {
@@ -356,7 +387,7 @@ public enum LaundryCheckoutError: String, Error, LocalizedError {
         }
         guard order.id == id, order.deviceId == next.deviceId,
               order.deviceWashModelId == next.programId else { throw LaundryCheckoutError.uncertain }
-        next.order = order; next.orderUpdatedAt = Date()
+        next.observeOrder(order, at:Date())
         if order.terminal { next.stage = .completed }
         else if next.stage == .creating { next.stage = .created }
         try store.save(next); record = next
@@ -378,7 +409,7 @@ public enum LaundryCheckoutError: String, Error, LocalizedError {
         guard let details else { throw LaundryCheckoutError.uncertain }
         guard details.order.id == id, details.order.deviceId == next.deviceId,
               details.order.deviceWashModelId == next.programId else { throw LaundryCheckoutError.uncertain }
-        next.order = details.order; next.orderUpdatedAt = Date()
+        next.observeOrder(details.order, at:Date())
         guard details.order.paid, details.order.status.text == "20" else {
             if details.order.terminal { next.stage = .completed }
             try store.save(next); record = next; return
@@ -401,7 +432,7 @@ public enum LaundryCheckoutError: String, Error, LocalizedError {
         try store.save(next); record = next
         let fresh = try await api.order(config:config,id:id)
         guard fresh.id == id, fresh.deviceId == next.deviceId, fresh.deviceWashModelId == next.programId else { throw LaundryCheckoutError.uncertain }
-        next.order = fresh; next.orderUpdatedAt = Date()
+        next.observeOrder(fresh, at:Date())
         if fresh.running { next.startAttempt = .confirmed; next.startMessage = nil }
         if fresh.terminal { next.stage = .completed }
         try store.save(next); record = next
@@ -418,7 +449,7 @@ public enum LaundryCheckoutError: String, Error, LocalizedError {
               let rawDate = order.createAt, let date = formatter.date(from:rawDate),
               abs(date.timeIntervalSince(next.createdAt)) < 120,
               let price = order.payPrice, price >= 0, price <= next.expectedPrice else { throw LaundryCheckoutError.uncertain }
-        next.orderId = order.id; next.order = order; next.orderUpdatedAt = Date(); next.stage = order.terminal ? .completed : .created
+        next.orderId = order.id; next.observeOrder(order, at:Date()); next.stage = order.terminal ? .completed : .created
         try store.save(next); record = next
     }
     public func cancel(config: LaundryConfig) async throws {
@@ -428,7 +459,7 @@ public enum LaundryCheckoutError: String, Error, LocalizedError {
         let fresh = try await api.order(config:config,id:id)
         guard fresh.id == id, fresh.deviceId == next.deviceId,
               fresh.deviceWashModelId == next.programId else { throw LaundryCheckoutError.uncertain }
-        next.order = fresh; next.orderUpdatedAt = Date()
+        next.observeOrder(fresh, at:Date())
         if fresh.terminal {
             next.stage = .completed; try store.save(next); record = next; return
         }
@@ -441,7 +472,7 @@ public enum LaundryCheckoutError: String, Error, LocalizedError {
         let final = try await api.order(config:config,id:id)
         guard final.id == id, final.deviceId == next.deviceId,
               final.deviceWashModelId == next.programId else { throw LaundryCheckoutError.uncertain }
-        next.order = final; next.orderUpdatedAt = Date()
+        next.observeOrder(final, at:Date())
         if final.terminal { next.stage = .completed }
         try store.save(next); record = next
         guard final.terminal else { throw LaundryCheckoutError.uncertain }

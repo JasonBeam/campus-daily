@@ -47,6 +47,7 @@ import Testing
         try await c.startNext(config:config)
         #expect(s.history == [old] && s.history[0].receipt == nil)
         #expect(c.session?.stage == .active && c.session?.authorizationID == "00112233")
+        #expect(c.session?.historyOwner == config.historyOwner)
         #expect(p.calls == 1 && p.settlements == 0)
         #expect(r.writes == [Data([0xAA]),Data(repeating:0,count:15)])
         let restarted=try WaterController(transport:r,provider:p,store:s)
