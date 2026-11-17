@@ -89,7 +89,7 @@ final class ShowerShortcutStartTests: XCTestCase {
     /// The product copy for Siri, Shortcuts and the status line, from one place.
     func testTheSpokenWords() {
         XCTAssertEqual(ShowerAuthorText.spokenNoWater, "水没开。打开校日常再试一次。")
-        XCTAssertEqual(ShowerAuthorText.keptStatus, "上一次洗好了，学校会自己扣费。")
+        XCTAssertEqual(ShowerAuthorText.keptStatus, "上一次洗好了，费用看学校的热水记录。")
         XCTAssertEqual(ShowerAuthorizeUnclearText.spoken, ShowerAuthorText.spokenNoWater)
         XCTAssertEqual(ShowerAuthorizeUnclearText.spoken(platformMessage: "余额不足"), "水没开。学校提示：余额不足。打开校日常再试一次。")
         XCTAssertEqual(ShowerActionFailure(.blocked).message, ShowerAuthorText.keptStatus)

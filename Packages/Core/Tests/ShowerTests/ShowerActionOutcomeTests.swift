@@ -47,7 +47,7 @@ final class ShowerActionOutcomeTests: XCTestCase {
                        .failure(ShowerActionFailure(ShowerActionOutcome.endNotSentText)))
         // The settlement got no answer: the shower is over and the school settles it.
         XCTAssertEqual(ShowerActionOutcome.after(start: false, failed(.settleUncertain, review: true), notice: nil),
-                       .failure(ShowerActionFailure("上一次洗好了，学校会自己扣费。")))
+                       .failure(ShowerActionFailure("上一次洗好了，费用看学校的热水记录。")))
     }
 
     /// A start turned down for the check of an unclear authorize doesn't call it a settlement.
