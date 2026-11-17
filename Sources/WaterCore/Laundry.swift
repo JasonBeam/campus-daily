@@ -147,7 +147,7 @@ public final class LaundryProvider: @unchecked Sendable {
         do { (data,response) = try await session.data(for:req) }
         catch { throw LaundryError.network }
         guard let http = response as? HTTPURLResponse else { throw LaundryError.response }
-        if path.hasPrefix("/api/v1/payment/arguments") || path == "/api/v1/orders/create" {
+        if path.hasPrefix("/api/v1/payment/arguments") || path == "/api/v1/orders/create" || path.hasPrefix("/api/v1/app/orders/") {
             responseObserver?(path,http.statusCode,data)
         }
         if http.statusCode == 401 || http.statusCode == 403 { throw LaundryError.authentication }

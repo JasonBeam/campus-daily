@@ -24,8 +24,9 @@ data class CampusUiState(val campus:CampusConfig=CampusConfig(),val water:WaterS
     val checkout:CheckoutRecord?=null,val busy:Set<String> = emptySet(),val message:String?=null,val storageIssue:Boolean=false,
     val dormSetup:DormSetup=DormSetup(),val powerSetup:PowerSetup=PowerSetup(),val webSession:CampusWebSession?=null,
     val matchingPower:Boolean=false,val powerChoices:List<CampusPowerCandidate> = emptyList(),val powerMatchIssue:String?=null,
-    val waterInspection:String?=null) {
-    val setupCount get() = (if(campus.configured) 1 else 0)+(if(water.configured) 1 else 0)+(if(account!=null && washers.isNotEmpty()) 1 else 0)
+    val waterInspection:String?=null,val pendingWaterHistory:Int=0,
+    val localHistory:List<LocalOrderRecord> = emptyList(),val localHistoryIssue:String?=null) {
+    val setupCount get() = (if(campus.configured) 1 else 0)+(if(water.configured) 1 else 0)
     val unresolvedWater get() = waterSession!=null && waterSession.stage!=ShowerStage.SETTLED
     val unresolvedLaundry get() = checkout!=null && checkout.stage!=CheckoutStage.COMPLETED
     val transactionBusy get() = busy.any { it in setOf("water","verify","order","payment","cancel","orderRefresh") }
@@ -40,6 +41,7 @@ class CampusViewModel @JvmOverloads constructor(application:Application,
     suppliedWaterTransport:WaterTransport? = null,
     private val campusApi:CampusClient = CampusClient()):AndroidViewModel(application) {
     private val secure=SecureStore(application)
+    private val localHistoryStore=LocalOrderHistoryStore(application)
     private val laundryApi=UjingClient()
     private val transport=suppliedWaterTransport ?: BleWaterTransport(application)
     private val waterController=WaterController(application,transport)
@@ -55,7 +57,7 @@ class CampusViewModel @JvmOverloads constructor(application:Application,
     private val checkoutController: LaundryCheckout? = try {
         LaundryCheckout(laundryApi,object:CheckoutStorage {
             override fun load()=secure.get("laundry.checkout")?.let { CheckoutRecord.read(JSONObject(it.toString(Charsets.UTF_8))) }
-            override fun save(record:CheckoutRecord) { write("laundry.checkout",record.json()) }
+            override fun save(record:CheckoutRecord) { write("laundry.checkout",record.json());localHistoryStore.record(LocalOrderRecord.laundry(record)) }
         })
     } catch(_:Exception) { startupError=true; null }
     private val _state=MutableStateFlow(load())
@@ -107,7 +109,7 @@ class CampusViewModel @JvmOverloads constructor(application:Application,
         var cache=if(loadedCache.cardOwner==campus.cardOwner)loadedCache else loadedCache.copy(card=null,cardAt=0,cardOwner=campus.cardOwner)
         if(campus.buildingId.isBlank() || campus.meterId.isNotBlank() && cache.power?.id!=campus.meterId)cache=cache.copy(power=null,powerAt=0)
         return CampusUiState(campus,water,account,washers,read("ujing.selection")?.text("id") ?: washers.firstOrNull()?.id,
-            cache=cache,waterSession=waterController.session,checkout=checkoutController?.record,
+            cache=cache,waterSession=waterController.session,checkout=checkoutController?.record,pendingWaterHistory=waterController.archivedSessions.size,
             storageIssue=startupError || waterController.blocked,
             message=if(startupError || waterController.blocked) "本机加密记录读取失败，请保留 App 数据并联系开发者核对，暂不可进行交易" else null)
     }
@@ -400,6 +402,17 @@ class CampusViewModel @JvmOverloads constructor(application:Application,
         val cache=s.cache.copy(power=m,powerAt=System.currentTimeMillis()); write("campus.balance-cache",cache.json())
         _state.update { it.copy(campus=c,cache=cache,powerError=null,message="宿舍电表已绑定") }
     }
+    fun loadLocalHistory() {
+        val current=_state.value
+        try {
+            current.checkout?.let{localHistoryStore.record(LocalOrderRecord.laundry(it))}
+            waterController.session?.let{localHistoryStore.record(LocalOrderRecord.water(it),onlyIfMissing=true)}
+            waterController.archivedSessions.forEach{localHistoryStore.record(LocalOrderRecord.water(it),onlyIfMissing=true)}
+            val owners=mapOf("water" to LocalOrderRecord.waterOwner(current.water.schoolId,current.water.studentId),"laundry" to (current.account?.id ?: ""))
+            _state.update{it.copy(localHistory=localHistoryStore.load(owners),localHistoryIssue=LocalOrderHistoryStore.issue)}
+        } catch(_:Exception){_state.update{it.copy(localHistory=emptyList(),localHistoryIssue="本机历史记录暂时无法读取，请稍后重试。")}}
+    }
+
     fun prepareRecharge() = action("recharge") {
         _state.update { it.copy(webSession=null) }; val c=_state.value.campus
         val result=campusApi.webSession(c); check(_state.value.campus==c) { "账号已变化，请重试" }
@@ -430,9 +443,11 @@ class CampusViewModel @JvmOverloads constructor(application:Application,
         val w=_state.value.water; require(w.configured) { "请先选择宿舍和水控" }
         check(w.access==null){"请登录学校账号并重新匹配宿舍，更新热水连接"}
         try {
-            if(finish) waterController.finish(w.profile()) else waterController.start(w.profile(),w.address)
+            if(finish) waterController.finish(w.profile())
+            else if(waterController.session?.stage?.let{it!=ShowerStage.SETTLED}==true)waterController.startNext(w.profile(),w.address)
+            else waterController.start(w.profile(),w.address)
             notice(if(finish) "服务器已确认结算，请同时确认现场已停水" else "水控已确认授权，请按水控上的出水键")
-        } finally { _state.update { it.copy(waterSession=waterController.session) } }
+        } finally { _state.update { it.copy(waterSession=waterController.session,pendingWaterHistory=waterController.archivedSessions.size) } }
     }
     fun reviewWater() = action("water") {
         transactionAllowed();check("verify" !in _state.value.busy){"正在核对设备，请稍候"}
@@ -470,18 +485,24 @@ class CampusViewModel @JvmOverloads constructor(application:Application,
             } catch(e:Exception) { if(e is CancellationException) throw e; _state.update { it.copy(washerError=message(e)) } }
         }
     }
-    fun createOrder(program:WasherProgram) = action("order") {
+    fun createOrder(program:WasherProgram) = createLaundryOrder(program,false)
+    fun createImmediateOrder(program:WasherProgram) = createLaundryOrder(program,true)
+    private fun createLaundryOrder(program:WasherProgram,immediate:Boolean) = action("order") {
         transactionAllowed(); val s=_state.value; val a=s.account ?: error("请先登录 U净"); val previous=s.washer ?: error("请先刷新洗衣机")
         val w=selectedWasher() ?: error("请选择洗衣机")
         val fresh=laundryApi.discoverAndRead(a,w.qr); require(fresh.id==previous.id && fresh.programs.contains(program)) { "设备或价格已变化，请重新确认" }
         _state.update { it.copy(washer=fresh) }; val controller=checkoutController ?: error("订单存储不可用")
-        controller.create(a,fresh,program); notice("预约已确认，请查看订单后前往支付宝付款")
+        controller.create(a,fresh,program,immediate); notice("预约已确认，请查看订单后前往支付宝付款")
     }
     fun refreshOrder(force:Boolean=true) {
         val a=_state.value.account ?: return; val r=_state.value.checkout ?: return
         if(r.accountId!=a.id || r.orderId==null || (!force && r.stage==CheckoutStage.COMPLETED)) return
-        val now=System.currentTimeMillis(); if(now-(attempts["order"] ?: 0)<3_000) return; attempts["order"]=now
-        action("orderRefresh") { checkoutController?.refresh(a) }
+        if("orderRefresh" in _state.value.busy || "payment" in _state.value.busy)return
+        val now=System.currentTimeMillis(); if(now-(attempts["order"] ?: 0)<if(ImmediatePolling.needed(r))900 else 3_000) return; attempts["order"]=now
+        action("orderRefresh") {
+            checkoutController?.refresh(a)
+            checkoutController?.record?.let { LaundryReminders(getApplication()).update(it) }
+        }
     }
     fun payOrder(open:(PaymentDestination)->Unit) = action("payment") {
         transactionAllowed(); val a=_state.value.account ?: error("请登录创建订单的 U净账号")
@@ -491,6 +512,7 @@ class CampusViewModel @JvmOverloads constructor(application:Application,
     fun cancelOrder() = action("cancel") {
         transactionAllowed(); val a=_state.value.account ?: error("请先登录 U净")
         checkoutController?.cancel(a); notice("已核对服务器返回的订单状态")
+        checkoutController?.record?.let { LaundryReminders(getApplication()).update(it) }
     }
     override fun onCleared() { transport.disconnect(); super.onCleared() }
 }

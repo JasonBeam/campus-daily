@@ -31,9 +31,14 @@ final class NoRedirect: NSObject, URLSessionTaskDelegate {
         let response: URLResponse
         do { (data, response) = try await session.data(for: request) }
         catch { throw WaterError.networkUncertain }
-        guard let http = response as? HTTPURLResponse, http.statusCode == 200,
-              data.count <= 65536, let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let code = root["code"] as? NSNumber, CFGetTypeID(code) != CFBooleanGetTypeID(), code.doubleValue == 0,
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { throw WaterError.provider }
+        return try Self.decodeResponse(data)
+    }
+    static func decodeResponse(_ data: Data) throws -> [String:Any] {
+        guard data.count <= 65536, let root = try? JSONSerialization.jsonObject(with:data) as? [String:Any],
+              let code = root["code"] as? NSNumber, CFGetTypeID(code) != CFBooleanGetTypeID() else { throw WaterError.provider }
+        if code.doubleValue == 4060 { throw WaterError.officialUnfinishedOrder }
+        guard code.doubleValue == 0,
               let body = root["data"] as? [String: Any] else { throw WaterError.provider }
         return body
     }

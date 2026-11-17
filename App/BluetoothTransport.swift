@@ -271,6 +271,7 @@ struct VerifiedWaterDevice {
             channelError = .bluetooth
             complete(.failure(WaterError.bluetooth)); return
         }
+        WaterPassiveCapture.receive(value,awaitingReply:step == "exchange")
         do {
             let frames = try decoder.append(value)
             guard frames.count <= 1, pendingFrame == nil else { throw WaterError.malformedFrame }

@@ -6,17 +6,17 @@ struct QuickSetupView: View {
     @EnvironmentObject private var water: WaterModel
     @EnvironmentObject private var laundry: LaundryModel
     private var washerDone: Bool { laundry.accountConnected && !laundry.savedMachines.isEmpty }
-    private var completed: Int { (campus.configured ? 1 : 0) + (water.configured ? 1 : 0) + (washerDone ? 1 : 0) }
+    private var completed: Int { (campus.configured ? 1 : 0) + (water.configured ? 1 : 0) }
     var body: some View {
         ScrollView {
             VStack(alignment:.leading,spacing:24) {
                 VStack(alignment:.leading,spacing:12) {
-                    Text("已完成 \(completed) / 3").font(.subheadline).foregroundStyle(.secondary)
-                    Text(completed == 3 ? "都准备好了" : "完成首次设置").font(.title.bold())
-                    Text(!campus.configured ? "先登录学校账号，再选择宿舍和常用洗衣机。" : !water.configured ? "学校账号已登录，接着选择你的宿舍。" : "宿舍已保存，接着绑定常用洗衣机。")
+                    Text("已完成 \(completed) / 2").font(.subheadline).foregroundStyle(.secondary)
+                    Text(completed == 2 ? "都准备好了" : "完成首次设置").font(.title.bold())
+                    Text(!campus.configured ? "先登录学校账号，再选择宿舍。洗衣机可以稍后添加。" : !water.configured ? "学校账号已登录，接着选择你的宿舍。" : "宿舍已保存，可以开始使用；洗衣机按需添加。")
                         .font(.subheadline).foregroundStyle(.secondary)
-                    ProgressView(value:Double(completed),total:3).tint(NativeTheme.tint)
-                        .accessibilityLabel("首次设置进度").accessibilityValue("已完成 \(completed) 项，共三项")
+                    ProgressView(value:Double(completed),total:2).tint(NativeTheme.tint)
+                        .accessibilityLabel("首次设置进度").accessibilityValue("已完成 \(completed) 项，共两项；洗衣机为可选项")
                 }
                 VStack(spacing:0) {
                     NavigationLink { CampusOnboardingView() } label: {
@@ -28,16 +28,13 @@ struct QuickSetupView: View {
                     }.accessibilityIdentifier("quickSetupWater")
                     Divider().padding(.leading,54)
                     NavigationLink { WasherSetupView() } label: {
-                        row("绑定洗衣机",detail:washerDone ? "已保存 \(laundry.savedMachines.count) 台机器" : "登录 U净，扫码保存常用机器",done:washerDone,symbol:"washer")
+                        row("洗衣机（可选）",detail:washerDone ? "已保存 \(laundry.savedMachines.count) 台机器" : "可以跳过，需要时再登录 U净并扫码添加",done:washerDone,symbol:"washer")
                     }.accessibilityIdentifier("quickSetupWasher")
                 }.buttonStyle(.plain).background(NativeTheme.surface,in:RoundedRectangle(cornerRadius:16))
-                if completed == 3 {
-                    Button("完成设置") { dismiss() }.buttonStyle(NothingButtonStyle())
+                if completed == 2 {
+                    Button(washerDone ? "完成设置" : "完成设置，暂不绑定洗衣机") { dismiss() }.buttonStyle(NothingButtonStyle())
                 } else if !campus.configured || !water.configured {
                     NavigationLink { CampusOnboardingView() } label: { Text(campus.configured ? "继续选择宿舍" : "登录并连接校园卡") }
-                        .buttonStyle(NothingButtonStyle())
-                } else {
-                    NavigationLink { WasherSetupView() } label: { Text(laundry.accountConnected ? "扫描洗衣机二维码" : "登录 U净") }
                         .buttonStyle(NothingButtonStyle())
                 }
                 NavigationLink { CampusPowerSetupView() } label: {

@@ -8,6 +8,8 @@ import kotlinx.coroutines.withTimeoutOrNull
 
 /** Read the hardware identity before any authorization. A remembered address is
  * only a hint, and a failed or mismatched one is followed by a fresh scan. */
+internal class RememberedWaterControllerBusy:IllegalStateException("水控当前仍在使用中，已断开连接，请稍后手动重试")
+
 data class VerifiedWaterTarget(val address:String,val identityFrame:ByteArray)
 
 internal suspend fun resolveWaterIdentity(
@@ -27,12 +29,14 @@ internal suspend fun resolveWaterIdentity(
         var keepConnected=false
         try {
             val frame=withTimeoutOrNull(12_000){probe(address)} ?: return null
+            if(address==preferredAddress && frame.contentEquals(byteArrayOf(0xA5.toByte())))throw RememberedWaterControllerBusy()
             val actual=WaterProtocol.identity(frame)
             if(!actual.equals(machineId,true)) {wrongIdentity=true;return null}
             currentCoroutineContext().ensureActive()
             keepConnected=true
             return VerifiedWaterTarget(address,frame)
-        } catch(e:CancellationException) {throw e}
+        } catch(e:RememberedWaterControllerBusy) {throw e}
+          catch(e:CancellationException) {throw e}
           catch(_:Exception) {return null}
         finally {if(!keepConnected)disconnect()}
     }

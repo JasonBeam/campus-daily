@@ -102,6 +102,13 @@ class UjingClient(private val userAgent: String = "CampusDaily/0.2.0 (Android ${
         }
         request(path,"GET",null,account.headers()).getJSONObject("data")
     }
+    override suspend fun startDetails(account:UjingAccount,id:String):LaundryStartDetails = withContext(Dispatchers.IO) {
+        LaundryStartDetails.read(request(immediateOrderPath(id,false),"GET",null,account.headers()).getJSONObject("data"))
+    }
+    override suspend fun startWasher(account:UjingAccount,id:String):Unit = withContext(Dispatchers.IO) {
+        val root=request(immediateOrderPath(id,true),"GET",null,account.headers())
+        check(root.optJSONObject("data")?.optString("errorMessage").isNullOrBlank()) { "启动结果未确认，请到U净核对" }
+    }
     override suspend fun cancel(account:UjingAccount,id:String) = withContext(Dispatchers.IO) {
         require(validOrderId(id)); request("/api/v1/orders/$id/cancel","POST",JSONObject().put("orderId",id).toString().toByteArray(),account.headers()); Unit
     }
@@ -113,7 +120,7 @@ class UjingClient(private val userAgent: String = "CampusDaily/0.2.0 (Android ${
         require(path.startsWith("/api/v1/") && !path.startsWith("//"))
         require(headers.values.all { it.length<=8192 && it.none(Char::isISOControl) })
         val route=path.substringBefore('?')
-        require(route in setOf("/api/v1/captcha","/api/v1/login","/api/v1/devices/scanWasherCode","/api/v1/app/washer/devices/program/info","/api/v1/orders/create","/api/v1/payment/methods","/api/v1/payment/arguments") || route.matches(Regex("/api/v1/orders/[A-Za-z0-9]{1,80}/(detail|cancel)")))
+        require(route in setOf("/api/v1/captcha","/api/v1/login","/api/v1/devices/scanWasherCode","/api/v1/app/washer/devices/program/info","/api/v1/orders/create","/api/v1/payment/methods","/api/v1/payment/arguments") || route.matches(Regex("/api/v1/orders/[A-Za-z0-9]{1,80}/(detail|cancel)")) || route.matches(Regex("/api/v1/app/orders/[A-Za-z0-9]{1,80}/(detail|control/start)")))
         val url = URL("https://phoenix.ujing.online$path")
         require(url.protocol == "https" && url.host == "phoenix.ujing.online" && url.port == -1)
         val connection = (url.openConnection() as HttpsURLConnection).apply {

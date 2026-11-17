@@ -56,6 +56,13 @@ class WaterIdentityResolverTest {
             {calls+=it;if(it=="unresponsive")delay(13_000);frame("AABBCCDD")},{disconnected++})
         assertEquals("own",result.address);assertEquals(listOf("unresponsive","own"),calls);assertEquals(1,disconnected)
     }
+    @Test fun busyRememberedAddressDisconnectsWithoutClaimingIdentityOrScanningOthers()=runTest {
+        var disconnected=0
+        val result=runCatching {resolveWaterIdentity("AABBCCDD","known",{fail("must wait before scanning");emptyList()},
+            {byteArrayOf(0xA5.toByte())},{disconnected++})}
+        assertTrue(result.exceptionOrNull() is com.beamjason.xiaorichang.ble.RememberedWaterControllerBusy)
+        assertEquals(1,disconnected)
+    }
     @Test fun excessiveCandidatesDoNotTriggerUnboundedProbing()=runTest {
         var count=0
         val result=runCatching {resolveWaterIdentity("AABBCCDD",null,{(1..17).map(Int::toString)},

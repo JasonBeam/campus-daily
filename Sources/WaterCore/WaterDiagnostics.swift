@@ -4,6 +4,7 @@ import Foundation
 @MainActor public final class WaterDiagnostics {
     public enum Event: String, Codable, Sendable {
         case startRequested, finishRequested, reviewRequested, sessionSaved, authorizationReply, stateReply
+        case stoppedSettlementRequested
         case finishBlocked, closeRequested, operationFailed, bluetoothStep, bluetoothWrite, bluetoothReply, disconnected, connectionLost
     }
     public enum Step: String, Codable, Sendable {

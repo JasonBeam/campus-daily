@@ -9,6 +9,41 @@ private final class AccessNoRedirect: NSObject, URLSessionTaskDelegate {
 
 /// Opt-in local acceptance build only. Never exports credentials or changes a binding.
 @MainActor enum AccessDiagnostics {
+    static func waterBilling(campus: CampusModel) async {
+        var report: [String:Any] = ["startedAt":ISO8601DateFormatter().string(from:Date()),"transactionsAttempted":false]
+        do {
+            guard let config = campus.onboardingLogin else { throw OnboardingError.login }
+            let options = URLSessionConfiguration.ephemeral
+            options.timeoutIntervalForRequest = 15; options.httpShouldSetCookies = false
+            let session = URLSession(configuration:options,delegate:AccessNoRedirect(),delegateQueue:nil)
+            defer { session.invalidateAndCancel() }
+            func read(_ path: String, extra: [String:Any] = [:]) async throws -> [String:Any] {
+                guard ["/api/water/gdwater/getWaterMoney","/api/sign/wxschoolsign/errOrder"].contains(path) else { throw CampusError.configuration }
+                var payload: [String:Any] = ["syscustid":config.syscustid,"custid":config.custid,"acc_token":config.accToken,"timestamp":config.timestamp]
+                extra.forEach { payload[$0.key] = $0.value }
+                var request = URLRequest(url:URL(string:CampusProvider.base+"/ykt-mini"+path)!)
+                request.httpMethod = "POST"; request.setValue("application/json",forHTTPHeaderField:"Content-Type")
+                request.setValue(config.accToken,forHTTPHeaderField:"acc_token")
+                request.setValue(config.userAgent,forHTTPHeaderField:"User-Agent")
+                request.httpBody = try JSONSerialization.data(withJSONObject:payload)
+                let (bytes,response) = try await session.data(for:request)
+                guard (response as? HTTPURLResponse)?.statusCode == 200, bytes.count <= 1048576,
+                      let body = try JSONSerialization.jsonObject(with:bytes) as? [String:Any] else { throw CampusError.response }
+                return body
+            }
+            let money = try await read("/api/water/gdwater/getWaterMoney")
+            report["waterMoney"] = money
+            if money["code"] as? Int == 0, let data = money["data"] as? [String:Any], let business = data["busicode"] {
+                report["failedDebits"] = try await read("/api/sign/wxschoolsign/errOrder",extra:["busicode":business])
+            }
+            report["completed"] = true
+        } catch { report["completed"] = false; report["errorClass"] = String(describing:type(of:error)) }
+        report["finishedAt"] = ISO8601DateFormatter().string(from:Date())
+        let file = FileManager.default.urls(for:.documentDirectory,in:.userDomainMask)[0].appendingPathComponent("water-billing-read-only-private.json")
+        if let data = try? JSONSerialization.data(withJSONObject:report,options:[.prettyPrinted,.sortedKeys]) {
+            try? data.write(to:file,options:[.atomic,.completeFileProtectionUntilFirstUserAuthentication])
+        }
+    }
     static func run(campus: CampusModel) async {
         var report: [String:Any] = ["startedAt":ISO8601DateFormatter().string(from:Date()),"transactionsAttempted":false]
         do {

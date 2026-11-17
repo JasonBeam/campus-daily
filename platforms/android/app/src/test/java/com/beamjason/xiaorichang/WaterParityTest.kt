@@ -50,11 +50,11 @@ class WaterParityTest {
         val store=Store().apply{value=ShowerSession(ShowerStage.ACTIVE,profile.machineId,"fixture-address",stateReviewRequired=true)}
         val radio=Transport();val service=Service();val controller=WaterController(radio,service,store)
         radio.replies+=byteArrayOf(0xA5.toByte())
-        assertTrue(controller.review(profile));assertFalse(store.value!!.stateReviewRequired)
-        assertEquals(0,radio.disconnected);assertEquals("fixture-address",radio.expected)
+        assertTrue(controller.review(profile));assertTrue(store.value!!.stateReviewRequired)
+        assertEquals(1,radio.disconnected);assertEquals("fixture-address",radio.expected)
         radio.replies+=identity
         assertFalse(controller.review(profile));assertTrue(store.value!!.stateReviewRequired)
-        assertEquals(1,radio.disconnected);assertEquals(0,service.authorizations);assertEquals(0,service.settlements)
+        assertEquals(2,radio.disconnected);assertEquals(0,service.authorizations);assertEquals(0,service.settlements)
         assertTrue(radio.writes.all{it.contentEquals(byteArrayOf(0xAA.toByte()))})
     }
     @Test fun malformedAuthorizationReleasesConnectionAndBlocksAnotherStart()=runBlocking {

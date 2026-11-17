@@ -63,6 +63,16 @@ class LaundrySafetyTest {
         assertTrue(runCatching {c.payment(account)}.isFailure);c.refresh(account)
         val next=LaundryCheckout(api,store);assertTrue(runCatching {next.payment(account)}.isFailure);assertEquals(1,api.pays)
     }
+    @Test fun paymentOfferIsValidOnlyForTheSameUnpaidOrderAndAccount() {
+        val r=CheckoutRecord(account.id,"device1",program.id,program.name,program.priceFen,
+            stage=CheckoutStage.PAYMENT_REQUESTED,orderId="order1",order=order())
+        assertTrue(mayOpenPendingPayment(r,account,account.id,"order1"))
+        assertFalse(mayOpenPendingPayment(r,account.copy(id="other"),account.id,"order1"))
+        assertFalse(mayOpenPendingPayment(r,account,account.id,"other"))
+        assertFalse(mayOpenPendingPayment(r.copy(stage=CheckoutStage.COMPLETED),account,account.id,"order1"))
+        assertFalse(mayOpenPendingPayment(r.copy(order=order(status="20",paid="1")),account,account.id,"order1"))
+        assertFalse(mayOpenPendingPayment(null,account,account.id,"order1"))
+    }
     @Test fun paidOrderCannotBeCancelled()=runTest {
         val api=Api();val c=LaundryCheckout(api,MemoryStore());c.create(account,snapshot(),program);api.detail=order(status="20",paid="1")
         assertTrue(runCatching {c.cancel(account)}.isFailure);assertEquals(0,api.cancels)
@@ -90,6 +100,11 @@ class LaundrySafetyTest {
         val value="alipays://platformapi/startApp?appId=20000042&actionType=WebView&followType=PUBLIC&url=${enc(auth)}"
         assertTrue(PaymentPolicy.allowedCheckout(value));assertFalse(PaymentPolicy.allowedCheckout(value+"&appId=evil"))
         assertFalse(PaymentPolicy.allowedCheckout(value.replace("wx.zhinengxiyifang.cn","evil.test")))
+        val bridge=java.net.URI(PaymentPolicy.browserCheckout(value))
+        assertEquals("https",bridge.scheme);assertEquals("ds.alipay.com",bridge.host)
+        assertEquals(value,java.net.URLDecoder.decode(bridge.rawQuery.removePrefix("scheme="),"UTF-8"))
+        assertEquals("https://qr.alipay.com/demo",PaymentPolicy.browserCheckout("https://qr.alipay.com/demo"))
+        assertTrue(runCatching{PaymentPolicy.browserCheckout(value.replace("wx.zhinengxiyifang.cn","evil.test"))}.isFailure)
     }
     @Test fun signedAmountAndDuplicateKeysAreRejected() {
         fun value(price:String)="method=alipay.trade.app.pay&sign=test&biz_content="+URLEncoder.encode("""{"total_amount":"$price"}""","UTF-8")

@@ -5,6 +5,27 @@ import CryptoKit
 import WaterCore
 
 @MainActor final class LaundryModel: ObservableObject {
+    @Published private(set) var remindersEnabled = LaundryReminders.shared.enabled
+    @Published private(set) var reminderIssue: String?
+    @Published private(set) var reminderStatus = LaundryReminders.shared.status
+    @Published private(set) var settingReminders = false
+    func testReminder() async {
+        do {
+            reminderIssue = try await LaundryReminders.shared.test()
+                ? "已安排测试提醒，10 秒后出现。" : "请在系统设置中允许校日常发送通知。"
+        } catch { reminderIssue = "测试提醒未能安排，请稍后重试。" }
+    }
+    func setReminders(_ enabled: Bool) async {
+        guard !settingReminders else { return }
+        settingReminders = true
+        defer { settingReminders = false; reminderStatus = LaundryReminders.shared.status }
+        do {
+            if try await LaundryReminders.shared.setEnabled(enabled) {
+                remindersEnabled = enabled; reminderIssue = nil
+                if enabled { await refreshOrder() }
+            } else { reminderIssue = "通知未获允许，请在系统设置中允许校日常发送通知" }
+        } catch { reminderIssue = "提醒设置未完成，请稍后重试" }
+    }
     @Published private(set) var configured = false
     @Published private(set) var accountConnected = false
     @Published private(set) var loading = false
@@ -19,13 +40,27 @@ import WaterCore
     private var candidateConfig: LaundryConfig?
     var selectedMachineID: String? { config?.deviceId }
     private var controller: LaundryCheckoutController?
+    var historyOwner: String? { config?.credentialIdentity }
     private var config: LaundryConfig?
     private var connection: UjingConnection?
     private var lastAttempt: Date?
+    private var foregroundPollingStartedAt = Date()
+    private let paymentWatcher = LaundryPaymentWatcher(runtime: IOSLaundryPaymentRuntime())
     private let provider = LaundryProvider { path, status, data in
         // Own transaction responses only; never persist request credentials or SDK callbacks.
         let folder = FileManager.default.urls(for:.applicationSupportDirectory,in:.userDomainMask)[0]
             .appendingPathComponent("LaundryCache",isDirectory:true)
+        if path.hasPrefix("/api/v1/app/orders/") {
+            let root = (try? JSONSerialization.jsonObject(with:data)) as? [String:Any]
+            let value = root?["data"] as? [String:Any]
+            var meta: [String:Any] = ["httpStatus":status,"receivedAt":ISO8601DateFormatter().string(from:Date()),"control":path.hasSuffix("/control/start")]
+            meta["code"] = root?["code"]; meta["moduleType"] = value?["moduleType"]; meta["status"] = value?["status"]
+            let name = path.hasSuffix("/control/start") ? "last-immediate-start-command.json" : "last-immediate-start-read.json"
+            if let bytes = try? JSONSerialization.data(withJSONObject:meta,options:[.sortedKeys]) {
+                try? bytes.write(to:folder.appendingPathComponent(name),options:[.atomic,.completeFileProtectionUntilFirstUserAuthentication])
+            }
+            return
+        }
         let name = path.hasPrefix("/api/v1/payment/arguments") ? "last-payment-response" : "last-create-response"
         guard data.count <= 1_048_576 else { return }
         try? data.write(to:folder.appendingPathComponent(name + ".json"),options:[.atomic,.completeFileProtectionUntilFirstUserAuthentication])
@@ -269,19 +304,19 @@ import WaterCore
         guard let snapshot else { return "待查询" }
         return freshness == "已更新" ? snapshot.stateLabel : "上次" + snapshot.stateLabel
     }
-    func createAndPay(_ selected: LaundryProgram) async {
+    func createAndPay(_ selected: LaundryProgram, immediateStart: Bool = false) async {
         // A fresh explicit “下单并前往支付宝” confirmation authorizes this sequence.
         // A recovered/uncertain creation stops at the order card for a new confirmation.
         checkoutProgress = "正在预约并核对机器…"
-        guard await create(selected) else { checkoutProgress = nil; return }
+        guard await create(selected,immediateStart:immediateStart) else { checkoutProgress = nil; return }
         checkoutProgress = "订单已确认，正在准备支付宝…"
         await pay()
     }
-    @discardableResult private func create(_ selected: LaundryProgram) async -> Bool {
+    @discardableResult private func create(_ selected: LaundryProgram, immediateStart: Bool = false) async -> Bool {
         guard mayCreate, let config, let controller, let snapshot else { return false }
         checkoutBusy = true; checkoutIssue = nil
         defer { checkout = controller.record; checkoutBusy = false }
-        do { try await controller.create(config:config,snapshot:snapshot,program:selected); return true }
+        do { try await controller.create(config:config,snapshot:snapshot,program:selected,immediateStart:immediateStart); return true }
         catch {
             checkoutProgress = nil
             checkoutIssue = (error as? LocalizedError)?.errorDescription ?? "订单结果待核对，请勿重复下单"
@@ -304,33 +339,54 @@ import WaterCore
             switch try payment.destination(maximum:record.expectedPrice) {
             case .query:
                 try await controller.refresh(config:config)
+                if let refreshed = controller.record {
+                    do { try await LaundryReminders.shared.update(refreshed) }
+                    catch { reminderIssue = "订单已更新，但提醒未能安排，请检查通知权限" }
+                }
                 checkoutProgress = nil
             case .sdk(let signed):
                 checkoutProgress = "正在打开支付宝…"
-                AlipayBridge.shared.pay(signed) { [weak self] status, memo in
-                    Task {
-                        self?.checkoutProgress = "正在核对订单状态…"
-                        await self?.refreshOrder()
-                        self?.checkoutProgress = nil
-                        if status == "6001" { self?.checkoutIssue = "你已退出支付宝付款，请核对订单状态" }
-                        else if status != "9000" && status != "8000" {
-                            self?.checkoutIssue = memo.isEmpty ? "支付宝未完成付款，请核对订单状态" : "支付宝返回：" + String(memo.prefix(160))
-                        }
-                    }
+                beginPaymentWatch()
+                AlipayBridge.shared.pay(signed) { [weak self] status,memo in
+                    self?.handlePaymentReturn(status:status,memo:memo)
                 }
             case .checkout(let url):
                 checkoutProgress = "正在打开支付宝…"
-                AlipayBridge.shared.openCheckout(url) { [weak self] opened in
-                    if opened { self?.checkoutProgress = "已打开支付宝，完成后返回核对订单" }
-                    else {
+                beginPaymentWatch()
+                AlipayBridge.shared.openCheckout(url,onPaymentResult:{ [weak self] status,memo in
+                    self?.handlePaymentReturn(status:status,memo:memo)
+                }) { [weak self] launch in
+                    switch launch {
+                    case .sdk:
+                        self?.checkoutProgress = "已接入支持回跳的付款流程，付款后将核对U净订单"
+                    case .external:
+                        self?.checkoutProgress = record.immediateStart == true
+                            ? "此收银台需手动返回；将尝试后台核对，未启动请回校日常"
+                            : "此收银台需手动返回，付款后请回校日常核对订单"
+                    case .failed:
+                        self?.paymentWatcher.stop()
                         self?.checkoutProgress = nil
                         self?.checkoutIssue = "未能打开支付宝收银台，请核对订单状态"
                     }
                 }
             }
         } catch {
+            paymentWatcher.stop()
             checkoutProgress = nil
             checkoutIssue = (error as? LocalizedError)?.errorDescription ?? "付款结果待核对，请刷新订单"
+        }
+    }
+    private func handlePaymentReturn(status: String, memo: String) {
+        Task {
+            checkoutProgress = "正在核对订单状态…"
+            await refreshOrder()
+            checkoutProgress = nil
+            if status == "6001" {
+                paymentWatcher.stop(); checkoutIssue = "你已退出支付宝付款，请核对订单状态"
+            } else if status != "9000" && status != "8000" {
+                paymentWatcher.stop()
+                checkoutIssue = memo.isEmpty ? "支付宝未完成付款，请核对订单状态" : "支付宝返回：" + String(memo.prefix(160))
+            }
         }
     }
     var mayCancel: Bool {
@@ -340,20 +396,32 @@ import WaterCore
     }
     func cancelOrder() async {
         guard mayCancel, let config, let controller else { return }
+        paymentWatcher.stop()
         checkoutBusy = true; checkoutIssue = nil; checkoutProgress = nil
         defer { checkout = controller.record; checkoutBusy = false }
-        do { try await controller.cancel(config:config) }
+        do {
+            try await controller.cancel(config:config)
+            if let record = controller.record {
+                do { try await LaundryReminders.shared.update(record) }
+                catch { reminderIssue = "订单已更新，但提醒未能安排，请检查通知权限" }
+            }
+        }
         catch { checkoutIssue = (error as? LocalizedError)?.errorDescription ?? "取消结果待核对，请刷新订单" }
         await refresh(force:true)
     }
-    func refreshOrder() async {
+    func refreshOrder(fromPaymentWatch: Bool = false) async {
+        guard fromPaymentWatch || !paymentWatcher.isRunning else { return }
         guard !checkoutBusy, let config, let controller, controller.record?.belongs(to:config) == true else { return }
         checkoutBusy = true; checkoutIssue = nil; checkoutProgress = "正在核对订单状态…"
-        defer { checkout = controller.record; checkoutBusy = false; checkoutProgress = nil }
+        defer { checkout = controller.record; checkoutBusy = false; checkoutProgress = nil; reminderStatus = LaundryReminders.shared.status }
         do {
             if controller.record?.orderId != nil { try await controller.refresh(config:config) }
             else if let id = try await provider.activeOrderID(config:config) { try await controller.recover(config:config,candidateOrderId:id) }
             else { checkoutIssue = "暂未查到对应预约，请在U净订单核对；未重复提交" }
+            if let record = controller.record {
+                do { try await LaundryReminders.shared.update(record); reminderIssue = nil }
+                catch { reminderIssue = "订单已更新，但提醒未能安排，请检查通知权限" }
+            }
             if let record = controller.record, record.stage == .created, let id = record.orderId,
                let order = record.order, ["10","17"].contains(order.status.text), order.payFlag?.text == "0" {
                 await provider.preparePayment(config:config,id:id)
@@ -363,6 +431,46 @@ import WaterCore
             checkoutProgress = nil
             checkoutIssue = (error as? LocalizedError)?.errorDescription ?? "订单查询失败，保留上次状态"
         }
+    }
+    var needsImmediateStartRefresh: Bool {
+        LaundryImmediatePolling.needed(controller?.record)
+    }
+    private func beginPaymentWatch() {
+        guard let config, let record = controller?.record, record.immediateStart == true,
+              record.stage == .paymentRequested, let id = record.orderId,
+              record.credentialIdentity == config.credentialIdentity, record.belongs(to:config) else { return }
+        let owner = config.credentialIdentity
+        paymentWatcher.start(shouldContinue: { [weak self] in
+            guard let self, let current = self.controller?.record, let activeConfig = self.config else { return false }
+            return activeConfig.credentialIdentity == owner && current.credentialIdentity == owner &&
+                current.orderId == id && current.belongs(to:activeConfig) &&
+                LaundryImmediatePolling.needed(current)
+        }, refresh: { [weak self] in
+            // Same controller/checkoutBusy gate as foreground checks, never a second start executor.
+            await self?.refreshOrder(fromPaymentWatch:true)
+        })
+    }
+    var immediatePollingKey: String {
+        guard needsImmediateStartRefresh, let record = checkout else { return "regular" }
+        return (record.orderId ?? "creating") + ":" + (record.startAttempt?.rawValue ?? "pending")
+    }
+    func beginForegroundPolling() { foregroundPollingStartedAt = Date() }
+    var orderRefreshInterval: TimeInterval {
+        LaundryImmediatePolling.interval(controller?.record,activeSince:foregroundPollingStartedAt)
+    }
+    /// Local acceptance read only; never invokes a start command, including on a paid order.
+    func checkImmediateStartAccess() async {
+        var report: [String:Any] = ["checkedAt":ISO8601DateFormatter().string(from:Date()),"controlRequests":0]
+        do {
+            guard let config, let record = controller?.record, record.belongs(to:config), let id = record.orderId else { throw LaundryError.configuration }
+            let details = try await provider.startDetails(config:config,id:id)
+            report["readSucceeded"] = true; report["moduleType"] = details.moduleType
+            report["status"] = details.order.status.text; report["paid"] = details.order.paid
+            report["orderMatches"] = details.order.id == id && details.order.deviceId == record.deviceId && details.order.deviceWashModelId == record.programId
+            report["requiresOfficialPreparation"] = details.requiresSelfClean
+        } catch { report["readSucceeded"] = false; report["error"] = (error as? LocalizedError)?.errorDescription ?? "read_failed" }
+        let url = FileManager.default.urls(for:.documentDirectory,in:.userDomainMask)[0].appendingPathComponent("laundry-start-readonly-check.json")
+        if let data = try? JSONSerialization.data(withJSONObject:report,options:[.sortedKeys,.prettyPrinted]) { try? data.write(to:url,options:[.atomic,.completeFileProtectionUntilFirstUserAuthentication]) }
     }
     var freshness: String {
         guard let snapshot else { return "暂未查询" }
@@ -379,5 +487,6 @@ import WaterCore
     }
     func save(_ value: LaundryCheckoutRecord) throws {
         try JSONEncoder().encode(value).write(to:file,options:[.atomic,.completeFileProtectionUntilFirstUserAuthentication])
+        LocalOrderHistoryStore.record(.laundry(value))
     }
 }

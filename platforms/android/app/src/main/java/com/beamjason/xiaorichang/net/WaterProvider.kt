@@ -61,10 +61,18 @@ class WaterProvider:WaterService {
             conn.outputStream.use { it.write(form.toByteArray(Charsets.UTF_8)) }
             require(conn.responseCode==200) { "热水服务暂时无法连接" }
             val bytes=conn.inputStream.use { it.readBytesBounded(65536) }
-            val root=JSONObject(bytes.toString(Charsets.UTF_8))
-            require(root.optInt("code",-1)==0) { "热水服务未确认成功，请核对校园记录" }
-            root.optJSONObject("data") ?: error("热水服务器返回无效")
+            decodeResponse(bytes)
         } finally { conn.disconnect() }
+    }
+    companion object {
+        internal fun decodeResponse(bytes:ByteArray):JSONObject {
+            require(bytes.size<=65536)
+            val root=JSONObject(bytes.toString(Charsets.UTF_8))
+            val code=root.opt("code") as? Number ?: error("热水服务器返回无效")
+            check(code.toDouble()!=4060.0){"学校仍有未完成热水订单，请到官方热水小程序核对后重试"}
+            check(code.toDouble()==0.0){"热水服务未确认成功，请核对校园记录"}
+            return root.optJSONObject("data") ?: error("热水服务器返回无效")
+        }
     }
 }
 
