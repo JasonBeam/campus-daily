@@ -14,7 +14,7 @@ enum AccountText {
     static let pausedRefused = "存的密码登录不上，自动登录先停了。可能是在学校那边改过密码，重新输入就能恢复。"
     static let signOutFailed = "退出没完成，再试一次。"
     /// 退出登录 that failed while hot water was held for it (`ShowerModel.holdForSignOut`).
-    static let signOutFailedHotWaterHeld = "退出没完成，热水暂时开不了。再退一次，或者重新核对宿舍水控，就能接着用。"
+    static let signOutFailedHotWaterHeld = "退出没完成，热水暂时开不了。重新核对宿舍水控就能接着用；如果再退一次，退出后要重新设热水。"
     static func signOutFailed(hotWaterHeld: Bool) -> String { hotWaterHeld ? signOutFailedHotWaterHeld : signOutFailed }
     /// 保存密码 off didn't go through (the Keychain or the lease file couldn't be written yet).
     static let forgetFailed = "密码还存着，没关掉。再试一次。"

@@ -71,9 +71,11 @@ struct PowerChoice: Identifiable, Equatable {
     /// The last 退出登录's hot-water step, after its sign-out.
     private var signOutHotWater: Task<Void, Never>?
     private var schoolVault: StoredSchoolVault { services.schoolVault }
+    #if DEBUG
     /// Tests only: runs once the previous person's widget snapshot is cleared, before the
     /// hot-water binding goes (`previousPersonCleared`).
     var afterSnapshotCleared: (@MainActor () async -> Void)?
+    #endif
 
     init(services: CampusServices, stack: SchoolRefreshStack, reminders: Reminders, hotWater: @escaping () -> ShowerModel?) {
         self.services = services
@@ -280,9 +282,17 @@ struct PowerChoice: Identifiable, Equatable {
     /// the sign-in started (`started`): what is stored now is whoever signed in after it.
     func previousPersonCleared(unconfirmed: Bool, dormAndMeterCleared: Bool, since started: Int) async {
         guard started == signOutGeneration else { return }
-        let refresher = refresher, afterSnapshotCleared = afterSnapshotCleared
+        let refresher = refresher
+        #if DEBUG
+        let afterSnapshotCleared = afterSnapshotCleared
+        #endif
         let hotWater = await AccountSwitch.clearPreviousPerson(
-            snapshot:{ try? await refresher.clear(); await afterSnapshotCleared?() },
+            snapshot:{
+                try? await refresher.clear()
+                #if DEBUG
+                await afterSnapshotCleared?()
+                #endif
+            },
             hotWater:{ [hotWater] in
                 // Again after the snapshot's wait, right before the binding goes.
                 guard started == signOutGeneration else { return AccountSwitch.HotWater.none }

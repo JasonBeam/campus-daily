@@ -146,7 +146,7 @@ final class SignOutHotWaterTests: XCTestCase {
         XCTAssertFalse(shower.residenceReviewRequired)
     }
 
-    private static let heldAlert = "退出没完成，热水暂时开不了。再退一次，或者重新核对宿舍水控，就能接着用。"
+    private static let heldAlert = "退出没完成，热水暂时开不了。重新核对宿舍水控就能接着用；如果再退一次，退出后要重新设热水。"
     private static let heldLine = "上次退出学校账号没完成，热水暂时开不了。去设置里再退一次，或者重新核对宿舍水控。"
     private static let switchLine = "学校账号退出或换过，先在校日常里重新核对宿舍水控。"
 
@@ -228,6 +228,36 @@ final class SignOutHotWaterTests: XCTestCase {
 
         try shower.saveBinding(Fixture.binding)
         XCTAssertFalse(shower.residenceReviewRequired)
+        shower.holdForSignOut()
+        XCTAssertEqual(shower.startRefusalText, Self.switchLine)
+    }
+
+    /// A failed 退出登录, then one that goes through: hot water goes as after any sign-out, and
+    /// the failed one is forgotten (a binding set up again isn't refused with its line).
+    func testASecondSignOutThatGoesThroughForgetsTheFailedOne() async throws {
+        let store = ScriptedStore()
+        let defaults = SampleDefaults()
+        let vault = StoredShowerVault(store:store)
+        try vault.saveBinding(Fixture.binding)
+        try StoredSchoolVault(store:store).saveAccount(SchoolAccount(account:"99100991"))
+        let (campus, shower) = models(store, support:try Fixture.supportWithProfile(), defaults:defaults)
+        await waitUntil { shower.gateRecord != .notLoaded && shower.profileLoaded }
+        store.refusing = [.schoolPassword]
+        campus.signOut()
+        await campus.signOutsFinished()
+        XCTAssertTrue(campus.signOutFailed)
+        XCTAssertTrue(defaults.bool(forKey:PreferenceKey.showerReviewAfterFailedSignOut))
+        XCTAssertEqual(shower.startRefusalText, Self.heldLine)
+
+        store.refusing = []
+        campus.signOut()
+        await campus.signOutsFinished()
+
+        XCTAssertNil(shower.binding)
+        XCTAssertNil(try vault.binding())
+        XCTAssertFalse(shower.residenceReviewRequired)
+        XCTAssertFalse(defaults.bool(forKey:PreferenceKey.showerReviewAfterFailedSignOut))
+        try shower.saveBinding(Fixture.binding)
         shower.holdForSignOut()
         XCTAssertEqual(shower.startRefusalText, Self.switchLine)
     }
