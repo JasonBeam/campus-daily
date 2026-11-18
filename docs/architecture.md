@@ -557,19 +557,25 @@ idle ──start──► authorizing ──auth ok──► writePending ──
   │                                         ▼
   │                                     settling ──receipt──► done ──► idle
   │                                         │ uncertain/refused
-  └──── resolveManually (after user checks official record) ◄── failed(needsReview)
+  └──── startNext (old record kept in water.retained, new authorization) ◄── failed(needsReview): shower over
 ```
 
-| State | Persisted fields | UI | Allowed actions |
+| State | Persisted fields | Page (`ShowerPagePhase`): 暖橙 / 清爽 | Allowed actions |
 |---|---|---|---|
-| `idle` | last receipt | 开水 | start |
-| `authorizing` | machineId, peripheral | 正在开水… | none (await) |
-| `writePending` | + authorizationId, startedAt | **洗澡中**, hint 「水控没回应，有热水就照常洗」 | finish, review |
-| `running` | same | 洗澡中 + timer; Live Activity | finish, review |
-| `closing` | + close requested | 正在结束… | none |
-| `settling` | + consumption frame | 正在结算… | none; on relaunch: show "结算待核对" |
-| `done` | receipt (fen, duration) | 本次 ¥x.xx | dismiss → idle |
-| `failed(reason, needsReview)` | everything above | reason + 「去看热水记录」 | resolveManually (if needsReview), dismiss (if not) |
+| `idle` | last receipt | no session: 准备洗澡, button 开始洗澡 | start |
+| `authorizing` | machineId, peripheral | `connecting`: 正在连接水控… / 正在处理 | 取消 (`ShowerPageFlow.mayCancel`) |
+| `writePending` | + authorizationId, startedAt | `running`: 正在洗澡 + timer, hint 「水控没回应，有热水就照常洗」 / 热水已授权 | finish, review, automatic check |
+| `running` | same | `running`: 正在洗澡 + timer / 热水已授权; Live Activity | finish, review, automatic check |
+| `writePending` / `running` with `stateReviewRequired` | + the flag | `stopped` (shower over): 上一次洗好了 / 本次待核对 | startNext, review (reports only) |
+| `closing` | + close requested | `settling`: 正在结算… / 正在处理 | none; on relaunch: back to the timer if the close never went out, else `failed(closeUnconfirmed)` |
+| `settling` | + consumption frame | `settling` | none; on relaunch: `failed(settleUnconfirmed)` (shower over) |
+| `done` | receipt (fen, duration) | `done`: 洗好了 ¥x.xx / 结算完成 | dismiss → idle |
+| `failed(needsReview: false)` | everything above | `connectFailed` (没连上水控 / 本次待核对) or `denied` (水没开成 or 水控有人在用) | retry in place, dismiss |
+| `failed(needsReview: true)` | everything above | `stopped` (shower over): 上一次洗好了, or 水控还没停 for `closeBusy` / 本次待核对 | startNext (开始下一次洗澡); review (reports only) for an unsure close or 再查一次 |
+
+There is no check page and no 「核对完才能再洗」 step: the app never settles a record that is
+over and offers no way to resolve it by hand (`resolveManually` has no caller in the app); the
+next shower keeps it, as below.
 
 Rules:
 
@@ -794,8 +800,8 @@ The debug log notes only `topUp.weChat opened=yes|no`.
 
 - Entries (`CampusTopUpEntry`): 暖橙's card balance → the page once signed in; its electricity
   → the page with a meter bound, else the meter picker; signed out → the login step. 清爽's
-  balance card shows 「充值 ›」 under each under the same conditions. Widgets and notifications
-  are unchanged.
+  双余额 card has one 「校园充值 · 微信」 link under both balances (`ClearBalanceCard`), which
+  opens the page. Widgets and notifications are unchanged.
 - `CampusTopUpFlow`: a tap emits `.copy(serviceName)` then `.open(weChat)` and shows the copied
   line under the button; WeChat answering `false` turns it into the failure line (notice
   colour, announced once; it says the name is copied and to open WeChat by hand) until the next
