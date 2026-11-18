@@ -205,16 +205,11 @@ struct PowerChoice: Identifiable, Equatable {
         let session = session, state = login.state
         // Under the lease like the password sign-in: never beside the widget's own login.
         // A sign-in that throws after its writes began has changed the person too.
-        var counted = false
-        let summary = try await SchoolSession.watchingPerson(on:session, {
+        _ = try await SchoolSession.signingIn(on:session, {
             try await refresher.holdingLease { owning in
                 try await session.adoptWebState(state, owning:owning)
             }
-        }, changed:{ personChanges += 1; counted = true })
-        if summary.switchedAccount || summary.previousPersonUnconfirmed {
-            if !counted { personChanges += 1 }
-            await previousPersonCleared(unconfirmed:!summary.switchedAccount, dormAndMeterCleared:summary.dormAndMeterCleared)
-        }
+        }, changed:{ personChanges += 1 }, cleanUp:{ await previousPersonCleared(unconfirmed:$0, dormAndMeterCleared:$1) })
         await refresher.noteChange()
         // Signed out (or reset) while that ran: the dorm must not be written back.
         guard started == signOutGeneration else { return }
@@ -258,16 +253,11 @@ struct PowerChoice: Identifiable, Equatable {
         await signOuts.finished()
         let session = session
         // A sign-in that throws after its writes began has changed the person too.
-        var counted = false
-        let summary = try await SchoolSession.watchingPerson(on:session, {
+        _ = try await SchoolSession.signingIn(on:session, {
             try await refresher.holdingLease { owning in
                 try await session.signIn(account:account, password:password, savePassword:savePassword, owning:owning)
             }
-        }, changed:{ personChanges += 1; counted = true })
-        if summary.switchedAccount || summary.previousPersonUnconfirmed {
-            if !counted { personChanges += 1 }
-            await previousPersonCleared(unconfirmed:!summary.switchedAccount, dormAndMeterCleared:summary.dormAndMeterCleared)
-        }
+        }, changed:{ personChanges += 1 }, cleanUp:{ await previousPersonCleared(unconfirmed:$0, dormAndMeterCleared:$1) })
         await refresher.noteChange()
         reload(); issue = nil; lastRefresh = nil
         lookup.clear(); powerMatchIssue = nil

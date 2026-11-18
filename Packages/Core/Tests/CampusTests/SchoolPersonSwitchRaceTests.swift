@@ -104,6 +104,43 @@ final class SchoolPersonSwitchRaceTests: XCTestCase {
         XCTAssertEqual(changes, 1, "someone else signed in")
     }
 
+    /// The app's clean-up after a change of person (the widget snapshot, the hot-water binding)
+    /// also runs when the sign-in failed after its writes began: the new person's card session
+    /// may be stored already, so a second try finds "the same person" and cleans nothing.
+    /// It is then unconfirmed. A sign-in that fails before writing asks for none.
+    func testTheCleanUpAlsoRunsForASignInThatFailsAfterItsWritesBegan() async throws {
+        let h = try previousPerson()
+        let session = h.session()
+        var cleanUps: [Bool] = []
+        func signIn() async throws {
+            _ = try await SchoolSession.signingIn(on: session, {
+                try await session.adoptWebState(try FixtureLoader.csaLoginState().encoded(), owning: .unchecked)
+            }, changed: {}, cleanUp: { unconfirmed, _ in cleanUps.append(unconfirmed) })
+        }
+        do { try await signIn(); XCTFail("nothing answers the liveness check") } catch {}
+        XCTAssertEqual(cleanUps, [], "nothing was written")
+
+        try h.server.serve("ecykt/getSysBindCustInfo-ok")
+        h.store.failWrites(to: .schoolProfile)
+        do { try await signIn(); XCTFail("the profile write was meant to fail") } catch {
+            XCTAssertTrue(error is StorageError, "\(error)")
+        }
+        XCTAssertEqual(cleanUps, [true])
+    }
+
+    func testTheCleanUpOfASwitchIsConfirmed() async throws {
+        let h = try previousPerson()
+        try h.server.serve("ecykt/getSysBindCustInfo-ok")
+        let session = h.session()
+        var cleanUps: [Bool] = [], changes = 0
+        let summary = try await SchoolSession.signingIn(on: session, {
+            try await session.adoptWebState(try FixtureLoader.csaLoginState().encoded(), owning: .unchecked)
+        }, changed: { changes += 1 }, cleanUp: { unconfirmed, _ in cleanUps.append(unconfirmed) })
+        XCTAssertTrue(summary.switchedAccount)
+        XCTAssertEqual(cleanUps, [false])
+        XCTAssertEqual(changes, 1)
+    }
+
     func testSwitchDuringElectricityMatchWritesNothing() async throws {
         let h = try previousPerson()
         try h.server.serve("ecykt/getSysBindCustInfo-ok")

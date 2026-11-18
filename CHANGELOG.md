@@ -70,6 +70,7 @@
 
 ### Fixed
 
+- Run the account-switch clean-up (home's numbers, the hot-water binding) also when someone else's sign-in fails part-way through saving: the new person could be stored already, so the next try found the same person, cleaned nothing, and the hot-water binding of the person before stayed in use.
 - Remove the hot-water binding at 退出登录, as when someone else signs in (it stays only while a shower may still be open, and then no new shower starts until the dorm is set again): the binding holds the school identity of the person who signed out, so the next person to sign in on the phone could start showers billed to that person. The dialog now says 「首页的电量和余额会清空，热水要重新设置；洗衣设置还在。」.
 - Keep the laundry countdown and the 「衣服洗好了」 reminder at the end first read when U净 sends the same time left again (same order, same status): the end was counted from each read and moved later with every repeated value. A new value, status or order sets the end from that read.
 - Open the laundry page with the usual slide after 保存为常用机器 (or a tap on a saved machine) on 常用洗衣机 opened from home's unbound 洗衣 row, in both themes; it replaced the page in one frame. Back from it now returns to 常用洗衣机.

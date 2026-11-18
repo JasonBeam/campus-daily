@@ -218,6 +218,28 @@ public actor SchoolSession {
         }
     }
 
+    /// A sign-in with the caller's own clean-up for a change of person. `cleanUp(unconfirmed,
+    /// dormAndMeterCleared)` runs when the login was someone else or nobody could tell, and also
+    /// (as unconfirmed) when the sign-in threw after it changed the person: the new person may
+    /// be stored already, so a second try would find the same person and clean nothing.
+    public static func signingIn(on session: SchoolSession, isolation: isolated (any Actor)? = #isolation,
+                                 _ attempt: () async throws -> SignInSummary, changed: () -> Void,
+                                 cleanUp: (_ unconfirmed: Bool, _ dormAndMeterCleared: Bool) async -> Void) async throws -> SignInSummary {
+        var counted = false
+        let summary: SignInSummary
+        do {
+            summary = try await watchingPerson(on: session, attempt, changed: { changed(); counted = true })
+        } catch {
+            if counted { await cleanUp(true, false) }
+            throw error
+        }
+        if summary.switchedAccount || summary.previousPersonUnconfirmed {
+            if !counted { changed() }
+            await cleanUp(!summary.switchedAccount, summary.dormAndMeterCleared)
+        }
+        return summary
+    }
+
     /// A sign-in not known to be the same person: what was started before it is stale.
     func newPerson() -> Int {
         personGeneration += 1
