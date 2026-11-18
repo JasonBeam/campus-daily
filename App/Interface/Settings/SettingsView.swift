@@ -27,7 +27,8 @@ struct SettingsView: View {
 
     /// 「学校洗衣机」 switch.
     private var laundrySwitch: SchoolLaundrySwitch {
-        SchoolLaundrySwitch(laundry:laundry, preview:preview, previewOn:Binding(get:{ previewLaundry }, set:{ previewLaundry = $0 }))
+        SchoolLaundrySwitch(laundry:laundry, preview:preview, previewOn:Binding(get:{ previewLaundry }, set:{ previewLaundry = $0 }),
+                            sample:sample)
     }
 
     var body: some View {

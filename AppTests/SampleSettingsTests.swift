@@ -1,4 +1,5 @@
 import XCTest
+import SwiftUI
 import Core
 @testable import XiaoRiChang
 
@@ -24,5 +25,37 @@ final class SampleSettingsTests: XCTestCase {
                        "点击后将复制“e广工商大办事大厅”并打开微信；在聊天列表下拉点击该小程序，未显示时可搜索并粘贴。付款和到账以学校官方结果为准。")
         XCTAssertFalse(ClearCampusTopUpText.note(sample:true).contains("刷新"))
         XCTAssertTrue(ClearCampusTopUpText.note(sample:true).contains(CampusTopUp.serviceName))
+    }
+
+    /// 暖橙's 学校洗衣机 switch in the sample: the value stays and the blocked message comes up,
+    /// like the other switches.
+    func testSchoolLaundrySwitchIsBlockedInTheSample() {
+        let sample = SampleMode(gate:LiveShowerGate(record:{ .known(.idle) }))
+        XCTAssertEqual(sample.enter(), .entered)
+        var stored: Bool?
+        let laundrySwitch = SchoolLaundrySwitch(laundry:Self.laundry(), preview:HomeData.sample(),
+                                                previewOn:Binding(get:{ stored }, set:{ stored = $0 }), sample:sample)
+        let before = laundrySwitch.isOn
+        laundrySwitch.binding.wrappedValue = !before
+        XCTAssertEqual(laundrySwitch.isOn, before)
+        XCTAssertNil(stored)
+        XCTAssertEqual(sample.blocked, .bindWasher)
+    }
+
+    /// Outside the sample the DEBUG demo's switch still flips locally.
+    func testSchoolLaundrySwitchFlipsOutsideTheSample() {
+        let sample = SampleMode(gate:LiveShowerGate(record:{ .known(.idle) }))
+        var stored: Bool?
+        let laundrySwitch = SchoolLaundrySwitch(laundry:Self.laundry(), preview:HomeData.sample(),
+                                                previewOn:Binding(get:{ stored }, set:{ stored = $0 }), sample:sample)
+        let before = laundrySwitch.isOn
+        laundrySwitch.binding.wrappedValue = !before
+        XCTAssertEqual(stored, !before)
+        XCTAssertNil(sample.blocked)
+    }
+
+    private static func laundry() -> LaundryModel {
+        let services = CampusServices.sample()
+        return LaundryModel(services:services, reminders:Reminders.sample(defaults:services.defaults), activities:nil)
     }
 }
