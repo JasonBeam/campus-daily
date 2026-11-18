@@ -39,6 +39,7 @@ final class ShowerRetiredWordsTests: XCTestCase {
         // The charge shows on the campus card's records, not in a hot-water list of the school's.
         "学校的热水记录",
         "学校官方热水消费明细",
+        "官方用水记录",
     ]
 
     /// The one file the product copy is in.

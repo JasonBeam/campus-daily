@@ -23,7 +23,7 @@ public enum ClearShowerText {
     public static let connectFailedBody = "蓝牙连接失败，请靠近水控并退出其他水控连接页面"
     public static let inUseBody = "水控仍在忙，已断开连接；确认停水后请稍后再试"
     public static let deniedBody = "学校未授权本次用水，未扣费；请稍后再试"
-    public static let stoppedBody = "水控未保留本次授权，结算尚未确认；请核对官方用水记录"
+    public static let stoppedBody = "水控未保留本次授权，结算尚未确认；可在校园卡消费明细中核对，扣费约 1 小时后入账"
     /// The stopped face over a close the controller answered busy.
     public static let closeBusyBody = "水控仍在忙，尚未收到结束数据；请稍后核对结束结果"
 
