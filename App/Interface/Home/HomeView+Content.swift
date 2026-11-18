@@ -289,6 +289,12 @@ extension HomeView {
 
     // MARK: Toolbar
 
+    /// The date in the bar, there from the start and seen once the date block is under the bar.
+    var barDate: some View {
+        Text(dateTitle).font(.headline).foregroundStyle(.primary)
+            .opacity(scrolledPastDate ? 1 : 0)
+            .accessibilityHidden(!scrolledPastDate)
+    }
 
     @ViewBuilder var gear: some View {
         let button = Button { settings = true } label: {
@@ -298,6 +304,20 @@ extension HomeView {
             button
         } else {
             button.frame(width:38, height:38).background(.ultraThinMaterial, in:Circle())
+        }
+    }
+}
+
+/// The bar's scroll-edge effect only while the bar shows the date, as when the date was the
+/// bar's title: the always-present date item would otherwise draw it over the date block.
+struct BarDateEdge: ViewModifier {
+    let shown: Bool
+
+    func body(content: Content) -> some View {
+        if #available(iOS 26, *) {
+            content.scrollEdgeEffectHidden(!shown, for:.top)
+        } else {
+            content
         }
     }
 }

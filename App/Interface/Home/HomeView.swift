@@ -175,9 +175,17 @@ struct HomeView: View {
                     // The height between the bars, where the content's top is.
                     .onGeometryChange(for:CGFloat.self) { $0.size.height } action: { homeViewport = $0 }
                     .background(Theme.bg.ignoresSafeArea())
-                    .navigationTitle(scrolledPastDate ? dateTitle : "")
+                    .navigationTitle("")
                     .navigationBarTitleDisplayMode(.inline)
-                    .toolbar { ToolbarItem(placement:.topBarTrailing) { gear } }
+                    .toolbar {
+                        // Always in the bar, shown once the date block is under it: a bar whose
+                        // contents followed `scrolledPastDate` could change its own height (an
+                        // empty top bar is not drawn beside vertical bars), move the date block
+                        // back, and flip the title on every layout pass.
+                        ToolbarItem(placement:.principal) { barDate }
+                        ToolbarItem(placement:.topBarTrailing) { gear }
+                    }
+                    .modifier(BarDateEdge(shown:scrolledPastDate))
                     // SwiftUI may cancel the pull's own task when the page changes under it (the read
                     // starting does): the read runs on its own and the pull waits for it.
                     .refreshable { await Task { await pull() }.value }
