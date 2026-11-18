@@ -74,7 +74,7 @@ struct ClearShowerHeadline: View {
 
     private var face: (title: String, body: String, problem: Bool) {
         let inUse = phase == .denied ? page?.denial == .inUse : phase == .stopped && flow.foundInUse
-        return ClearShowerText.face(phase, inUse:inUse, closeBusy:page?.closeBusy == true)
+        return ClearShowerText.face(phase, inUse:inUse, unsure:page?.unsure)
     }
 
     private var problem: Bool {
@@ -91,7 +91,7 @@ struct ClearShowerHeadline: View {
             let status = shower.status
             return status.isEmpty && idleTitle == ClearShowerText.readyTitle ? ClearShowerText.readyBody : status
         case .running?:
-            return page?.writeUnconfirmed == true ? ShowerDisplay.writeUnconfirmedHint + "。" : face.body
+            return page?.writeUnconfirmed == true && page?.unsure == nil ? ShowerDisplay.writeUnconfirmedHint + "。" : face.body
         default:
             return face.body
         }

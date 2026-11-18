@@ -21,9 +21,9 @@ public enum ShowerAuthorText {
     public static let spokenRetry = "打开校日常再试一次。"
     /// The status of a shower that is over (the lock screen, Siri when a start can't go).
     public static let keptStatus = "上一次洗好了。费用看校园卡记录，扣费要 1 小时左右才出现。"
-    /// The stopped page over a close the controller answered busy (暖橙): its headline and line.
+    /// The stopped page's headline over a close the controller answered busy (暖橙); the line
+    /// under it is `ShowerUnsureText`'s.
     public static let closeBusyTitle = "水控还没停"
-    public static let closeBusyBody = "结束发出去了，水控还在出水。在水控上按停就行，费用看校园卡记录，扣费要 1 小时左右才出现。"
     /// A check over an unconfirmed or busy close found water running (暖橙): nothing more was sent.
     public static let closeStillRunning = "水控还在出水，这次没再发结束，免得关掉别人的水。是你的水的话，在水控上按停。"
     /// The status of a close the controller answered busy (the lock screen, Siri, the record).

@@ -128,12 +128,16 @@ public struct ShowerPage: Sendable, Equatable {
     /// The stopped face of a close the controller answered busy (`ShowerFailureReason.closeBusy`),
     /// until a check saw the controller stopped (`closeStopSeen`): then the kept face.
     public var closeBusy: Bool
+    /// Why the outcome is not known, when the record can tell (`ShowerUnsureReason`): the line
+    /// on the stopped face, and on the timer while the controller did not confirm the start.
+    public var unsure: ShowerUnsureReason?
 
     /// Nil when nothing is going on (idle): the page has nothing to show.
     public init?(_ s: ShowerState) {
         denial = nil; amount = nil; minutes = nil; startedAt = s.startedAt
         writeUnconfirmed = s.phase == .writePending
         closeBusy = s.phase == .failed && s.failure?.reason == .closeBusy && !s.closeStopSeen
+        unsure = ShowerUnsureReason.of(s)
         switch s.phase {
         case .idle:
             return nil

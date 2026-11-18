@@ -221,10 +221,11 @@ enum ShowerProfileFiles {
         if recordUnreadable { return Self.recordUnreadableText }
         if storageBlocked { return "这台手机暂时存不了热水记录，重启 App 后再试。" }
         if let message { return message }
-        if state.showerOver { return ShowerPageText.stoppedNote }
+        let unsure = ShowerUnsureReason.of(state)
+        if state.showerOver { return unsure.map(ShowerUnsureText.warm) ?? ShowerPageText.stoppedNote }
         switch state.phase {
         case .failed: return ShowerDisplay.title(state)
-        case .writePending: return ShowerDisplay.writeUnconfirmedHint
+        case .writePending: return unsure.map(ShowerUnsureText.warm) ?? ShowerDisplay.writeUnconfirmedHint
         default: break
         }
         if !configured { return "选好宿舍后就能用热水。" }

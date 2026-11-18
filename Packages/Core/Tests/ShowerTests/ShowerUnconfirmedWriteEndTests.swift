@@ -140,6 +140,7 @@ final class ShowerUnconfirmedWriteEndTests: XCTestCase {
         XCTAssertEqual(s.failure?.settleNotSent, false, "it may have left")
         await XCTAssertThrowsErrorAsync(try await relaunched.finish(binding)) { XCTAssertEqual($0 as? ShowerEngineError, .notAllowed) }
         await XCTAssertThrowsErrorAsync(try await relaunched.autoReview(binding)) { XCTAssertEqual($0 as? ShowerEngineError, .notAllowed) }
+        XCTAssertEqual(ShowerUnsureReason.of(s), .settleNoAnswer)
         running.cancel()
         _ = await running.value
         XCTAssertEqual(gateway.settleFrames.count, 1)

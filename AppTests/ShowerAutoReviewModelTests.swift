@@ -185,6 +185,32 @@ final class ShowerAutoReviewModelTests: XCTestCase {
         XCTAssertTrue(model.state.closeStopSeen)
     }
 
+    /// The words of an outcome not known, in the warm theme, where the page and the status
+    /// line show them.
+    func testTheWarmWordsForAnOutcomeNotKnown() async throws {
+        var pending = running; pending.phase = .writePending
+        var busyClose = running
+        busyClose.phase = .failed; busyClose.closeSent = true
+        busyClose.failure = ShowerFailure(reason: .closeBusy, needsReview: true)
+        var settle = running
+        settle.phase = .failed; settle.consumption = "AB"
+        settle.failure = ShowerFailure(reason: .settleUncertain, needsReview: true, error: .timedOut)
+        let cases: [(ShowerState, String)] = [
+            (pending, "开水的结果没收到。有热水就照常洗，洗完点结束；费用看校园卡记录，扣费要 1 小时左右才出现。"),
+            (busyClose, "结束发出去了，水控还没回话。先看水停没停，停了就算洗完；费用看校园卡记录，扣费要 1 小时左右才出现。"),
+            (settle, "结算发出去了，学校没回音，不知道扣没扣。先别再结算，过 1 小时左右去校园卡记录里看看。"),
+        ]
+        for (record, words) in cases {
+            let model = try await model(record: record, transport: ScriptedControllerLink())
+            XCTAssertEqual(model.status, words, "\(record.phase)")
+        }
+        XCTAssertEqual(ShowerPageText.timerLine(ShowerPage(pending)), ShowerUnsureText.warm(.startUnconfirmed))
+        XCTAssertEqual(ShowerPageText.timerLine(ShowerPage(running)), ShowerPageText.runningBody)
+        XCTAssertEqual(ShowerPageText.stoppedHeadline(ShowerPage(busyClose)), "水控还没停")
+        var seen = busyClose; seen.closeStopSeen = true
+        XCTAssertEqual(ShowerPageText.stoppedHeadline(ShowerPage(seen)), ShowerPageText.stoppedTitle)
+    }
+
     /// The school login is signed out while a shower runs: the hot-water binding it was opened
     /// with stays, and 结束 with it still closes and sends the settlement.
     func testTheKeptBindingStillEndsAfterTheSchoolSignOut() async throws {

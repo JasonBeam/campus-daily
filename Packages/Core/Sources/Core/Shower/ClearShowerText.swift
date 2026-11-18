@@ -24,8 +24,6 @@ public enum ClearShowerText {
     public static let inUseBody = "水控仍在忙，已断开连接；确认停水后请稍后再试"
     public static let deniedBody = "学校未授权本次用水，未扣费；请稍后再试"
     public static let stoppedBody = "水控未保留本次授权，结算尚未确认；可在校园卡消费明细中核对，扣费约 1 小时后入账"
-    /// The stopped face over a close the controller answered busy.
-    public static let closeBusyBody = "水控仍在忙，尚未收到结束数据；请稍后核对结束结果"
 
     public static let start = "开始洗澡"
     public static let end = "结束并结算"
@@ -62,17 +60,18 @@ public enum ClearShowerText {
 
     /// A face's headline and the line under it. `phase` nil: no session shown (ready).
     /// `inUse`: refused because the controller is in use (or found so before the next shower).
-    /// `closeBusy`: the stopped face of a close the controller answered busy.
-    public static func face(_ phase: ShowerPagePhase?, inUse: Bool = false, closeBusy: Bool = false) -> (title: String, body: String, problem: Bool) {
+    /// `unsure`: why the outcome is not known (`ShowerPage.unsure`): the stopped face's line, and
+    /// the timer's while the controller did not confirm the start.
+    public static func face(_ phase: ShowerPagePhase?, inUse: Bool = false, unsure: ShowerUnsureReason? = nil) -> (title: String, body: String, problem: Bool) {
         switch phase {
         case nil: return (readyTitle, readyBody, false)
         case .connecting?: return (busyTitle, startingBody, false)
-        case .running?: return (runningTitle, runningBody, false)
+        case .running?: return (runningTitle, unsure == .startUnconfirmed ? ShowerUnsureText.clear(.startUnconfirmed) : runningBody, false)
         case .settling?: return (busyTitle, endingBody, false)
         case .done?: return (doneTitle, doneBody, false)
         case .connectFailed?: return (problemTitle, connectFailedBody, true)
         case .denied?: return (inUse ? inUseTitle : deniedTitle, inUse ? inUseBody : deniedBody, true)
-        case .stopped?: return (problemTitle, inUse ? inUseBody : closeBusy ? closeBusyBody : stoppedBody, true)
+        case .stopped?: return (problemTitle, inUse ? inUseBody : unsure.map(ShowerUnsureText.clear) ?? stoppedBody, true)
         }
     }
 

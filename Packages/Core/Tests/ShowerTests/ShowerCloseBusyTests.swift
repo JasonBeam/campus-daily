@@ -185,7 +185,6 @@ final class ShowerCloseBusyTests: XCTestCase {
         let s = ShowerState(phase: .failed, machineID: machine, startedAt: t0, authorizationID: "001122FF", closeSent: true,
                             failure: ShowerFailure(reason: .closeBusy, needsReview: true))
         XCTAssertEqual(ShowerDisplay.title(s), "水控还没停，在水控上按停。费用看校园卡记录，扣费要 1 小时左右才出现。")
-        XCTAssertEqual(ShowerAuthorText.closeBusyBody, "结束发出去了，水控还在出水。在水控上按停就行，费用看校园卡记录，扣费要 1 小时左右才出现。")
         XCTAssertEqual(ShowerAuthorText.closeBusyStatus, "水控还没停，在水控上按停。费用看校园卡记录，扣费要 1 小时左右才出现。")
         XCTAssertEqual(ShowerActionOutcome.after(start: false, s, notice: nil),
                        .failure(ShowerActionFailure("水控还没停，在水控上按停。费用看校园卡记录，扣费要 1 小时左右才出现。")), "what Siri says after 结束")
@@ -199,12 +198,15 @@ final class ShowerCloseBusyTests: XCTestCase {
         var s = ShowerState(phase: .failed, machineID: machine, startedAt: t0, authorizationID: "001122FF", closeSent: true,
                             failure: ShowerFailure(reason: .closeBusy, needsReview: true))
         XCTAssertTrue(try XCTUnwrap(ShowerPage(s)).closeBusy)
+        XCTAssertEqual(ShowerPage(s)?.unsure, .closeNoAnswer)
         s.closeStopSeen = true
         let page = try? XCTUnwrap(ShowerPage(s))
         XCTAssertEqual(page?.phase, .stopped)
         XCTAssertEqual(page?.closeBusy, false)
+        XCTAssertNil(page?.unsure)
         XCTAssertEqual(ShowerDisplay.title(s), ShowerAuthorText.keptStatus)
         XCTAssertEqual(ShowerActionOutcome.after(start: false, s, notice: nil), .failure(ShowerActionFailure(ShowerAuthorText.keptStatus)))
+        XCTAssertEqual(ClearShowerText.face(.stopped, unsure: page?.unsure).body, ClearShowerText.stoppedBody)
         XCTAssertEqual(s.phase, .failed)
         XCTAssertTrue(s.showerOver)
     }

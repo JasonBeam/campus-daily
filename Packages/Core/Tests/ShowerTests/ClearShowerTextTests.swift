@@ -71,14 +71,14 @@ final class ClearShowerTextTests: XCTestCase {
         XCTAssertTrue(ClearShowerText.answerButton(.denied).leavesPage)
     }
 
-    /// The close answered busy: the stopped face says so in its own words.
+    /// The close got no end data: the stopped face says why, in this theme's words.
     func testCloseBusyFace() {
-        let face = ClearShowerText.face(.stopped, closeBusy: true)
+        let face = ClearShowerText.face(.stopped, unsure: .closeNoAnswer)
         XCTAssertEqual(face.title, "本次待核对")
-        XCTAssertEqual(face.body, "水控仍在忙，尚未收到结束数据；请稍后核对结束结果")
+        XCTAssertEqual(face.body, "结束指令已发出，水控尚未返回结束数据；请确认是否已停水，费用可在校园卡消费明细中核对，扣费约 1 小时后入账")
         XCTAssertTrue(face.problem)
         XCTAssertEqual(ClearShowerText.face(.stopped).body, ClearShowerText.stoppedBody)
-        XCTAssertEqual(ClearShowerText.face(.stopped, inUse: true, closeBusy: true).body, ClearShowerText.inUseBody)
+        XCTAssertEqual(ClearShowerText.face(.stopped, inUse: true, unsure: .closeNoAnswer).body, ClearShowerText.inUseBody)
         XCTAssertEqual(ClearShowerText.note(.stopped), ClearShowerText.nextNote)
     }
 }
