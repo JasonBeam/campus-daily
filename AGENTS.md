@@ -25,7 +25,7 @@ The rules for working in this repo, for people and AI agents alike. The full des
 - Feature names are Campus, Shower, Laundry and Snapshot everywhere. Do not use Water, HotWater or DailyXxx in new names.
 - Comment only what the code cannot say, for example a field order that the platform signs.
 - Logs record event names only. Never log student ids, device ids, tokens or BLE payloads.
-- The TestFlight debug log (`Core/Diagnostics`, `DebugLogSink`) is on only when `VersionText.isTestFlight` (worked out once in `AppEnvironment`); every other install and every sample gets `NoDebugLog`. Events are enums: add a case with fixed fields (codes, lengths, phases, fen, `DebugTag` salted tags), never a `String` of free text, a frame, a request, a reply or a server message. `DebugLogScreen` is the last check, not the defence. New pages call `navOpen(_:from:)`; new ways in (links, notifications, intents) call `debugNav.from(_:)` first.
+- The TestFlight debug log (`Core/Diagnostics`, `DebugLogSink`) is on only on a TestFlight install (`DebugLogDecision.testFlight`, worked out once at launch by `DebugLogLaunch` from the app transaction that `AppEnvironment` gives it); every other install keeps no log, and every sample gets `NoDebugLog`. Events are enums: add a case with fixed fields (codes, lengths, phases, fen, `DebugTag` salted tags), never a `String` of free text, a frame, a request, a reply or a server message. `DebugLogScreen` is the last check, not the defence. New pages call `navOpen(_:from:)`; new ways in (links, notifications, intents) call `debugNav.from(_:)` first.
 - Problems and errors use the notice colour (`Theme.notice`, `NativeTheme.notice`). Red is only for running out: a low balance or low electricity.
 
 ## Do not change casually
