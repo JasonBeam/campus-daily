@@ -377,11 +377,15 @@ enum ShowerProfileFiles {
     }
 
     /// The school login changed to another person: the binding came from the previous
-    /// person's school identity. Removed when nothing could be open; with a session in flight
-    /// it stays (so the close can still be sent) but no new start is allowed until reviewed.
+    /// person's school identity. Removed when the record has been read and nothing could be
+    /// open; with a session in flight, or a record not read (yet), it stays (so the close can
+    /// still be sent) but no new start is allowed until reviewed.
     /// Returns what became of it (`noticed`: there was a binding to set up again).
     func clearBindingForAccountSwitch() -> AccountSwitch.HotWater {
-        let result = AccountSwitch.clearHotWater(hasBinding:binding != nil, mayClear:mayImport) {
+        // `state` is the default idle until the record is read: that says nothing.
+        var recordRead = false
+        if case .known = gateRecord { recordRead = true }
+        let result = AccountSwitch.clearHotWater(hasBinding:binding != nil, mayClear:recordRead && mayImport) {
             try services.showerVault.saveBinding(nil)
         }
         switch result {
