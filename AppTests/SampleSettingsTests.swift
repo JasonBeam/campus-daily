@@ -14,4 +14,15 @@ final class SampleSettingsTests: XCTestCase {
         XCTAssertEqual(AccountText.row(signedIn:true, account:nil, sample:false), "已登录")
         XCTAssertEqual(AccountText.row(signedIn:false, account:nil, sample:false), "去登录")
     }
+
+    /// 清爽's 校园充值 promises 返回后会刷新余额 outside the sample only (`CampusTopUpFlow` never
+    /// refreshes in it).
+    func testClearTopUpNoteDropsTheRefreshInTheSample() {
+        XCTAssertEqual(ClearCampusTopUpText.note(sample:false), ClearCampusTopUpText.note)
+        XCTAssertTrue(ClearCampusTopUpText.note(sample:false).contains("返回后会刷新余额"))
+        XCTAssertEqual(ClearCampusTopUpText.note(sample:true),
+                       "点击后将复制“e广工商大办事大厅”并打开微信；在聊天列表下拉点击该小程序，未显示时可搜索并粘贴。付款和到账以学校官方结果为准。")
+        XCTAssertFalse(ClearCampusTopUpText.note(sample:true).contains("刷新"))
+        XCTAssertTrue(ClearCampusTopUpText.note(sample:true).contains(CampusTopUp.serviceName))
+    }
 }

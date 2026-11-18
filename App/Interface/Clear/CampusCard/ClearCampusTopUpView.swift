@@ -20,7 +20,7 @@ struct ClearCampusTopUpView: View {
                     .fixedSize(horizontal:false, vertical:true)
                     .accessibilityAddTraits(.isHeader)
                 Text(ClearCampusTopUpText.body).fixedSize(horizontal:false, vertical:true)
-                Text(ClearCampusTopUpText.note).font(.footnote).foregroundStyle(.secondary)
+                Text(ClearCampusTopUpText.note(sample:sample.isActive)).font(.footnote).foregroundStyle(.secondary)
                     .fixedSize(horizontal:false, vertical:true)
                 Button(ClearCampusTopUpText.openWeChat) { send(.weChatTapped) }
                     .buttonStyle(.borderedProminent)
@@ -83,6 +83,10 @@ enum ClearCampusTopUpText {
     static let body = "进入“e广工商大办事大厅”后，选择校园卡或电费充值；充值电费时请核对宿舍和金额。"
     /// What the tap does and where to find the service in WeChat.
     static let note = "点击后将复制“e广工商大办事大厅”并打开微信；在聊天列表下拉点击该小程序，未显示时可搜索并粘贴。付款和到账以学校官方结果为准；返回后会刷新余额。"
+    /// The sample never reads the balances again (`CampusTopUpFlow`): no 返回后会刷新余额 there.
+    static func note(sample: Bool) -> String {
+        sample ? "点击后将复制“e广工商大办事大厅”并打开微信；在聊天列表下拉点击该小程序，未显示时可搜索并粘贴。付款和到账以学校官方结果为准。" : note
+    }
     static let openWeChat = "打开微信"
     /// Under the button once the name is copied.
     static let copied = "已复制“e广工商大办事大厅”"
