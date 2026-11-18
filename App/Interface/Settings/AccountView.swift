@@ -210,7 +210,7 @@ struct AccountView: View {
             Button("退出登录", role:.destructive) { if preview == nil { campus.signOut() } }
             Button("取消", role:.cancel) {}
         } message: {
-            Text("首页的电量和余额会清空，热水记录和洗衣设置都还在。")
+            Text("首页的电量和余额会清空，热水要重新设置；洗衣设置还在。")
         }
     }
 

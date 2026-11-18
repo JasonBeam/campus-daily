@@ -335,6 +335,9 @@ struct PowerChoice: Identifiable, Equatable {
         }
         configured = false; snapshot = .empty; profile = nil; issue = nil; account = nil
         lookup.clear(); powerMatchIssue = nil
+        // The binding holds this person's school identity, and the next sign-in finds nobody
+        // stored to compare with: hot water goes as on an account switch.
+        _ = hotWater()?.clearBindingForAccountSwitch()
     }
 
     // MARK: Electricity
