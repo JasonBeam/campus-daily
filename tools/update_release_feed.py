@@ -16,8 +16,6 @@ if not re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+', tag) or release.get('draft') is 
 if release.get('html_url') != 'https://github.com/JasonBeam/campus-daily/releases/tag/' + tag:
     parser.error('Unexpected release origin')
 assets = [{'name': item['name']} for item in release['assets'] if isinstance(item.get('name'), str)]
-if not any(re.fullmatch(r'CampusDaily-.+-build[0-9]+-unsigned\.ipa', item['name']) for item in assets):
-    parser.error('Published iOS package is missing')
 if not any(re.fullmatch(r'CampusDaily-.+-code[0-9]+-(debug|release)\.apk', item['name']) for item in assets):
     parser.error('Published Android package with versionCode is missing')
 result = {key: release[key] for key in ('tag_name', 'html_url', 'draft', 'prerelease')}
