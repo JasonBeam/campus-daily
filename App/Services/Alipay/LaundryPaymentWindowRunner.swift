@@ -2,8 +2,8 @@ import UIKit
 import Core
 
 /// The background task behind 立刻洗衣's window (`LaundryPaymentWindow`): asked for right before
-/// Alipay opens, it lets the app read the order once a second for at most 45 s while it is out
-/// of the front. Refused by iOS: nothing runs and the order waits for the app as before. It ends
+/// Alipay opens, it lets the app read the order again a second after each read, for at most 45 s,
+/// while it is out of the front. Refused by iOS: nothing runs and the order waits for the app as before. It ends
 /// exactly once (iOS taking it back, the deadline, `tick` saying stop, or `stop()`), and ending
 /// it cancels the read in progress rather than waiting for it: that read winds itself down.
 @MainActor final class LaundryPaymentWindowRunner {

@@ -35,8 +35,8 @@ struct FinishShowerLiveIntent: LiveActivityIntent {
     static let title: LocalizedStringResource = "结束并结算"
     static let description = IntentDescription("结束正在进行的热水会话并提交结算。")
     static let isDiscoverable = false
-    // Same as FinishShowerIntent: the keychain is WhenUnlocked and Bluetooth has no background mode,
-    // so finishing from the lock screen must unlock and bring the app forward.
+    // Same as FinishShowerIntent: Bluetooth has no background mode, so finishing from the lock
+    // screen must unlock and bring the app forward.
     static let openAppWhenRun = true
     static let authenticationPolicy: IntentAuthenticationPolicy = .requiresLocalDeviceAuthentication
     init() {}

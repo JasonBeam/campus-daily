@@ -148,8 +148,8 @@ public struct ShowerState: Sendable, Codable, Equatable {
     /// the write was refused): no water could run, so an idle controller at 结束 ends the
     /// record without a check. An unconfirmed write may have been applied and never sets it.
     public var authorizationNotWritten: Bool
-    /// The next consumption frame is kept for the user to settle with the two-tap retry, never
-    /// settled by itself, because the water it ends may not be ours: back on the timer from a
+    /// The next consumption frame is kept (`heldConsumption`) and never settled by itself,
+    /// because the water it ends may not be ours: back on the timer from a
     /// close that most likely took (a probe found water running afterwards, most likely someone
     /// else's), or an end of a session the controller never acknowledged (`writePending`, also
     /// when a probe then found water running). The frame names only the controller, so it can't
