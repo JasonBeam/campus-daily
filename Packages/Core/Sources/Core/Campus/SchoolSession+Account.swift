@@ -134,6 +134,10 @@ extension SchoolSession {
         return value
     }
 
+    /// Anyone but the same person first marks the shared snapshot stale (`markSnapshotStale`),
+    /// in the same locked step and before any other write: from then on nobody reads the
+    /// previous person's numbers, whether or not their clean-up can write. A mark that can't be
+    /// written fails the sign-in before anything changed (no change of person).
     /// A different person clears the previous one's data first. When the dorm address can't be
     /// read, the old dorm and meter are kept only if the card shows it is the same person.
     /// Anyone but the same person makes work still running for the previous one stale, from the
@@ -147,11 +151,12 @@ extension SchoolSession {
         let (card, updated) = try await liveCard(session)
         try ensureSignedIn(since: started)
         let match = SignedInPerson.match(before, cardUnionID: card.unionID, account: account)
-        let vault = vault, token = stamped(portalToken)
+        let vault = vault, token = stamped(portalToken), at = now()
         var writing = false
         let old: SchoolProfile?, profile: SchoolProfile
         do {
             (old, profile) = try Self.commitLogin(owning, vault, from: start) { () -> (SchoolProfile?, SchoolProfile) in
+                if match != .same { try vault.markSnapshotStale(since: at) }
                 writing = true
                 let old = (try? vault.profile()) ?? nil
                 if match == .different { try Self.clearPreviousPerson(vault) }
@@ -206,11 +211,12 @@ extension SchoolSession {
         // As for the form sign-in: without the new dorm, a dorm and meter that may be someone
         // else's are not kept. No dorm is read here, so that happens right here.
         let dropDorm = match == .unknown && before != nil
-        let vault = vault
+        let vault = vault, at = now()
         var writing = false
         let old: SchoolProfile?
         do {
             old = try Self.commitLogin(owning, vault, from: start) { () -> SchoolProfile? in
+                if match != .same { try vault.markSnapshotStale(since: at) }
                 writing = true
                 let old = (try? vault.profile()) ?? nil
                 if switched { try Self.clearPreviousPerson(vault) }
@@ -241,14 +247,19 @@ extension SchoolSession {
         public var items: [String]
     }
 
-    /// Deletes the saved password first (it sits in the shared group the widget reads), then
-    /// everything else; the credentials' obtained/alive times go with their items. (The refresh
-    /// lease is the refresher's: `SnapshotRefresher.clear()`.) A failed deletion doesn't stop the rest; the failures are reported
-    /// together at the end.
+    /// Marks the shared snapshot stale first, on its own: a mark that can't be written fails the
+    /// sign-out (`snapshotStale`) with every credential still stored, so the snapshot, which the
+    /// empty one may then fail to replace, is still that person's own. Then deletes the saved
+    /// password (it sits in the shared group the widget reads), then everything else; the
+    /// credentials' obtained/alive times go with their items. (The refresh lease and the empty
+    /// snapshot are the refresher's: `SnapshotRefresher.clear()`, which drops the mark once the
+    /// empty snapshot is saved.) A failed deletion doesn't stop the rest; the failures are
+    /// reported together at the end. Work still running for the person is stale either way.
     public func signOut() throws {
         signOutGeneration += 1
         personGeneration += 1
         loggedExpiries = []
+        do { try vault.markSnapshotStale(since: now()) } catch { throw SignOutFailure(items: ["snapshotStale"]) }
         var failed: [String] = []
         let steps: [(String, () throws -> Void)] = [
             ("account", { try self.vault.saveAccount(nil) }),
