@@ -12,7 +12,7 @@ final class ShowerDebugLogTests: XCTestCase {
     let base = "https://isv.lxt6.cn/"
     let authorizeOK = #"{"code":0,"data":{"machineid":"11223344","studentId":"a1b2c3d4","systemData":"000102030405060708090a0b0c0d0e"}}"#
     /// The next shower's authorization: another id and payload.
-    let authorizeNextOK = #"{"code":0,"data":{"machineid":"11223344","studentId":"e5f6a7b8","systemData":"101112131415161718191a1b1c1d1e"}}"#
+    let authorizeNextOK = #"{"code":0,"data":{"machineid":"11223344","studentId":"e5f6a7b8","systemData":"a0a1a2a3a4a5a6a7a8a9aaabacadae"}}"#
     let settleOK = #"{"code":0,"data":{"pay":163}}"#
     var identity: Data { FakeFrames.identity(machine) }
     var consumption: Data { FakeFrames.identity(machine, tail: 9) }
@@ -32,7 +32,7 @@ final class ShowerDebugLogTests: XCTestCase {
 
     var secrets: [String] {
         [binding.studentId, binding.roomId, binding.roomLabel, "测试楼", machine, "a1b2c3d4", "000102030405060708090a0b0c0d0e",
-         "e5f6a7b8", "101112131415161718191a1b1c1d1e",
+         "e5f6a7b8", "a0a1a2a3a4a5a6a7a8a9aaabacadae",
          HexCoding.upper(consumption), HexCoding.upper(identity), "ACF4E79681", Golden.secret, "fixture-secret", Golden.sid,
          "fixture-sid", "PERIPHERAL-A", "fixture-ble", "20021"]
     }

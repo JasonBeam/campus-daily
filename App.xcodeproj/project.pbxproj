@@ -106,7 +106,7 @@
 			);
 			target = C0DA00110000000000000000 /* App */;
 		};
-		C0DA00F10000000000000000 /* Exceptions for "Shared" folder in "Widget" target */ = {
+		C0DA00FA0000000000000000 /* Exceptions for "Shared" folder in "Widget" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				CampusLoginAutomation.js,
@@ -128,7 +128,7 @@
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
 				C0DA00F00000000000000000 /* Exceptions for "Shared" folder in "App" target */,
-				C0DA00F10000000000000000 /* Exceptions for "Shared" folder in "Widget" target */,
+				C0DA00FA0000000000000000 /* Exceptions for "Shared" folder in "Widget" target */,
 			);
 			path = Shared;
 			sourceTree = "<group>";
