@@ -7,12 +7,14 @@ struct SettingsPlaceRow<Link: View>: View {
     let item: SettingsItem
     let data: HomeData
     let link: (SettingsLink, SettingsRow) -> Link
+    @Environment(SampleMode.self) private var sample
 
     var body: some View {
         switch item {
         case .account:
             link(.account, SettingsRow(symbol:"graduationcap", title:"学校账号",
-                                       value:AccountText.row(signedIn:data.signedIn, account:data.schoolAccount)))
+                                       value:AccountText.row(signedIn:data.signedIn, account:data.schoolAccount,
+                                                              sample:sample.isActive)))
         case .dorm:
             // Full location under the title; 「去设置」 until there is one.
             if let location = data.dormLocation { link(.dorm, SettingsRow(symbol:"house", title:"宿舍", detail:location)) }

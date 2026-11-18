@@ -4,6 +4,8 @@ import Core
 /// Copy for 学校账号, including the paused automatic sign-in.
 enum AccountText {
     static let signedIn = "已登录"
+    /// The 学校账号 row's value in the sample (`SampleMode`): no account is signed in there.
+    static let sampleAccount = "示例账号"
     static let paused = "自动登录已暂停"
     static let reenter = "重新输入密码"
     static let reenterTitle = "输入学校密码"
@@ -22,7 +24,8 @@ enum AccountText {
     static let pausedNoAnswer = "上次登录学校没走完，自动登录先停一会儿，免得反复发密码，过几个小时会自己再试。"
 
     /// The 学校账号 row on the settings page.
-    static func row(signedIn: Bool, account: SchoolAccount?, at now: Date = Date()) -> String {
+    static func row(signedIn: Bool, account: SchoolAccount?, sample: Bool = false, at now: Date = Date()) -> String {
+        if sample { return sampleAccount }
         guard signedIn else { return "去登录" }
         return account?.autoLogin(at:now).isPaused == true ? paused : AccountText.signedIn
     }
