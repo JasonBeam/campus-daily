@@ -51,6 +51,13 @@ final class SignOutHotWaterTests: XCTestCase {
         XCTAssertNotNil(try vault.binding())
         XCTAssertTrue(shower.residenceReviewRequired)
         XCTAssertFalse(shower.mayStart)
+
+        // Once the sign-out and its hot-water step are done, the binding is still there.
+        await campus.signOutsFinished()
+        XCTAssertEqual(try vault.binding(), Fixture.binding)
+        XCTAssertEqual(shower.binding, Fixture.binding)
+        XCTAssertTrue(shower.residenceReviewRequired)
+        XCTAssertFalse(shower.mayStart)
     }
 
     /// The first read of the shower record failed, and 退出登录 comes before it is read again: the
@@ -223,5 +230,33 @@ final class SignOutHotWaterTests: XCTestCase {
         XCTAssertFalse(shower.residenceReviewRequired)
         shower.holdForSignOut()
         XCTAssertEqual(shower.startRefusalText, Self.switchLine)
+    }
+
+    /// A sign-in's clean-up of the previous person, with a 退出登录 coming in while the widget
+    /// snapshot is cleared: the binding is whoever's is stored now and stays, and no switch
+    /// notice is shown. (The sign-out here fails, so it doesn't remove the binding itself.)
+    func testASignOutDuringASignInsCleanUpLeavesTheBinding() async throws {
+        let store = ScriptedStore()
+        let vault = StoredShowerVault(store:store)
+        try vault.saveBinding(Fixture.binding)
+        try StoredSchoolVault(store:store).saveAccount(SchoolAccount(account:"99100991"))
+        let (campus, shower) = models(store, support:try Fixture.supportWithProfile())
+        await waitUntil { shower.gateRecord != .notLoaded && shower.profileLoaded }
+        store.refusing = [.schoolPassword]
+        let started = campus.signOutGeneration
+        var hookRan = false
+        campus.afterSnapshotCleared = {
+            hookRan = true
+            campus.signOut()
+            await campus.signOutsFinished()
+        }
+
+        await campus.previousPersonCleared(unconfirmed:false, dormAndMeterCleared:false, since:started)
+
+        XCTAssertTrue(hookRan)
+        XCTAssertTrue(campus.signOutFailed)
+        XCTAssertEqual(try vault.binding(), Fixture.binding)
+        XCTAssertEqual(shower.binding, Fixture.binding)
+        XCTAssertNil(campus.switchNotice)
     }
 }

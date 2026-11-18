@@ -57,7 +57,7 @@ struct PowerChoice: Identifiable, Equatable {
     /// Refreshes the Keychain interrupted one after another (writes refused).
     private var interruptions = InterruptionStreak()
     /// Bumped by `signOut()`: a refresh that returns afterwards must not put the old values back.
-    private var signOutGeneration = 0
+    private(set) var signOutGeneration = 0
     let services: CampusServices
     private let session: SchoolSession
     /// The school session these models read (校园卡记录's pages).
@@ -71,6 +71,9 @@ struct PowerChoice: Identifiable, Equatable {
     /// The last 退出登录's hot-water step, after its sign-out.
     private var signOutHotWater: Task<Void, Never>?
     private var schoolVault: StoredSchoolVault { services.schoolVault }
+    /// Tests only: runs once the previous person's widget snapshot is cleared, before the
+    /// hot-water binding goes (`previousPersonCleared`).
+    var afterSnapshotCleared: (@MainActor () async -> Void)?
 
     init(services: CampusServices, stack: SchoolRefreshStack, reminders: Reminders, hotWater: @escaping () -> ShowerModel?) {
         self.services = services
@@ -275,11 +278,11 @@ struct PowerChoice: Identifiable, Equatable {
     /// snapshot, the hot-water binding made with their identity, and the one-time alert.
     /// Laundry (U净) is its own login and stays. Nothing is cleared once a sign-out came after
     /// the sign-in started (`started`): what is stored now is whoever signed in after it.
-    private func previousPersonCleared(unconfirmed: Bool, dormAndMeterCleared: Bool, since started: Int) async {
+    func previousPersonCleared(unconfirmed: Bool, dormAndMeterCleared: Bool, since started: Int) async {
         guard started == signOutGeneration else { return }
-        let refresher = refresher
+        let refresher = refresher, afterSnapshotCleared = afterSnapshotCleared
         let hotWater = await AccountSwitch.clearPreviousPerson(
-            snapshot:{ try await refresher.clear() },
+            snapshot:{ try? await refresher.clear(); await afterSnapshotCleared?() },
             hotWater:{ [hotWater] in
                 // Again after the snapshot's wait, right before the binding goes.
                 guard started == signOutGeneration else { return AccountSwitch.HotWater.none }
@@ -349,7 +352,7 @@ struct PowerChoice: Identifiable, Equatable {
     }
 
     /// Returns once every sign-out asked for before has finished, its hot water included.
-    private func signOutsFinished() async {
+    func signOutsFinished() async {
         await signOuts.finished()
         await signOutHotWater?.value
     }
