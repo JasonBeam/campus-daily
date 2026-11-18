@@ -187,6 +187,12 @@ enum ShowerProfileFiles {
     }
     /// Binding / profile may change only with no session that could still be open or charged.
     var mayImport: Bool { ShowerImportRule.mayImport(state, busy:busy, storageBlocked:storageBlocked) }
+    /// The dorm may be set (again): as `mayImport`, and also over a shower that is over and waits
+    /// for its check while the binding is a person's who signed out or was replaced. 开始下一次洗澡
+    /// is refused then, so nothing else could replace that binding; `saveBinding` keeps the record.
+    var mayRebind: Bool {
+        mayImport || (residenceReviewRequired && !busy && !storageBlocked && state.canStartNext)
+    }
     /// 导入热水配置: also while a shower waits on a missing profile (nothing to replace; it is
     /// what 结束 and 再结算一次 need).
     var mayImportProfile: Bool {
@@ -347,11 +353,23 @@ enum ShowerProfileFiles {
 
     /// Onboarding saved a binding (dorm + controller). Refused while a controller check runs.
     func saveBinding(_ value: ShowerBinding) throws {
-        try ShowerBinding.checkMayReplace(mayChange:mayImport, checking:inspecting)
+        try ShowerBinding.checkMayReplace(mayChange:mayRebind, checking:inspecting)
         var value = value
         // Re-binding the same machine keeps the controller already verified for it.
         if value.peripheralID == nil, let old = binding, old.machineId == value.machineId { value.peripheralID = old.peripheralID }
-        try services.showerVault.saveBinding(value)
+        // Over a shower that waits for its check: kept first (read back, under the old binding,
+        // so it stays its student's), as 开始下一次洗澡 keeps it; only then is its place freed.
+        let keepsRecord = !mayImport
+        if keepsRecord {
+            try services.showerVault.retainShower(state.persistable)
+            try services.showerVault.saveShowerState(nil)
+        }
+        do { try services.showerVault.saveBinding(value) }
+        catch {
+            // The record's place is free already: show that, under the old binding.
+            if keepsRecord { rebuildEngine() }
+            throw error
+        }
         binding = value
         verifiedDevice = nil
         if residenceReviewRequired { setResidenceReview(false) }

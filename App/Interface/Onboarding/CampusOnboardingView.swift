@@ -120,7 +120,7 @@ struct CampusOnboardingView: View {
                 Section("热水") {
                     Text("登录学校账号后会自动读到宿舍和水控，不用导入文件。")
                         .font(.footnote).foregroundStyle(.secondary)
-                    if campus.configured {Button("再连一次") {Task {await flow.prepare(campus:campus,water:water)}}.disabled(flow.busy || !water.mayImport || campus.loading)}
+                    if campus.configured {Button("再连一次") {Task {await flow.prepare(campus:campus,water:water)}}.disabled(flow.busy || !water.mayRebind || campus.loading)}
                     DisclosureGroup("导入热水配置") {
                         Button("选择配置文件") {importingPlatform = true}
                             .disabled(flow.busy || !water.mayImport).accessibilityIdentifier("importWaterPlatform")
@@ -145,7 +145,7 @@ struct CampusOnboardingView: View {
                 if campus.configured {
                     Label("已读取学校账号",systemImage:"checkmark.circle").foregroundStyle(.green)
                     Button(flow.identity == nil ? "继续读取宿舍" : "重新读取宿舍") { Task { await flow.prepare(campus:campus,water:water) } }
-                        .disabled(flow.busy || !water.mayImport || campus.loading).accessibilityIdentifier("prepareDormOnboarding")
+                        .disabled(flow.busy || !water.mayRebind || campus.loading).accessibilityIdentifier("prepareDormOnboarding")
                 }
             } header: { Text("学校账号") } footer: { Text("密码只交给学校，不经过我们。登录后会读到你的校园卡和宿舍。") }
             if flow.identity != nil {
@@ -162,7 +162,7 @@ struct CampusOnboardingView: View {
                                 .font(.footnote).foregroundStyle(.secondary)
                             Button("就是这间") {Task {await flow.save(machine,water:water)}}
                                 .buttonStyle(.borderedProminent).frame(minHeight:44)
-                                .disabled(flow.busy || !water.mayImport || campus.loading || flow.saved).accessibilityIdentifier("saveDormBinding")
+                                .disabled(flow.busy || !water.mayRebind || campus.loading || flow.saved).accessibilityIdentifier("saveDormBinding")
                         }.padding(.vertical,6)
                     }
                 }
@@ -279,7 +279,7 @@ struct CampusOnboardingView: View {
 
     /// Reads the hot-water identity, then matches the portal dorm address (never guesses).
     func prepare(campus: CampusModel, water: ShowerModel) async {
-        guard !busy, campus.configured, water.mayImport else { return }
+        guard !busy, campus.configured, water.mayRebind else { return }
         reset()
         busy = true
         defer { busy = false }
@@ -343,7 +343,7 @@ struct CampusOnboardingView: View {
     }
 
     func save(_ machine: ShowerMachine, water: ShowerModel) async {
-        guard selected.count == 4, let identity, water.mayImport else { return }
+        guard selected.count == 4, let identity, water.mayRebind else { return }
         busy = true; defer { busy = false }
         guard let campus, let personStamp, await campus.isSamePerson(since:personStamp) else {
             reset(); issue = Self.personChangedText
