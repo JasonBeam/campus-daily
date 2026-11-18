@@ -126,7 +126,11 @@ final class LaundryReducerTests: XCTestCase {
         XCTAssertEqual(expired.notice, .sessionExpired)
         let nothing = reduce(reconcile, .activeOrderFound(nil)).0
         let restored = R.restore(nothing.persistable)
-        for s in [reconcile, found, mismatch, lookupFailed, expired, restored] {
+        // An order is there, with an id this app cannot use: not "nothing found".
+        let unusable = reduce(reconcile, .activeOrderFound("10/../11")).0
+        XCTAssertEqual(unusable.notice, .orderMismatch)
+        XCTAssertNil(unusable.candidateOrderID)
+        for s in [reconcile, found, mismatch, lookupFailed, expired, restored, unusable] {
             XCTAssertEqual(s.phase, .reconcile)
             XCTAssertFalse(s.canResolveManually, "\(String(describing: s.notice))")
             let (after, fx) = reduce(s, .resolveManually)

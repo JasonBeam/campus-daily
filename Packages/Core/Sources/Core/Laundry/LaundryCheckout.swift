@@ -370,8 +370,14 @@ public enum LaundryReducer {
             return (s, findActive(s))
 
         case (.reconcile, .activeOrderFound(let id)):
-            guard let id, UjingInput.isOrderID(id) else {
+            guard let id else {
                 s.notice = .orderNotFound
+                return (s, [])
+            }
+            // An order is on the machine, with an id that cannot be read: not "nothing found",
+            // so the record is not offered for clearing.
+            guard UjingInput.isOrderID(id) else {
+                s.notice = .orderMismatch
                 return (s, [])
             }
             s.candidateOrderID = id
