@@ -28,6 +28,7 @@ final class SignOutHotWaterTests: XCTestCase {
         XCTAssertNotNil(shower.binding)
 
         campus.signOut()
+        await waitUntil { shower.binding == nil }
 
         XCTAssertNil(shower.binding)
         XCTAssertNil(try vault.binding())
@@ -95,5 +96,46 @@ final class SignOutHotWaterTests: XCTestCase {
         await waitUntil { shower.state.phase == .running }
         XCTAssertEqual(shower.state.phase, .running)
         XCTAssertEqual(shower.binding, Fixture.binding)
+    }
+
+    /// 退出登录 that could not delete everything leaves the person signed in: the binding stays
+    /// (setting hot water up again isn't needed to try again), but no new shower starts with it.
+    func testAFailedSignOutKeepsTheBindingAndBlocksANewStart() async throws {
+        let store = ScriptedStore()
+        let vault = StoredShowerVault(store:store)
+        try vault.saveBinding(Fixture.binding)
+        try StoredSchoolVault(store:store).saveAccount(SchoolAccount(account:"99100991"))
+        let (campus, shower) = models(store, support:try Fixture.supportWithProfile())
+        await waitUntil { shower.gateRecord != .notLoaded && shower.profileLoaded }
+        XCTAssertTrue(shower.mayStart)
+        store.refusing = [.schoolPassword]
+
+        campus.signOut()
+        await waitUntil { campus.signOutFailed }
+
+        XCTAssertTrue(campus.signOutFailed)
+        XCTAssertEqual(try vault.binding(), Fixture.binding)
+        XCTAssertEqual(shower.binding, Fixture.binding)
+        XCTAssertTrue(shower.residenceReviewRequired)
+        XCTAssertFalse(shower.mayStart)
+    }
+
+    /// 退出登录 that went through: the binding goes once it is done.
+    func testASignOutThatWentThroughRemovesTheBindingAfterwards() async throws {
+        let store = ScriptedStore()
+        let vault = StoredShowerVault(store:store)
+        try vault.saveBinding(Fixture.binding)
+        try StoredSchoolVault(store:store).saveAccount(SchoolAccount(account:"99100991"))
+        let (campus, shower) = models(store, support:try Fixture.supportWithProfile())
+        await waitUntil { shower.gateRecord != .notLoaded && shower.profileLoaded }
+
+        campus.signOut()
+        XCTAssertFalse(shower.mayStart, "not with the identity being signed out")
+        await waitUntil { shower.binding == nil }
+
+        XCTAssertFalse(campus.signOutFailed)
+        XCTAssertNil(shower.binding)
+        XCTAssertNil(try vault.binding())
+        XCTAssertFalse(shower.residenceReviewRequired)
     }
 }

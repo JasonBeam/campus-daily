@@ -399,6 +399,13 @@ enum ShowerProfileFiles {
         return result
     }
 
+    /// 退出登录 has started: the binding holds the identity of the person signing out, so no new
+    /// shower starts with it from here on. It stays (it goes with `clearBindingForAccountSwitch()`
+    /// once the sign-out is done; a sign-out that failed leaves it to be set up again).
+    func holdForSignOut() {
+        if binding != nil, !residenceReviewRequired { setResidenceReview(true) }
+    }
+
     func setResidenceReview(_ value: Bool) {
         residenceReviewRequired = value
         services.defaults.set(value, forKey:PreferenceKey.showerNeedsResidenceReview)

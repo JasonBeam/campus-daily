@@ -5,12 +5,18 @@ import Core
 @testable import XiaoRiChang
 
 /// A Keychain in memory whose shower-record reads can be made to fail: `sessionReadError` is
-/// asked with the read's number (0 = the first) and throws what it returns.
+/// asked with the read's number (0 = the first) and throws what it returns. Writes and
+/// deletions of the keys in `refusing` fail.
 final class ScriptedStore: SecureStore, @unchecked Sendable {
     private let lock = NSLock()
     private var items: [String: Data] = [:]
     private var sessionReads = 0
     var sessionReadError: @Sendable (Int) -> Error? = { _ in nil }
+    private var refused: Set<StoreKey> = []
+    var refusing: Set<StoreKey> {
+        get { lock.withLock { refused } }
+        set { lock.withLock { refused = newValue } }
+    }
 
     func read(_ key: StoreKey) throws -> Data? {
         let (data, error): (Data?, Error?) = lock.withLock {
@@ -23,8 +29,14 @@ final class ScriptedStore: SecureStore, @unchecked Sendable {
         if let error { throw error }
         return data
     }
-    func write(_ data: Data, for key: StoreKey) throws { lock.withLock { items[key.rawValue] = data } }
-    func delete(_ key: StoreKey) throws { _ = lock.withLock { items.removeValue(forKey: key.rawValue) } }
+    func write(_ data: Data, for key: StoreKey) throws {
+        if refusing.contains(key) { throw StorageError(operation: "write", status: -25308) }
+        lock.withLock { items[key.rawValue] = data }
+    }
+    func delete(_ key: StoreKey) throws {
+        if refusing.contains(key) { throw StorageError(operation: "delete", status: -25308) }
+        _ = lock.withLock { items.removeValue(forKey: key.rawValue) }
+    }
 }
 
 /// The hot-water platform with every request held until `release`; `reached` says when the

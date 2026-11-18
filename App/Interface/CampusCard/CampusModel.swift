@@ -64,8 +64,10 @@ struct PowerChoice: Identifiable, Equatable {
     private let reminders: Reminders
     /// The hot-water model on the same services (its binding goes with an account switch).
     private let hotWater: () -> ShowerModel?
-    /// Sign-outs in order; sign-ins wait for them (`finished()`).
+    /// Sign-outs in order; sign-ins wait for them (`signOutsFinished()`).
     private let signOuts: SchoolSignOut
+    /// The last 退出登录's hot-water step, after its sign-out.
+    private var signOutHotWater: Task<Void, Never>?
     private var schoolVault: StoredSchoolVault { services.schoolVault }
 
     init(services: CampusServices, stack: SchoolRefreshStack, reminders: Reminders, hotWater: @escaping () -> ShowerModel?) {
@@ -200,7 +202,7 @@ struct PowerChoice: Identifiable, Equatable {
     /// dorm address the portal page showed (read by the same sign-in).
     func adoptWebState(_ login: CampusWebLogin) async throws {
         // A sign-out asked for just before must not delete what this stores.
-        await signOuts.finished()
+        await signOutsFinished()
         let started = signOutGeneration
         let session = session, state = login.state
         // Under the lease like the password sign-in: never beside the widget's own login.
@@ -250,7 +252,7 @@ struct PowerChoice: Identifiable, Equatable {
     /// form), or a service / storage error for the steps after it.
     func signIn(account: String, password: String, savePassword: Bool) async throws {
         // A sign-out asked for just before must not delete what this stores.
-        await signOuts.finished()
+        await signOutsFinished()
         let started = signOutGeneration
         let session = session
         // A sign-in that throws after its writes began has changed the person too.
@@ -293,7 +295,7 @@ struct PowerChoice: Identifiable, Equatable {
     /// the signed-in card.
     func savePassword(_ password: String, account typed: String?) async throws {
         // A sign-out asked for just before must not delete what this stores.
-        await signOuts.finished()
+        await signOutsFinished()
         let known = account?.account
         guard let name = known ?? typed, !name.isEmpty else { throw SchoolLoginFailure.wrongCredentials }
         let session = session
@@ -325,17 +327,28 @@ struct PowerChoice: Identifiable, Equatable {
         // The lease goes first: a widget read in the middle of a login loses it and writes
         // nothing. Waiting for its file lock happens off the main thread.
         let signedOut = signOuts.start()
-        Task {
-            guard !(await signedOut.value) else { return }
-            // Show what is still stored, so 退出登录 can be tried again.
-            reload()
-            signOutFailed = true
+        // The binding holds this person's school identity: no new shower starts with it from now.
+        hotWater()?.holdForSignOut()
+        signOutHotWater = Task {
+            guard await signedOut.value else {
+                // Show what is still stored, so 退出登录 can be tried again. Still signed in:
+                // the binding stays, held until the dorm is set again.
+                reload()
+                signOutFailed = true
+                return
+            }
+            // The next sign-in finds nobody stored to compare with: hot water goes as on an
+            // account switch.
+            _ = hotWater()?.clearBindingForAccountSwitch()
         }
         configured = false; snapshot = .empty; profile = nil; issue = nil; account = nil
         lookup.clear(); powerMatchIssue = nil
-        // The binding holds this person's school identity, and the next sign-in finds nobody
-        // stored to compare with: hot water goes as on an account switch.
-        _ = hotWater()?.clearBindingForAccountSwitch()
+    }
+
+    /// Returns once every sign-out asked for before has finished, its hot water included.
+    private func signOutsFinished() async {
+        await signOuts.finished()
+        await signOutHotWater?.value
     }
 
     // MARK: Electricity
