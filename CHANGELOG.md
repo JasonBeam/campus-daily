@@ -70,6 +70,7 @@
 
 ### Fixed
 
+- Keep the 「还在计时」 shower reminder when the app opens during a shower. At each launch the reminders were set again before the shower record was read, which counted as “no shower”: the pending reminder was removed (and set again a moment later) and one already shown was taken off Notification Center.
 - Stop offering 清除 for a laundry order that could not be confirmed when U净 does report an order on the machine but with an id the app cannot use. It was treated as “no order found”, which is the one case where the record may be cleared by hand; it now says 「U净 回的订单对不上，先去 U净 App 里看看。」 and keeps the record.
 - Make the app's changes to the stored dorm and meter (the dorm read for the meter lookup, the meter found or picked, the old campus-wide meter dropped at launch) one locked read-compare-write each, in the lock the widget's refresh uses when it follows a replaced meter, and make the widget's clear of a snapshot after a sign-out remove only the snapshot that refresh itself saved. Before, each was a read and a separate write, so the other process's change in between could be lost or a newer snapshot cleared.
 - Treat a saved shower that may still be open but names no controller as unreadable (「读不到热水记录。…」), instead of letting 结束 connect to the only controller in range and close it without proof that it is ours. No build wrote such a record; one from a damaged or foreign save is now never acted on.

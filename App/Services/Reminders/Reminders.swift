@@ -65,6 +65,9 @@ enum ReminderKey {
     private let queue: ReminderPromptQueue
     private var laundryPlan: LaundryPlan?
     private var showerStart: Date?
+    /// False until the shower model said whether a shower runs: nil until then means "not known",
+    /// and a resync must not take a running shower's reminder away on it.
+    private var showerKnown = false
     /// The campus numbers the low-balance reminders judge again (`reevaluateCampus`).
     var campusSnapshot: () -> HomeSnapshot = { .empty }
     /// True while the live app is covered by the sample: a queued prompt waits (`ReminderPromptQueue`).
@@ -195,7 +198,7 @@ enum ReminderKey {
     /// Re-apply scheduled reminders after a setting or the authorization changed.
     func resync() {
         if let laundryPlan { applyLaundry(laundryPlan) } else { cancelLaundry() }
-        syncShower(started:showerStart)
+        if showerKnown { syncShower(started:showerStart) }
     }
 
     // MARK: Laundry done
@@ -272,7 +275,7 @@ enum ReminderKey {
 
     /// Called on every session change (ShowerModel). `started` = start of a session that can still be closed.
     func syncShower(started: Date?) {
-        showerStart = started
+        showerStart = started; showerKnown = true
         guard let center else { return }
         let minutes = defaults.integer(forKey:ReminderKey.unsettledMinutes)
         let wanted = started.flatMap { start -> String? in
