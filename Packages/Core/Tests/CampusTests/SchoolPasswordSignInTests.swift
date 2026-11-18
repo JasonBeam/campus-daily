@@ -476,4 +476,3 @@ final class InterruptedReadingTests: XCTestCase {
         XCTAssertEqual(SnapshotRefresher.apply(SchoolReading(outcome: .interrupted, checkedAt: t1), to: stored), stored)
     }
 }
-

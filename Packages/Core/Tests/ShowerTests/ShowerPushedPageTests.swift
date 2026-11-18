@@ -89,4 +89,3 @@ final class ShowerPushedPageTests: XCTestCase {
         XCTAssertFalse(flow.starting)
     }
 }
-

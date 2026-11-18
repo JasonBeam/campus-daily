@@ -187,7 +187,7 @@ struct HomeView: View {
                 }
                 .navigationDestination(for:HomeRoute.self) { route in destination(route).navOpen(route.debugPage, from:.homeButton) }
             }
-            
+
             SettlementOverlay(result:$panel)
         }
         .sensoryFeedback(.impact(weight:.medium), trigger:startTick)
