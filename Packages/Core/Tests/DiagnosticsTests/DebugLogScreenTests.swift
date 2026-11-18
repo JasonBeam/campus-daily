@@ -189,6 +189,23 @@ final class DebugLogLaunchTests: XCTestCase {
         XCTAssertEqual(FileDebugLog(directory: folder, now: clock.function).lines().count, 1, "the old lines are untouched")
     }
 
+    /// A reset or 清除 on a launch with no answer still deletes the log an earlier TestFlight
+    /// launch left, whether it comes after the answer or before it.
+    func testAClearOnAnUndecidedLaunchDeletesTheOldLog() {
+        leaveOldLog()
+        let after = launchLog()
+        after.resolve(.undetermined)
+        after.clear()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: folder.path))
+
+        leaveOldLog()
+        let before = launchLog()
+        before.clear()
+        XCTAssertTrue(FileManager.default.fileExists(atPath: folder.path), "not known yet")
+        before.resolve(.undetermined)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: folder.path))
+    }
+
     func testOnlyTheFirstAnswerCounts() {
         leaveOldLog()
         let log = launchLog()

@@ -24,7 +24,8 @@ public enum DebugLogDecision: Sendable, Equatable {
     case testFlight
     /// Keep nothing and delete a log left by a TestFlight build.
     case appStore
-    /// No answer (a timeout, an error, an Xcode run): keep nothing, delete nothing.
+    /// No answer (a timeout, an error, an Xcode run): keep nothing, and delete a log an earlier
+    /// TestFlight launch left only when the user clears it (清除, 重置校日常).
     case undetermined
 }
 
@@ -122,9 +123,16 @@ public final class LaunchDebugLog: DebugLogSink, @unchecked Sendable {
     public func clear() {
         let target: FileDebugLog? = lock.withLock {
             if _decision == nil { held = []; clearedWhileHeld = true }
+            if _decision == .undetermined { removeFolder() }
             return file
         }
         target?.clear()
+    }
+
+    private func removeFolder() {
+        guard let applicationSupport else { return }
+        let folder = FileDebugLog.directory(in: applicationSupport)
+        if FileManager.default.fileExists(atPath: folder.path) { try? FileManager.default.removeItem(at: folder) }
     }
 
     public func flush() { current()?.flush() }
@@ -155,9 +163,9 @@ public final class LaunchDebugLog: DebugLogSink, @unchecked Sendable {
                     for (event, at) in held { log.record(event, at: at) }
                     file = log
                 case .appStore:
-                    if FileManager.default.fileExists(atPath: folder.path) { try? FileManager.default.removeItem(at: folder) }
+                    removeFolder()
                 case .undetermined:
-                    break
+                    if clearedWhileHeld { removeFolder() }
                 }
             }
             held = []
