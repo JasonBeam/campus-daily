@@ -102,6 +102,9 @@ enum ShowerProfileFiles {
     @Published var demoReadyDorm: String?
     #endif
     @Published private(set) var residenceReviewRequired: Bool
+    /// The review is there because the last 退出登录 did not complete (the same person is still
+    /// signed in), not because of an account switch or a sign-out that went through.
+    private(set) var reviewAfterFailedSignOut: Bool
     @Published private(set) var verifiedDevice: VerifiedShowerDevice?
     @Published private(set) var inspectionStatus: String?
     @Published private(set) var inspecting = false
@@ -129,6 +132,7 @@ enum ShowerProfileFiles {
         self.activities = activities
         self.gate = gate
         residenceReviewRequired = services.defaults.bool(forKey:PreferenceKey.showerNeedsResidenceReview)
+        reviewAfterFailedSignOut = services.defaults.bool(forKey:PreferenceKey.showerReviewAfterFailedSignOut)
         // What older builds' 导出热水诊断 kept on the phone; nothing writes it any more.
         if let support = services.applicationSupport {
             RetiredDiagnostics.removeLeftovers(store:services.secureStore, applicationSupport:support,
@@ -345,6 +349,7 @@ enum ShowerProfileFiles {
     func reloadAfterReset() async {
         binding = (try? services.showerVault.binding()) ?? nil
         residenceReviewRequired = services.defaults.bool(forKey:PreferenceKey.showerNeedsResidenceReview)
+        reviewAfterFailedSignOut = services.defaults.bool(forKey:PreferenceKey.showerReviewAfterFailedSignOut)
         verifiedDevice = nil; inspectionStatus = nil; inspectionFoundBusy = false; inspectionOutcome = nil; message = nil
         await reloadProfile()
         activities?.sync(state:state)
@@ -406,10 +411,25 @@ enum ShowerProfileFiles {
         if binding != nil, !residenceReviewRequired { setResidenceReview(true) }
     }
 
+    /// 退出登录 did not complete while hot water was held for it: remembered (also across a
+    /// relaunch) so the refusal says to sign out again. True when hot water is held.
+    func signOutDidNotComplete() -> Bool {
+        guard residenceReviewRequired else { return false }
+        setReviewAfterFailedSignOut(true)
+        return true
+    }
+
+    /// Set or cleared, the review forgets a failed sign-out behind it.
     func setResidenceReview(_ value: Bool) {
         residenceReviewRequired = value
         services.defaults.set(value, forKey:PreferenceKey.showerNeedsResidenceReview)
+        setReviewAfterFailedSignOut(false)
         refreshRetained()
+    }
+
+    private func setReviewAfterFailedSignOut(_ value: Bool) {
+        reviewAfterFailedSignOut = value
+        services.defaults.set(value, forKey:PreferenceKey.showerReviewAfterFailedSignOut)
     }
 
     /// `.waterconfig` import (Settings › 高级). The profile is the shared platform part only.
@@ -495,10 +515,13 @@ enum ShowerProfileFiles {
     }
 
     /// Why 开始洗澡 is not allowed now (`mayStart`), for the callers that can't see the page.
-    private var startRefusalText: String {
+    var startRefusalText: String {
         if platformMissing { return Self.platformMissingText }
         if storageBlocked { return ShowerActionFailure(.storage).message }
-        if residenceReviewRequired { return "学校账号退出或换过，先在校日常里重新核对宿舍水控。" }
+        if residenceReviewRequired {
+            return reviewAfterFailedSignOut ? "上次退出学校账号没完成，热水暂时开不了。去设置里再退一次，或者重新核对宿舍水控。"
+                : "学校账号退出或换过，先在校日常里重新核对宿舍水控。"
+        }
         if inspecting { return "正在核对水控，等一下再开始。" }
         if !state.canStart { return ShowerActionFailure.blockedText(state.failure) }
         return "现在开始不了，打开校日常看看。"

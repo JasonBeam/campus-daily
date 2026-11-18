@@ -84,6 +84,8 @@ public enum PreferenceKey {
     public static let prefix = "xrc."
     public static func reminder(_ name: String) -> String { prefix + "reminder." + name }
     public static let showerNeedsResidenceReview = prefix + "water.needsResidenceReview"
+    /// Bool: that review is there because the last 退出登录 did not complete (not a switch).
+    public static let showerReviewAfterFailedSignOut = prefix + "water.reviewAfterFailedSignOut"
     /// Bool, absent = on (school laundry shown).
     public static let schoolLaundry = prefix + "laundry.school"
     /// When the next U净 SMS code may be asked for (a time only; one account at a time).

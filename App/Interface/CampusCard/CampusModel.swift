@@ -45,6 +45,8 @@ struct PowerChoice: Identifiable, Equatable {
     /// Sign-out left something behind (a Keychain item or the widget snapshot could not be
     /// deleted): Settings › 学校账号 says so, and shows what is still stored.
     @Published var signOutFailed = false
+    /// That sign-out held hot water: no new shower starts until it is done or the dorm is set again.
+    @Published private(set) var signOutFailedHeldHotWater = false
     /// Bumped by a sign-out and by a sign-in of someone else (or someone not known to be the
     /// same): pages showing the previous person's school data close.
     @Published private(set) var personChanges = 0
@@ -334,6 +336,7 @@ struct PowerChoice: Identifiable, Equatable {
                 // Show what is still stored, so 退出登录 can be tried again. Still signed in:
                 // the binding stays, held until the dorm is set again.
                 reload()
+                signOutFailedHeldHotWater = hotWater()?.signOutDidNotComplete() ?? false
                 signOutFailed = true
                 return
             }
