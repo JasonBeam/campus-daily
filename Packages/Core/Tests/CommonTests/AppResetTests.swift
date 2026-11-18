@@ -69,7 +69,7 @@ final class AppResetTests: XCTestCase {
     func testResetDeletesTheRecordsANextUseKept() throws {
         let store = InMemorySecureStore()
         let vault = StoredShowerVault(store: store)
-        let kept = ShowerState(phase: .running, machineID: "11223344", startedAt: Date(timeIntervalSince1970: 1_800_000_000),
+        let kept = ShowerState(phase: .running, machineID: "11223344", peripheralID: "P", startedAt: Date(timeIntervalSince1970: 1_800_000_000),
                                authorizeSent: true, authorizationID: "AABBCCDD", stateReviewRequired: true)
         try vault.retainShower(kept)
         XCTAssertEqual(try vault.retainedShowers(), [kept])

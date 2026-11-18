@@ -70,6 +70,7 @@
 
 ### Fixed
 
+- Treat a saved shower that may still be open but names no controller as unreadable (「读不到热水记录。…」), instead of letting 结束 connect to the only controller in range and close it without proof that it is ours. No build wrote such a record; one from a damaged or foreign save is now never acted on.
 - Let the dorm be set again after 退出登录 or an account switch when the last shower is over and waits for its check: the old binding was kept for that record, 开始下一次洗澡 was refused until the dorm was set again, and the dorm could not be set while the record was there, so only 重置校日常 got hot water back. Setting the dorm now keeps the record first, as 开始下一次洗澡 does.
 - Show the showers kept for a check only to the student they were kept for: each kept record now carries the student id of its binding, and after 退出登录 or for another person on the phone the lists (清爽's 待核对的热水记录, 暖橙's 没结算的洗澡) are empty. The records stay on the phone and come back when the same student sets hot water up again; before, the next person saw them.
 - Run the account-switch clean-up (home's numbers, the hot-water binding) also when someone else's sign-in fails part-way through saving: the new person could be stored already, so the next try found the same person, cleaned nothing, and the hot-water binding of the person before stayed in use.

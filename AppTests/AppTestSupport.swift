@@ -56,7 +56,7 @@ final class HeldHTTP: HTTPClient, @unchecked Sendable {
 
 enum Fixture {
     static let binding = ShowerBinding(studentId: "S-1", schoolId: "1", machineId: "11223344", roomId: "R-1", roomLabel: "99栋 991")
-    static let running = ShowerState(phase: .running, machineID: "11223344", startedAt: Date(), authorizationID: "A1")
+    static let running = ShowerState(phase: .running, machineID: "11223344", peripheralID: "P", startedAt: Date(), authorizationID: "A1")
     /// Over, its settlement not confirmed (待核对): 再结算一次 may send it again (its consumption
     /// frame: the controller's 20-byte reply, 0x55 then the machine).
     static let awaitingReview = ShowerState(phase: .failed, machineID: "11223344", startedAt: Date(), authorizationID: "A1",

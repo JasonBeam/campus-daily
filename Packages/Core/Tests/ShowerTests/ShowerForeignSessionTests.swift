@@ -148,7 +148,7 @@ final class ShowerForeignSessionTests: XCTestCase {
     /// over (水控有人在用), never back on the old session's timer.
     func testARecheckThatFindsWaterRunningOnAStoppedSessionNeverResumesIt() async throws {
         // Stopped, and the next start found the controller in use (an earlier build's probe left it there).
-        try vault.saveShowerState(ShowerState(phase: .writePending, machineID: machine, startedAt: t0, authorizeSent: true,
+        try vault.saveShowerState(ShowerState(phase: .writePending, machineID: machine, peripheralID: "P", startedAt: t0, authorizeSent: true,
                                               authorizationID: "001122FF", stateReviewRequired: true,
                                               authorizationNotWritten: true, waitingForRelease: true))
         let e = try engine()

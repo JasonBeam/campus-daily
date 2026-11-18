@@ -37,7 +37,7 @@ final class ResetMarkerTests: XCTestCase {
     func testStoredRecordsLock() throws {
         let store = InMemorySecureStore()
         XCTAssertNil(AppReset.storedLock(store: store))
-        try StoredShowerVault(store: store).saveShowerState(ShowerState(phase: .running))
+        try StoredShowerVault(store: store).saveShowerState(ShowerState(phase: .running, machineID: "11223344", peripheralID: "P"))
         XCTAssertNotNil(AppReset.storedLock(store: store))
         try StoredShowerVault(store: store).saveShowerState(nil)
         try store.write(Data("not json".utf8), for: .laundryCheckout)
@@ -99,7 +99,7 @@ final class ResetMarkerTests: XCTestCase {
         let store = InMemorySecureStore()
         let marker = ResetMarker(store: store)
         try marker.begin(at: t0)
-        let running = ShowerState(phase: .running, machineID: "11223344")
+        let running = ShowerState(phase: .running, machineID: "11223344", peripheralID: "P")
         try StoredShowerVault(store: store).saveShowerState(running)
         try StoredShowerVault(store: store).saveBinding(ShowerBinding(studentId: "S1234567", schoolId: "20021", machineId: "11223344", roomId: "R1", roomLabel: "99栋 991"))
         var steps: [String] = []
@@ -119,7 +119,7 @@ final class ResetMarkerTests: XCTestCase {
     @MainActor func testALockFoundAfterTheSignOutSaysSo() async throws {
         let store = InMemorySecureStore()
         try ResetMarker(store: store).begin(at: t0)
-        let running = ShowerState(phase: .running, machineID: "11223344")
+        let running = ShowerState(phase: .running, machineID: "11223344", peripheralID: "P")
         var steps: [String] = []
         let resumed = try await AppReset.resume(
             marker: ResetMarker(store: store), now: t0.addingTimeInterval(30),

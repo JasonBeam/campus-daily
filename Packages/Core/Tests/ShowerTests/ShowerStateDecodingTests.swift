@@ -29,7 +29,7 @@ final class ShowerStateDecodingTests: XCTestCase {
     /// Only the phase and a few ids: every flag gets its default, and a step that may have
     /// happened counts as happened.
     func testAnOlderRecordMissingFieldsGetsSafeDefaults() throws {
-        let running = try decode(#"{"phase":"running","machineID":"11223344","authorizationID":"001122FF"}"#)
+        let running = try decode(#"{"phase":"running","machineID":"11223344","peripheralID":"P","authorizationID":"001122FF"}"#)
         XCTAssertEqual(running.phase, .running)
         XCTAssertFalse(running.stateReviewRequired)
         XCTAssertFalse(running.reviewing)
@@ -42,13 +42,34 @@ final class ShowerStateDecodingTests: XCTestCase {
         XCTAssertTrue(authorizing.authorizeSent, "may have left")
         XCTAssertEqual(ShowerReducer.restore(authorizing).failure?.reason, .authorizeUncertain)
 
-        let closing = try decode(#"{"phase":"closing","machineID":"11223344","closingFrom":"running"}"#)
+        let closing = try decode(#"{"phase":"closing","machineID":"11223344","peripheralID":"P","closingFrom":"running"}"#)
         XCTAssertTrue(closing.closeSent, "may have left")
         XCTAssertEqual(ShowerReducer.restore(closing).failure?.reason, .closeUnconfirmed)
 
         let failed = try decode(#"{"phase":"failed","machineID":"11223344","failure":{"reason":"settleUncertain"}}"#)
         XCTAssertEqual(failed.failure?.needsReview, true, "kept for a check")
         XCTAssertFalse(failed.canStart)
+    }
+
+    /// A shower that may still be open and names no controller (or no machine) is unreadable:
+    /// 结束 would connect to whichever controller is the only one in range and close it with no
+    /// proof it is ours. A record at rest or before the water needs none.
+    func testAnOpenShowerThatNamesNoControllerIsUnreadable() throws {
+        for phase in ["writePending", "running", "closing"] {
+            XCTAssertThrowsError(try decode(#"{"phase":"\#(phase)","machineID":"11223344"}"#), phase)
+            XCTAssertThrowsError(try decode(#"{"phase":"\#(phase)","peripheralID":"P"}"#), phase)
+            XCTAssertNoThrow(try decode(#"{"phase":"\#(phase)","machineID":"11223344","peripheralID":"P"}"#), phase)
+        }
+        for phase in ["idle", "authorizing", "done"] {
+            XCTAssertNoThrow(try decode(#"{"phase":"\#(phase)"}"#), phase)
+        }
+
+        let store = InMemorySecureStore()
+        try store.write(Data(#"{"phase":"running","machineID":"11223344"}"#.utf8), for: .showerSession)
+        XCTAssertThrowsError(try ShowerEngine(transport: FakeShowerTransport(), gateway: FakeGateway(), vault: StoredShowerVault(store: store),
+                                              configuration: .init(bleName: "fixture-ble"))) {
+            XCTAssertEqual($0 as? ShowerEngineError, .unreadableRecord)
+        }
     }
 
     /// Values a newer build may write in fields that only describe the record.
@@ -109,7 +130,7 @@ final class ShowerStateDecodingTests: XCTestCase {
         XCTAssertNoThrow(try ShowerEngine(transport: FakeShowerTransport(), gateway: FakeGateway(), vault: vault,
                                           configuration: .init(bleName: "fixture-ble")))
 
-        try vault.saveShowerState(ShowerState(phase: .running, machineID: "11223344", startedAt: t0))
+        try vault.saveShowerState(ShowerState(phase: .running, machineID: "11223344", peripheralID: "P", startedAt: t0))
         XCTAssertFalse(try vault.clearUnreadableRecord())
         XCTAssertEqual(try vault.showerState()?.phase, .running, "a readable record stays")
 

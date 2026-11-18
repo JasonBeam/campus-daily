@@ -270,15 +270,21 @@ public struct ShowerState: Sendable, Codable, Equatable {
 }
 
 extension ShowerState {
-    /// A record saved by another build (older or newer). Only the phase is required: without
-    /// it the record means nothing, and guessing one could hide an open shower. A missing
-    /// "sent" flag counts as sent (the request may have left); other missing flags get their
-    /// defaults. Unknown values in fields that only describe the record are dropped.
+    /// A record saved by another build (older or newer). The phase is required: without
+    /// it the record means nothing, and guessing one could hide an open shower. So are the
+    /// machine and the controller of a shower that may still be open: 结束 and the checks go to
+    /// that controller only, and without it they would take the only one in range and could
+    /// close a shower that is not ours. A missing "sent" flag counts as sent (the request may
+    /// have left); other missing flags get their defaults. Unknown values in fields that only
+    /// describe the record are dropped.
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         phase = try c.decode(ShowerPhase.self, forKey: .phase)
         machineID = try c.decodeIfPresent(String.self, forKey: .machineID)
         peripheralID = try c.decodeIfPresent(String.self, forKey: .peripheralID)
+        if [.writePending, .running, .closing].contains(phase), machineID == nil || peripheralID == nil {
+            throw DecodingError.dataCorruptedError(forKey: .peripheralID, in: c, debugDescription: "an open shower names its controller")
+        }
         startedAt = try c.decodeIfPresent(Date.self, forKey: .startedAt)
         authorizeSent = try c.decodeIfPresent(Bool.self, forKey: .authorizeSent) ?? true
         authorizationID = try c.decodeIfPresent(String.self, forKey: .authorizationID)

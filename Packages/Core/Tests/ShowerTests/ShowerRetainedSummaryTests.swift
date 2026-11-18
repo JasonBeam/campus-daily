@@ -13,7 +13,7 @@ final class ShowerRetainedSummaryTests: XCTestCase {
     }
 
     var stopped: ShowerState {
-        ShowerState(phase: .running, machineID: "AABBCCDD", startedAt: t0, stateReviewRequired: true)
+        ShowerState(phase: .running, machineID: "AABBCCDD", peripheralID: "P", startedAt: t0, stateReviewRequired: true)
     }
 
     func binding(_ student: String, machine: String = "11223344") -> ShowerBinding {
