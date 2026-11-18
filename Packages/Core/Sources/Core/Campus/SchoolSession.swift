@@ -209,18 +209,32 @@ public actor SchoolSession {
 
     /// Runs a sign-in (`attempt`) on `session` and calls `changed` when it changed who is signed
     /// in, whether it returned or threw (one that throws after its writes began has changed it).
+    /// Only the attempt's own writes count: a sign-out or another sign-in meanwhile changes the
+    /// person too, and an attempt they made fail has changed nobody.
     public static func watchingPerson<T>(on session: SchoolSession, isolation: isolated (any Actor)? = #isolation,
                                          _ attempt: () async throws -> T, changed: () -> Void) async throws -> T {
-        let before = await session.personStamp()
+        let own = PersonChange()
         do {
-            let result = try await attempt()
-            if await session.personStamp() != before { changed() }
+            let result = try await signInChange.withValue(own) { try await attempt() }
+            if own.happened { changed() }
             return result
         } catch {
-            if await session.personStamp() != before { changed() }
+            if own.happened { changed() }
             throw error
         }
     }
+
+    /// Whether the sign-in it was given to (`watchingPerson`) made someone new signed in.
+    final class PersonChange: @unchecked Sendable {
+        // @unchecked: `made` is touched only under `lock`.
+        private let lock = NSLock()
+        private var made = false
+        var happened: Bool { lock.withLock { made } }
+        func record() { lock.withLock { made = true } }
+    }
+
+    /// The `PersonChange` of the sign-in running in this task, if any.
+    static let signInChange = TaskLocal<PersonChange?>(wrappedValue: nil)
 
     /// A sign-in with the caller's own clean-up for a change of person. `cleanUp(unconfirmed,
     /// dormAndMeterCleared)` runs when the login was someone else or nobody could tell, and also
@@ -247,6 +261,7 @@ public actor SchoolSession {
     /// A sign-in not known to be the same person: what was started before it is stale.
     func newPerson() -> Int {
         personGeneration += 1
+        Self.signInChange.get()?.record()
         return personGeneration
     }
 

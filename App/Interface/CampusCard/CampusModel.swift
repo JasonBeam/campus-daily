@@ -209,7 +209,7 @@ struct PowerChoice: Identifiable, Equatable {
             try await refresher.holdingLease { owning in
                 try await session.adoptWebState(state, owning:owning)
             }
-        }, changed:{ personChanges += 1 }, cleanUp:{ await previousPersonCleared(unconfirmed:$0, dormAndMeterCleared:$1) })
+        }, changed:{ personChanges += 1 }, cleanUp:{ await previousPersonCleared(unconfirmed:$0, dormAndMeterCleared:$1, since:started) })
         await refresher.noteChange()
         // Signed out (or reset) while that ran: the dorm must not be written back.
         guard started == signOutGeneration else { return }
@@ -251,13 +251,14 @@ struct PowerChoice: Identifiable, Equatable {
     func signIn(account: String, password: String, savePassword: Bool) async throws {
         // A sign-out asked for just before must not delete what this stores.
         await signOuts.finished()
+        let started = signOutGeneration
         let session = session
         // A sign-in that throws after its writes began has changed the person too.
         _ = try await SchoolSession.signingIn(on:session, {
             try await refresher.holdingLease { owning in
                 try await session.signIn(account:account, password:password, savePassword:savePassword, owning:owning)
             }
-        }, changed:{ personChanges += 1 }, cleanUp:{ await previousPersonCleared(unconfirmed:$0, dormAndMeterCleared:$1) })
+        }, changed:{ personChanges += 1 }, cleanUp:{ await previousPersonCleared(unconfirmed:$0, dormAndMeterCleared:$1, since:started) })
         await refresher.noteChange()
         reload(); issue = nil; lastRefresh = nil
         lookup.clear(); powerMatchIssue = nil
@@ -268,12 +269,19 @@ struct PowerChoice: Identifiable, Equatable {
     /// The login was someone else, or nothing showed it was the same person: Core already
     /// dropped their school data. Here: the widget
     /// snapshot, the hot-water binding made with their identity, and the one-time alert.
-    /// Laundry (U净) is its own login and stays.
-    private func previousPersonCleared(unconfirmed: Bool, dormAndMeterCleared: Bool) async {
+    /// Laundry (U净) is its own login and stays. Nothing is cleared once a sign-out came after
+    /// the sign-in started (`started`): what is stored now is whoever signed in after it.
+    private func previousPersonCleared(unconfirmed: Bool, dormAndMeterCleared: Bool, since started: Int) async {
+        guard started == signOutGeneration else { return }
         let refresher = refresher
         let hotWater = await AccountSwitch.clearPreviousPerson(
             snapshot:{ try await refresher.clear() },
-            hotWater:{ [hotWater] in hotWater()?.clearBindingForAccountSwitch() ?? AccountSwitch.HotWater.none })
+            hotWater:{ [hotWater] in
+                // Again after the snapshot's wait, right before the binding goes.
+                guard started == signOutGeneration else { return AccountSwitch.HotWater.none }
+                return hotWater()?.clearBindingForAccountSwitch() ?? AccountSwitch.HotWater.none
+            })
+        guard started == signOutGeneration else { return }
         snapshot = .empty
         switchNotice = AccountSwitchNotice(previousPersonUnconfirmed:unconfirmed, dormAndMeterCleared:dormAndMeterCleared,
                                            hotWaterCleared:hotWater.noticed)
