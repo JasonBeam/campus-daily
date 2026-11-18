@@ -12,6 +12,7 @@ final class FakeGateway: ShowerGateway, @unchecked Sendable {
     private var settleResults: [Outcome<ShowerReceipt>] = []
     private var _authorizeFrames: [Data] = []
     private var _settleFrames: [Data] = []
+    private var _settleBindings: [ShowerBinding] = []
     private var _available = true
 
     /// False: like the app's gateway without a platform profile.
@@ -24,6 +25,8 @@ final class FakeGateway: ShowerGateway, @unchecked Sendable {
     func scriptSettle(_ o: Outcome<ShowerReceipt>...) { lock.withLock { settleResults += o } }
     var authorizeFrames: [Data] { lock.withLock { _authorizeFrames } }
     var settleFrames: [Data] { lock.withLock { _settleFrames } }
+    /// The binding each settlement went out with (whose account it charges).
+    var settleBindings: [ShowerBinding] { lock.withLock { _settleBindings } }
 
     func authorize(_ binding: ShowerBinding, frame: Data) async throws -> ShowerAuthorization {
         let o: Outcome<ShowerAuthorization> = lock.withLock {
@@ -36,6 +39,7 @@ final class FakeGateway: ShowerGateway, @unchecked Sendable {
     func settle(_ binding: ShowerBinding, frame: Data) async throws -> ShowerReceipt {
         let o: Outcome<ShowerReceipt> = lock.withLock {
             _settleFrames.append(frame)
+            _settleBindings.append(binding)
             return settleResults.isEmpty ? .fail(.timedOut) : settleResults.removeFirst()
         }
         return try await Self.resolve(o)

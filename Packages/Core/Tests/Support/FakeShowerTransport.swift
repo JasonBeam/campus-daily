@@ -30,6 +30,7 @@ public final class FakeShowerTransport: ShowerTransport, @unchecked Sendable {
     private var _connects: [Connect] = []
     private var _disconnects = 0
     private var _onExchange: (@Sendable (Data) -> Void)?
+    private var _hangConnects = 0
     /// Peripheral returned when no connect result is scripted.
     private let defaultPeripheral = "PERIPHERAL-A"
     /// Called before each exchange reply is returned (e.g. to cancel a task mid-flow).
@@ -42,6 +43,10 @@ public final class FakeShowerTransport: ShowerTransport, @unchecked Sendable {
 
     public func script(_ replies: Reply...) { lock.withLock { _replies += replies } }
     public func scriptConnect(_ results: Result<String, ShowerDeviceError>...) { lock.withLock { _connectResults += results } }
+    /// The next connect suspends until the calling task is cancelled (the test fails after 10 s).
+    public func hangNextConnect() { lock.withLock { _hangConnects += 1 } }
+    public var isConnecting: Bool { lock.withLock { _connecting } }
+    private var _connecting = false
 
     public var writes: [Data] { lock.withLock { _writes } }
     public var connects: [Connect] { lock.withLock { _connects } }
@@ -49,6 +54,16 @@ public final class FakeShowerTransport: ShowerTransport, @unchecked Sendable {
     public var pendingReplies: Int { lock.withLock { _replies.count } }
 
     public func connect(bleName: String, machineID: String, required: String?, preferred: String?) async throws -> String {
+        let hang: Bool = lock.withLock {
+            guard _hangConnects > 0 else { return false }
+            _hangConnects -= 1; _connecting = true
+            return true
+        }
+        if hang {
+            await eventually(seconds: 10) { Task.isCancelled }
+            lock.withLock { _connecting = false }
+            throw ShowerDeviceError.interrupted
+        }
         let result: Result<String, ShowerDeviceError> = lock.withLock {
             _connects.append(Connect(required: required, preferred: preferred))
             // Like the real transport: the required, else the preferred peripheral is the one reached.
