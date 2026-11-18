@@ -70,6 +70,7 @@
 
 ### Fixed
 
+- Show a shower that 开始洗澡 from Siri or Shortcuts kept for its check at once on the pages. It showed only after the next reload, though the page's own 开始下一次洗澡 showed it at once.
 - Treat a card balance or a laundry price sent as a whole number too large to hold as an unreadable reply. The conversion to fen overflowed, which stops the app.
 - Delete a TestFlight debug log left on the phone when 重置校日常 or 清除调试记录 runs on a launch where the app could not tell what kind of install it is (StoreKit gave no answer). Such a launch keeps no log, and the clear did nothing, so the older log stayed.
 - Keep the 「还在计时」 shower reminder when the app opens during a shower. At each launch the reminders were set again before the shower record was read, which counted as “no shower”: the pending reminder was removed (and set again a moment later) and one already shown was taken off Notification Center.

@@ -38,6 +38,31 @@ final class ShowerModelRetainedTests: XCTestCase {
         XCTAssertEqual(try StoredShowerVault(store:busy).retainedShowers().count, 1)
     }
 
+    /// 开始洗澡 from Siri or Shortcuts over a shower that is over keeps that record as the page's
+    /// 开始下一次洗澡 does, and the model shows it at once.
+    func testAShowerKeptByTheShortcutIsShownAtOnce() async throws {
+        let store = ScriptedStore()
+        let vault = StoredShowerVault(store:store)
+        try vault.saveBinding(Fixture.binding)
+        try vault.saveShowerState(Fixture.awaitingReview)
+        let link = ScriptedControllerLink()
+        // The controller is idle and names the bound machine.
+        link.replies = [Data([0x55, 0x11, 0x22, 0x33, 0x44] + [UInt8](repeating:0, count:15))]
+        let services = CampusServices(kind:.live, secureStore:store, defaults:SampleDefaults(), sharedPreferences:nil,
+                                      schoolHTTP:SampleHTTPClient(), showerHTTP:SampleHTTPClient(), laundryHTTP:SampleHTTPClient(),
+                                      feedbackHTTP:nil, showerTransport:link, leaseFile:nil,
+                                      applicationSupport:try Fixture.supportWithProfile(), sharedDidChange:{})
+        let model = ShowerModel(services:services, reminders:.sample(defaults:services.defaults), activities:nil, gate:LiveShowerGate())
+        await model.reloadProfile()
+        await waitUntil { model.gateRecord != .notLoaded }
+        XCTAssertNil(model.retained)
+
+        _ = try? await model.run(start:true)
+
+        XCTAssertEqual(try vault.retainedShowersForBinding().count, 1, "the step kept the record")
+        XCTAssertEqual(model.retained?.count, 1)
+    }
+
     func testNoneKeptOrUnreadableIsNil() throws {
         XCTAssertNil(liveShowerModel(store:ScriptedStore()).0.retained)
         let store = ScriptedStore()

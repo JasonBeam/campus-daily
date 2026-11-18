@@ -439,6 +439,8 @@ enum ShowerProfileFiles {
         busy = true; message = nil
         defer {
             busy = false
+            // A next use keeps the record it replaces, whether or not it then goes through.
+            if next { refreshRetained() }
             liveStepEnded()
         }
         do {
