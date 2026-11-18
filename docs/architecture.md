@@ -911,9 +911,10 @@ bundle id keeps the old Info.plist values: the keychain groups still follow its 
 and the App Group falls back to `group.` plus the bundle id it runs under (the widget's without
 `.balances`) when the Info.plist one has no container.
 
-Distribution is an unsigned IPA the user re-signs (`Scripts/package-ipa.py`); there is no App
-Store/TestFlight record. Paid-team signers register `org.zaxh.xiaorichang` and
-`.balances`; free Personal Teams count them toward the 10 App IDs / 7 days limit.
+Releases go out through TestFlight; a GitHub release carries no IPA. `Scripts/package-ipa.py`
+still packages an unsigned IPA for someone who builds the app and signs it themselves. Such
+paid-team signers register `org.zaxh.xiaorichang` and `.balances`; free Personal Teams count
+them toward the 10 App IDs / 7 days limit.
 
 **Alipay scheme notes.** (1) AlipaySDK `payOrder(_:fromScheme:)` (laundry signed order) returns
 to `<scheme>://safepay…`; Info.plist declares `$(PRODUCT_BUNDLE_IDENTIFIER).alipay`, so it
