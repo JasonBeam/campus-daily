@@ -31,17 +31,47 @@ public struct StoredShowerVault: ShowerVault {
     }
     public func saveShowerState(_ state: ShowerState?) throws { try store.writeJSON(state, .showerSession) }
     /// `water.retained`. A list that can't be decoded throws, so nothing is added over it.
-    public func retainedShowers() throws -> [ShowerState] {
-        guard let data = try store.read(.showerRetained) else { return [] }
-        do { return try JSONDecoder().decode([ShowerState].self, from: data) }
-        catch { throw ShowerEngineError.unreadableRecord }
+    public func retainedShowers() throws -> [ShowerState] { try kept().map(\.state) }
+
+    public func retainedShowersForBinding() throws -> [ShowerState] {
+        guard let student = try binding()?.studentId else { return [] }
+        return try kept().filter { $0.studentId == student }.map(\.state)
     }
+
     public func retainShower(_ state: ShowerState) throws {
-        var kept = try retainedShowers()
-        guard !kept.contains(state) else { return }
-        kept.append(state)
+        var kept = try kept()
+        guard !kept.contains(where: { $0.state == state }) else { return }
+        kept.append(KeptShower(state: state, studentId: try binding()?.studentId))
         try store.writeJSON(kept, .showerRetained)
         // Read back: the next use goes ahead only when the record is surely kept.
         guard try retainedShowers().contains(state) else { throw ShowerEngineError.storage }
+    }
+
+    private func kept() throws -> [KeptShower] {
+        guard let data = try store.read(.showerRetained) else { return [] }
+        do { return try JSONDecoder().decode([KeptShower].self, from: data) }
+        catch { throw ShowerEngineError.unreadableRecord }
+    }
+}
+
+/// A kept record and the student it was billed to (the binding's, when it was kept). One JSON
+/// object: the record's own fields plus `keptFor`, so a list without it still reads.
+private struct KeptShower: Codable {
+    var state: ShowerState
+    var studentId: String?
+
+    private enum Key: String, CodingKey { case keptFor }
+
+    init(state: ShowerState, studentId: String?) { self.state = state; self.studentId = studentId }
+
+    init(from decoder: Decoder) throws {
+        state = try ShowerState(from: decoder)
+        studentId = try decoder.container(keyedBy: Key.self).decodeIfPresent(String.self, forKey: .keptFor)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        try state.encode(to: encoder)
+        var fields = encoder.container(keyedBy: Key.self)
+        try fields.encodeIfPresent(studentId, forKey: .keptFor)
     }
 }

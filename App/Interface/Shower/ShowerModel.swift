@@ -289,9 +289,10 @@ enum ShowerProfileFiles {
         }
     }
 
-    /// Reads the kept showers again (nothing is written).
+    /// Reads the kept showers again (nothing is written). None while the binding waits for the
+    /// dorm to be set again: it is then the binding of a person who signed out or was replaced.
     private func refreshRetained() {
-        retained = ShowerRetainedSummary.read(services.showerVault)
+        retained = residenceReviewRequired ? nil : ShowerRetainedSummary.read(services.showerVault)
     }
 
     private func apply(_ next: ShowerState) {
@@ -379,6 +380,7 @@ enum ShowerProfileFiles {
     func setResidenceReview(_ value: Bool) {
         residenceReviewRequired = value
         services.defaults.set(value, forKey:PreferenceKey.showerNeedsResidenceReview)
+        refreshRetained()
     }
 
     /// `.waterconfig` import (Settings › 高级). The profile is the shared platform part only.

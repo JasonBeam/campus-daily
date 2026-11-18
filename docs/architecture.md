@@ -625,7 +625,10 @@ Rules:
   as it is in Keychain `water.retained` (read back before going on; a failure blocks like any
   storage failure), then a new record authorizes with that fresh identity frame: a new
   authorization, never the old one written again. Kept records are never settled, retried
-  or dropped by the app (重置校日常 deletes them with everything else); they are shown read-only
+  or dropped by the app (重置校日常 deletes them with everything else). Each is stored with the
+  student id of the binding it was kept under (`keptFor`), and only the bound student's are
+  read for display: after a sign-out or for another person they stay stored and are not shown,
+  nor while the binding waits for the dorm to be set again. They are shown read-only
   (`ShowerRetainedSummary`: start time, controller, why each was kept — 清爽 停水未结算,
   关水未确认 (an unconfirmed or busy close), 结算未确认 or 授权未确认; 暖橙 在水控上按停的, 结束没确认,
   结算没确认 or 开水没确认; nothing when the list can't be read), on 清爽's 订单 tab and 暖橙's

@@ -1,8 +1,9 @@
 import Foundation
 
-/// The showers a next use kept for the user's check (`ShowerVault.retainedShowers`), for
-/// display only: when each started, on which controller and why it was kept. It carries no
-/// record and offers nothing to settle or delete; the records stay as they are.
+/// The showers a next use kept for the user's check (`ShowerVault.retainedShowersForBinding`:
+/// only the bound student's), for display only: when each started, on which controller and why
+/// it was kept. It carries no record and offers nothing to settle or delete; the records stay
+/// as they are.
 public struct ShowerRetainedSummary: Equatable, Sendable {
     public enum Reason: String, Equatable, Sendable, CaseIterable {
         /// Stopped on the controller before the app settled it.
@@ -42,7 +43,7 @@ public struct ShowerRetainedSummary: Equatable, Sendable {
 
     /// Nil when none are kept or the list can't be read: then nothing is shown, and no error.
     public static func read(_ vault: some ShowerVault) -> ShowerRetainedSummary? {
-        guard let records = try? vault.retainedShowers(), !records.isEmpty else { return nil }
+        guard let records = try? vault.retainedShowersForBinding(), !records.isEmpty else { return nil }
         let current = (try? vault.binding())??.machineId
         return ShowerRetainedSummary(records: records, currentMachine: current)
     }

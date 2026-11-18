@@ -6,12 +6,36 @@ import Core
 /// nothing when none are kept or the list can't be read.
 @MainActor
 final class ShowerModelRetainedTests: XCTestCase {
-    func testTheModelReadsTheKeptShowers() throws {
+    /// A shower kept under `Fixture.binding`, as a next use keeps it.
+    private func storeWithAKeptShower() throws -> ScriptedStore {
         let store = ScriptedStore()
-        try StoredShowerVault(store:store).retainShower(Fixture.awaitingReview)
-        let (model, _) = liveShowerModel(store:store)
+        let vault = StoredShowerVault(store:store)
+        try vault.saveBinding(Fixture.binding)
+        try vault.retainShower(Fixture.awaitingReview)
+        return store
+    }
+
+    func testTheModelReadsTheKeptShowers() throws {
+        let (model, _) = liveShowerModel(store:try storeWithAKeptShower())
         XCTAssertEqual(model.retained?.count, 1)
         XCTAssertEqual(model.retained?.entries.first?.reason, .settleUnconfirmed)
+    }
+
+    /// The person signed out or changed: their kept showers are no longer shown, with the
+    /// binding gone and also while it waits for the dorm to be set again. They stay stored.
+    func testKeptShowersAreHiddenAfterAnAccountSwitch() async throws {
+        let store = try storeWithAKeptShower()
+        let (model, _) = liveShowerModel(store:store)
+        XCTAssertEqual(model.clearBindingForAccountSwitch(), .cleared)
+        XCTAssertNil(model.retained)
+
+        let busy = try storeWithAKeptShower()
+        try StoredShowerVault(store:busy).saveShowerState(Fixture.running)
+        let (waiting, _) = liveShowerModel(store:busy)
+        XCTAssertEqual(waiting.retained?.count, 1)
+        XCTAssertEqual(waiting.clearBindingForAccountSwitch(), .keptForReview)
+        XCTAssertNil(waiting.retained)
+        XCTAssertEqual(try StoredShowerVault(store:busy).retainedShowers().count, 1)
     }
 
     func testNoneKeptOrUnreadableIsNil() throws {

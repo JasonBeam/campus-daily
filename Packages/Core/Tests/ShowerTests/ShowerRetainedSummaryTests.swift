@@ -16,8 +16,14 @@ final class ShowerRetainedSummaryTests: XCTestCase {
         ShowerState(phase: .running, machineID: "AABBCCDD", startedAt: t0, stateReviewRequired: true)
     }
 
+    func binding(_ student: String, machine: String = "11223344") -> ShowerBinding {
+        ShowerBinding(studentId: student, schoolId: "1", machineId: machine, roomId: "R-1", roomLabel: "3栋108")
+    }
+
+    /// Kept under a saved binding, as a next use keeps them.
     func vault(keeping records: [ShowerState]) throws -> StoredShowerVault {
         let vault = StoredShowerVault(store: InMemorySecureStore())
+        try vault.saveBinding(binding("S-1"))
         for record in records { try vault.retainShower(record) }
         return vault
     }
@@ -30,14 +36,43 @@ final class ShowerRetainedSummaryTests: XCTestCase {
         XCTAssertEqual(summary.entries.map(\.reason), [.stopped, .closeUnconfirmed, .settleUnconfirmed])
         XCTAssertEqual(summary.entries.map(\.started), [t0, later, later.addingTimeInterval(60)])
         XCTAssertEqual(summary.entries.map(\.machine), ["AABBCCDD", "11223344", "11223344"])
-        XCTAssertNil(summary.currentMachine, "no binding saved")
     }
 
     /// The summary knows the dorm's controller, so the lists can leave it out.
     func testCarriesTheDormsController() throws {
         let vault = try vault(keeping: [stopped])
-        try vault.saveBinding(ShowerBinding(studentId: "S-1", schoolId: "1", machineId: "aabbccdd", roomId: "R-1", roomLabel: "3栋108"))
+        try vault.saveBinding(binding("S-1", machine: "aabbccdd"))
         XCTAssertEqual(try XCTUnwrap(ShowerRetainedSummary.read(vault)).currentMachine, "AABBCCDD")
+    }
+
+    /// A kept record is read only under a binding of the student it was kept for: after a
+    /// sign-out or for the next person on the phone it is not shown. It stays stored, and the
+    /// same student sees it again once the dorm is set up again.
+    func testOnlyTheBoundStudentsRecordsAreRead() throws {
+        let vault = try vault(keeping: [stopped])
+        let other = failed(.settleUncertain, at: t0.addingTimeInterval(60))
+        try vault.saveBinding(binding("S-2"))
+        try vault.retainShower(other)
+        XCTAssertEqual(ShowerRetainedSummary.read(vault)?.entries.map(\.reason), [.settleUnconfirmed])
+
+        try vault.saveBinding(nil)
+        XCTAssertNil(ShowerRetainedSummary.read(vault), "nobody's without a binding")
+
+        try vault.saveBinding(binding("S-1"))
+        XCTAssertEqual(ShowerRetainedSummary.read(vault)?.entries.map(\.reason), [.stopped])
+        XCTAssertEqual(try vault.retainedShowers(), [stopped, other], "none dropped")
+    }
+
+    /// A list an earlier build wrote names no student: its records stay stored and are not shown.
+    func testARecordThatNamesNoStudentIsKeptButNotShown() throws {
+        let store = InMemorySecureStore()
+        try store.writeJSON([stopped], .showerRetained)
+        let vault = StoredShowerVault(store: store)
+        try vault.saveBinding(binding("S-1"))
+        XCTAssertNil(ShowerRetainedSummary.read(vault))
+        try vault.retainShower(failed(.closeUnconfirmed, at: t0))
+        XCTAssertEqual(try vault.retainedShowers().count, 2)
+        XCTAssertEqual(ShowerRetainedSummary.read(vault)?.count, 1)
     }
 
     func testBusyCloseReadsAsCloseUnconfirmed() {
