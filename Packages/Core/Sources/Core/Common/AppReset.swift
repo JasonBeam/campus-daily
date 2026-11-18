@@ -185,7 +185,8 @@ public enum AppReset {
 
     /// Deletes everything; keeps going after a failure and reports what could not be deleted.
     /// The reset marker is deleted last, only when everything else went (`run` removes it after
-    /// a failure).
+    /// a failure). The mark that hides a stale snapshot goes only once the snapshot is gone
+    /// (deleted, or never there): kept, a snapshot that could not be deleted stays hidden.
     /// `preferencesDomain` is the app's own preferences domain (its bundle id; a suite name in
     /// tests): the whole domain goes, so a preference added later, `xrc.`-named or not, is
     /// cleared without being listed. `shared`: the App Group's whole domain goes too (the theme),
@@ -193,8 +194,15 @@ public enum AppReset {
     public static func clear(store: SecureStore, preferences: UserDefaults, preferencesDomain: String,
                              shared: SharedPreferences?, files: [URL], fileManager: FileManager = .default) throws {
         var failed: [String] = []
-        for key in keychainItems where key != .sharedResetMarker {
-            do { try store.delete(key) } catch { failed.append(key.rawValue) }
+        var snapshotGone = true
+        for key in keychainItems where key != .sharedResetMarker && key != .sharedSnapshotStale {
+            do { try store.delete(key) } catch {
+                failed.append(key.rawValue)
+                if key == .sharedSnapshot { snapshotGone = false }
+            }
+        }
+        if snapshotGone {
+            do { try store.delete(.sharedSnapshotStale) } catch { failed.append(StoreKey.sharedSnapshotStale.rawValue) }
         }
         preferences.removePersistentDomain(forName: preferencesDomain)
         if let shared {
