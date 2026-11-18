@@ -8,6 +8,7 @@ import XCTest
 final class ShowerRetiredWordsTests: XCTestCase {
     static let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
         .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        .resolvingSymlinksInPath()
 
     static let retired = [
         "去核对",
@@ -54,7 +55,8 @@ final class ShowerRetiredWordsTests: XCTestCase {
             let base = root.appendingPathComponent(folder)
             guard let walk = FileManager.default.enumerator(at: base, includingPropertiesForKeys: nil) else { continue }
             for case let url as URL in walk where url.pathExtension == "swift" {
-                let path = String(url.path.dropFirst(root.path.count + 1))
+                // Both resolved: a checkout under a symlink (/tmp, /var) gives the two another prefix.
+                let path = String(url.resolvingSymlinksInPath().path.dropFirst(root.path.count + 1))
                 for raw in try String(contentsOf: url, encoding: .utf8).components(separatedBy: "\n") {
                     let line = raw.trimmingCharacters(in: .whitespaces)
                     if line.hasPrefix("//") { continue }
