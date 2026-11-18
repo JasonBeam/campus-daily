@@ -103,6 +103,15 @@ struct PowerChoice: Identifiable, Equatable {
         snapshot = refresher.latest()
     }
 
+    /// The previous person's snapshot still stored under the stale mark: replaced by the empty
+    /// one without the network (`SnapshotRefresher.finishPendingClear`, off the main thread: it
+    /// may wait for the lease file's lock), then the Keychain is read again. Launch and foreground.
+    func finishPendingClear() async {
+        let refresher = refresher
+        await Task.detached(priority:.userInitiated) { refresher.finishPendingClear() }.value
+        reload()
+    }
+
     /// Only the saved account: a refresh in this or the widget's process may have paused or
     /// held the password since the last `reload()`.
     func reloadAccount() {
@@ -276,8 +285,9 @@ struct PowerChoice: Identifiable, Equatable {
     }
 
     /// The login was someone else, or nothing showed it was the same person: Core already
-    /// dropped their school data. Here: the widget
-    /// snapshot, the hot-water binding made with their identity, and the one-time alert.
+    /// dropped their school data and marked the snapshot stale. Here: the widget snapshot (a
+    /// clear that fails is logged; the mark keeps it hidden), a request for the widget to draw
+    /// again, the hot-water binding made with their identity, and the one-time alert.
     /// Laundry (U净) is its own login and stays. Nothing is cleared once a sign-out came after
     /// the sign-in started (`started`): what is stored now is whoever signed in after it.
     func previousPersonCleared(unconfirmed: Bool, dormAndMeterCleared: Bool, since started: Int) async {
@@ -286,13 +296,20 @@ struct PowerChoice: Identifiable, Equatable {
         #if DEBUG
         let afterSnapshotCleared = afterSnapshotCleared
         #endif
+        let redraw = services.sharedDidChange
         let hotWater = await AccountSwitch.clearPreviousPerson(
             snapshot:{
-                try? await refresher.clear()
+                var failure: Error?
+                do { try await refresher.clear() } catch { failure = error }
                 #if DEBUG
                 await afterSnapshotCleared?()
                 #endif
+                if let failure { throw failure }
             },
+            snapshotFailed:{ error in
+                SnapshotRefresher.osLog("accountSwitch.snapshotClearFailed" + ((error as? StorageError).map { " status=\($0.status)" } ?? ""))
+            },
+            redrawWidget:{ redraw() },
             hotWater:{ [hotWater] in
                 // Again after the snapshot's wait, right before the binding goes.
                 guard started == signOutGeneration else { return AccountSwitch.HotWater.none }

@@ -77,4 +77,19 @@ final class AccountSwitchTests: XCTestCase {
         let result = await AccountSwitch.clearPreviousPerson(snapshot: { throw Failed() }, hotWater: { .cleared })
         XCTAssertEqual(result, .cleared)
     }
+
+    /// A snapshot that could not be cleared is told (not swallowed), and the widget is asked to
+    /// draw again whether or not it was cleared, before hot water.
+    func testTheWidgetIsAskedToRedrawAndAFailedClearIsTold() async {
+        for fails in [true, false] {
+            var order: [String] = []
+            let result = await AccountSwitch.clearPreviousPerson(
+                snapshot: { order.append("snapshot"); if fails { throw Failed() } },
+                snapshotFailed: { _ in order.append("failed") },
+                redrawWidget: { order.append("redraw") },
+                hotWater: { order.append("hotWater"); return .none })
+            XCTAssertEqual(result, AccountSwitch.HotWater.none)
+            XCTAssertEqual(order, fails ? ["snapshot", "failed", "redraw", "hotWater"] : ["snapshot", "redraw", "hotWater"])
+        }
+    }
 }

@@ -54,11 +54,16 @@ public enum AccountSwitch {
     }
 
     /// The order of the clean-up: the snapshot first (so no screen or widget shows the previous
-    /// person's balance), then hot water. A failed snapshot write still goes on to hot water.
+    /// person's balance), then hot water. A failed snapshot write is told (`snapshotFailed`) and
+    /// still goes on to hot water: the stale mark the sign-in wrote keeps those numbers hidden.
+    /// The widget is asked to draw again (`redrawWidget`) either way; when the system does so
+    /// is up to it, and that draw shows none of the previous person's numbers.
     /// Runs in the caller's isolation (the app's main actor), so the closures may touch its models.
     public static func clearPreviousPerson(isolation: isolated (any Actor)? = #isolation,
-                                           snapshot: () async throws -> Void, hotWater: () -> HotWater) async -> HotWater {
-        try? await snapshot()
+                                           snapshot: () async throws -> Void, snapshotFailed: (Error) -> Void = { _ in },
+                                           redrawWidget: () -> Void = {}, hotWater: () -> HotWater) async -> HotWater {
+        do { try await snapshot() } catch { snapshotFailed(error) }
+        redrawWidget()
         return hotWater()
     }
 }

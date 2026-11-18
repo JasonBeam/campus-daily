@@ -6,7 +6,7 @@ import Core
 
 /// A Keychain in memory whose shower-record reads can be made to fail: `sessionReadError` is
 /// asked with the read's number (0 = the first) and throws what it returns. Writes and
-/// deletions of the keys in `refusing` fail.
+/// deletions of the keys in `refusing` fail, and reads of those in `refusingReads`.
 final class ScriptedStore: SecureStore, @unchecked Sendable {
     private let lock = NSLock()
     private var items: [String: Data] = [:]
@@ -18,8 +18,15 @@ final class ScriptedStore: SecureStore, @unchecked Sendable {
         set { lock.withLock { refused = newValue } }
     }
 
+    private var unreadable: Set<StoreKey> = []
+    var refusingReads: Set<StoreKey> {
+        get { lock.withLock { unreadable } }
+        set { lock.withLock { unreadable = newValue } }
+    }
+
     func read(_ key: StoreKey) throws -> Data? {
         let (data, error): (Data?, Error?) = lock.withLock {
+            if unreadable.contains(key) { return (nil, StorageError(operation:"read", status:-25308)) }
             if key == .showerSession {
                 defer { sessionReads += 1 }
                 if let error = sessionReadError(sessionReads) { return (nil, error) }
