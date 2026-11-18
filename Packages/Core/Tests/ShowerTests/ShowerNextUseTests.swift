@@ -325,6 +325,28 @@ final class ShowerNextUseTests: XCTestCase {
 
     // MARK: Records from earlier builds
 
+    /// A kept row an earlier build wrote for an open shower without its controller does not
+    /// stop the next use: the stopped record is kept after it and the new one authorizes.
+    func testNextUseGoesAheadOverALegacyOpenRow() async throws {
+        let legacy = Data(#"[{"phase":"running","machineID":"11223344","stateReviewRequired":true}]"#.utf8)
+        try vault.store.write(legacy, for: .showerRetained)
+        let old = awaitingCheck[0]
+        try vault.saveShowerState(old)
+        let e = try engine()
+        transport.script(.frame(identity), .frame(FakeFrames.ack))
+        gateway.scriptAuthorize(.ok(next))
+        let s = try await e.startNext(binding)
+        let blocked = await e.storageBlocked
+        XCTAssertFalse(blocked)
+        XCTAssertEqual(s.phase, .running)
+        XCTAssertEqual(gateway.authorizeFrames, [identity])
+        XCTAssertTrue(gateway.settleFrames.isEmpty)
+        XCTAssertEqual(try vault.retainedShowers().count, 2)
+        XCTAssertEqual(try vault.retainedShowers().last, old, "kept after the old row")
+        let stored = try XCTUnwrap(vault.store.read(.showerRetained))
+        XCTAssertEqual(stored.prefix(legacy.count - 1), legacy.dropLast(), "its bytes stay")
+    }
+
     func testARecordFromAnEarlierBuildDaysAgoCanStartTheNextUse() async throws {
         for days in [1.0, 7.0] {
             reset()

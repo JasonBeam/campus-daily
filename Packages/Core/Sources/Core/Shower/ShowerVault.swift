@@ -7,7 +7,8 @@ public protocol ShowerVault: Sendable {
     func saveBinding(_ binding: ShowerBinding?) throws
     func showerState() throws -> ShowerState?
     func saveShowerState(_ state: ShowerState?) throws
-    /// Records kept by a next use while they wait for the user's check, oldest first.
+    /// Records kept by a next use while they wait for the user's check, oldest first. They are
+    /// only shown: nothing ends, checks or settles a kept record.
     func retainedShowers() throws -> [ShowerState]
     /// The kept records of the student the saved binding names, oldest first: the ones the
     /// pages show. Another student's stay stored and are not returned; none without a binding.

@@ -39,6 +39,34 @@ final class ShowerRebindTests: XCTestCase {
         XCTAssertNil(model.retained, "the other student's")
     }
 
+    /// A row an earlier build kept for an open shower without its controller doesn't stop the
+    /// dorm from being set again: the waiting record is kept after it, under the old student.
+    func testRebindingOverAWaitingRecordWorksBesideALegacyRow() async throws {
+        let store = ScriptedStore()
+        let legacy = Data(#"[{"phase":"running","machineID":"11223344","stateReviewRequired":true}]"#.utf8)
+        try store.write(legacy, for: .showerRetained)
+        let vault = StoredShowerVault(store:store)
+        try vault.saveBinding(Fixture.binding)
+        try vault.saveShowerState(Fixture.awaitingReview)
+        let (model, _) = liveShowerModel(store:store)
+        await model.reloadProfile()
+        await waitUntil { model.gateRecord != .notLoaded }
+        XCTAssertEqual(model.clearBindingForAccountSwitch(), .keptForReview)
+
+        try model.saveBinding(next)
+        await waitUntil { model.gateRecord != .notLoaded }
+
+        XCTAssertEqual(try vault.binding(), next)
+        XCTAssertNil(try vault.showerState())
+        let stored = try XCTUnwrap(store.read(.showerRetained))
+        XCTAssertEqual(stored.prefix(legacy.count - 1), legacy.dropLast(), "the old row stays as it was")
+        let rows = try XCTUnwrap(JSONValue.parse(stored).array)
+        XCTAssertEqual(rows.count, 2)
+        XCTAssertNil(rows[0]["keptFor"])
+        XCTAssertEqual(rows[1]["keptFor"], .string(Fixture.binding.studentId))
+        XCTAssertEqual(try vault.retainedShowers().last?.phase, .failed)
+    }
+
     /// The same record without a change of person: the binding is this person's, and
     /// 开始下一次洗澡 is the way on.
     func testWithoutAChangeOfPersonTheRecordStillBlocksANewDorm() async throws {

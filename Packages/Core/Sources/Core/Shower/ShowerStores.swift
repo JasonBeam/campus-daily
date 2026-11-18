@@ -30,28 +30,66 @@ public struct StoredShowerVault: ShowerVault {
         catch { throw ShowerEngineError.unreadableRecord }
     }
     public func saveShowerState(_ state: ShowerState?) throws { try store.writeJSON(state, .showerSession) }
-    /// `water.retained`. A list that can't be decoded throws, so nothing is added over it.
-    public func retainedShowers() throws -> [ShowerState] { try kept().map(\.state) }
+    /// `water.retained`, the rows this build can read. A row it can't read (written by another
+    /// build) is skipped and stays stored; a value that is not a list throws.
+    public func retainedShowers() throws -> [ShowerState] { try kept().compactMap { $0?.state } }
 
+    /// Only by `keptFor`: a row without it is nobody's, whatever student the record names.
     public func retainedShowersForBinding() throws -> [ShowerState] {
         guard let student = try binding()?.studentId else { return [] }
-        return try kept().filter { $0.studentId == student }.map(\.state)
+        return try kept().compactMap { $0 }.filter { $0.studentId == student }.map(\.state)
     }
 
+    /// Appends the new row after the bytes already stored, which are never re-encoded: a row
+    /// this build can't read stays as it was and gets no owner. Nothing is written over a value
+    /// that is not a list, or when the record is kept already.
     public func retainShower(_ state: ShowerState) throws {
-        var kept = try kept()
-        guard !kept.contains(where: { $0.state == state }) else { return }
-        kept.append(KeptShower(state: state, studentId: try binding()?.studentId))
-        try store.writeJSON(kept, .showerRetained)
+        let old = try store.read(.showerRetained)
+        let rows = try Self.rows(old)
+        guard !rows.contains(where: { $0?.state == state }) else { return }
+        let student = try binding()?.studentId
+        let row: Data
+        do { row = try JSONEncoder().encode(KeptShower(state: state, studentId: student)) }
+        catch { throw StorageError(operation: "encode \(StoreKey.showerRetained.rawValue)", status: -1) }
+        let list = Self.appending(row, to: old, count: rows.count)
+        try store.write(list, for: .showerRetained)
         // Read back: the next use goes ahead only when the record is surely kept.
-        guard try retainedShowers().contains(state) else { throw ShowerEngineError.storage }
+        guard let back = try store.read(.showerRetained), back == list,
+              let after = try? Self.rows(back), after.count == rows.count + 1,
+              let last = after.last ?? nil, last.state == state, last.studentId == student
+        else { throw ShowerEngineError.storage }
     }
 
-    private func kept() throws -> [KeptShower] {
-        guard let data = try store.read(.showerRetained) else { return [] }
-        do { return try JSONDecoder().decode([KeptShower].self, from: data) }
+    /// `list` (a JSON array of `count` elements) up to its closing bracket, then `row`; the
+    /// whitespace after the bracket is dropped.
+    static func appending(_ row: Data, to list: Data?, count: Int) -> Data {
+        var out = Data("[".utf8)
+        if let list {
+            let bytes = [UInt8](list)
+            var end = bytes.count
+            while end > 0, [0x20, 0x09, 0x0A, 0x0D].contains(bytes[end - 1]) { end -= 1 }
+            out = Data(bytes[..<(end - 1)])
+            if count > 0 { out.append(UInt8(ascii: ",")) }
+        }
+        out.append(row)
+        out.append(UInt8(ascii: "]"))
+        return out
+    }
+
+    private func kept() throws -> [KeptShower?] { try Self.rows(store.read(.showerRetained)) }
+
+    /// One entry per element, nil for one that isn't a kept record this build reads.
+    private static func rows(_ data: Data?) throws -> [KeptShower?] {
+        guard let data else { return [] }
+        do { return try JSONDecoder().decode([KeptRow].self, from: data).map(\.kept) }
         catch { throw ShowerEngineError.unreadableRecord }
     }
+}
+
+/// An element of `water.retained`; never fails, so one row can't make the list unreadable.
+private struct KeptRow: Decodable {
+    let kept: KeptShower?
+    init(from decoder: Decoder) { kept = try? KeptShower(from: decoder) }
 }
 
 /// A kept record and the student it was billed to (the binding's, when it was kept). One JSON
@@ -65,7 +103,7 @@ private struct KeptShower: Codable {
     init(state: ShowerState, studentId: String?) { self.state = state; self.studentId = studentId }
 
     init(from decoder: Decoder) throws {
-        state = try ShowerState(from: decoder)
+        state = try ShowerState(from: decoder, live: false)
         studentId = try decoder.container(keyedBy: Key.self).decodeIfPresent(String.self, forKey: .keptFor)
     }
 

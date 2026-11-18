@@ -289,12 +289,17 @@ extension ShowerState {
     /// close a shower that is not ours. A missing "sent" flag counts as sent (the request may
     /// have left); other missing flags get their defaults. Unknown values in fields that only
     /// describe the record are dropped.
-    public init(from decoder: Decoder) throws {
+    public init(from decoder: Decoder) throws { try self.init(from: decoder, live: true) }
+
+    /// `live: false` reads a row kept in `water.retained`: it is only shown, never ended,
+    /// checked or settled, so an open shower there may lack its controller. Every other rule
+    /// is the live record's.
+    init(from decoder: Decoder, live: Bool) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         phase = try c.decode(ShowerPhase.self, forKey: .phase)
         machineID = try c.decodeIfPresent(String.self, forKey: .machineID)
         peripheralID = try c.decodeIfPresent(String.self, forKey: .peripheralID)
-        if [.writePending, .running, .closing].contains(phase), machineID == nil || peripheralID == nil {
+        if live, [.writePending, .running, .closing].contains(phase), machineID == nil || peripheralID == nil {
             throw DecodingError.dataCorruptedError(forKey: .peripheralID, in: c, debugDescription: "an open shower names its controller")
         }
         startedAt = try c.decodeIfPresent(Date.self, forKey: .startedAt)
