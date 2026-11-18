@@ -20,11 +20,12 @@ public struct SchoolRefreshStack: Sendable {
                 didWriteSnapshot: @escaping @Sendable () -> Void = {},
                 diagnostic: @escaping @Sendable (String) -> Void = SnapshotRefresher.osLog,
                 debugLog: any DebugLogSink = NoDebugLog()) {
+        let lease: RefreshLease? = leaseFile == nil && role != "widget" ? nil : RefreshLease(file: leaseFile, owner: RefreshLease.owner(role))
         session = SchoolSession(portal: PortalClient(http: http), ecykt: EcyktClient(http: http),
                                 vault: StoredSchoolVault(store: store), passwordLogin: CASLoginClient(http: http),
                                 diagnostic: diagnostic,
-                                createsLoginDeviceID: role != "widget", debugLog: debugLog)
-        let lease: RefreshLease? = leaseFile == nil && role != "widget" ? nil : RefreshLease(file: leaseFile, owner: RefreshLease.owner(role))
+                                createsLoginDeviceID: role != "widget", debugLog: debugLog,
+                                profileLock: lease ?? UnsharedLock())
         refresher = SnapshotRefresher(school: session, store: SharedSnapshotStore(store: store, didWrite: didWriteSnapshot),
                                       lease: lease,
                                       leaseWait: leaseWait, diagnostic: diagnostic)

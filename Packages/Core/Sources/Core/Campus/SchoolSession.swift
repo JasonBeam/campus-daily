@@ -36,17 +36,21 @@ public actor SchoolSession {
     /// Each read of the automatic meter lookup after a timeout or no connection: the waits before each try again.
     public static let meterRetryDelays: [TimeInterval] = [5, 20]
     let meterRetryWait: @Sendable (TimeInterval) async -> Void
+    /// Around each change this session makes to the stored profile outside a refresh: the
+    /// widget's refresh moves the meter's address in its own locked step (`followReplacedMeter`).
+    /// The app passes the lease file's lock (`RefreshLease.locked`, whoever holds the lease).
+    let profileLock: any SharedLock
 
     public init(portal: PortalClient, ecykt: EcyktClient, vault: SchoolVault, passwordLogin: SchoolPasswordLogin? = nil,
                 now: @escaping @Sendable () -> Date = Date.init, diagnostic: @escaping @Sendable (String) -> Void = { _ in },
                 createsLoginDeviceID: Bool = true,
                 recordsTimeout: TimeInterval = CardActivity.timeout,
                 meterRetryWait: @escaping @Sendable (TimeInterval) async -> Void = { try? await Task.sleep(nanoseconds: UInt64($0 * 1_000_000_000)) },
-                debugLog: any DebugLogSink = NoDebugLog()) {
+                debugLog: any DebugLogSink = NoDebugLog(), profileLock: any SharedLock = UnsharedLock()) {
         self.portal = portal; self.ecykt = ecykt; self.vault = vault; self.passwordLogin = passwordLogin; self.now = now
         self.diagnostic = diagnostic; self.createsLoginDeviceID = createsLoginDeviceID
         self.recordsTimeout = recordsTimeout; self.meterRetryWait = meterRetryWait
-        self.debugLog = debugLog
+        self.debugLog = debugLog; self.profileLock = profileLock
     }
 
     // MARK: Refresh

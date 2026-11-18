@@ -16,11 +16,15 @@ extension SchoolSession {
         if profile.residence?.address == nil, let token = try vault.portalToken() {
             let residence = try await portal.myInfo(token)
             try ensureSignedIn(since: started)
-            // Read again: a meter picked meanwhile is kept.
-            profile = try vault.profile() ?? SchoolProfile()
-            if profile.residence?.address == nil {
-                profile.residence = residence
-                try vault.saveProfile(profile)
+            // Read again, inside the lock: a meter picked or moved meanwhile is kept.
+            let vault = vault
+            profile = try profileLock.locked {
+                var current = try vault.profile() ?? SchoolProfile()
+                if current.residence?.address == nil {
+                    current.residence = residence
+                    try vault.saveProfile(current)
+                }
+                return current
             }
         }
         // Every answer, a list or a stop included, is the person's who started: someone else
@@ -31,21 +35,24 @@ extension SchoolSession {
             return .noAddress
         }
         let walked = try await walk(session, address: address, since: started)
-        switch try settle(address, since: started) {
-        case .bound(let b): return .alreadyBound(b)
-        case .open(var current):
-            switch walked {
-            case .stopped(let stop), .noRoom(let stop): return .stopped(stop)
-            case .unfinished(let at): return .unfinished(at)
-            case .rooms(let list): return .chooseAmong(list)
-            case .room(let found):
-                guard let room = found.room else { return .chooseAmong([found]) }
-                // Only the meter is written, onto the profile as it is now.
-                let binding = MeterBinding(nodeID: room.id, comAddress: found.meter.comAddress, label: address.roomLabel,
-                                           nodeIsRoom: true, location: found.location)
-                current.meter = binding
-                try vault.saveProfile(current)
-                return .matched(binding, found.meter)
+        // Settled and written in one locked step: only the meter is written, onto the profile
+        // as it is then.
+        return try profileLock.locked {
+            switch try settle(address, since: started) {
+            case .bound(let b): return .alreadyBound(b)
+            case .open(var current):
+                switch walked {
+                case .stopped(let stop), .noRoom(let stop): return .stopped(stop)
+                case .unfinished(let at): return .unfinished(at)
+                case .rooms(let list): return .chooseAmong(list)
+                case .room(let found):
+                    guard let room = found.room else { return .chooseAmong([found]) }
+                    let binding = MeterBinding(nodeID: room.id, comAddress: found.meter.comAddress, label: address.roomLabel,
+                                               nodeIsRoom: true, location: found.location)
+                    current.meter = binding
+                    try vault.saveProfile(current)
+                    return .matched(binding, found.meter)
+                }
             }
         }
     }
@@ -306,13 +313,16 @@ extension SchoolSession {
     }
 
     /// Launch: a meter bound to the campus node (older builds) is dropped. True when one was.
-    /// The dorm stays, so the launch lookup walks to the room's own meter. Compare-and-write in
-    /// this actor: only the campus-node meter just read is removed, with no wait in between.
+    /// The dorm stays, so the launch lookup walks to the room's own meter. One locked
+    /// compare-and-write: only the campus-node meter just read is removed.
     public func dropCampusWideMeter() throws -> Bool {
-        guard let seen = try vault.profile()?.meter, !seen.nodeIsRoom else { return false }
-        guard let next = Self.withoutCampusWideMeter(try vault.profile(), seen: seen) else { return false }
-        try vault.saveProfile(next)
-        return true
+        let vault = vault
+        return try profileLock.locked {
+            guard let seen = try vault.profile()?.meter, !seen.nodeIsRoom else { return false }
+            guard let next = Self.withoutCampusWideMeter(try vault.profile(), seen: seen) else { return false }
+            try vault.saveProfile(next)
+            return true
+        }
     }
 
     /// Manual choice from the picker (`buildings(parent:)` walk in the UI, then a meter row).
@@ -321,10 +331,13 @@ extension SchoolSession {
     /// in is refused.
     public func chooseMeter(nodeID: String, meter: Meter, path: [String] = [], since stamp: Int) throws {
         try ensureSignedIn(since: stamp)
-        var profile = try vault.profile() ?? SchoolProfile()
-        profile.meter = MeterBinding(nodeID: nodeID, comAddress: meter.comAddress, label: meter.name, nodeIsRoom: true,
-                                     location: path.isEmpty ? nil : PowerLocation.label(path))
-        try vault.saveProfile(profile)
+        let vault = vault
+        try profileLock.locked {
+            var profile = try vault.profile() ?? SchoolProfile()
+            profile.meter = MeterBinding(nodeID: nodeID, comAddress: meter.comAddress, label: meter.name, nodeIsRoom: true,
+                                         location: path.isEmpty ? nil : PowerLocation.label(path))
+            try vault.saveProfile(profile)
+        }
     }
 
     /// Choice among several same-name rooms (`.chooseAmong`): saved against its room node
@@ -333,11 +346,14 @@ extension SchoolSession {
     public func chooseMatchedMeter(_ candidate: MeterCandidate, since stamp: Int) async throws {
         try ensureSignedIn(since: stamp)
         guard let room = candidate.room else { throw ServiceError.malformed(.ecykt, "room") }
-        var profile = try vault.profile() ?? SchoolProfile()
-        guard let address = profile.residence?.address else { throw ServiceError.malformed(.portal, "data.gydz") }
-        profile.meter = MeterBinding(nodeID: room.id, comAddress: candidate.meter.comAddress, label: address.roomLabel, nodeIsRoom: true,
-                                     location: candidate.location)
-        try vault.saveProfile(profile)
+        let vault = vault
+        try profileLock.locked {
+            var profile = try vault.profile() ?? SchoolProfile()
+            guard let address = profile.residence?.address else { throw ServiceError.malformed(.portal, "data.gydz") }
+            profile.meter = MeterBinding(nodeID: room.id, comAddress: candidate.meter.comAddress, label: address.roomLabel, nodeIsRoom: true,
+                                         location: candidate.location)
+            try vault.saveProfile(profile)
+        }
     }
 
     /// Manual picker: one level of the electricity directory (`nil` = campuses).

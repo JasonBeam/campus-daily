@@ -342,7 +342,12 @@ the bundle id the process runs under: `AppIdentity.usableAppGroup`, see 4.2):
   file's lock without taking the lease (`RefreshLease.locked`), so a refresh's compare-and-write
   of the account never straddles it. A lease file that can't be opened or locked (before the
   first unlock) fails the off instead: the password stays, 学校账号 says
-  「密码还存着，没关掉。再试一次。」 and the switch shows on;
+  「密码还存着，没关掉。再试一次。」 and the switch shows on. The app's own changes to the
+  stored profile outside a refresh (the dorm read for the meter lookup, the meter it finds or
+  the user picks, the campus-wide meter dropped at launch) are each one read-compare-write
+  inside the same lock (`SchoolSession.profileLock`), so the widget's move of a replaced meter
+  never lands in the middle of one. The clear after a save that a sign-out followed is one
+  locked step too (`RefreshLease.afterLosing`): it removes only the snapshot that read saved;
 - each `holdingLease` call (a login, 保存密码, recharge, the hot-water hand-off) takes the lease
   under its own owner (the process's owner plus `-login-` and a random UUID): two of them at once
   (the login sheet closed and submitted again) take turns like the two processes, and the first

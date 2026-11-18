@@ -325,6 +325,22 @@ final class AfterTheSnapshotSaveTests: XCTestCase {
         XCTAssertNil(try h.snapshots.loadSnapshot()?.card.value, "the signed-out snapshot stays empty")
     }
 
+    /// The clear is a compare-and-write: it removes only the snapshot this read saved. A
+    /// snapshot stored after it (the next person signed in before the clear landed) stays.
+    func testASnapshotStoredAfterTheSaveIsNotCleared() async throws {
+        let h = Harness()
+        let store = h.store, snapshots = h.snapshots
+        let report = await run(h) {
+            try? RefreshLease(file: store.leaseFile, owner: "signed-out").clear()
+            var newer = (try? snapshots.loadSnapshot()) ?? .empty
+            newer.card.value = Money(fen: 900)
+            try? snapshots.saveSnapshot(newer)
+            return false
+        }
+        XCTAssertFalse(report.snapshotSaved)
+        XCTAssertEqual(try h.snapshots.loadSnapshot()?.card.value, Money(fen: 900))
+    }
+
     func testStillSignedInWithTheLeaseLostKeepsTheSave() async throws {
         let h = Harness()
         let store = h.store, clock = h.clock

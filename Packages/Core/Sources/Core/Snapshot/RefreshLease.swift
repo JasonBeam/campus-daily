@@ -171,6 +171,12 @@ public struct RefreshLease: Sendable {
         return (try? file.update(waiting: false) { _ in (nil, true) }) ?? false
     }
 
+    /// `body` inside the file's lock, only when the lease is not this owner's any more (taken
+    /// over, or removed by a sign-out). nil = still ours, or no usable file: `body` did not run.
+    func afterLosing<T>(_ body: () -> T) -> T? {
+        update { current in (current, current?.owner == owner ? nil : body()) } ?? nil
+    }
+
     /// Still ours (not taken over, not removed by a sign-out in the other process).
     public func holds() -> Bool {
         update { current in (current, current?.owner == owner) } ?? false

@@ -17,6 +17,8 @@ struct Harness {
     var meterRetryWait: @Sendable (TimeInterval) async -> Void = { _ in }
     /// The TestFlight debug log the session writes to.
     var debugLog: any DebugLogSink = NoDebugLog()
+    /// The lock around the session's own changes to the stored profile.
+    var profileLock: any SharedLock = UnsharedLock()
     var vault: StoredSchoolVault { StoredSchoolVault(store: store) }
     var snapshots: SharedSnapshotStore { SharedSnapshotStore(store: store) }
 
@@ -26,7 +28,7 @@ struct Harness {
         return SchoolSession(portal: PortalClient(http: http), ecykt: EcyktClient(http: http), vault: vault,
                              passwordLogin: passwordLogin, now: clock.function, diagnostic: diagnostic,
                              createsLoginDeviceID: createsLoginDeviceID, recordsTimeout: recordsTimeout,
-                             meterRetryWait: meterRetryWait, debugLog: debugLog)
+                             meterRetryWait: meterRetryWait, debugLog: debugLog, profileLock: profileLock)
     }
 
     /// The refresher over this harness's session and shared store.

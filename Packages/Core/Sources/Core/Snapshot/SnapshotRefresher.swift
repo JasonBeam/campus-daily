@@ -305,12 +305,17 @@ public actor SnapshotRefresher {
         case .stored(let s, let ok)?:
             snapshot = s; saved = ok
         }
-        // Outside the lock, after the save: the other process may sign out now (its lease removal
-        // first, then its items). The card session is read first and the lease checked after
-        // that read, so a sign-out that lands while the session is read is still seen.
-        if saved, let lease, !(await school.hasCardSession()), !lease.holds() {
-            try? store.saveSnapshot(SchoolSnapshotReducer.reduce(latest(), .signedOut))
-            return RefreshReport(outcome: .notSignedIn, snapshot: latest(), snapshotSaved: false)
+        // After the save: the other process may sign out now (its lease removal first, then its
+        // items). The card session is read first and the lease checked after that read, so a
+        // sign-out that lands while the session is read is still seen. The lease check, the
+        // compare and the clear are one locked step: only the snapshot this read saved is
+        // cleared, never one stored since (the next person's).
+        if saved, let lease, !(await school.hasCardSession()) {
+            let lost: Void? = lease.afterLosing {
+                guard latest() == snapshot else { return }
+                try? store.saveSnapshot(SchoolSnapshotReducer.reduce(snapshot, .signedOut))
+            }
+            if lost != nil { return RefreshReport(outcome: .notSignedIn, snapshot: latest(), snapshotSaved: false) }
         }
         return RefreshReport(outcome: reading.outcome, snapshot: snapshot, snapshotSaved: saved)
     }
