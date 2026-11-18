@@ -2,30 +2,30 @@ import XCTest
 @testable import Core
 import CoreTestSupport
 
-/// A held settlement (the water it read may be someone else's) stays held when its retry is
-/// refused or gets no answer: the record still says so, and does not read as the
-/// plain "settle again" case.
+/// A settlement an older build held back (the water it read might not have been ours) is never
+/// sent by this one: not by the retry, not from a relaunch. Retries of other settlements keep
+/// their own cause.
 final class ShowerHeldSettleRetryTests: XCTestCase {
     let t0 = Date(timeIntervalSince1970: 1_800_000_000)
     let frame = FakeFrames.identity("11223344", tail: 9)
 
     /// What the record says became of the settlement (the page no longer words it).
-    enum Cause { case held, refused, notSent, noAnswer }
+    enum Cause { case refused, notSent, noAnswer }
     func cause(_ record: ShowerState) -> Cause? {
         guard record.canRetrySettle, let failure = record.failure else { return nil }
-        if failure.settleHeld { return .held }
         if failure.reason == .settleRefused { return .refused }
         return failure.settleNotSent ? .notSent : .noAnswer
     }
 
+    /// As an older build saved it.
     var held: ShowerState {
-        var closing = ShowerState(phase: .closing, machineID: "11223344", startedAt: t0, authorizationID: "001122FF",
-                                  closingFrom: .running, closeSent: true)
-        closing.holdSettle = true
-        return ShowerReducer.reduce(closing, .closeReplied(frame)).0
+        ShowerState(phase: .failed, machineID: "11223344", startedAt: t0, authorizationID: "001122FF", closeSent: true,
+                    consumption: HexCoding.upper(frame),
+                    failure: ShowerFailure(reason: .settleUnconfirmed, needsReview: true, settleNotSent: true, settleHeld: true),
+                    heldConsumption: HexCoding.upper(frame))
     }
 
-    /// The two taps of 再结算一次: the held frame goes out.
+    /// The two taps of 再结算一次.
     func retrying(_ s: ShowerState) -> ShowerState {
         let armed = ShowerReducer.reduce(s, .requestSettleRetry).0
         let (settling, fx) = ShowerReducer.reduce(armed, .confirmSettleRetry)
@@ -34,27 +34,27 @@ final class ShowerHeldSettleRetryTests: XCTestCase {
         return settling
     }
 
-    func testARefusedOrUnansweredRetryOfAHeldSettlementIsStillHeld() throws {
-        XCTAssertEqual(cause(held), .held)
-        let outcomes: [(ShowerEvent, ShowerFailureReason)] = [
-            (.settleFailed(.rejected(.lxt6, code: "1", message: "x")), .settleRefused),
-            (.settleFailed(.uncertain(.lxt6)), .settleUncertain),
-            (.settleFailed(.timedOut), .settleUncertain),
-            (.cancelledBeforeSend, .settleUnconfirmed),
-        ]
-        for (event, reason) in outcomes {
-            let after = ShowerReducer.reduce(retrying(held), event).0
-            XCTAssertEqual(after.failure?.reason, reason, "\(event)")
-            XCTAssertEqual(cause(after), .held, "\(event)")
-            XCTAssertEqual(cause(ShowerReducer.restore(after)), .held, "kept across a relaunch (\(event))")
-            let reread = try JSONDecoder().decode(ShowerState.self, from: JSONEncoder().encode(after))
-            XCTAssertEqual(cause(reread), .held, "kept in the saved record (\(event))")
-            // And again after a second retry.
-            let again = ShowerReducer.reduce(retrying(after), .settleFailed(.uncertain(.lxt6))).0
-            XCTAssertEqual(cause(again), .held, "\(event), twice")
+    func testAHeldSettlementIsNeverRetried() throws {
+        // An older build's failed retry of it, too.
+        var refusedRetry = held
+        refusedRetry.failure = ShowerFailure(reason: .settleRefused, needsReview: true, error: .rejected(.lxt6, code: "1", message: "x"),
+                                             settleHeld: true)
+        for record in [held, refusedRetry, ShowerReducer.restore(held)] {
+            XCTAssertNil(cause(record))
+            let (armed, fx) = ShowerReducer.reduce(record, .requestSettleRetry)
+            XCTAssertFalse(armed.settleRetryArmed)
+            XCTAssertEqual(fx, [])
+            var forced = record; forced.settleRetryArmed = true
+            XCTAssertEqual(ShowerReducer.reduce(forced, .confirmSettleRetry).1, [])
+            let reread = try JSONDecoder().decode(ShowerState.self, from: JSONEncoder().encode(record))
+            XCTAssertNil(cause(reread))
         }
-        // The app stopped while the retry was out.
-        XCTAssertEqual(cause(ShowerReducer.restore(retrying(held))), .held, "relaunch mid-retry")
+        // The app stopped while an older build's retry of it was out: kept, and still not retried.
+        var settling = held; settling.phase = .settling; settling.failure = nil
+        let restored = ShowerReducer.restore(settling)
+        XCTAssertEqual(restored.failure?.reason, .settleUnconfirmed)
+        XCTAssertEqual(restored.failure?.settleHeld, true)
+        XCTAssertNil(cause(restored))
     }
 
     func testARetryThatIsNotHeldKeepsItsOwnCause() {

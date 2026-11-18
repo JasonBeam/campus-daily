@@ -36,6 +36,8 @@ final class ShowerStateDecodingTests: XCTestCase {
         XCTAssertFalse(running.settleRetryArmed)
         XCTAssertEqual(running.manualSettleAttempts, 0)
         XCTAssertFalse(running.holdSettle)
+        XCTAssertFalse(running.closeStopSeen)
+        XCTAssertNil(running.studentId, "never filled in")
         XCTAssertTrue(running.canFinish)
 
         let authorizing = try decode(#"{"phase":"authorizing","machineID":"11223344"}"#)
@@ -152,7 +154,8 @@ final class ShowerStateDecodingTests: XCTestCase {
                                                    settleNotSent: true, settleHeld: true),
                             stateReviewRequired: true, reviewing: true, settleRetryArmed: true, manualSettleAttempts: 3,
                             endedAt: t0.addingTimeInterval(60), notice: .device(.timedOut), authorizationNotWritten: true,
-                            holdSettle: true, timerResumedAt: t0.addingTimeInterval(30))
+                            holdSettle: true, timerResumedAt: t0.addingTimeInterval(30), heldConsumption: "55AA",
+                            waitingForRelease: true, closeStopSeen: true, studentId: "S-A")
         XCTAssertEqual(try JSONDecoder().decode(ShowerState.self, from: JSONEncoder().encode(s)), s)
     }
 }

@@ -41,6 +41,8 @@ public enum ShowerEndFailure: Sendable, Equatable {
         case nil, .notActive?: return nil
         case .wrongDevice?: self = .wrongController
         case .inUseByOther?: self = .inUseByOther
+        // A check's finding, not an end's.
+        case .waterRunning?: return nil
         case .device(.interrupted)?: self = .notSent
         case .device(.bluetoothOff)?, .device(.notFound)?, .device(.ambiguous)?, .device(.timedOut)?, .device(.disconnected)?:
             self = .noConnection
@@ -82,7 +84,7 @@ public enum ShowerRecheckResult: Sendable, Equatable {
         case .device(.notFound)?, .device(.timedOut)?, .device(.disconnected)?, .device(.ambiguous)?, .device(.interrupted)?:
             self = .noConnection
         case .device(.busy)?: self = .busy
-        case .inUseByOther?: self = .inUse
+        case .inUseByOther?, .waterRunning?: self = .inUse
         case .device(.malformedFrame)?, .writeUnconfirmed?, nil: self = .failed
         }
     }
@@ -123,14 +125,15 @@ public struct ShowerPage: Sendable, Equatable {
     public var startedAt: Date?
     /// The controller didn't confirm the authorization write; shown as running on purpose.
     public var writeUnconfirmed: Bool
-    /// The stopped face of a close the controller answered busy (`ShowerFailureReason.closeBusy`).
+    /// The stopped face of a close the controller answered busy (`ShowerFailureReason.closeBusy`),
+    /// until a check saw the controller stopped (`closeStopSeen`): then the kept face.
     public var closeBusy: Bool
 
     /// Nil when nothing is going on (idle): the page has nothing to show.
     public init?(_ s: ShowerState) {
         denial = nil; amount = nil; minutes = nil; startedAt = s.startedAt
         writeUnconfirmed = s.phase == .writePending
-        closeBusy = s.phase == .failed && s.failure?.reason == .closeBusy
+        closeBusy = s.phase == .failed && s.failure?.reason == .closeBusy && !s.closeStopSeen
         switch s.phase {
         case .idle:
             return nil

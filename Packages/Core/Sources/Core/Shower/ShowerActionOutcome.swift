@@ -35,7 +35,7 @@ public enum ShowerActionOutcome: Sendable, Equatable {
             if result.failure?.reason == .authorizeRefused {
                 return .failure(ShowerActionFailure(ShowerAuthorizeRefusedText.spoken))
             }
-            return .failure(ShowerActionFailure(ShowerDisplay.failureTitle(result.failure)))
+            return .failure(ShowerActionFailure(ShowerDisplay.title(result)))
         }
         if start {
             switch result.phase {

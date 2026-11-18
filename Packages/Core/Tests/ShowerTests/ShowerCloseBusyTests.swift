@@ -101,9 +101,12 @@ final class ShowerCloseBusyTests: XCTestCase {
         XCTAssertEqual(stopped.notice, .notActive)
         XCTAssertFalse(stopped.canFinish)
 
+        XCTAssertTrue(stopped.closeStopSeen, "seen stopped: saved, the record otherwise as it was")
+        var seen = kept; seen.closeStopSeen = true
+
         let relaunched = try engine()
         let restored = await relaunched.state
-        XCTAssertEqual(restored.persistable, kept.persistable, "the record as it was")
+        XCTAssertEqual(restored.persistable, seen.persistable, "the record as it was")
         await XCTAssertThrowsErrorAsync(try await relaunched.finish(binding)) { XCTAssertEqual($0 as? ShowerEngineError, .notAllowed) }
         transport.script(.frame(FakeFrames.active))
         _ = try await relaunched.review(binding)
@@ -111,7 +114,7 @@ final class ShowerCloseBusyTests: XCTestCase {
 
         XCTAssertEqual(closes, 1)
         XCTAssertTrue(gateway.settleFrames.isEmpty)
-        XCTAssertEqual(try vault.showerState()?.persistable, kept.persistable)
+        XCTAssertEqual(try vault.showerState()?.persistable, seen.persistable)
     }
 
     /// The same for a close whose answer was lost or came back unreadable.
@@ -188,5 +191,21 @@ final class ShowerCloseBusyTests: XCTestCase {
                        .failure(ShowerActionFailure("水控还没停，在水控上按停。费用看校园卡记录，扣费要 1 小时左右才出现。")), "what Siri says after 结束")
         XCTAssertEqual(ShowerActivityAction(s, now: t0), .unconfirmed(startedAt: t0, dismissAfter: ShowerActivityAction.unconfirmedDismissal))
         XCTAssertFalse(ShowerActivityAction(s, now: t0).endsEarlierResult)
+    }
+
+    /// Once a check saw this controller stopped, the busy face gives way to the kept one: the
+    /// record stays failed, its fee to be checked on the campus card.
+    func testBusyCloseFaceTurnsIntoKeptFaceAfterStopSeen() {
+        var s = ShowerState(phase: .failed, machineID: machine, startedAt: t0, authorizationID: "001122FF", closeSent: true,
+                            failure: ShowerFailure(reason: .closeBusy, needsReview: true))
+        XCTAssertTrue(try XCTUnwrap(ShowerPage(s)).closeBusy)
+        s.closeStopSeen = true
+        let page = try? XCTUnwrap(ShowerPage(s))
+        XCTAssertEqual(page?.phase, .stopped)
+        XCTAssertEqual(page?.closeBusy, false)
+        XCTAssertEqual(ShowerDisplay.title(s), ShowerAuthorText.keptStatus)
+        XCTAssertEqual(ShowerActionOutcome.after(start: false, s, notice: nil), .failure(ShowerActionFailure(ShowerAuthorText.keptStatus)))
+        XCTAssertEqual(s.phase, .failed)
+        XCTAssertTrue(s.showerOver)
     }
 }

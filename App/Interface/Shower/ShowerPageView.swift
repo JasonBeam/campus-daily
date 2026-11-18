@@ -40,6 +40,8 @@ enum ShowerPageText {
     static let startNext = ShowerAuthorText.startNext
     /// The one line under it, for one or many such showers.
     static let stoppedNote = ShowerAuthorText.stoppedNote
+    /// A check found water running on a controller the authorization never reached: 结束 ends it.
+    static let checkWaterRunning = "水控显示正在出水，洗完点结束。"
     /// The stopped page once the next start (or 再查一次) found the controller in use (title `inUse`).
     static let checkInUseBody = "水控显示正在用水，现在开不了新的一次。如果是你没停的水，先在水控上按停，再点「再查一次」。"
     /// That page's one button.

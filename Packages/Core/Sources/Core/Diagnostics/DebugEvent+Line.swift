@@ -212,6 +212,7 @@ struct DebugFields {
         if s.stateReviewRequired { word("stateReviewRequired") }
         if s.waitingForRelease { word("waitingForRelease") }
         if s.authorizationNotWritten { word("authorizationNotWritten") }
+        if s.closeStopSeen { word("closeStopSeen") }
         if s.reviewing { word("reviewing") }
         if s.showerOver { word("showerOver") }
         if let n = s.notice { self["notice"] = n.rawValue }

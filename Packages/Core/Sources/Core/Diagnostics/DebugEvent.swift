@@ -77,6 +77,9 @@ public enum ShowerDiagnostic: Sendable, Equatable {
     case nextUseNotSaved
     case reviewWriteNeverApplied, finishWriteNeverApplied
     case settleHeldAfterUnconfirmedClose
+    /// The automatic check's run met an effect other than a probe, a release or a note: it was
+    /// not run (`ShowerEngine.readOnlyAllows`).
+    case autoReviewDroppedEffect
     case settleManualRetry(Int)
     case resolvedManually(ShowerPhase)
 
@@ -92,6 +95,7 @@ public enum ShowerDiagnostic: Sendable, Equatable {
         case .reviewWriteNeverApplied: return "review.writeNeverApplied"
         case .finishWriteNeverApplied: return "finish.writeNeverApplied"
         case .settleHeldAfterUnconfirmedClose: return "settle.heldAfterUnconfirmedClose"
+        case .autoReviewDroppedEffect: return "autoReview.droppedEffect"
         case .settleManualRetry(let n): return "settle.manualRetry#\(n)"
         case .resolvedManually(let phase): return "resolvedManually.\(phase.rawValue)"
         }
@@ -101,7 +105,7 @@ public enum ShowerDiagnostic: Sendable, Equatable {
 /// The parts of a hot-water record that say where it stands: phase, failure and flags. No ids,
 /// frames or times.
 public struct DebugShowerState: Sendable, Equatable {
-    public enum Notice: String, Sendable { case device, notActive, wrongDevice, writeUnconfirmed, inUseByOther }
+    public enum Notice: String, Sendable { case device, notActive, wrongDevice, writeUnconfirmed, inUseByOther, waterRunning }
     public var phase: ShowerPhase
     public var failure: ShowerFailureReason?
     public var deviceError: ShowerDeviceError?
@@ -113,6 +117,7 @@ public struct DebugShowerState: Sendable, Equatable {
     public var stateReviewRequired: Bool
     public var waitingForRelease: Bool
     public var authorizationNotWritten: Bool
+    public var closeStopSeen: Bool
     public var reviewing: Bool
     /// Over without a settlement in the app: the school settles it (`ShowerState.showerOver`).
     public var showerOver: Bool
@@ -131,6 +136,7 @@ public struct DebugShowerState: Sendable, Equatable {
         stateReviewRequired = s.stateReviewRequired
         waitingForRelease = s.waitingForRelease
         authorizationNotWritten = s.authorizationNotWritten
+        closeStopSeen = s.closeStopSeen
         reviewing = s.reviewing
         showerOver = s.showerOver
         switch s.notice {
@@ -139,6 +145,7 @@ public struct DebugShowerState: Sendable, Equatable {
         case .wrongDevice?: notice = .wrongDevice
         case .writeUnconfirmed?: notice = .writeUnconfirmed
         case .inUseByOther?: notice = .inUseByOther
+        case .waterRunning?: notice = .waterRunning
         case nil: notice = nil
         }
     }

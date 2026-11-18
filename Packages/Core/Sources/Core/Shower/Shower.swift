@@ -73,8 +73,8 @@ public struct ShowerFailure: Sendable, Codable, Equatable {
     /// The settlement provably never left (cancelled before it, or held for the user): the
     /// school can't have charged it. False when it may have left.
     public var settleNotSent: Bool
-    /// The settlement was held back because the consumption may be someone else's
-    /// (`ShowerState.holdSettle`), or this is a failed retry of that held frame.
+    /// An older build held the settlement back (`ShowerState.holdSettle`), or this is a failed
+    /// retry of that held frame. Kept to read such records: this build never sends it.
     public var settleHeld: Bool
     public init(reason: ShowerFailureReason, needsReview: Bool, error: ServiceError? = nil, deviceError: ShowerDeviceError? = nil,
                 settleNotSent: Bool = false, settleHeld: Bool = false) {
@@ -105,9 +105,12 @@ public enum ShowerNotice: Sendable, Codable, Equatable {
     case wrongDevice
     /// The authorization write was answered with something other than the ack.
     case writeUnconfirmed
-    /// 结束 found water running on a controller our authorization provably never reached:
-    /// someone else's session, so no close was sent.
+    /// Water found running where it can't be this record's: after a close that went out, or
+    /// on a controller the record already showed stopped. Nothing more was sent.
     case inUseByOther
+    /// A check found water running on a controller our authorization provably never reached:
+    /// the record stays as it is, and 结束 closes and settles that water as any other.
+    case waterRunning
 }
 
 public struct ShowerState: Sendable, Codable, Equatable {
@@ -148,24 +151,29 @@ public struct ShowerState: Sendable, Codable, Equatable {
     /// the write was refused): no water could run, so an idle controller at 结束 ends the
     /// record without a check. An unconfirmed write may have been applied and never sets it.
     public var authorizationNotWritten: Bool
-    /// The next consumption frame is kept (`heldConsumption`) and never settled by itself,
-    /// because the water it ends may not be ours: back on the timer from a
-    /// close that most likely took (a probe found water running afterwards, most likely someone
-    /// else's), or an end of a session the controller never acknowledged (`writePending`, also
-    /// when a probe then found water running). The frame names only the controller, so it can't
-    /// tell whose session it ended.
+    /// Saved by older builds: the next consumption frame was to be held, not settled. Never set
+    /// by this one, and cleared on restore (`ShowerReducer.restore`): an end settles the close's
+    /// own reply as any other. Kept so such records still decode.
     public var holdSettle: Bool
     /// When the session came back to the timer from the unsure face (a probe found water
     /// running after an unconfirmed close). The 「还在计时」 reminder counts from here, also after
     /// a relaunch: the water start may be long past.
     public var timerResumedAt: Date?
-    /// The consumption frame that was held (`holdSettle`), upper hex. A retry of it that is
-    /// refused or gets no answer is still held: the water it read may still not be ours.
+    /// The consumption frame an older build held (`holdSettle`), upper hex. Never sent by this
+    /// build (`canRetrySettle`).
     public var heldConsumption: String?
     /// The next use over this record found the controller still in use (`A5`): the link was
     /// let go and nothing was authorized. The record waits for the user to try again or check it.
     /// Kept across a relaunch; a record that lost its authorization never sends a close.
     public var waitingForRelease: Bool
+    /// After a close whose outcome is unknown (`ShowerFailureReason.isUnsureClose`), a read-only
+    /// check found this controller idle. The record stays as it is (failed, its fee to be checked
+    /// on the campus card); only the automatic check stops and the page says the shower is over.
+    public var closeStopSeen: Bool
+    /// The hot-water student the session was opened with (`ShowerBinding.studentId`). 结束 with a
+    /// binding of another student is refused before anything is sent. Nil on records saved
+    /// before it was kept: never filled in afterwards. Stays in the Keychain record only.
+    public var studentId: String?
 
     public init(phase: ShowerPhase = .idle, machineID: String? = nil, peripheralID: String? = nil, startedAt: Date? = nil,
                 authorizeSent: Bool = false, authorizationID: String? = nil, closingFrom: ShowerPhase? = nil,
@@ -174,7 +182,7 @@ public struct ShowerState: Sendable, Codable, Equatable {
                 reviewing: Bool = false, settleRetryArmed: Bool = false, manualSettleAttempts: Int = 0,
                 endedAt: Date? = nil, notice: ShowerNotice? = nil, authorizationNotWritten: Bool = false,
                 holdSettle: Bool = false, timerResumedAt: Date? = nil, heldConsumption: String? = nil,
-                waitingForRelease: Bool = false) {
+                waitingForRelease: Bool = false, closeStopSeen: Bool = false, studentId: String? = nil) {
         self.phase = phase; self.machineID = machineID; self.peripheralID = peripheralID; self.startedAt = startedAt
         self.authorizeSent = authorizeSent; self.authorizationID = authorizationID; self.closingFrom = closingFrom
         self.closeSent = closeSent; self.consumption = consumption; self.receipt = receipt; self.lastReceipt = lastReceipt
@@ -183,6 +191,7 @@ public struct ShowerState: Sendable, Codable, Equatable {
         self.endedAt = endedAt; self.notice = notice; self.authorizationNotWritten = authorizationNotWritten
         self.holdSettle = holdSettle; self.timerResumedAt = timerResumedAt; self.heldConsumption = heldConsumption
         self.waitingForRelease = waitingForRelease
+        self.closeStopSeen = closeStopSeen; self.studentId = studentId
     }
 
     public static let idle = ShowerState()
@@ -225,8 +234,11 @@ public struct ShowerState: Sendable, Codable, Equatable {
     /// The frame to settle is the one that was held.
     public var consumptionHeld: Bool { consumption != nil && consumption == heldConsumption }
 
+    /// Never for end data an older build held back (`settleHeld`, or the frame alone saying so):
+    /// it is not sent by this build.
     public var canRetrySettle: Bool {
         phase == .failed && failure?.needsReview == true && consumption != nil
+            && failure?.settleHeld != true && !consumptionHeld
             && [ShowerFailureReason.settleRefused, .settleUncertain, .settleUnconfirmed].contains { $0 == failure?.reason }
     }
 
@@ -309,11 +321,14 @@ extension ShowerState {
         timerResumedAt = try? c.decodeIfPresent(Date.self, forKey: .timerResumedAt)
         heldConsumption = try? c.decodeIfPresent(String.self, forKey: .heldConsumption)
         waitingForRelease = try c.decodeIfPresent(Bool.self, forKey: .waitingForRelease) ?? false
+        closeStopSeen = try c.decodeIfPresent(Bool.self, forKey: .closeStopSeen) ?? false
+        studentId = try? c.decodeIfPresent(String.self, forKey: .studentId)
     }
 }
 
 public enum ShowerEvent: Sendable, Equatable {
-    case start(machineID: String, preferredPeripheral: String?)
+    /// `studentId`: the hot-water binding's student, kept with the new record.
+    case start(machineID: String, preferredPeripheral: String?, studentId: String? = nil)
     /// Connected and probed (`AA`) before authorize.
     case connected(peripheralID: String, probe: Data)
     case connectFailed(ShowerDeviceError)
@@ -386,12 +401,12 @@ public enum ShowerReducer {
         switch (state.phase, event) {
 
         // MARK: start
-        case (_, .start(let machine, let preferred)) where state.canStart:
+        case (_, .start(let machine, let preferred, let student)) where state.canStart:
             // Keep the controller remembered for this machine, so a failed connect does not
             // forget it and the next start can still try it before scanning.
             let remembered = preferred ?? (state.machineID == machine.uppercased() ? state.peripheralID : nil)
             let n = ShowerState(phase: .authorizing, machineID: machine.uppercased(), peripheralID: remembered,
-                                lastReceipt: state.phase == .done ? state.receipt : state.lastReceipt)
+                                lastReceipt: state.phase == .done ? state.receipt : state.lastReceipt, studentId: student)
             return (n, [.connectAndProbe(machineID: machine.uppercased(), preferred: preferred)])
 
         case (.authorizing, .connected(let peripheral, let probe)) where !state.authorizeSent:
@@ -475,9 +490,6 @@ public enum ShowerReducer {
             s.phase = .closing
             s.closingFrom = state.phase
             s.closeSent = false
-            // The controller never acknowledged our authorization, so an A5 now may be someone
-            // else's water: the consumption frame can't say whose (see `ShowerFrames`).
-            if state.phase == .writePending { s.holdSettle = true }
             return (s, [.probe(peripheralID: state.peripheralID)])
 
         case (.writePending, .review), (.running, .review):
@@ -496,14 +508,11 @@ public enum ShowerReducer {
                 s.notice = .inUseByOther
                 return (s, [.releaseDevice])
             case .active where state.authorizationNotWritten:
-                // Our authorization provably never reached it: the water is someone else's, and
-                // the probe says so instead of showing the timer as if it were ours.
-                s.notice = .inUseByOther
+                // Our authorization provably never reached it: the record stays waiting on its
+                // write (not the confirmed timer) and says water runs; 结束 closes and settles it.
+                s.notice = .waterRunning
                 return (s, [.releaseDevice])
             case .active:
-                // Back on the timer, but an A5 proves nothing about whose water it is: without
-                // the acknowledgement, the end still waits for the user.
-                if state.phase == .writePending { s.holdSettle = true }
                 s.phase = .running
                 s.stateReviewRequired = false
                 return (s, [])
@@ -545,8 +554,11 @@ public enum ShowerReducer {
                 s.notice = .inUseByOther
             case .idle(let id) where id == state.machineID:
                 // Stopped: the close may have taken, or water stopped by itself. The record stays
-                // as it is, and is free again for the next shower.
+                // as it is (its fee to be checked), and is free again for the next shower. After
+                // an unsure close this is saved: the automatic check stops for good, and a later
+                // A5 changes none of it.
                 s.waitingForRelease = false
+                if state.failure?.reason.isUnsureClose == true { s.closeStopSeen = true }
                 s.notice = .notActive
             case .idle:
                 s.notice = .wrongDevice
@@ -563,11 +575,9 @@ public enum ShowerReducer {
         case (.closing, .probeReplied(let frame)) where !state.closeSent:
             let from = state.closingFrom ?? .running
             switch ShowerFrames.classify(frame) {
-            case .active where state.authorizationNotWritten:
-                // Our authorization provably never reached the controller, so this session is
-                // someone else's: closing it would stop their water and settle it under us.
-                return (back(s, to: from, notice: .inUseByOther), [.releaseDevice])
             case .active:
+                // Also over an authorization that provably never reached the controller: the
+                // owner's choice is to close that water and settle the close's reply.
                 guard let id = state.authorizationID, let command = ShowerFrames.closeCommand(authorizationID: id) else {
                     return (back(s, to: from, notice: .writeUnconfirmed), [.releaseDevice])
                 }
@@ -604,13 +614,9 @@ public enum ShowerReducer {
             guard ShowerFrames.identity(frame) == state.machineID else {
                 return (failed(s, .closeUnconfirmed, review: true, device: .malformedFrame), [.releaseDevice])
             }
+            // Only this close's own reply, from this machine, as it came: settled once.
             s.consumption = HexCoding.upper(frame)
-            if state.holdSettle {
-                s.holdSettle = false
-                s.heldConsumption = s.consumption
-                return (failed(s, .settleUnconfirmed, review: true, settleNotSent: true, settleHeld: true),
-                        [.releaseDevice, .diagnostic(.settleHeldAfterUnconfirmedClose)])
-            }
+            s.holdSettle = false
             s.phase = .settling
             return (s, [.releaseDevice, .settle(frame: frame)])
 
@@ -676,6 +682,9 @@ public enum ShowerReducer {
         s.notice = nil
         s.reviewing = false
         s.settleRetryArmed = false
+        // An older build's hold on the next end data: this build settles a close's reply as any
+        // other. A frame it already held stays held (`canRetrySettle`).
+        s.holdSettle = false
         switch s.phase {
         case .idle, .done, .writePending, .running:
             return s
@@ -733,7 +742,10 @@ public enum ShowerDisplay {
         case .closing: return "正在结束…"
         case .settling: return "正在结算…"
         case .done: return s.receipt?.amount.map { "本次 ¥\($0.yuanText)" } ?? "已结算"
-        case .failed: return failureTitle(s.failure)
+        case .failed:
+            // A check saw the controller stopped after the unsure close: the kept words.
+            if s.closeStopSeen, s.failure?.reason.isUnsureClose == true { return ShowerAuthorText.keptStatus }
+            return failureTitle(s.failure)
         }
     }
 

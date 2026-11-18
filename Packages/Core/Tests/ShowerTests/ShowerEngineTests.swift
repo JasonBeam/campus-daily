@@ -322,12 +322,12 @@ final class ShowerEngineTests: XCTestCase {
         XCTAssertEqual(s.notice, .device(.timedOut))
         XCTAssertEqual(ShowerDisplay.title(s), "洗澡中", "shown as running")
 
-        // The close is sent; without the acknowledgement the frame waits for the user.
+        // The close is sent and its own reply settled once, acknowledgement or not.
         transport.script(.frame(FakeFrames.active), .frame(consumption))
         gateway.scriptSettle(.ok(receipt))
-        let held = try await e.finish(binding)
-        XCTAssertEqual(held.failure?.reason, .settleUnconfirmed)
-        XCTAssertTrue(gateway.settleFrames.isEmpty)
+        let done = try await e.finish(binding)
+        XCTAssertEqual(done.phase, .done)
+        XCTAssertEqual(gateway.settleFrames, [consumption])
         XCTAssertEqual(transport.writes.last, close)
     }
 

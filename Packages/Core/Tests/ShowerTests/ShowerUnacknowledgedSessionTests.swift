@@ -2,11 +2,9 @@ import XCTest
 @testable import Core
 import CoreTestSupport
 
-/// The consumption frame names only the controller (`55`, machine id, 15 bytes nothing is known
-/// to tie to an authorization), so it can't show whose session the close ended. Only the
-/// controller's acknowledgement of our authorization write shows the session was ours: without
-/// it, an `A5` at 结束 may be someone else's water, and what the close returns waits for the
-/// user's two-tap settle instead of being settled by itself.
+/// The controller did not acknowledge the authorization write (no `AA` ack, a timeout, a lost
+/// link): it may have been applied. 结束 then ends it as any session: the close goes out when the
+/// controller runs (`A5`), and the end data the close returns is settled once, by itself.
 final class ShowerUnacknowledgedSessionTests: XCTestCase {
     let machine = "11223344"
     let binding = ShowerBinding(studentId: "S1234567", schoolId: "20021", machineId: "11223344", roomId: "R1", roomLabel: "99栋 991")
@@ -45,49 +43,41 @@ final class ShowerUnacknowledgedSessionTests: XCTestCase {
         return e
     }
 
-    func assertHeld(_ held: ShowerState, _ label: String, file: StaticString = #filePath, line: UInt = #line) {
-        XCTAssertTrue(transport.writes.contains(close), "the close is still sent (\(label))", file: file, line: line)
-        XCTAssertTrue(gateway.settleFrames.isEmpty, "not settled by itself (\(label))", file: file, line: line)
-        XCTAssertEqual(held.phase, .failed, label, file: file, line: line)
-        XCTAssertEqual(held.failure?.reason, .settleUnconfirmed, label, file: file, line: line)
-        XCTAssertEqual(held.failure?.settleNotSent, true, label, file: file, line: line)
-        XCTAssertEqual(held.consumption, HexCoding.upper(consumption), "kept for the retry (\(label))", file: file, line: line)
-        XCTAssertTrue(held.canRetrySettle, label, file: file, line: line)
-        XCTAssertEqual(ShowerPage(held)?.phase, .stopped, label, file: file, line: line)
+    func assertSettledOnce(_ done: ShowerState, _ label: String, file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertEqual(transport.writes.filter { $0 == close }.count, 1, "one close (\(label))", file: file, line: line)
+        XCTAssertEqual(gateway.settleFrames, [consumption], "the close's own reply, settled once (\(label))", file: file, line: line)
+        XCTAssertEqual(gateway.settleBindings.map(\.studentId), [binding.studentId], label, file: file, line: line)
+        XCTAssertEqual(done.phase, .done, label, file: file, line: line)
+        XCTAssertEqual(done.receipt, receipt, label, file: file, line: line)
+        XCTAssertFalse(done.holdSettle, label, file: file, line: line)
+        XCTAssertNil(done.heldConsumption, label, file: file, line: line)
     }
 
-    func testAnEndWithoutTheControllersAcknowledgementIsNotSettledByItself() async throws {
+    func testAnEndWithoutTheControllersAcknowledgementSettlesByItself() async throws {
         for reply in [FakeShowerTransport.Reply.fail(.timedOut), .fail(.disconnected), .frame(Data([0xAA, 0]))] {
             reset()
             let e = try await unacknowledged(reply)
             transport.script(.frame(FakeFrames.active), .frame(consumption))
             gateway.scriptSettle(.ok(receipt))
-            let held = try await e.finish(binding)
-            assertHeld(held, "\(reply)")
-            XCTAssertEqual(try vault.showerState()?.consumption, HexCoding.upper(consumption), "persisted")
-
-            // The usual two taps send it once.
-            _ = try await e.requestSettleRetry()
-            let done = try await e.confirmSettleRetry(binding)
-            XCTAssertEqual(done.phase, .done)
-            XCTAssertEqual(gateway.settleFrames, [consumption])
+            assertSettledOnce(try await e.finish(binding), "\(reply)")
+            XCTAssertEqual(try vault.showerState()?.phase, .done, "persisted")
         }
     }
 
-    /// A probe that finds water running proves nothing about whose it is: back on the timer,
-    /// the end still waits for the user.
-    func testAProbeThatFindsWaterRunningDoesNotCountAsTheAcknowledgement() async throws {
+    /// A probe that finds water running takes it back to the timer; its end settles once.
+    func testAProbeThatFindsWaterRunningThenAnEndSettlesOnce() async throws {
         let e = try await unacknowledged(.fail(.timedOut))
         transport.script(.frame(FakeFrames.active))
         let probed = try await e.review(binding)
         XCTAssertEqual(probed.phase, .running)
+        XCTAssertFalse(probed.holdSettle)
 
         transport.script(.frame(FakeFrames.active), .frame(consumption))
         gateway.scriptSettle(.ok(receipt))
-        assertHeld(try await e.finish(binding), "after the probe")
+        assertSettledOnce(try await e.finish(binding), "after the probe")
     }
 
-    func testTheHoldSurvivesARelaunchAndACloseThatWasNotSent() async throws {
+    func testAnEndAfterARelaunchAndACloseThatWasNotSentSettlesOnce() async throws {
         let e = try await unacknowledged(.fail(.timedOut))
         // The first 结束 doesn't reach the controller: back on the timer.
         transport.scriptConnect(.failure(.notFound))
@@ -97,7 +87,7 @@ final class ShowerUnacknowledgedSessionTests: XCTestCase {
         let relaunched = try engine()
         transport.script(.frame(FakeFrames.active), .frame(consumption))
         gateway.scriptSettle(.ok(receipt))
-        assertHeld(try await relaunched.finish(binding), "relaunched")
+        assertSettledOnce(try await relaunched.finish(binding), "relaunched")
     }
 
     /// An acknowledged authorization is ours: its end settles by itself, as before.

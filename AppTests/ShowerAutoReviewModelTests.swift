@@ -115,22 +115,95 @@ final class ShowerAutoReviewModelTests: XCTestCase {
         XCTAssertEqual(model.state.phase, .running)
     }
 
-    /// Records that wait for something are never checked by themselves.
-    func testNoAutoReviewOverAKeptOrUnsureRecord() async throws {
+    /// Records that wait for something are never checked by themselves; a close whose outcome
+    /// is unknown is, until the controller was seen stopped.
+    func testNoAutoReviewOverAKeptRecordOrASeenStop() async throws {
         var busyClose = running
         busyClose.phase = .failed; busyClose.closeSent = true
         busyClose.failure = ShowerFailure(reason: .closeBusy, needsReview: true)
-        var unsure = busyClose
-        unsure.failure = ShowerFailure(reason: .closeUnconfirmed, needsReview: true)
+        var seen = busyClose; seen.closeStopSeen = true
+        var unsureSeen = seen; unsureSeen.failure = ShowerFailure(reason: .closeUnconfirmed, needsReview: true)
+        var waiting = busyClose; waiting.waitingForRelease = true
         var stopped = running; stopped.stateReviewRequired = true
         var notWritten = running; notWritten.phase = .writePending; notWritten.authorizationNotWritten = true
-        for record in [busyClose, unsure, stopped, notWritten, ShowerState.idle] {
+        for record in [seen, unsureSeen, waiting, stopped, notWritten, ShowerState.idle] {
             let link = ScriptedControllerLink()
             let model = try await model(record: record, transport: link)
             let ran = await model.autoReviewIfDue(now: t0)
             XCTAssertFalse(ran, "\(record.phase)")
             XCTAssertEqual(link.connects, 0)
         }
+    }
+
+    /// Over a close answered busy or not answered: probed at 0, 30 and 60 s while water runs
+    /// (only `AA`, the link let go each time), then never again once this controller is idle.
+    func testAnUnsureCloseIsCheckedEvery30sUntilSeenStopped() async throws {
+        for reason in [ShowerFailureReason.closeBusy, .closeUnconfirmed] {
+            var record = running
+            record.phase = .failed; record.closeSent = true
+            record.failure = ShowerFailure(reason: reason, needsReview: true)
+            let link = ScriptedControllerLink()
+            link.replies = [FakeFramesApp.active, FakeFramesApp.active, FakeFramesApp.idle]
+            let http = HeldHTTP()
+            let model = try await model(record: record, transport: link, http: http)
+            var probedAt: [Double] = []
+            for seconds in stride(from: 0.0, through: 120, by: 5) {
+                if await model.autoReviewIfDue(now: t0.addingTimeInterval(seconds)) { probedAt.append(seconds) }
+            }
+            XCTAssertEqual(probedAt, [0, 30, 60], reason.rawValue)
+            XCTAssertEqual(link.writes, Array(repeating: ShowerFrames.probeCommand, count: 3), reason.rawValue)
+            XCTAssertEqual(link.disconnects, 3, reason.rawValue)
+            XCTAssertEqual(http.sent, 0)
+            XCTAssertTrue(model.state.closeStopSeen)
+            XCTAssertEqual(model.state.phase, .failed, "still to be checked on the campus card")
+            XCTAssertEqual(model.state.failure?.reason, reason)
+            XCTAssertNil(model.message, "the automatic check says nothing")
+            XCTAssertEqual(model.status, ShowerPageText.stoppedNote, "the kept words, not the unanswered close's")
+        }
+    }
+
+    /// The app leaves the front while the check waits for the controller: the link is let go
+    /// and the model and engine are free again.
+    func testLeavingTheFrontMidCheckLetsTheLinkGo() async throws {
+        var record = running
+        record.phase = .failed; record.closeSent = true
+        record.failure = ShowerFailure(reason: .closeBusy, needsReview: true)
+        let link = ScriptedControllerLink()
+        link.holdUntilCancelled = true
+        let model = try await model(record: record, transport: link)
+        let check = Task { await model.autoReviewIfDue(now: t0) }
+        await waitUntil { link.isHoldingCancellable }
+        check.cancel()
+        _ = await check.value
+        XCTAssertGreaterThanOrEqual(link.disconnects, 1)
+        XCTAssertFalse(model.busy)
+        XCTAssertEqual(model.state.failure?.reason, .closeBusy)
+        XCTAssertFalse(model.state.closeStopSeen)
+        link.replies = [FakeFramesApp.idle]
+        let next = await model.autoReviewIfDue(now: t0.addingTimeInterval(30))
+        XCTAssertTrue(next, "free again")
+        XCTAssertTrue(model.state.closeStopSeen)
+    }
+
+    /// The school login is signed out while a shower runs: the hot-water binding it was opened
+    /// with stays, and 结束 with it still closes and sends the settlement.
+    func testTheKeptBindingStillEndsAfterTheSchoolSignOut() async throws {
+        var record = running; record.studentId = Fixture.binding.studentId
+        let link = ScriptedControllerLink()
+        link.replies = [FakeFramesApp.active, FakeFramesApp.consumption]
+        let http = HeldHTTP()
+        let model = try await model(record: record, transport: link, http: http)
+        let switched = model.clearBindingForAccountSwitch()
+        XCTAssertEqual(switched, .keptForReview)
+        XCTAssertNotNil(model.binding)
+        XCTAssertTrue(model.mayFinish)
+        let end = Task { try? await model.run(start: false) }
+        let reached = await http.reached()
+        XCTAssertTrue(reached, "the settlement went out")
+        XCTAssertEqual(link.writes, [ShowerFrames.probeCommand, ShowerFrames.closeCommand(authorizationID: "001122FF")!])
+        http.release()
+        _ = await end.value
+        XCTAssertEqual(http.sent, 1)
     }
 
     /// 结束 over a close answered busy: every way in (the page, Siri, the Live Activity, all
@@ -167,10 +240,15 @@ final class ShowerAutoReviewModelTests: XCTestCase {
 
 enum FakeFramesApp {
     static let active = Data([0xA5])
+    /// Idle, naming the bound machine.
+    static let idle = Data([0x55, 0x11, 0x22, 0x33, 0x44] + [UInt8](repeating: 0, count: 15))
+    /// The close's end data from the bound machine.
+    static let consumption = Data([0x55, 0x11, 0x22, 0x33, 0x44] + [UInt8](repeating: 9, count: 15))
 }
 
 /// A controller link that records what it was asked and answers from a script. `holdExchange`:
-/// the next exchange waits for `release`.
+/// the next exchange waits for `release`. `holdUntilCancelled`: the next exchange waits until its
+/// task is cancelled, then fails as interrupted.
 final class ScriptedControllerLink: ShowerTransport, @unchecked Sendable {
     private let lock = NSLock()
     private var _writes: [Data] = []
@@ -180,6 +258,13 @@ final class ScriptedControllerLink: ShowerTransport, @unchecked Sendable {
     private var _failConnects = false
     private var _hold = false
     private var held: CheckedContinuation<Data, Never>?
+    private var _holdUntilCancelled = false
+    private var _holdingCancellable = false
+    var holdUntilCancelled: Bool {
+        get { lock.withLock { _holdUntilCancelled } }
+        set { lock.withLock { _holdUntilCancelled = newValue } }
+    }
+    var isHoldingCancellable: Bool { lock.withLock { _holdingCancellable } }
 
     var writes: [Data] { lock.withLock { _writes } }
     var isHolding: Bool { lock.withLock { held != nil } }
@@ -205,6 +290,16 @@ final class ScriptedControllerLink: ShowerTransport, @unchecked Sendable {
     }
 
     func exchange(_ command: Data) async throws -> Data {
+        let waitForCancel: Bool = lock.withLock {
+            guard _holdUntilCancelled else { return false }
+            _holdUntilCancelled = false; _holdingCancellable = true; _writes.append(command)
+            return true
+        }
+        if waitForCancel {
+            for _ in 0..<1000 where !Task.isCancelled { try? await Task.sleep(for: .milliseconds(10)) }
+            lock.withLock { _holdingCancellable = false }
+            throw ShowerDeviceError.interrupted
+        }
         let (hold, reply): (Bool, Data?) = lock.withLock {
             _writes.append(command)
             if _hold { _hold = false; return (true, nil) }

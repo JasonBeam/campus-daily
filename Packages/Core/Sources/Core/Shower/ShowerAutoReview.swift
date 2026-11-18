@@ -1,8 +1,9 @@
 import Foundation
 
 /// The automatic check of the controller while the app is in front: a read-only `AA` probe over a
-/// record whose water may run and that waits for nothing, at most once per `interval`. It never
-/// authorizes, closes or settles (`ShowerEngine.autoReview`).
+/// record whose water may run and that waits for nothing, or over a close whose outcome is unknown
+/// until this controller is seen stopped; at most once per `interval`, with no limit on attempts.
+/// It never authorizes, closes or settles (`ShowerEngine.autoReview`, `ShowerEngine.readOnlyAllows`).
 public enum ShowerAutoReview {
     /// How often the foreground loop looks.
     public static let tick: Duration = .seconds(5)
@@ -12,9 +13,13 @@ public enum ShowerAutoReview {
     /// Water may run (`writePending`, `running`) and nothing waits on the record: not a probe
     /// under way, not a session the controller showed stopped, not one the next use found in use,
     /// not an authorization that provably never reached the controller (a probe would end that
-    /// record; the user does that). A failed record (an unconfirmed or busy close) never.
+    /// record; the user does that). A failed record only after an unsure close (answered busy, no
+    /// end data, or a relaunch mid-close), until a check saw this controller idle (`closeStopSeen`).
     public static func eligible(_ s: ShowerState) -> Bool {
-        (s.phase == .writePending || s.phase == .running)
+        if s.phase == .failed {
+            return s.failure?.reason.isUnsureClose == true && !s.closeStopSeen && !s.reviewing && !s.waitingForRelease
+        }
+        return (s.phase == .writePending || s.phase == .running)
             && !s.reviewing && !s.stateReviewRequired && !s.waitingForRelease && !s.authorizationNotWritten
     }
 

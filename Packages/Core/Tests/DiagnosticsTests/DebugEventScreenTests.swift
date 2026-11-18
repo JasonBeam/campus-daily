@@ -75,11 +75,11 @@ final class DebugEventScreenTests: XCTestCase {
             var s = DebugShowerState(ShowerState(phase: .failed))
             s.failure = reason; s.deviceError = .timedOut; s.errorKind = .rejected
             s.needsReview = true; s.settleNotSent = true; s.settleHeld = true; s.holdSettle = true
-            s.stateReviewRequired = true; s.waitingForRelease = true; s.authorizationNotWritten = true
+            s.stateReviewRequired = true; s.waitingForRelease = true; s.authorizationNotWritten = true; s.closeStopSeen = true
             s.reviewing = true; s.showerOver = true
             states.append(s)
         }
-        for notice in [DebugShowerState.Notice.device, .notActive, .wrongDevice, .writeUnconfirmed, .inUseByOther] {
+        for notice in [DebugShowerState.Notice.device, .notActive, .wrongDevice, .writeUnconfirmed, .inUseByOther, .waterRunning] {
             var s = DebugShowerState(ShowerState(phase: .running))
             s.notice = notice; s.noticeDevice = notice == .device ? .disconnected : nil
             states.append(s)
@@ -90,7 +90,7 @@ final class DebugEventScreenTests: XCTestCase {
     static var notes: [ShowerDiagnostic] {
         [.nextUseDeviceBusy, .nextUseWrongDevice, .nextUseUnreadable, .nextUseCancelled, .nextUseRecordKept, .nextUseKeepFailed,
          .nextUseNotSaved, .reviewWriteNeverApplied, .finishWriteNeverApplied, .settleHeldAfterUnconfirmedClose,
-         .settleManualRetry(1), .settleManualRetry(12)] + ShowerPhase.allCases.map(ShowerDiagnostic.resolvedManually)
+         .autoReviewDroppedEffect, .settleManualRetry(1), .settleManualRetry(12)] + ShowerPhase.allCases.map(ShowerDiagnostic.resolvedManually)
     }
 
     static var laundryStarts: [DebugLaundryStart] {

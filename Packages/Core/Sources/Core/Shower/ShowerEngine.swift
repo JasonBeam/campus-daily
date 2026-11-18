@@ -196,7 +196,7 @@ public actor ShowerEngine {
         hooks?.record(.showerAction(.start(machine: .machine(b.machineId))))
         let preferred = b.peripheralID ?? (state.machineID == b.machineId.uppercased() ? state.peripheralID : nil)
         startCancelled = false; authorizeLeft = false
-        return try await run(b, .start(machineID: b.machineId, preferredPeripheral: preferred))
+        return try await run(b, .start(machineID: b.machineId, preferredPeripheral: preferred, studentId: b.studentId))
     }
 
     /// 取消 while connecting. True: the start stops before its authorize request leaves (nothing
@@ -281,7 +281,7 @@ public actor ShowerEngine {
         binding = b
         do {
             try await commit(ShowerState(phase: .authorizing, machineID: machine, peripheralID: previous.peripheralID,
-                                         lastReceipt: previous.lastReceipt))
+                                         lastReceipt: previous.lastReceipt, studentId: b.studentId))
         } catch {
             // The new record could not be saved: nothing went out, and the one in place (the
             // stopped shower, still on disk) is what the page shows again.
@@ -301,12 +301,15 @@ public actor ShowerEngine {
         return state
     }
 
-    /// 结束: probe (`A5` required), close, settle once.
+    /// 结束: probe (`A5` required), close, settle once. Only with the binding of the student the
+    /// session was opened with (`ShowerState.studentId`; a record saved before it was kept has
+    /// none and is not checked): another student's is refused before anything is sent.
     @discardableResult
     public func finish(_ b: ShowerBinding) async throws -> ShowerState {
         try guardIdle()
         guard state.canFinish else { throw ShowerEngineError.notAllowed }
         guard state.machineID == b.machineId.uppercased() else { throw ShowerEngineError.wrongBinding }
+        if let owner = state.studentId, owner != b.studentId { throw ShowerEngineError.wrongBinding }
         // Closing the water without a way to settle would leave a charge nobody can send.
         guard gateway.isAvailable else { throw ShowerEngineError.platformMissing }
         hooks?.record(.showerAction(.finish))
@@ -325,14 +328,15 @@ public actor ShowerEngine {
 
     /// The automatic check while the app is in front: the same read-only probe as `review`, only
     /// over a record `ShowerAutoReview.eligible` allows (checked here, on the record the engine
-    /// holds). Sends `AA` and nothing else.
+    /// holds). Sends `AA` and nothing else: every effect of the run, those of later steps too,
+    /// passes `readOnlyAllows` first.
     @discardableResult
     public func autoReview(_ b: ShowerBinding) async throws -> ShowerState {
         try guardIdle()
         guard ShowerAutoReview.eligible(state), state.canReview else { throw ShowerEngineError.notAllowed }
         guard state.machineID == b.machineId.uppercased() else { throw ShowerEngineError.wrongBinding }
         hooks?.record(.showerAction(.autoReview))
-        return try await run(b, .review)
+        return try await run(b, .review, readOnly: true)
     }
 
     /// First tap of a manual settle retry (UI then asks again).
@@ -379,6 +383,15 @@ public actor ShowerEngine {
         return try await run(nil, .dismiss)
     }
 
+    /// What the automatic check may run: the probe, letting the link go and notes. Anything else
+    /// a step of it asks for is dropped (never sent, closed, authorized or settled).
+    public static func readOnlyAllows(_ effect: ShowerEffect) -> Bool {
+        switch effect {
+        case .probe, .releaseDevice, .diagnostic: return true
+        case .connectAndProbe, .authorize, .writeAuthorization, .sendClose, .settle, .forgetPeripheral: return false
+        }
+    }
+
     // MARK: Loop
 
     private func guardIdle() throws {
@@ -386,14 +399,15 @@ public actor ShowerEngine {
         guard !storageBlocked else { throw ShowerEngineError.storage }
     }
 
-    private func run(_ b: ShowerBinding?, _ first: ShowerEvent) async throws -> ShowerState {
+    private func run(_ b: ShowerBinding?, _ first: ShowerEvent, readOnly: Bool = false) async throws -> ShowerState {
         busy = true
         binding = b
         defer { busy = false; binding = nil }
-        return try await loop(first)
+        return try await loop(first, readOnly: readOnly)
     }
 
-    private func loop(_ first: ShowerEvent) async throws -> ShowerState {
+    /// `readOnly`: an effect `readOnlyAllows` refuses is not run (a note says so).
+    private func loop(_ first: ShowerEvent, readOnly: Bool = false) async throws -> ShowerState {
         var queue = [first]
         while !queue.isEmpty {
             let event = queue.removeFirst()
@@ -403,6 +417,10 @@ public actor ShowerEngine {
             if state.phase == .failed, next.mayBeFlowing { next.timerResumedAt = now() }
             try await commit(next)
             for effect in effects {
+                if readOnly, !Self.readOnlyAllows(effect) {
+                    await hooks?.diagnostic(.autoReviewDroppedEffect)
+                    continue
+                }
                 if let follow = await perform(effect) { queue.append(follow) }
             }
         }

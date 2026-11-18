@@ -223,7 +223,7 @@ enum ShowerProfileFiles {
         if let message { return message }
         if state.showerOver { return ShowerPageText.stoppedNote }
         switch state.phase {
-        case .failed: return ShowerDisplay.failureTitle(state.failure)
+        case .failed: return ShowerDisplay.title(state)
         case .writePending: return ShowerDisplay.writeUnconfirmedHint
         default: break
         }
@@ -708,6 +708,7 @@ enum ShowerProfileFiles {
         case .wrongDevice?: return "附近的水控不是你宿舍的那台。"
         case .writeUnconfirmed?: return ShowerDisplay.writeUnconfirmedHint
         case .inUseByOther?: return ShowerPageText.endInUseByOther
+        case .waterRunning?: return ShowerPageText.checkWaterRunning
         }
     }
 

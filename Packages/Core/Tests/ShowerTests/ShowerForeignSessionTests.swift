@@ -2,10 +2,9 @@ import XCTest
 @testable import Core
 import CoreTestSupport
 
-/// An `A5` (water running) that is most likely someone else's session never gets closed or
-/// settled under this record without the user: after a close that most likely took, the next
-/// consumption frame is kept for a manual settle; with an authorization that provably never
-/// reached the controller, no close is sent at all.
+/// An `A5` (water running) found after a close that went out is never closed again or settled
+/// under this record. With an authorization that provably never reached the controller, 结束
+/// closes the running water and settles the close's reply, as for any session.
 final class ShowerForeignSessionTests: XCTestCase {
     let machine = "11223344"
     let binding = ShowerBinding(studentId: "S1234567", schoolId: "20021", machineId: "11223344", roomId: "R1", roomLabel: "99栋 991")
@@ -106,42 +105,66 @@ final class ShowerForeignSessionTests: XCTestCase {
         return e
     }
 
-    func testWaterRunningOnAControllerOurAuthorizationNeverReachedIsNotClosed() async throws {
+    /// 结束 finds water running on a controller our write provably never reached: it closes it
+    /// with this record's authorization and settles what that close returns, once (the owner's
+    /// choice: the water may not be this session's, and nothing in the frame says whose it is).
+    func testEndingANeverWrittenAuthorizationOverRunningWaterClosesAndSettles() async throws {
         let e = try await writeNeverApplied()
-        transport.script(.frame(FakeFrames.active))
-        let back = try await e.finish(binding)
-        XCTAssertFalse(transport.writes.contains(close), "someone else's water is not closed")
-        XCTAssertEqual(back.phase, .writePending)
-        XCTAssertFalse(back.closeSent)
-        XCTAssertNil(back.failure)
-        XCTAssertTrue(back.authorizationNotWritten)
-        XCTAssertEqual(back.notice, .inUseByOther)
-        XCTAssertEqual(ShowerEndFailure(back.notice), .inUseByOther)
-        XCTAssertTrue(gateway.settleFrames.isEmpty)
-        XCTAssertEqual(try vault.showerState()?.phase, .writePending)
+        transport.script(.frame(FakeFrames.active), .frame(consumption))
+        gateway.scriptSettle(.ok(receipt))
+        let done = try await e.finish(binding)
+        XCTAssertEqual(transport.writes.filter { $0 == close }.count, 1, "closed with this record's authorization")
+        XCTAssertEqual(transport.writes.last, ShowerFrames.closeCommand(authorizationID: "001122FF"))
+        XCTAssertEqual(gateway.settleFrames, [consumption], "the close's reply")
+        XCTAssertEqual(gateway.settleBindings, [binding])
+        XCTAssertEqual(done.phase, .done)
+        XCTAssertEqual(done.receipt, receipt)
+    }
 
-        // Once it is free, 结束 ends the record as before: our authorization never ran water.
+    /// Idle at 结束: our authorization never ran water, so the record ends with no charge.
+    func testANeverWrittenAuthorizationReadingIdleEndsWithoutCharge() async throws {
+        let e = try await writeNeverApplied()
         transport.script(.frame(identity))
         let idle = try await e.finish(binding)
         XCTAssertEqual(idle.phase, .idle)
         XCTAssertFalse(transport.writes.contains(close))
+        XCTAssertTrue(gateway.settleFrames.isEmpty)
     }
 
-    /// A probe from Settings that finds water running does not make that water ours either.
-    func testAProbeThatFindsWaterRunningKeepsTheAuthorizationUnwritten() async throws {
+    /// No end data from that close: nothing settled, kept for the check, never closed again.
+    func testANeverWrittenAuthorizationWithBadCloseReplyDoesNotSettle() async throws {
+        for reply in [FakeShowerTransport.Reply.frame(FakeFrames.active), .frame(Data([0x12, 0x34])), .fail(.timedOut)] {
+            reset()
+            let e = try await writeNeverApplied()
+            transport.script(.frame(FakeFrames.active), reply)
+            gateway.scriptSettle(.ok(receipt))
+            let s = try await e.finish(binding)
+            XCTAssertEqual(s.phase, .failed, "\(reply)")
+            XCTAssertEqual(s.failure?.reason.isUnsureClose, true, "\(reply)")
+            XCTAssertTrue(gateway.settleFrames.isEmpty, "\(reply)")
+            await XCTAssertThrowsErrorAsync(try await e.finish(binding)) { XCTAssertEqual($0 as? ShowerEngineError, .notAllowed) }
+            XCTAssertEqual(transport.writes.filter { $0 == close }.count, 1)
+        }
+    }
+
+    /// A probe from Settings that finds water running says so without calling it someone else's:
+    /// the record stays waiting on its write (not the confirmed timer), the automatic check
+    /// leaves it alone, and only `AA` went out.
+    func testAProbeOverANeverWrittenAuthorizationStaysPending() async throws {
         let e = try await writeNeverApplied()
+        let writes = transport.writes.count
         transport.script(.frame(FakeFrames.active))
         let probed = try await e.review(binding)
         XCTAssertEqual(probed.phase, .writePending)
         XCTAssertTrue(probed.authorizationNotWritten)
-        XCTAssertEqual(probed.notice, .inUseByOther, "the probe says whose water it is")
+        XCTAssertEqual(probed.notice, .waterRunning)
+        XCTAssertNil(ShowerEndFailure(probed.notice), "not an end that failed")
         XCTAssertFalse(probed.stateReviewRequired)
-        XCTAssertFalse(transport.writes.contains(close))
-
-        transport.script(.frame(FakeFrames.active))
-        let back = try await e.finish(binding)
-        XCTAssertFalse(transport.writes.contains(close))
-        XCTAssertEqual(back.notice, .inUseByOther)
+        XCTAssertTrue(probed.canFinish)
+        XCTAssertEqual(Array(transport.writes.dropFirst(writes)), [ShowerFrames.probeCommand])
+        XCTAssertFalse(ShowerAutoReview.eligible(probed))
+        await XCTAssertThrowsErrorAsync(try await e.autoReview(binding)) { XCTAssertEqual($0 as? ShowerEngineError, .notAllowed) }
+        XCTAssertTrue(gateway.settleFrames.isEmpty)
     }
 
     /// 再查一次 that finds water running on such a session once it showed stopped: it stays
