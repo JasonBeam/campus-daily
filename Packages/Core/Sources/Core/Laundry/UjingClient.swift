@@ -204,7 +204,7 @@ public struct UjingClient: LaundryOrdering {
         var price: Money?
         if let p = d["payPrice"], !p.isNull {
             switch p {
-            case .int(let i): price = Money(fen: Int(i) * 100)
+            case .int(let i): price = Money(wholeYuan: i)
             case .double(let v): price = Money(yuanNumber: v)
             case .string(let s): price = Money(yuanString: s)
             default: price = nil

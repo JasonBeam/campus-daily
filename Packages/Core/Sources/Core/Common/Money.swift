@@ -17,6 +17,13 @@ public struct Money: Hashable, Comparable, Sendable, Codable, CustomStringConver
         self.fen = NSDecimalNumber(decimal: rounded).intValue
     }
 
+    /// A JSON integer in yuan. nil when it is too large to hold as fen.
+    public init?(wholeYuan value: Int64) {
+        let (fen, overflow) = value.multipliedReportingOverflow(by: 100)
+        guard !overflow, let fen = Int(exactly: fen) else { return nil }
+        self.fen = fen
+    }
+
     /// Parses a yuan string such as "7.9", ".06", "-1.50", "213.38" (POSIX, no grouping).
     public init?(yuanString raw: String) {
         let text = raw.trimmingCharacters(in: .whitespaces)

@@ -259,6 +259,10 @@ final class UjingClientTests: XCTestCase {
         data["payPrice"] = .string("free")
         server.serve(ok.withResponseBody(.object(["code": .int(0), "data": .object(data)])), times: 1)
         await L.expectError(.malformed(.ujing, "data.payPrice")) { _ = try await c.order(L.orderID) }
+        // Whole yuan too large to hold as fen: malformed, not a crash.
+        data["payPrice"] = .int(.max / 50)
+        server.serve(ok.withResponseBody(.object(["code": .int(0), "data": .object(data)])), times: 1)
+        await L.expectError(.malformed(.ujing, "data.payPrice")) { _ = try await c.order(L.orderID) }
         let before = server.requests.count
         await L.expectError(.badRequest(.ujing)) { _ = try await c.order("../x") }
         XCTAssertEqual(server.requests.count, before)

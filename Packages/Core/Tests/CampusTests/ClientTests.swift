@@ -241,9 +241,12 @@ final class EcyktBalanceTests: XCTestCase {
         let ok = try FixtureLoader.load("ecykt/getUserBalance-ok")
         let server = StubServer()
         server.serve(T.editingData(ok) { $0 = .string("abc") }, times: 1)
+        // Whole yuan too large to hold as fen: malformed, not a crash.
+        server.serve(T.editingData(ok) { $0 = .int(.max / 50) }, times: 1)
         server.respond("POST", "https://ecykt.gdbtu.edu.cn/ykt-mini/scanpay/getUserBalance", body: Data(#"{"code":2,"msg":"卡已挂失"}"#.utf8), times: 1)
         server.respond("POST", "https://ecykt.gdbtu.edu.cn/ykt-mini/scanpay/getUserBalance", status: 401, body: Data())
         let c = EcyktClient(http: server.makeClient())
+        await T.expectError(.malformed(.ecykt, "data")) { _ = try await c.balance(T.session(), custid: T.custid) }
         await T.expectError(.malformed(.ecykt, "data")) { _ = try await c.balance(T.session(), custid: T.custid) }
         await T.expectError(.rejected(.ecykt, code: "2", message: "卡已挂失")) { _ = try await c.balance(T.session(), custid: T.custid) }
         // A bare 401 is a gateway's, not the card system's word on the login (that is HTTP 200 code -1).

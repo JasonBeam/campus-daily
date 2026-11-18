@@ -82,7 +82,7 @@ public struct EcyktClient: Sendable {
         let data = try await call("/scanpay/getUserBalance", s, validating: false, extra: ["custid": .string(custid)])
         let money: Money?
         switch data {
-        case .int(let i): money = Money(fen: Int(i) * 100)
+        case .int(let i): money = Money(wholeYuan: i)
         case .double(let d): money = Money(yuanNumber: d)
         case .string(let t): money = Money(yuanString: t)
         default: money = nil

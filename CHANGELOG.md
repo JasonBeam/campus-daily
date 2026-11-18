@@ -70,6 +70,7 @@
 
 ### Fixed
 
+- Treat a card balance or a laundry price sent as a whole number too large to hold as an unreadable reply. The conversion to fen overflowed, which stops the app.
 - Delete a TestFlight debug log left on the phone when 重置校日常 or 清除调试记录 runs on a launch where the app could not tell what kind of install it is (StoreKit gave no answer). Such a launch keeps no log, and the clear did nothing, so the older log stayed.
 - Keep the 「还在计时」 shower reminder when the app opens during a shower. At each launch the reminders were set again before the shower record was read, which counted as “no shower”: the pending reminder was removed (and set again a moment later) and one already shown was taken off Notification Center.
 - Stop offering 清除 for a laundry order that could not be confirmed when U净 does report an order on the machine but with an id the app cannot use. It was treated as “no order found”, which is the one case where the record may be cleared by hand; it now says 「U净 回的订单对不上，先去 U净 App 里看看。」 and keeps the record.
