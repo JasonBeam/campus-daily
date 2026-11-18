@@ -26,7 +26,8 @@ public struct SchoolRefreshStack: Sendable {
                                 diagnostic: diagnostic,
                                 createsLoginDeviceID: role != "widget", debugLog: debugLog,
                                 profileLock: lease ?? UnsharedLock())
-        refresher = SnapshotRefresher(school: session, store: SharedSnapshotStore(store: store, didWrite: didWriteSnapshot),
+        refresher = SnapshotRefresher(school: session, store: SharedSnapshotStore(store: store, didWrite: didWriteSnapshot,
+                                                                                  diagnostic: diagnostic),
                                       lease: lease,
                                       leaseWait: leaseWait, diagnostic: diagnostic)
     }

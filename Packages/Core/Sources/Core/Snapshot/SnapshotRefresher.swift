@@ -153,6 +153,21 @@ public actor SnapshotRefresher {
         try store.saveSnapshot(SchoolSnapshotReducer.reduce(latest(), .signedOut))
     }
 
+    /// The previous person's snapshot is still stored under the stale mark (its clean-up could
+    /// not write, or the app was killed before it did): replaced by the empty one and the mark
+    /// dropped, without the network, at launch, in the foreground and before each widget
+    /// timeline. The check, the write and the drop are one step inside the lease file's lock
+    /// (whoever holds the lease), so it never lands between another owner's compare and write;
+    /// the lease itself is neither taken nor waited for. Without a file to lock (no container
+    /// for it) nothing is done: the mark alone keeps the numbers hidden until the next write.
+    public nonisolated func finishPendingClear() {
+        guard let lease, lease.isAvailable else { return }
+        let store = store
+        do { try lease.locked { try store.finishPendingClear() } } catch {
+            diagnostic("snapshot.pendingClearFailed" + ((error as? StorageError).map { " status=\($0.status)" } ?? ""))
+        }
+    }
+
     /// Sign-out and reset, before anything is deleted: the other process's read in progress
     /// loses the lease, so its next step (minting, the password login, saving the portal
     /// token, writing the session back) stops instead of writing a credential back. The file

@@ -24,6 +24,9 @@ public struct StoredSchoolVault: SchoolVault {
     public func loginDeviceID() throws -> String? { try store.readJSON(DeviceBox.self, .schoolDevice)?.id }
     public func saveLoginDeviceID(_ id: String?) throws { try store.writeJSON(id.map(DeviceBox.init), .schoolDevice) }
 
+    private struct StaleBox: Codable { var since: Date }
+    public func markSnapshotStale(since: Date) throws { try store.writeJSON(StaleBox(since: since), .sharedSnapshotStale) }
+
     public func credentialBytes() throws -> [Data?] {
         [try store.read(.schoolEcykt), try store.read(.schoolPortal), try store.read(.schoolPassword)]
     }

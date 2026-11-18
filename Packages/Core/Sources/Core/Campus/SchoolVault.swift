@@ -17,6 +17,9 @@ public protocol SchoolVault: Sendable {
     /// absent): what a login compares before it writes over them. Throws only when the store
     /// can't be read, never because an item no longer decodes.
     func credentialBytes() throws -> [Data?]
+    /// Hides the shared snapshot from every reader until a snapshot write goes through
+    /// (`SharedSnapshotStore`): someone else is signing in, or the person is signing out.
+    func markSnapshotStale(since: Date) throws
 }
 
 public extension SchoolVault {

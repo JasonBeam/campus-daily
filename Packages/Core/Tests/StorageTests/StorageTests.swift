@@ -104,7 +104,7 @@ final class KeychainStoreTests: XCTestCase {
         XCTAssertEqual(StoreKey.schoolEcykt.accessibility, .afterFirstUnlockThisDeviceOnly)
         XCTAssertEqual(StoreKey.allCases.filter(\.isShared),
                        [.schoolPortal, .schoolEcykt, .schoolProfile, .schoolPassword, .schoolDevice, .sharedSnapshot, .sharedReminderLines,
-                        .sharedCredentialLog, .sharedResetMarker])
+                        .sharedCredentialLog, .sharedResetMarker, .sharedSnapshotStale])
         XCTAssertEqual(StoreKey.schoolPassword.accessibility, .afterFirstUnlockThisDeviceOnly)
         XCTAssertEqual(PreferenceKey.reminder("card"), "xrc.reminder.card")
         XCTAssertEqual(SharedSnapshotStore.widgetKind, "XiaoRiChangBalances")
@@ -125,7 +125,8 @@ final class KeychainStoreTests: XCTestCase {
         XCTAssertEqual(StoreKey.showerRetained.service, "org.zaxh.xiaorichang.water.retained.v1")
         XCTAssertEqual(StoreKey.laundryHistory.service, "org.zaxh.xiaorichang.laundry.history.v1")
         XCTAssertEqual(StoreKey.laundryHistorySalt.service, "org.zaxh.xiaorichang.laundry.historySalt.v1")
-        XCTAssertEqual(StoreKey.allCases.count, 16, "a new item needs its stored name pinned here")
+        XCTAssertEqual(StoreKey.sharedSnapshotStale.service, "org.zaxh.xiaorichang.shared.snapshotStale.v1")
+        XCTAssertEqual(StoreKey.allCases.count, 17, "a new item needs its stored name pinned here")
     }
 
     /// The finished-order list and its salt stay in the app's private group: the widget can't read them.
@@ -270,7 +271,7 @@ final class KeychainStoreTests: XCTestCase {
     /// changes what the widget can see or when an item can be read; update docs/privacy.md too.
     func testEveryItemsGroupAndAccessibilityArePinned() throws {
         let shared: Set<StoreKey> = [.schoolPortal, .schoolEcykt, .schoolProfile, .schoolPassword, .schoolDevice,
-                                     .sharedSnapshot, .sharedReminderLines, .sharedCredentialLog, .sharedResetMarker]
+                                     .sharedSnapshot, .sharedReminderLines, .sharedCredentialLog, .sharedResetMarker, .sharedSnapshotStale]
         let kc = appKeychain()
         let store = appStore(kc)
         for k in StoreKey.allCases {

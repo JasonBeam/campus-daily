@@ -831,6 +831,7 @@ The debug log notes only `topUp.weChat opened=yes|no`.
 | credential-lifetime lines from older builds (deleted at launch, never written) | Keychain `shared.credentialLog` | same | **yes** |
 | refresh lease (`{owner, expiresAt}`, one school read at a time across processes) | file `refresh.lease` in the App Group container | until first unlock | **yes** (the widget takes it for its own read) |
 | reset-in-progress marker (start time) | Keychain `shared.resetMarker` | same | **yes** (any process that can start a shower or a laundry order checks it) |
+| stale-snapshot mark (a time only; set by a sign-in of anyone but the same person, and by a sign-out) | Keychain `shared.snapshotStale` | same | **yes** (while it is there the snapshot reads as absent; the next snapshot write, or the offline clear at launch, foreground and each widget timeline, drops it) |
 | UI prefs, reminder toggles, de-dupe state | UserDefaults (standard); most keys prefixed `xrc.`, not `didSeeQuickSetup`, `laundryDoneShownOrder`, `laundryLastProgram.*` | – | no |
 | theme (`暖橙` / `清爽`) | UserDefaults of the App Group (`ThemePreference`, key `xrc.theme`; this process's own when there is no group) | – | **yes** (the widget and Live Activities draw in it) |
 | imported hot-water config | file `Application Support/Water/imported.waterconfig`, folder excluded from backup | until first unlock | no |
