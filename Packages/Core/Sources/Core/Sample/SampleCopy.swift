@@ -13,9 +13,11 @@ public enum SampleCopy {
     /// What VoiceOver says of the entry while it is shut, before `entryRefused`.
     public static let entryUnavailable = "不可用"
     /// The bar's text, on its left.
-    public static let barText = "示例数据，不是你的账号"
+    public static let barText = "示例，不是你的账号"
     /// The bar's button: leaves the sample, back to the login step.
     public static let barAction = "去登录"
+    /// The bar's other button: 「选一个样子」 over the sample; the look picked is kept after it.
+    public static let barLook = "换个样子"
     /// VoiceOver reads the bar as one element with the button as its action.
     public static let barSpoken = barText + "。" + barAction
     /// What a blocked action (money, Bluetooth, binding, sending, resetting) says instead.

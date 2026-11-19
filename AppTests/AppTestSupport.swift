@@ -118,21 +118,26 @@ enum Fixture {
     let sample: SampleMode
     let graph: CampusGraph
     let window: UIWindow
+    /// 「选一个样子」 over the live graph.
+    let picker: LookPicker
     private(set) var navigator: ClearNavigator?
 
     /// `debugLog`: where the pages' `nav.open` lines go (the sample's own services keep none).
-    init(theme: AppTheme, seenSetup: Bool, debugLog: any DebugLogSink = NoDebugLog()) {
+    /// `pickedLook`: 「选一个样子」 was answered (so a new user's root opens its setup at once).
+    init(theme: AppTheme, seenSetup: Bool, pickedLook: Bool = true, debugLog: any DebugLogSink = NoDebugLog()) {
         let http = SampleHTTPClient()
         let services = CampusServices(kind: .sample, secureStore: InMemorySecureStore(), defaults: SampleDefaults(),
                                       sharedPreferences: SampleDefaults(), schoolHTTP: http, showerHTTP: http, laundryHTTP: http,
                                       feedbackHTTP: http, showerTransport: SampleShowerTransport(), leaseFile: nil,
                                       applicationSupport: nil, sharedDidChange: {}, debugLog: debugLog)
         services.defaults.set(seenSetup, forKey: QuickSetupSeen.key)
+        if pickedLook { LookPick.picked(in: services.defaults) }
         graph = CampusGraph.sample(on: services, theme: theme)
+        picker = LookPicker(live: graph.theme, liveDefaults: services.defaults)
         sample = SampleMode(gate: LiveShowerGate(record: { .known(.idle) }))
         let scene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
         window = scene.map { UIWindow(windowScene: $0) } ?? UIWindow(frame: UIScreen.main.bounds)
-        let root = HarnessScene(graph: graph, sample: sample, alerts: SampleAlertStack()) { [weak self] in self?.navigator = $0 }
+        let root = HarnessScene(graph: graph, sample: sample, alerts: SampleAlertStack(), picker: picker) { [weak self] in self?.navigator = $0 }
         window.rootViewController = UIHostingController(rootView: root)
         window.makeKeyAndVisible()
     }
@@ -155,6 +160,7 @@ private struct HarnessScene: View {
     let graph: CampusGraph
     let sample: SampleMode
     let alerts: SampleAlertStack
+    let picker: LookPicker
     let navigatorShown: (ClearNavigator) -> Void
 
     var body: some View {
@@ -165,6 +171,7 @@ private struct HarnessScene: View {
                 live
             }
         }
+        .modifier(LookPickerHost(picker: picker))
         .environment(sample).environment(alerts)
     }
 

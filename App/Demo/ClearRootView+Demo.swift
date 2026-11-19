@@ -127,6 +127,7 @@ extension ClearRootView {
             if record.showerOver { navigator.demo?.shower = .stopped }
             shower.showDemoPage(record)
             HomeView.ShowerPageDemo.apply(name, to:shower)
+            if HomeView.ShowerPageDemo.block(name) == .notConfigured { navigator.demo?.shower = .unconfigured }
             if name == "sh-endfail" { shower.page.endFailed = .noConnection }
             if name == "sh-stopped-busy-rechecking" { shower.page.rechecking = true }
             if let records = HomeView.ShowerPageDemo.records(name) {
@@ -170,7 +171,6 @@ extension ClearRootView {
         switch step {
         case .login: .account
         case .dorm: .dorm
-        case .water: .controller
         case .done: nil
         }
     }

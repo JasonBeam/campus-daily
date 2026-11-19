@@ -11,6 +11,9 @@ public enum ShowerPhase: String, Sendable, Codable, CaseIterable {
 /// What the BLE side can report. Codable so a failure can be stored and shown after relaunch.
 public enum ShowerDeviceError: String, Error, Sendable, Codable, Equatable {
     case bluetoothOff
+    /// The app may not use Bluetooth (denied or restricted in Settings), as opposed to the radio
+    /// being off. A build that doesn't know it reads it as no device error (`try?`).
+    case unauthorized
     case notFound
     case ambiguous
     case timedOut

@@ -28,6 +28,7 @@ extension ClearHomeView {
             ClearShowerTileStatus(status:status)
         }
         .accessibilityIdentifier("clearShowerTile")
+        .lookSignature()
     }
 
     func laundryTile(_ data: HomeData) -> some View {

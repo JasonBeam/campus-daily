@@ -80,6 +80,8 @@ public enum ShowerDiagnostic: Sendable, Equatable {
     /// The automatic check's run met an effect other than a probe, a release or a note: it was
     /// not run (`ShowerEngine.readOnlyAllows`).
     case autoReviewDroppedEffect
+    /// The start was taken back (`ShowerStartPermit.revoke`) before its authorize request left.
+    case startInvalidated
     case settleManualRetry(Int)
     case resolvedManually(ShowerPhase)
 
@@ -96,6 +98,7 @@ public enum ShowerDiagnostic: Sendable, Equatable {
         case .finishWriteNeverApplied: return "finish.writeNeverApplied"
         case .settleHeldAfterUnconfirmedClose: return "settle.heldAfterUnconfirmedClose"
         case .autoReviewDroppedEffect: return "autoReview.droppedEffect"
+        case .startInvalidated: return "start.invalidated"
         case .settleManualRetry(let n): return "settle.manualRetry#\(n)"
         case .resolvedManually(let phase): return "resolvedManually.\(phase.rawValue)"
         }

@@ -32,8 +32,14 @@ struct VerifiedShowerDevice {
     }
 }
 
+/// A link the read-only 连接检查 can also count nearby controllers on (`ShowerModel.inspectBluetooth`).
+protocol ShowerInspectingTransport: ShowerTransport {
+    /// How many controllers carry `bleName` nearby; reads only.
+    func inspect(bleName: String, remembered: String?) async throws -> Int
+}
+
 // CoreBluetooth delegates are delivered on the explicit main queue below.
-@MainActor final class BluetoothTransport: NSObject, ShowerTransport, @preconcurrency CBCentralManagerDelegate, @preconcurrency CBPeripheralDelegate {
+@MainActor final class BluetoothTransport: NSObject, ShowerInspectingTransport, @preconcurrency CBCentralManagerDelegate, @preconcurrency CBPeripheralDelegate {
     private var manager: CBCentralManager!
     private var peripheral: CBPeripheral?
     private var retiring: CBPeripheral?
@@ -75,11 +81,26 @@ struct VerifiedShowerDevice {
         timer?.cancel(); timer = nil
         waiter.complete(result)
     }
+    /// The system's Bluetooth alert, for a start the user confirmed (`BluetoothAccess.request`).
+    /// Creating the manager is what shows the alert; this returns once it was answered (the
+    /// authorization left `notDetermined`), or with what is known when the task is cancelled.
+    /// It never connects or scans.
+    func requestAccess() async -> CBManagerAuthorization {
+        guard CBManager.authorization == .notDetermined else { return CBManager.authorization }
+        if manager == nil { manager = CBCentralManager(delegate: self, queue: .main) }
+        while CBManager.authorization == .notDetermined, !Task.isCancelled {
+            try? await Task.sleep(for: .milliseconds(200))
+        }
+        return CBManager.authorization
+    }
+
     private func prepare(bleName: String) async throws {
         if manager == nil { manager = CBCentralManager(delegate: self, queue: .main) }
         if manager.state == .unknown || manager.state == .resetting {
             try await wait("power") {}
         }
+        // Denied or restricted is not the radio being off: the line says where to change it.
+        if manager.state == .unauthorized { throw ShowerDeviceError.unauthorized }
         guard manager.state == .poweredOn else { throw ShowerDeviceError.bluetoothOff }
         try await awaitRetired()
         targetName = bleName
@@ -225,6 +246,7 @@ struct VerifiedShowerDevice {
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
         if step == "power" {
             if central.state == .poweredOn { complete(.success(())) }
+            else if central.state == .unauthorized { complete(.failure(ShowerDeviceError.unauthorized)) }
             else if central.state != .unknown && central.state != .resetting { complete(.failure(ShowerDeviceError.bluetoothOff)) }
         } else if central.state != .poweredOn { complete(.failure(ShowerDeviceError.bluetoothOff)) }
     }

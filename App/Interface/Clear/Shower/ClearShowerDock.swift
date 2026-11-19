@@ -13,10 +13,14 @@ struct ClearShowerDock: View {
     /// Nil: no session to show (ready to start).
     let phase: ShowerPagePhase?
     let live: Bool
+    /// At the end of the page's scrolling content (accessibility sizes) instead of pinned.
+    var inline = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// 开始洗澡 was tapped on the refused face; cleared when the phase moves.
     @State private var retryTapped = false
+    /// The app is still loading what a start needs, for longer than `ShowerStartBlock.spinnerDelay`.
+    @State private var launchSpinner = false
 
     private var flow: ShowerPageFlow { shower.page }
 
@@ -38,9 +42,31 @@ struct ClearShowerDock: View {
         VStack(spacing:10) {
             switch phase {
             case nil:
-                primary(live && shower.busy ? ClearShowerText.busyButton : ClearShowerText.start, symbol:"arrow.up.right",
-                        spinning:live && shower.busy, enabled:mayStart, action:start)
-                note(ClearShowerText.startNote)
+                let block = startBlock
+                let checking = flow.checking
+                primary(checking ? FirstCheckText.checkingButton : live && shower.busy ? ClearShowerText.busyButton : ClearShowerText.start,
+                        symbol:"arrow.up.right", spinning:checking || live && shower.busy,
+                        spinnerOnly:launchSpinner && block == .launching, enabled:mayStart && !checking, action:start)
+                    .accessibilityHint(block?.clear ?? "")
+                    .accessibilityIdentifier("startWater")
+                    .modifier(ShowerLaunchSpinner(launching:block == .launching, shown:$launchSpinner))
+                if checking {
+                    // The headline block says what the check does; the button spins.
+                    EmptyView()
+                } else if let failure = flow.checkFailure {
+                    FirstCheckFailureLine(failure:failure, clear:true)
+                } else if let reason = block?.clear {
+                    ShowerStartReason(text:reason) {
+                        ForEach(block?.links(clear:true) ?? [], id:\.self) { link in
+                            NavigationLink(value:link == .settings ? ClearRoute.account : ClearRoute.dorm) {
+                                ShowerStartReasonLinkLabel(text:ShowerStartBlock.linkTitle(link, clear:true), clear:true)
+                            }
+                            .buttonStyle(RowPressStyle())
+                        }
+                    }
+                } else {
+                    note(ClearShowerText.startNote)
+                }
             case .connecting?:
                 primary(ClearShowerText.busyButton, spinning:true, enabled:false) {}
                 note(ClearShowerText.startNote)
@@ -83,7 +109,7 @@ struct ClearShowerDock: View {
                 primary(face.title, symbol:"arrow.up.right", spinning:face.spinning, enabled:face.enabled) {
                     retryTapped = true
                     // A demo shows the tapped look and starts nothing.
-                    if live { shower.pageEvent(.retryTapped) }
+                    if live { shower.tapStart(.retry) }
                 }
                 secondary(ClearShowerText.deniedClose, enabled:!retryTapped) { close(.closeTapped) }
             case .done?, .denied?:
@@ -95,16 +121,17 @@ struct ClearShowerDock: View {
                 }
                 if face.holdsRetrySlot { secondary(ClearShowerText.deniedClose, enabled:false) {}.hidden() }
             case .connectFailed?:
-                primary(ClearShowerText.start, symbol:"arrow.up.right", enabled:!flow.starting) { shower.pageEvent(.retryTapped) }
+                primary(ClearShowerText.start, symbol:"arrow.up.right", enabled:!flow.starting) { shower.tapStart(.retry) }
                 secondary("取消", enabled:true) { close(.closeTapped) }
             }
         }
         .animation(reduceMotion ? nil : .easeInOut(duration:0.2), value:phase)
         .onChange(of:phase) { retryTapped = false }
+        .firstCheckExplainer(shower, clear:true)
         .frame(maxWidth:560)
-        .padding(.horizontal,20).padding(.vertical,12)
+        .padding(.horizontal, inline ? 0 : 20).padding(.vertical, inline ? 0 : 12)
         .frame(maxWidth:.infinity)
-        .background(NativeTheme.background)
+        .background(inline ? Color.clear : NativeTheme.background)
     }
 
     // MARK: Actions
@@ -112,8 +139,18 @@ struct ClearShowerDock: View {
     private var platformMissing: Bool { live && shower.platformMissing }
 
     private var mayStart: Bool {
-        if !live { return true }
+        if !live { return startBlock == nil }
         return shower.mayStart
+    }
+
+    /// Why 开始洗澡 is greyed out (a demo's, DEBUG).
+    private var startBlock: ShowerStartBlock? {
+        if live { return shower.startBlock }
+        #if DEBUG
+        return shower.demoStartBlock
+        #else
+        return nil
+        #endif
     }
 
     private func start() {
@@ -122,7 +159,7 @@ struct ClearShowerDock: View {
         #if DEBUG
         if !live { shower.showDemoPage(HomeView.ShowerPageDemo.record("sh-connect")); return }
         #endif
-        shower.pageEventShowingPage(.startTapped)
+        shower.tapStart(.page, showingPage:true)
     }
 
     /// From the page brought up or, once it went down, as 暖橙's 热水洗澡 screen does.
@@ -135,7 +172,7 @@ struct ClearShowerDock: View {
         #if DEBUG
         if !live { shower.showDemoPage(HomeView.ShowerPageDemo.record("sh-connect")); return }
         #endif
-        if flow.presented { shower.pageEvent(.startNextTapped) } else { shower.pageEventShowingPage(.startNextTapped) }
+        shower.tapStart(.page, kind:.next, showingPage:!flow.presented)
     }
 
     private func close(_ event: ShowerPageEvent) {
@@ -145,22 +182,28 @@ struct ClearShowerDock: View {
 
     // MARK: Pieces
 
-    private func primary(_ title: String, symbol: String? = nil, spinning: Bool = false, centered: Bool = false, enabled: Bool,
-                         action: @escaping () -> Void) -> some View {
+    private func primary(_ title: String, symbol: String? = nil, spinning: Bool = false, spinnerOnly: Bool = false, centered: Bool = false,
+                         enabled: Bool, action: @escaping () -> Void) -> some View {
         Button(action:action) {
             HStack {
                 // Tinted by the style: white on blue, grey while disabled.
-                if centered { Spacer(minLength:0) }
-                if spinning { ProgressView().controlSize(.small) }
-                Text(title).contentTransition(.opacity)
-                Spacer(minLength:centered ? 0 : nil)
-                if let symbol { Image(systemName:symbol).accessibilityHidden(true) }
+                if spinnerOnly {
+                    // Still loading: the spinner only, without words.
+                    Spacer(minLength:0); ProgressView().controlSize(.small); Spacer(minLength:0)
+                } else {
+                    if centered { Spacer(minLength:0) }
+                    if spinning { ProgressView().controlSize(.small) }
+                    Text(title).contentTransition(.opacity)
+                    Spacer(minLength:centered ? 0 : nil)
+                    if let symbol { Image(systemName:symbol).accessibilityHidden(true) }
+                }
             }
             .padding(.horizontal,18).frame(minHeight:52)
             .contentShape(Rectangle())
         }
         .buttonStyle(ClearShowerButtonStyle())
         .disabled(!enabled)
+        .accessibilityLabel(title)
     }
 
     private func secondary(_ title: String, enabled: Bool, action: @escaping () -> Void) -> some View {

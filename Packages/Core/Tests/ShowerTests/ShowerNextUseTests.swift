@@ -62,7 +62,7 @@ final class ShowerNextUseTests: XCTestCase {
             XCTAssertTrue(before.canStartNext, "\(old.phase) \(String(describing: old.failure?.reason))")
             transport.script(.frame(identity), .frame(FakeFrames.ack))
             gateway.scriptAuthorize(.ok(next))
-            let s = try await e.startNext(binding)
+            let s = try await e.startNext(binding, permit: ShowerStartPermit())
 
             XCTAssertEqual(try vault.retainedShowers(), [old], "kept as it was")
             XCTAssertNil(try vault.retainedShowers().first?.receipt)
@@ -88,7 +88,7 @@ final class ShowerNextUseTests: XCTestCase {
         let e = try engine()
         transport.script(.frame(identity), .frame(FakeFrames.ack))
         gateway.scriptAuthorize(.ok(next))
-        _ = try await e.startNext(binding)
+        _ = try await e.startNext(binding, permit: ShowerStartPermit())
 
         transport.script(.frame(FakeFrames.active), .frame(consumption))
         gateway.scriptSettle(.ok(ShowerReceipt(amount: Money(fen: 42))))
@@ -106,7 +106,7 @@ final class ShowerNextUseTests: XCTestCase {
         let e = try engine()
         transport.script(.frame(identity), .frame(FakeFrames.ack))
         gateway.scriptAuthorize(.ok(next))
-        _ = try await e.startNext(binding)
+        _ = try await e.startNext(binding, permit: ShowerStartPermit())
         // That shower is stopped with the button too: 结束 finds the controller idle.
         transport.script(.frame(identity))
         let second = try await e.finish(binding)
@@ -115,7 +115,7 @@ final class ShowerNextUseTests: XCTestCase {
         let other = ShowerAuthorization(machineID: machine, payload: Data(repeating: 7, count: 15), authorizationID: "0A0B0C0D")
         transport.script(.frame(identity), .frame(FakeFrames.ack))
         gateway.scriptAuthorize(.ok(other))
-        _ = try await e.startNext(binding)
+        _ = try await e.startNext(binding, permit: ShowerStartPermit())
         XCTAssertEqual(try vault.retainedShowers(), [first, second.persistable])
         XCTAssertTrue(gateway.settleFrames.isEmpty)
     }
@@ -130,7 +130,7 @@ final class ShowerNextUseTests: XCTestCase {
             let e = try engine()
             let before = await e.state
             XCTAssertFalse(before.canStartNext)
-            do { _ = try await e.startNext(binding); XCTFail("refused") }
+            do { _ = try await e.startNext(binding, permit: ShowerStartPermit()); XCTFail("refused") }
             catch { XCTAssertEqual(error as? ShowerEngineError, .notAllowed) }
             XCTAssertTrue(transport.writes.isEmpty)
             XCTAssertTrue(gateway.authorizeFrames.isEmpty)
@@ -141,7 +141,7 @@ final class ShowerNextUseTests: XCTestCase {
         try vault.saveShowerState(awaitingCheck[0])
         let e = try engine()
         var moved = binding; moved.machineId = "99999999"
-        do { _ = try await e.startNext(moved); XCTFail("refused") }
+        do { _ = try await e.startNext(moved, permit: ShowerStartPermit()); XCTFail("refused") }
         catch { XCTAssertEqual(error as? ShowerEngineError, .wrongBinding) }
         XCTAssertTrue(transport.writes.isEmpty)
         XCTAssertEqual(try vault.retainedShowers(), [])
@@ -154,7 +154,7 @@ final class ShowerNextUseTests: XCTestCase {
         try vault.saveShowerState(old)
         let e = try engine()
         transport.script(.frame(FakeFrames.active))
-        let s = try await e.startNext(binding)
+        let s = try await e.startNext(binding, permit: ShowerStartPermit())
 
         XCTAssertEqual(s.phase, old.phase)
         XCTAssertEqual(s.startedAt, old.startedAt)
@@ -172,7 +172,7 @@ final class ShowerNextUseTests: XCTestCase {
         let old = awaitingCheck[0]
         try vault.saveShowerState(old)
         transport.script(.frame(FakeFrames.active))
-        _ = try await engine().startNext(binding)
+        _ = try await engine().startNext(binding, permit: ShowerStartPermit())
 
         let reopened = try engine()
         let restored = await reopened.state
@@ -192,7 +192,7 @@ final class ShowerNextUseTests: XCTestCase {
 
         transport.script(.frame(identity), .frame(FakeFrames.ack))
         gateway.scriptAuthorize(.ok(next))
-        let s = try await reopened.startNext(binding)
+        let s = try await reopened.startNext(binding, permit: ShowerStartPermit())
         XCTAssertEqual(try vault.retainedShowers(), [kept])
         XCTAssertEqual(s.phase, .running)
         XCTAssertFalse(s.waitingForRelease)
@@ -227,7 +227,7 @@ final class ShowerNextUseTests: XCTestCase {
             let task = Task<Void, Never> {
                 for await _ in gate { break }
                 if way == .connect { box.cancel() }
-                _ = try? await e.startNext(b)
+                _ = try? await e.startNext(b, permit: ShowerStartPermit())
             }
             box.set(task)
             open.yield(); open.finish()
@@ -253,7 +253,7 @@ final class ShowerNextUseTests: XCTestCase {
         try vault.saveShowerState(old)
         let e = try engine()
         transport.script(.frame(FakeFrames.identity("99999999")))
-        let s = try await e.startNext(binding)
+        let s = try await e.startNext(binding, permit: ShowerStartPermit())
         XCTAssertEqual(s.notice, .wrongDevice)
         XCTAssertEqual(try vault.showerState(), old)
         XCTAssertEqual(try vault.retainedShowers(), [])
@@ -266,7 +266,7 @@ final class ShowerNextUseTests: XCTestCase {
         try vault.saveShowerState(old)
         let e = try engine()
         transport.scriptConnect(.failure(.notFound))
-        let s = try await e.startNext(binding)
+        let s = try await e.startNext(binding, permit: ShowerStartPermit())
         XCTAssertEqual(s.notice, .device(.notFound))
         XCTAssertEqual(try vault.showerState(), old)
         XCTAssertEqual(try vault.retainedShowers(), [])
@@ -282,7 +282,7 @@ final class ShowerNextUseTests: XCTestCase {
             vault.failSave = !keepFails
             let e = try engine()
             transport.script(.frame(identity))
-            do { _ = try await e.startNext(binding); XCTFail("storage error") }
+            do { _ = try await e.startNext(binding, permit: ShowerStartPermit()); XCTFail("storage error") }
             catch { XCTAssertEqual(error as? ShowerEngineError, .storage) }
             let blocked = await e.storageBlocked
             XCTAssertTrue(blocked)
@@ -304,7 +304,7 @@ final class ShowerNextUseTests: XCTestCase {
             let e = try engine()
             transport.script(.frame(identity))
             gateway.scriptAuthorize(.fail(failure))
-            let s = try await e.startNext(binding)
+            let s = try await e.startNext(binding, permit: ShowerStartPermit())
             XCTAssertEqual(try vault.retainedShowers(), [old])
             XCTAssertEqual(gateway.authorizeFrames.count, 1)
             XCTAssertTrue(gateway.settleFrames.isEmpty)
@@ -335,7 +335,7 @@ final class ShowerNextUseTests: XCTestCase {
         let e = try engine()
         transport.script(.frame(identity), .frame(FakeFrames.ack))
         gateway.scriptAuthorize(.ok(next))
-        let s = try await e.startNext(binding)
+        let s = try await e.startNext(binding, permit: ShowerStartPermit())
         let blocked = await e.storageBlocked
         XCTAssertFalse(blocked)
         XCTAssertEqual(s.phase, .running)
@@ -362,7 +362,7 @@ final class ShowerNextUseTests: XCTestCase {
             let e = try engine()
             transport.script(.frame(identity), .frame(FakeFrames.ack))
             gateway.scriptAuthorize(.ok(next))
-            let s = try await e.startNext(binding)
+            let s = try await e.startNext(binding, permit: ShowerStartPermit())
             XCTAssertEqual(try vault.retainedShowers(), [saved])
             XCTAssertEqual(s.phase, .running)
             XCTAssertGreaterThan(try XCTUnwrap(s.startedAt), try XCTUnwrap(saved.startedAt))

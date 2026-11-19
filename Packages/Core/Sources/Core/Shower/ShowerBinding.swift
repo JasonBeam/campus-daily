@@ -37,12 +37,24 @@ public struct ShowerBinding: Sendable, Equatable, Codable, CustomStringConvertib
     public var machineName: String?
     /// CoreBluetooth identifier of the controller last verified by its identity frame.
     public var peripheralID: String?
+    /// When a start (or the manual 核对) first read this machine's own number from the controller.
+    /// Only chooses words (the first start says 「正在核对水控」 and may explain itself): every
+    /// start still reads the number before it asks for anything (`ShowerEngine.start`). Nil on
+    /// bindings saved before it was kept, and a remembered `peripheralID` never stands in for it.
+    public var matchedAt: Date?
 
     public init(studentId: String, schoolId: String, machineId: String, roomId: String, roomLabel: String,
-                machineName: String? = nil, peripheralID: String? = nil) {
+                machineName: String? = nil, peripheralID: String? = nil, matchedAt: Date? = nil) {
         self.studentId = studentId; self.schoolId = schoolId; self.machineId = machineId.uppercased()
         self.roomId = roomId; self.roomLabel = roomLabel; self.machineName = machineName
-        self.peripheralID = peripheralID
+        self.peripheralID = peripheralID; self.matchedAt = matchedAt
+    }
+
+    /// The same person in the same dorm at the same machine: what a start was tapped for. The
+    /// controller remembered for it and the matched marker may change in between.
+    public func sameIdentity(_ other: ShowerBinding?) -> Bool {
+        guard let other else { return false }
+        return studentId == other.studentId && schoolId == other.schoolId && machineId == other.machineId && roomId == other.roomId
     }
     public var description: String { "WaterBinding(<redacted>, room: \(roomLabel))" }
 

@@ -1,7 +1,7 @@
 import SwiftUI
 import Core
 
-/// 高级 → 「连接检查」 and 「热水排查」: read-only Bluetooth check of the dorm controller and the
+/// 高级 → 「核对水控」 and 「热水排查」: read-only Bluetooth check of the dorm controller and the
 /// session review. Shown inline in AdvancedSettingsView's list.
 struct ShowerTroubleshootingSections: View {
     /// DEBUG demo data from the settings sheet; nil = live model. Keeps 「热水」 here in step with the main page.
@@ -38,8 +38,8 @@ struct ShowerTroubleshootingSections: View {
                 } else {
                     Text("导入热水配置后可以检查").foregroundStyle(Theme.ink2)
                 }
-            } header: { Text("连接检查") } footer: {
-                Text("只读水控编号，不会开水。读完就断开，洗澡时再连。")
+            } header: { Text("核对水控") } footer: {
+                Text("只看水控上的编号，不会开水。读完就断开，洗澡时再连。")
             }.listRowBackground(Theme.group)
             Section {
                 Button {

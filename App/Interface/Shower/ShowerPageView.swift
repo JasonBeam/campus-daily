@@ -149,6 +149,8 @@ struct ShowerPageView: View {
         .background(Theme.bg.ignoresSafeArea())
         .animation(reduceMotion ? .easeInOut(duration:0.2) : Theme.spring, value:page?.phase)
         .interactiveDismissDisabled(!flow.mayCollapse)
+        // The number matched: 「找到了」 over the page that came up.
+        .firstCheckPassedToast(shower, clear:false)
         // 上一次洗好了: the page turns to it on its own (`pageEvent`) unless a tap said why.
         .navOpen(.showerStopped, shown:page?.phase == .stopped, from:.pageEvent)
         .sensoryFeedback(.success, trigger:successTick)
@@ -347,13 +349,13 @@ struct ShowerPageView: View {
             case .denied:
                 if shower.deniedRetryable {
                     // Nothing was issued: try again here, as after a failed connect.
-                    capsule("再试一次", background:Theme.pill, ink:Theme.pillInk, enabled:!flow.starting) { shower.pageEvent(.retryTapped) }
+                    capsule("再试一次", background:Theme.pill, ink:Theme.pillInk, enabled:!flow.starting) { shower.tapStart(.retry) }
                     textButton("好") { shower.pageEvent(.closeTapped) }
                 } else {
                     capsule("好", background:Theme.pill, ink:Theme.pillInk) { shower.pageEvent(.closeTapped) }
                 }
             case .connectFailed:
-                capsule("再试一次", background:Theme.pill, ink:Theme.pillInk, enabled:!flow.starting) { shower.pageEvent(.retryTapped) }
+                capsule("再试一次", background:Theme.pill, ink:Theme.pillInk, enabled:!flow.starting) { shower.tapStart(.retry) }
                 textButton("取消") { shower.pageEvent(.closeTapped) }
             }
         }
@@ -382,7 +384,7 @@ struct ShowerPageView: View {
             }
             capsule(stopped ? ShowerPageText.startNext : "结束并结算", background:Theme.accent, ink:accentInk,
                     enabled:stopped ? flow.mayStartNext && shower.mayStartNext : flow.mayEnd && !shower.platformMissing) {
-                shower.pageEvent(stopped ? .startNextTapped : .endTapped)
+                if stopped { shower.tapStart(.page, kind:.next) } else { shower.pageEvent(.endTapped) }
             }
             .accessibilityIdentifier(stopped ? "showerStartNext" : "showerEnd")
             if stopped {

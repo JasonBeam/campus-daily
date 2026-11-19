@@ -37,7 +37,7 @@ final class ShowerUnacknowledgedSessionTests: XCTestCase {
         let e = try engine()
         transport.script(.frame(identity), reply)
         gateway.scriptAuthorize(.ok(auth))
-        let s = try await e.start(binding)
+        let s = try await e.start(binding, permit: ShowerStartPermit())
         XCTAssertEqual(s.phase, .writePending)
         XCTAssertFalse(s.authorizationNotWritten)
         return e
@@ -95,7 +95,7 @@ final class ShowerUnacknowledgedSessionTests: XCTestCase {
         let e = try engine()
         transport.script(.frame(identity), .frame(FakeFrames.ack))
         gateway.scriptAuthorize(.ok(auth))
-        let started = try await e.start(binding)
+        let started = try await e.start(binding, permit: ShowerStartPermit())
         XCTAssertEqual(started.phase, .running)
         transport.script(.frame(FakeFrames.active), .frame(consumption))
         gateway.scriptSettle(.ok(receipt))

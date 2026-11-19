@@ -11,7 +11,7 @@ struct ClearShowerConnectionCard: View {
     @State private var expanded = false
 
     var body: some View {
-        DisclosureGroup(ClearShowerText.connection, isExpanded:$expanded) {
+        DisclosureGroup(isExpanded:$expanded) {
             VStack(alignment:.leading, spacing:12) {
                 Button {
                     // Bluetooth: never in the sample.
@@ -48,6 +48,10 @@ struct ClearShowerConnectionCard: View {
                     .fixedSize(horizontal:false, vertical:true)
             }
             .padding(.top, 8)
+        } label: {
+            Text(ClearShowerText.connection)
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth:.infinity, alignment:.leading)
         }
         .font(.subheadline)
         .tint(NativeTheme.tint)

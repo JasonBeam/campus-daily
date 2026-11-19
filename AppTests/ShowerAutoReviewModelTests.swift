@@ -304,13 +304,20 @@ final class ScriptedControllerLink: ShowerTransport, @unchecked Sendable {
         get { lock.withLock { _failConnects } }
         set { lock.withLock { _failConnects = newValue } }
     }
+    private var _connectError: ShowerDeviceError?
+    /// Every connect fails with this (after it is counted).
+    var connectError: ShowerDeviceError? {
+        get { lock.withLock { _connectError } }
+        set { lock.withLock { _connectError = newValue } }
+    }
     var holdExchange: Bool {
         get { lock.withLock { _hold } }
         set { lock.withLock { _hold = newValue } }
     }
 
     func connect(bleName: String, machineID: String, required: String?, preferred: String?) async throws -> String {
-        let fail = lock.withLock { _connects += 1; return _failConnects }
+        let (fail, error) = lock.withLock { _connects += 1; return (_failConnects, _connectError) }
+        if let error { throw error }
         if fail { throw ShowerDeviceError.notFound }
         return required ?? preferred ?? "P"
     }

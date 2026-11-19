@@ -2,7 +2,8 @@ import SwiftUI
 import Core
 
 /// What both themes' roots do whatever their pages look like: finish a reset the app was killed
-/// in (and say why it stopped), open the first-run setup on a fresh install, read again when the
+/// in (and say why it stopped), on a fresh install 「选一个样子」 (`LookPick`) and then the
+/// first-run setup of the theme picked, read again when the
 /// app comes to the front and after a shower is settled, and start over after a reset.
 struct CampusRootHooks: ViewModifier {
     /// Synthetic data is shown (a DEBUG demo, the sample): no reset is resumed, no first-run
@@ -21,7 +22,9 @@ struct CampusRootHooks: ViewModifier {
     @Environment(\.scenePhase) private var phase
     @EnvironmentObject private var resetter: AppResetter
     @Environment(SampleMode.self) private var sample
-    @AppStorage("didSeeQuickSetup") private var didSeeQuickSetup = false
+    @Environment(\.campusServices) private var services
+    /// 「选一个样子」: asked before the setup of a new user who has not picked a look.
+    @Environment(LookPicker.self) private var picker: LookPicker?
 
     func body(content: Content) -> some View {
         content
@@ -30,10 +33,25 @@ struct CampusRootHooks: ViewModifier {
                 // A reset the app was killed in: finished now (then the setup opens), or not, and why.
                 await resetter.resumeIfInterrupted(campus:campus, shower:shower, laundry:laundry, theme:themeStore)
                 // A reset (running, or done and its setup still to open) opens the setup itself: once.
-                if resetter.running || resetter.setupDue.isDue || resetter.completed > 0 { return }
+                // The picker shown from the first frame waits for it too (`presentAfterReset`).
+                if resetter.running || resetter.setupDue.isDue || resetter.completed > 0 { picker?.withdrawFirstRun(); return }
                 // Left the sample with a link kept from it: that link is the one destination.
-                if sample.firstRunHeld { return }
-                if !didSeeQuickSetup && !campus.configured && !shower.configured && !laundry.configured { firstRun() }
+                if sample.firstRunHeld { picker?.withdrawFirstRun(); return }
+                guard QuickSetupSeen.isFirstRun(in:services.defaults, campusConfigured:campus.configured,
+                                                showerConfigured:shower.configured, laundryConfigured:laundry.configured) else {
+                    picker?.withdrawFirstRun(); return
+                }
+                if let picker, LookPick.isDue(firstRun:true, in:services.defaults) {
+                    picker.present(.firstRun)
+                } else {
+                    firstRun()
+                }
+            }
+            // A look picked on first run: the root of that theme opens its setup (this one, or
+            // the other theme's, built anew by the switch).
+            .onChange(of:picker?.setupDue ?? false, initial:true) { _, due in
+                guard due, !demo, root == themeStore.theme, picker?.takeSetup() == true else { return }
+                firstRun()
             }
             .alert(ResetLockText.blockedTitle(resetter.resumeStopped), isPresented:Binding(get:{ resetter.resumeStopped != nil },
                                                                    set:{ if !$0 { resetter.resumeStopped = nil } })) {

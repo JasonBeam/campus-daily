@@ -15,6 +15,7 @@ struct ClearShowerPage: View {
     @EnvironmentObject private var laundry: LaundryModel
     @Environment(ClearNavigator.self) private var navigator
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var typeSize
     @State private var successTick = 0
     @State private var errorTick = 0
     @State private var confirmClear = false
@@ -23,6 +24,9 @@ struct ClearShowerPage: View {
 
     private var flow: ShowerPageFlow { shower.page }
     private var phase: ShowerPagePhase? { flow.pushedPhase }
+    /// Accessibility sizes, ready face: 开始洗澡, its reason and links end the scrolling content
+    /// (24 pt below the rest) instead of pinning over it. A shower that is on keeps its dock pinned.
+    private var dockInline: Bool { typeSize.isAccessibilitySize && phase == nil }
 
     /// 本次费用 (「结算后显示」 until an amount is read) on every face but a refused start, which
     /// charged nothing ...
@@ -37,11 +41,13 @@ struct ClearShowerPage: View {
                 ClearShowerHeadline(phase:phase, configured:configured, live:live)
                 if Self.showsCostCard(phase) { ClearShowerCostCard(phase:phase, live:live) }
                 extras
+                if dockInline { ClearShowerDock(phase:phase, live:live, inline:true) }
             }
             .padding(20).frame(maxWidth:560).frame(maxWidth:.infinity)
         }
         .background(NativeTheme.background)
-        .safeAreaInset(edge:.bottom) { ClearShowerDock(phase:phase, live:live) }
+        .safeAreaInset(edge:.bottom) { if !dockInline { ClearShowerDock(phase:phase, live:live) } }
+        .firstCheckPassedToast(shower, clear:true)
         .navigationTitle("热水洗澡")
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(!flow.mayLeave)

@@ -32,7 +32,7 @@ final class ShowerStoppedSessionTests: XCTestCase {
         let e = try engine()
         transport.script(.frame(FakeFrames.identity(machine)), .frame(FakeFrames.ack))
         gateway.scriptAuthorize(.ok(auth))
-        _ = try await e.start(binding)
+        _ = try await e.start(binding, permit: ShowerStartPermit())
         transport.script(.frame(FakeFrames.identity(machine)))
         let s = try await e.finish(binding)
         XCTAssertTrue(s.stateReviewRequired)
@@ -75,7 +75,7 @@ final class ShowerStoppedSessionTests: XCTestCase {
         XCTAssertEqual(ShowerPageFlow.reduce(flow, .recheckTapped).1, [], "no 再查一次 while nothing was found in use")
 
         transport.script(.frame(FakeFrames.active))
-        let busy = try await e.startNext(binding)
+        let busy = try await e.startNext(binding, permit: ShowerStartPermit())
         (flow, _) = ShowerPageFlow.reduce(flow, .record(busy))
         XCTAssertEqual(flow.page?.phase, .stopped)
         XCTAssertTrue(flow.foundInUse, "the next use found it in use")

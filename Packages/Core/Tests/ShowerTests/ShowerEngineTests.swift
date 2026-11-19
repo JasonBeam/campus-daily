@@ -126,7 +126,7 @@ final class ShowerEngineTests: XCTestCase {
     func startRunning(_ e: ShowerEngine) async throws {
         transport.script(.frame(identity), .frame(FakeFrames.ack))
         gateway.scriptAuthorize(.ok(auth))
-        let s = try await e.start(binding)
+        let s = try await e.start(binding, permit: ShowerStartPermit())
         XCTAssertEqual(s.phase, .running)
     }
 
@@ -195,7 +195,7 @@ final class ShowerEngineTests: XCTestCase {
         let e = try engine()
         transport.script(.hang)
         let b = binding
-        let task = Task { try? await e.start(b) }
+        let task = Task { try? await e.start(b, permit: ShowerStartPermit()) }
         await eventually { [transport] in transport!.writes.count == 1 }
         let accepted = await e.cancelStart()
         XCTAssertTrue(accepted)
@@ -216,7 +216,7 @@ final class ShowerEngineTests: XCTestCase {
         let (gate, open) = AsyncStream.makeStream(of: Void.self)
         transport.script(.after(gate, identity))
         let b = binding
-        let task = Task { try? await e.start(b) }
+        let task = Task { try? await e.start(b, permit: ShowerStartPermit()) }
         await eventually { [transport] in transport!.writes.count == 1 }
         let accepted = await e.cancelStart()
         XCTAssertTrue(accepted)
@@ -235,7 +235,7 @@ final class ShowerEngineTests: XCTestCase {
         transport.script(.frame(identity))
         gateway.scriptAuthorize(.hang)
         let b = binding
-        let task = Task { try? await e.start(b) }
+        let task = Task { try? await e.start(b, permit: ShowerStartPermit()) }
         await eventually { [gateway] in gateway!.authorizeFrames.count == 1 }
         let accepted = await e.cancelStart()
         XCTAssertFalse(accepted)
@@ -256,7 +256,7 @@ final class ShowerEngineTests: XCTestCase {
         let e = try ShowerEngine(transport: transport, gateway: gateway, vault: vault,
                                  configuration: .init(bleName: "fixture-ble"), hooks: hooks,
                                  resetMarker: marker, now: { t })
-        do { _ = try await e.start(binding); XCTFail("expected the refusal") }
+        do { _ = try await e.start(binding, permit: ShowerStartPermit()); XCTFail("expected the refusal") }
         catch { XCTAssertEqual(error as? AppReset.InProgress, AppReset.InProgress()); XCTAssertEqual(error.localizedDescription, "正在重置") }
         XCTAssertTrue(transport.writes.isEmpty, "nothing sent")
         XCTAssertNil(try vault.showerState(), "nothing recorded")
@@ -271,7 +271,7 @@ final class ShowerEngineTests: XCTestCase {
         let e = try engine()
         transport.script(.frame(identity))
         gateway.scriptAuthorize(.fail(.badRequest(.lxt6)))
-        let s = try await e.start(binding)
+        let s = try await e.start(binding, permit: ShowerStartPermit())
         XCTAssertEqual(s.failure?.reason, .authorizeRefused)
         let title = await ShowerDisplay.title(e.state)
         XCTAssertEqual(title, "水没开成")
@@ -284,17 +284,17 @@ final class ShowerEngineTests: XCTestCase {
         let e = try engine()
         transport.script(.frame(identity))
         gateway.scriptAuthorize(.fail(.timedOut))
-        let s = try await e.start(binding)
+        let s = try await e.start(binding, permit: ShowerStartPermit())
         XCTAssertEqual(s.failure?.reason, .authorizeUncertain)
         XCTAssertEqual(s.failure?.needsReview, true)
-        await expect(.blocked) { try await e.start(self.binding) }
+        await expect(.blocked) { try await e.start(self.binding, permit: ShowerStartPermit()) }
         XCTAssertEqual(gateway.authorizeFrames.count, 1)
 
         // Survives relaunch.
         let relaunched = try engine()
         let restored = await relaunched.state
         XCTAssertEqual(restored.failure?.reason, .authorizeUncertain)
-        await expect(.blocked) { try await relaunched.start(self.binding) }
+        await expect(.blocked) { try await relaunched.start(self.binding, permit: ShowerStartPermit()) }
 
         let idle = try await relaunched.resolveManually()
         XCTAssertEqual(idle.phase, .idle)
@@ -305,7 +305,7 @@ final class ShowerEngineTests: XCTestCase {
     func testWrongControllerIsRejectedBeforeAuthorize() async throws {
         let e = try engine()
         transport.script(.frame(FakeFrames.identity("99999999")))
-        let s = try await e.start(binding)
+        let s = try await e.start(binding, permit: ShowerStartPermit())
         XCTAssertEqual(s.failure?.reason, .wrongDevice)
         XCTAssertTrue(gateway.authorizeFrames.isEmpty)
         XCTAssertEqual(transport.disconnects, 1)
@@ -317,7 +317,7 @@ final class ShowerEngineTests: XCTestCase {
         let e = try engine()
         transport.script(.frame(identity), .fail(.timedOut))
         gateway.scriptAuthorize(.ok(auth))
-        let s = try await e.start(binding)
+        let s = try await e.start(binding, permit: ShowerStartPermit())
         XCTAssertEqual(s.phase, .writePending)
         XCTAssertEqual(s.notice, .device(.timedOut))
         XCTAssertEqual(ShowerDisplay.title(s), "洗澡中", "shown as running")
@@ -337,7 +337,7 @@ final class ShowerEngineTests: XCTestCase {
         let e = try engine()
         transport.script(.frame(identity), .frame(Data([0xAA, 0])))
         gateway.scriptAuthorize(.ok(auth))
-        let started = try await e.start(binding)
+        let started = try await e.start(binding, permit: ShowerStartPermit())
         XCTAssertEqual(started.notice, .writeUnconfirmed)
         transport.script(.frame(identity))
         let s = try await e.finish(binding)
@@ -368,7 +368,7 @@ final class ShowerEngineTests: XCTestCase {
         let f = try await e.finish(binding)
         XCTAssertEqual(f.failure?.reason, .settleUncertain)
         XCTAssertEqual(gateway.settleFrames.count, 1, "never a second automatic settle")
-        await expect(.blocked) { try await e.start(self.binding) }
+        await expect(.blocked) { try await e.start(self.binding, permit: ShowerStartPermit()) }
         await expect(.notAllowed) { try await e.confirmSettleRetry(self.binding) }
 
         let armed = try await e.requestSettleRetry()
@@ -458,18 +458,18 @@ final class ShowerEngineTests: XCTestCase {
         let e = try engine(flaky)
         transport.script(.frame(identity))
         gateway.scriptAuthorize(.ok(auth))
-        await expect(.storage) { try await e.start(self.binding) }
+        await expect(.storage) { try await e.start(self.binding, permit: ShowerStartPermit()) }
         XCTAssertTrue(gateway.authorizeFrames.isEmpty, "authorize never leaves without a stored 'sent' record")
         XCTAssertEqual(transport.writes, [ShowerFrames.probeCommand])
         let blocked = await e.storageBlocked
         XCTAssertTrue(blocked)
-        await expect(.storage) { try await e.start(self.binding) }
+        await expect(.storage) { try await e.start(self.binding, permit: ShowerStartPermit()) }
     }
 
     func testStorageFailureOnFirstWriteTouchesNothing() async throws {
         store.failWrites(to: .showerSession)
         let e = try engine()
-        await expect(.storage) { try await e.start(self.binding) }
+        await expect(.storage) { try await e.start(self.binding, permit: ShowerStartPermit()) }
         XCTAssertTrue(transport.connects.isEmpty)
         XCTAssertTrue(transport.writes.isEmpty)
     }
@@ -495,7 +495,7 @@ final class ShowerEngineTests: XCTestCase {
         let b = binding
         let task = Task<Void, Never> {
             for await _ in gate { break }
-            _ = try? await e.start(b)
+            _ = try? await e.start(b, permit: ShowerStartPermit())
         }
         box.set(task)
         open.yield(); open.finish()
@@ -512,7 +512,7 @@ final class ShowerEngineTests: XCTestCase {
         transport.script(.frame(identity))
         gateway.scriptAuthorize(.hang)
         let b = binding
-        let task = Task { try await e.start(b) }
+        let task = Task { try await e.start(b, permit: ShowerStartPermit()) }
         await eventually { [gateway] in !gateway!.authorizeFrames.isEmpty }
         task.cancel()
         let s = try await task.value
@@ -524,7 +524,7 @@ final class ShowerEngineTests: XCTestCase {
         let e = try engine()
         transport.script(.hang)
         let b = binding
-        let task = Task { try await e.start(b) }
+        let task = Task { try await e.start(b, permit: ShowerStartPermit()) }
         await eventually { [transport] in !transport!.writes.isEmpty }
         task.cancel()
         let s = try await task.value

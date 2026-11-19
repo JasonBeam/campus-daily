@@ -78,13 +78,13 @@ final class ShowerDeniedRetryTests: XCTestCase {
                                  configuration: .init(bleName: "fixture-ble"), now: { [t0] in t0 })
         transport.script(.frame(identity))
         gateway.scriptAuthorize(.fail(.badRequest(.lxt6)))
-        let refused = try await e.start(binding)
+        let refused = try await e.start(binding, permit: ShowerStartPermit())
         var flow = ShowerPageFlow(record: refused, presented: true)
         XCTAssertEqual(flow.page?.phase, .denied)
         XCTAssertEqual(reduce(&flow, .retryTapped), [.start])
         transport.script(.frame(identity), .frame(FakeFrames.ack))
         gateway.scriptAuthorize(.ok(auth))
-        let running = try await e.start(binding)
+        let running = try await e.start(binding, permit: ShowerStartPermit())
         _ = reduce(&flow, .record(running))
         _ = reduce(&flow, .startReturned)
         XCTAssertEqual(flow.page?.phase, .running)
@@ -95,10 +95,10 @@ final class ShowerDeniedRetryTests: XCTestCase {
                                      configuration: .init(bleName: "fixture-ble"), now: { [t0] in t0 })
         transport.script(.frame(identity))
         gateway.scriptAuthorize(.fail(.officialUnfinishedOrder))
-        let unfinished = try await other.start(binding)
+        let unfinished = try await other.start(binding, permit: ShowerStartPermit())
         var stopped = ShowerPageFlow(record: unfinished, presented: true)
         XCTAssertEqual(reduce(&stopped, .retryTapped), [])
-        await XCTAssertThrowsErrorAsync(try await other.start(binding)) { XCTAssertEqual($0 as? ShowerEngineError, .blocked) }
+        await XCTAssertThrowsErrorAsync(try await other.start(binding, permit: ShowerStartPermit())) { XCTAssertEqual($0 as? ShowerEngineError, .blocked) }
         XCTAssertEqual(gateway.authorizeFrames.count, 3)
     }
 

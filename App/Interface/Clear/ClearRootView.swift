@@ -12,6 +12,9 @@ struct ClearRootView: View {
     @Environment(\.scenePhase) var phase
     @Environment(ThemeStore.self) var themeStore
     @Environment(SampleMode.self) var sample
+    @Environment(LookPicker.self) var picker: LookPicker?
+    /// Drawn inside 「选一个样子」: no tab bar (the picker's bottom card is there).
+    @Environment(\.lookPreview) var lookPreview
     /// The graph's services (`CampusScene`): `@AppStorage` here is on their preferences.
     @Environment(\.campusServices) var services
     @State var navigator = ClearNavigator()
@@ -43,6 +46,7 @@ struct ClearRootView: View {
                 ClearHomeView().navOpen(.home, from:.tab, once:false)
                     .navigationDestination(for:ClearRoute.self) { ClearDestination(route:$0) }
             }
+            .toolbar(lookPreview ? .hidden : .automatic, for:.tabBar)
             .tabItem { Label("日常", systemImage:"square.grid.2x2") }
             .tag(ClearNavigator.Tab.home)
             NavigationStack(path:$navigator.recordsPath) {

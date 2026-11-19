@@ -57,7 +57,7 @@ final class ShowerModelRetainedTests: XCTestCase {
         await waitUntil { model.gateRecord != .notLoaded }
         XCTAssertNil(model.retained)
 
-        _ = try? await model.run(start:true)
+        _ = try? await model.startFromShortcut(clear:false)
 
         XCTAssertEqual(try vault.retainedShowersForBinding().count, 1, "the step kept the record")
         XCTAssertEqual(model.retained?.count, 1)

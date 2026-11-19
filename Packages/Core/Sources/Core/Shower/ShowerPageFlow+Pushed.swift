@@ -13,6 +13,8 @@ extension ShowerPageFlow {
     /// a shower that is over (the next one starts there) and a session in progress are.
     public var pushedPhase: ShowerPagePhase? {
         guard let phase = page?.phase else { return nil }
+        // A first check reads the number on the ready face (its button says 正在核对水控…).
+        if checking { return nil }
         if presented { return phase }
         switch phase {
         case .done, .denied, .connectFailed: return nil

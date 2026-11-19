@@ -32,7 +32,7 @@ public enum ClearShowerText {
     public static let deniedRetry = start
     public static let deniedClose = "好"
     /// Under 开始洗澡 (and while it runs).
-    public static let startNote = "授权后，按水控上的出水键。"
+    public static let startNote = "开始后，按水控上的出水键"
     /// Under 结束并结算 from the start of the water until the settlement is done.
     public static let endNote = "结算完成前，请留在水控附近。"
     /// Under the button of a shower that is over.
@@ -45,7 +45,7 @@ public enum ClearShowerText {
     public static let lastUseSettled = "已结算"
 
     /// The folded controller check.
-    public static let connection = "连接检查与设备信息"
+    public static let connection = "核对水控与设备信息"
     public static let inspect = "扫描并核对本宿舍水控"
     public static let inspecting = "正在核对…"
     public static let verified = "已识别的宿舍设备"

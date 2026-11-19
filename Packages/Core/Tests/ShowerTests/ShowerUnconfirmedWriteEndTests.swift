@@ -39,7 +39,7 @@ final class ShowerUnconfirmedWriteEndTests: XCTestCase {
     func unconfirmed(_ e: ShowerEngine) async throws {
         transport.script(.frame(identity), .frame(Data([0x12, 0x34])))
         gateway.scriptAuthorize(.ok(auth))
-        let s = try await e.start(binding)
+        let s = try await e.start(binding, permit: ShowerStartPermit())
         XCTAssertEqual(s.phase, .writePending)
         XCTAssertFalse(s.authorizationNotWritten)
     }

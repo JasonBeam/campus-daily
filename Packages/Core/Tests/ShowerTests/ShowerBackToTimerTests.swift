@@ -44,7 +44,7 @@ final class ShowerBackToTimerTests: XCTestCase {
         }
         let e = try engine()
         transport.script(.frame(FakeFrames.identity("11223344")), .frame(FakeFrames.ack))
-        _ = try await e.start(binding)
+        _ = try await e.start(binding, permit: ShowerStartPermit())
         clock.advance(40 * 60)
         transport.script(.frame(FakeFrames.active), .fail(.timedOut))
         let unsure = try await e.finish(binding)

@@ -11,4 +11,11 @@ public enum QuickSetupSeen {
         guard !coveredBySample else { return }
         storage.set(true, forKey: key)
     }
+
+    /// A new user: the setup was never seen and nothing is set up (no school account, hot water
+    /// or laundry). The first-run setup opens by itself only then, and 「选一个样子」 before it.
+    public static func isFirstRun(in storage: PreferenceStorage, campusConfigured: Bool, showerConfigured: Bool,
+                                  laundryConfigured: Bool) -> Bool {
+        storage.object(forKey: key) as? Bool != true && !campusConfigured && !showerConfigured && !laundryConfigured
+    }
 }

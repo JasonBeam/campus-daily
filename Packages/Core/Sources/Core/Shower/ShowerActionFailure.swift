@@ -19,6 +19,7 @@ public struct ShowerActionFailure: Error, LocalizedError, Sendable, Equatable {
         case .storage: message = "这台手机的钥匙串暂时写不进去，重启 App 后再试。"
         case .unreadableRecord: message = "读不到上次的热水记录，打开校日常看看。"
         case .platformMissing: message = Self.platformMissingText
+        case .withdrawn: message = "这次开始已取消，打开校日常再点「开始洗澡」。"
         }
     }
 
@@ -47,6 +48,7 @@ public extension ShowerDeviceError {
     var userText: String {
         switch self {
         case .bluetoothOff: return "蓝牙没开，打开后再试。"
+        case .unauthorized: return FirstCheckFailure.noPermission.text(clear: false)
         case .notFound: return "附近没找到水控，靠近一点再试。"
         case .ambiguous: return "附近有好几台同名水控，没认出你宿舍的那台。靠近一点再试。"
         case .timedOut: return "水控没回应，靠近一点再试。"

@@ -38,7 +38,7 @@ final class ShowerWritePendingFinishTests: XCTestCase {
             let e = try engine()
             transport.script(.frame(identity), reply)
             gateway.scriptAuthorize(.ok(auth))
-            let started = try await e.start(binding)
+            let started = try await e.start(binding, permit: ShowerStartPermit())
             XCTAssertEqual(started.phase, .writePending)
 
             transport.script(.frame(identity))
@@ -64,7 +64,7 @@ final class ShowerWritePendingFinishTests: XCTestCase {
             let e = try engine()
             transport.script(.frame(identity), .notSent(cause))
             gateway.scriptAuthorize(.ok(auth))
-            let started = try await e.start(binding)
+            let started = try await e.start(binding, permit: ShowerStartPermit())
             XCTAssertEqual(started.phase, .writePending, "\(cause)")
 
             let relaunched = try engine()

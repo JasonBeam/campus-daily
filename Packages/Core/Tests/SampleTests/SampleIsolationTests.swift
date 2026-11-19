@@ -91,7 +91,7 @@ final class SampleIsolationTests: XCTestCase {
         let engine = try services.showerEngine(gateway: services.showerGateway(profile: profile), bleName: profile.bleName)
         let shown = await engine.state
         XCTAssertEqual(shown.phase, .idle)
-        _ = try? await engine.start(binding)
+        _ = try? await engine.start(binding, permit: ShowerStartPermit())
         _ = await engine.cancelStart()
         _ = try? await engine.finish(binding)
         _ = try? await engine.review(binding)
@@ -135,7 +135,7 @@ final class SampleIsolationTests: XCTestCase {
         let report = await services.schoolStack().refresher.refresh(inBackground: false)
         XCTAssertEqual(report.outcome, .notSignedIn)
         let engine = try services.showerEngine(gateway: services.showerGateway(profile: profile), bleName: "X")
-        _ = try? await engine.start(binding)
+        _ = try? await engine.start(binding, permit: ShowerStartPermit())
         _ = try? await engine.finish(binding)
         services.sharedDidChange()
         sample.leave()

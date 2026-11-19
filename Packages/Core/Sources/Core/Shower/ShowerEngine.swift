@@ -105,6 +105,8 @@ public enum ShowerEngineError: Error, Equatable, Sendable {
     /// No hot-water platform profile: the settlement couldn't be sent, so 结束 (close, then
     /// settle) and a settle retry are refused before anything goes out.
     case platformMissing
+    /// The start was taken back (`ShowerStartPermit.revoke`) before it began: nothing was done.
+    case withdrawn
 }
 
 /// Drives `ShowerReducer`: persists every state before running its effects, talks to the
@@ -134,6 +136,9 @@ public actor ShowerEngine {
     /// The running start's authorize request has left: from here a cancel could leave an
     /// authorization nobody knows about, so none is accepted.
     private var authorizeLeft = false
+    /// The running start's tap (`start`, `startNext`): its authorize request leaves only if it
+    /// consumes it (`perform(.authorize)`). Nil outside a start: nothing may be authorized.
+    private var permit: ShowerStartPermit?
 
     /// Restores the persisted session (relaunch rules in `ShowerReducer.restore`).
     /// `resetMarker`: while a reset runs, `start` is refused (`AppReset.InProgress`).
@@ -180,22 +185,25 @@ public actor ShowerEngine {
     /// controller is in use, else the old record kept and read back before one new
     /// authorization; it is never closed or settled. Otherwise the usual start.
     @discardableResult
-    public func startOrNext(_ b: ShowerBinding) async throws -> ShowerState {
+    public func startOrNext(_ b: ShowerBinding, permit: ShowerStartPermit) async throws -> ShowerState {
         let next = state.showerOver && state.canStartNext
         hooks?.record(.showerAction(.shortcutStart(next: next)))
-        if next { return try await startNext(b) }
-        return try await start(b)
+        if next { return try await startNext(b, permit: permit) }
+        return try await start(b, permit: permit)
     }
 
     /// 开水: connect + identity probe, authorize, write the authorization.
     @discardableResult
-    public func start(_ b: ShowerBinding) async throws -> ShowerState {
+    public func start(_ b: ShowerBinding, permit: ShowerStartPermit) async throws -> ShowerState {
         try guardIdle()
         try resetMarker?.checkStart(at: now())
         guard state.canStart else { throw ShowerEngineError.blocked }
+        try await guardOpen(permit)
         hooks?.record(.showerAction(.start(machine: .machine(b.machineId))))
         let preferred = b.peripheralID ?? (state.machineID == b.machineId.uppercased() ? state.peripheralID : nil)
         startCancelled = false; authorizeLeft = false
+        self.permit = permit
+        defer { self.permit = nil }
         return try await run(b, .start(machineID: b.machineId, preferredPeripheral: preferred, studentId: b.studentId))
     }
 
@@ -220,15 +228,17 @@ public actor ShowerEngine {
     /// identity, the record is kept as it is (`ShowerVault.retainShower`, never settled), and
     /// only then a new record asks for a new authorization with that fresh identity frame.
     @discardableResult
-    public func startNext(_ b: ShowerBinding) async throws -> ShowerState {
+    public func startNext(_ b: ShowerBinding, permit: ShowerStartPermit) async throws -> ShowerState {
         try guardIdle()
         try resetMarker?.checkStart(at: now())
         guard state.canStartNext else { throw ShowerEngineError.notAllowed }
         let machine = b.machineId.uppercased()
         guard state.machineID == machine else { throw ShowerEngineError.wrongBinding }
+        try await guardOpen(permit)
         hooks?.record(.showerAction(.startNext(machine: .machine(machine))))
         busy = true
-        defer { busy = false; binding = nil }
+        self.permit = permit
+        defer { busy = false; binding = nil; self.permit = nil }
         let previous = state
         let peripheral: String
         let probe: Data
@@ -246,6 +256,13 @@ public actor ShowerEngine {
         guard !Task.isCancelled else {
             await transport.disconnect()
             await hooks?.diagnostic(.nextUseCancelled)
+            return noticed(.device(.interrupted))
+        }
+        // Taken back meanwhile (退出登录, another binding, the app left): the same. A look only:
+        // a revoke after it still stops the new request (`perform(.authorize)`).
+        guard permit.isOpen else {
+            await transport.disconnect()
+            await hooks?.diagnostic(.startInvalidated)
             return noticed(.device(.interrupted))
         }
         switch ShowerFrames.classify(probe) {
@@ -292,6 +309,14 @@ public actor ShowerEngine {
             throw error
         }
         return try await loop(.connected(peripheralID: peripheral, probe: probe))
+    }
+
+    /// A start taken back before it began connects nothing.
+    private func guardOpen(_ permit: ShowerStartPermit) async throws {
+        guard permit.isOpen else {
+            await hooks?.diagnostic(.startInvalidated)
+            throw ShowerEngineError.withdrawn
+        }
     }
 
     /// A line for the user over an unchanged record (not saved: `persistable` drops it).
@@ -475,6 +500,12 @@ public actor ShowerEngine {
 
         case .authorize(let frame):
             guard let b = binding, !Task.isCancelled, !startCancelled else { return .cancelledBeforeSend }
+            // The last word, under the permit's lock: revoked first, nothing leaves; consumed
+            // here, nothing can take it back.
+            guard let permit, permit.consume() else {
+                await hooks?.diagnostic(.startInvalidated)
+                return .cancelledBeforeSend
+            }
             authorizeLeft = true
             hooks?.record(.lxtAuthorize(.sent))
             do {

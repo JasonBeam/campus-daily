@@ -152,7 +152,7 @@ final class SignOutHotWaterTests: XCTestCase {
 
     /// Why 开始洗澡 is refused (what Siri and Shortcuts say).
     private func startRefusal(_ shower: ShowerModel) async -> String? {
-        do { _ = try await shower.run(start:true); return nil }
+        do { _ = try await shower.startFromShortcut(clear:false); return nil }
         catch let failure as ShowerActionFailure { return failure.message }
         catch { return "\(error)" }
     }

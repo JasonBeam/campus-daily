@@ -20,7 +20,9 @@ struct StartShowerIntent: AppIntent {
         AppEnvironment.live.debugNav.from(.intent)
         guard !ShowerIntentGate.sampleActive else { throw ShowerActionFailure(ShowerIntentGate.sampleText) }
         // Throws `ShowerActionFailure`: the system shows its real reason.
-        switch try await ShowerModel.shared.run(start: true) {
+        // The first start is the app's: Siri never explains nor asks for Bluetooth.
+        let clear = ThemePreference(storage: ThemePreference.sharedStorage()).theme == .clear
+        switch try await ShowerModel.shared.startFromShortcut(clear: clear) {
         case .startUnconfirmed: return .result(dialog: "\(ShowerActionOutcome.startUnconfirmedText)")
         default: return .result(dialog: "\(ShowerActionOutcome.startedText)")
         }

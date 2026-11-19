@@ -7,21 +7,23 @@ import Core
 final class SetupWithoutLaundryTests: XCTestCase {
     // MARK: Setup
 
-    /// 暖橙's guide: 登录 → 宿舍 → 水控 → 好了, three dots.
-    func testWarmGuideHasNoLaundryPage() {
-        XCTAssertEqual(OnboardingView.Step.allCases.map { "\($0)" }, ["login", "dorm", "water", "done"])
+    /// 暖橙's guide: 登录 → 宿舍 → 好了. No laundry page, and no controller check (it is made at
+    /// the first 开始洗澡). Three dots, 选样子 the first: the guide opens on the second.
+    func testWarmGuideHasNoLaundryOrCheckPage() {
+        XCTAssertEqual(OnboardingView.Step.allCases.map { "\($0)" }, ["login", "dorm", "done"])
         XCTAssertEqual(OnboardingView.dotted, 3)
-        XCTAssertEqual(OnboardingView.dotsLabel(.login), "第 1 步，共 3 步")
-        XCTAssertEqual(OnboardingView.dotsLabel(.dorm), "第 2 步，共 3 步")
-        XCTAssertEqual(OnboardingView.dotsLabel(.water), "第 3 步，共 3 步")
+        XCTAssertEqual(OnboardingView.dotsLabel(.login), "第 2 步，共 3 步")
+        XCTAssertEqual(OnboardingView.dotsLabel(.dorm), "第 3 步，共 3 步")
+        XCTAssertEqual(OnboardingView.doneNote, "第一次洗澡时，站在水控旁边点开始，会先核对是不是你宿舍的水控。")
+        XCTAssertEqual(OnboardingView.skip, "先不设置")
     }
 
     /// 清爽's checklist: 学校账号 and 选择宿舍与水控 only, counted out of two.
     func testClearChecklistHasNoLaundryRow() {
-        let fresh = SetupChecklist(signedIn:false, dorm:nil, controllerBound:false, controllerChecked:false)
+        let fresh = SetupChecklist(signedIn:false, dorm:nil, controllerBound:false)
         XCTAssertEqual(fresh.rows, [.account, .dorm])
         XCTAssertEqual(fresh.progress, "已完成 0 / 2")
-        let done = SetupChecklist(signedIn:true, dorm:"3 栋 108", controllerBound:true, controllerChecked:true)
+        let done = SetupChecklist(signedIn:true, dorm:"3 栋 108", controllerBound:true)
         XCTAssertEqual(done.rows, [.account, .dorm])
         XCTAssertEqual(done.progress, "已完成 2 / 2")
         XCTAssertEqual(done.fraction, 1)

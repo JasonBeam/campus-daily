@@ -39,7 +39,7 @@ final class ShowerSessionOwnerTests: XCTestCase {
         let e = try engine()
         transport.script(.frame(identity), .frame(FakeFrames.ack))
         gateway.scriptAuthorize(.ok(auth))
-        let s = try await e.start(studentA)
+        let s = try await e.start(studentA, permit: ShowerStartPermit())
         XCTAssertEqual(s.phase, .running)
         return e
     }
@@ -64,7 +64,7 @@ final class ShowerSessionOwnerTests: XCTestCase {
         let before = vault.saved.count
         transport.script(.frame(identity), .frame(FakeFrames.ack))
         gateway.scriptAuthorize(.ok(next))
-        let s = try await e.startNext(studentA)
+        let s = try await e.startNext(studentA, permit: ShowerStartPermit())
         XCTAssertEqual(s.phase, .running)
         let fresh = vault.saved.dropFirst(before).compactMap { $0 }
         XCTAssertEqual(fresh.first?.phase, .authorizing)
