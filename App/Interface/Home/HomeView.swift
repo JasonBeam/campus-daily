@@ -344,9 +344,14 @@ struct HomeView: View {
             // An unchecked record blocks a new start: show it instead of failing.
             guard shower.mayStart else { path.append(.shower); return }
             startTick += 1
-            mark(.homeButton, [.showerPage])
-            shower.pageEvent(.startTapped)
-            followShowerPage(shower.page.presented)
+            switch shower.tapStart(.home) {
+            case .started(firstCheck:false), .joined, .notAllowed:
+                mark(.homeButton, [.showerPage])
+                followShowerPage(shower.page.presented)
+            case .started(firstCheck:true), .explainer, .refused:
+                // The first check (its explainer, its line) is on the 热水洗澡 screen.
+                path.append(.shower)
+            }
         }
     }
 

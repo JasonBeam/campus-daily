@@ -59,7 +59,7 @@ private final class HeldSettleGateway: ShowerGateway, @unchecked Sendable {
     /// True when the start ran (whatever it ended in), false when the gate refused it.
     func start() async -> Bool {
         guard gate.claimLiveStep() else { startsRefused += 1; return false }
-        _ = try? await engine.start(binding)
+        _ = try? await engine.start(binding, permit: ShowerStartPermit())
         state = await engine.state
         gate.liveStepEnded()
         return true

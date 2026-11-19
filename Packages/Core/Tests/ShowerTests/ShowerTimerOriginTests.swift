@@ -46,7 +46,7 @@ final class ShowerTimerOriginTests: XCTestCase {
         transport.script(.frame(FakeFrames.identity(machine)), .frame(FakeFrames.ack))
         gateway.scriptAuthorize(.ok(auth))
 
-        let s = try await engine.start(binding)          // tapped at t0, authorized at t0+15
+        let s = try await engine.start(binding, permit: ShowerStartPermit())          // tapped at t0, authorized at t0+15
         XCTAssertEqual(s.phase, .running)
         let water = t0.addingTimeInterval(15)
         XCTAssertEqual(s.startedAt, water, "the timer's origin is the water, not the tap")

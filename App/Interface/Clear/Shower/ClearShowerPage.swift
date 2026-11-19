@@ -42,6 +42,7 @@ struct ClearShowerPage: View {
         }
         .background(NativeTheme.background)
         .safeAreaInset(edge:.bottom) { ClearShowerDock(phase:phase, live:live) }
+        .firstCheckPassedToast(shower, clear:true)
         .navigationTitle("热水洗澡")
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(!flow.mayLeave)

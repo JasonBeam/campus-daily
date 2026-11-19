@@ -68,6 +68,22 @@ enum ShowerProfileFiles {
     @Published var pageWanted = 0
     /// The running start, so an accepted 取消 can cut the Bluetooth connect short.
     var startTask: Task<Void, Never>?
+    /// The start `startTask` runs (`ShowerStartIntent.id`): only it may clear the task.
+    var startTaskID: UUID?
+    /// The start whose page effect the page shows as starting: only its return ends that.
+    var pageStartID: UUID?
+    /// The one explicit start in progress, from the tap (or Siri) until its engine call returned,
+    /// also while it waits for the explainer or the Bluetooth permission (`ShowerModel+Start`).
+    @Published var startSlot: ShowerStartIntent?
+    /// Bumped by everything that takes starts back (`invalidateStarts`): a start tapped before
+    /// it never runs.
+    var startGeneration = 0
+    /// The Bluetooth permission request of the slot's start.
+    var permissionTask: Task<Void, Never>?
+    /// Whether the app may use Bluetooth, read without creating a Bluetooth manager.
+    let bluetoothAccess: BluetoothAccess
+    /// The words of 「找到了，是你宿舍的水控。」 while shown (1.5 s after a first check matched).
+    @Published var checkToastShown = false
     @Published private(set) var binding: ShowerBinding?
     @Published private(set) var profile: ShowerPlatformProfile?
     /// The launch's profile load has finished: before it, `profile` is nil without being missing.
@@ -128,8 +144,10 @@ enum ShowerProfileFiles {
     /// What the 「还在计时」 reminder counts from (`ShowerReminderStart`).
     private var reminderStart: Date?
 
-    init(services: CampusServices, reminders: Reminders, activities: ShowerActivityController?, gate: LiveShowerGate? = nil) {
+    init(services: CampusServices, reminders: Reminders, activities: ShowerActivityController?, gate: LiveShowerGate? = nil,
+         bluetoothAccess: BluetoothAccess? = nil) {
         self.services = services
+        self.bluetoothAccess = bluetoothAccess ?? BluetoothAccessFor.transport(services.showerTransport)
         self.reminders = reminders
         self.activities = activities
         self.gate = gate
@@ -181,6 +199,8 @@ enum ShowerProfileFiles {
     var startBlock: ShowerStartBlock? {
         #if DEBUG
         if let demoStartBlock { return demoStartBlock }
+        // A demo drawn set up and idle: 开始洗澡 as it would be.
+        if demoReadyDorm != nil { return nil }
         #endif
         return ShowerStartBlock.of(.init(configured:configured, profileLoaded:profileLoaded, platformMissing:platformMissing,
                                          residenceReview:residenceReviewRequired, failedSignOut:reviewAfterFailedSignOut,
@@ -372,6 +392,8 @@ enum ShowerProfileFiles {
     /// Onboarding saved a binding (dorm + controller). Refused while a controller check runs.
     func saveBinding(_ value: ShowerBinding) throws {
         try ShowerBinding.checkMayReplace(mayChange:mayRebind, checking:inspecting)
+        // Another dorm (or person): no start tapped for the old one runs.
+        invalidateStarts()
         var value = value
         // Re-binding the same machine keeps the controller already verified for it.
         if value.peripheralID == nil, let old = binding, old.machineId == value.machineId { value.peripheralID = old.peripheralID }
@@ -400,6 +422,7 @@ enum ShowerProfileFiles {
     /// still be sent) but no new start is allowed until reviewed.
     /// Returns what became of it (`noticed`: there was a binding to set up again).
     func clearBindingForAccountSwitch() -> AccountSwitch.HotWater {
+        invalidateStarts()
         // `state` is the default idle until the record is read: that says nothing.
         var recordRead = false
         if case .known = gateRecord { recordRead = true }
@@ -421,6 +444,7 @@ enum ShowerProfileFiles {
     /// shower starts with it from here on. It stays (it goes with `clearBindingForAccountSwitch()`
     /// once the sign-out is done; a sign-out that failed leaves it to be set up again).
     func holdForSignOut() {
+        invalidateStarts()
         if binding != nil, !residenceReviewRequired { setResidenceReview(true) }
     }
 
@@ -465,7 +489,16 @@ enum ShowerProfileFiles {
     /// 开始洗澡 / 结束并结算 (home, detail page, Shortcuts, Live Activity). Throws
     /// `ShowerActionFailure` with the real reason when it did not go through.
     @discardableResult func run(start: Bool) async throws -> ShowerActionOutcome {
+        start ? try await startFromShortcut(clear:false) : try await run(nil, start:false)
+    }
+
+    /// `intent`: the explicit start this runs (`ShowerStartIntent`); a start without one, or
+    /// one taken back since its tap, runs nothing.
+    @discardableResult func run(_ intent: ShowerStartIntent?, start: Bool) async throws -> ShowerActionOutcome {
         guard let engine, let binding else { throw ShowerActionFailure(unavailableText) }
+        if start {
+            guard let intent, stillHolds(intent) else { throw ShowerActionFailure(.withdrawn) }
+        }
         guard !busy else { throw ShowerActionFailure(.busy) }
         // Over a shower that is over, 开始洗澡 (Siri, Shortcuts) is the page's 开始下一次洗澡.
         let next = start && state.showerOver
@@ -488,9 +521,11 @@ enum ShowerProfileFiles {
             liveStepEnded()
         }
         do {
-            let result = next ? try await engine.startOrNext(binding)
-                : start ? try await engine.start(binding) : try await engine.finish(binding)
+            let permit = intent?.permit ?? ShowerStartPermit()
+            let result = next ? try await engine.startOrNext(binding, permit:permit)
+                : start ? try await engine.start(binding, permit:permit) : try await engine.finish(binding)
             apply(result)
+            if start, let intent, intent.firstCheck { markMatched(intent, result) }
             // The engine saves the verified controller into the stored binding; pick it up so the
             // next start goes to it directly instead of after a relaunch.
             if start, let stored = (try? services.showerVault.binding()) ?? nil, stored.machineId == binding.machineId {
@@ -610,12 +645,12 @@ enum ShowerProfileFiles {
     /// for. A controller still in use is let go (the page says 水控有人在用). False when it didn't
     /// go and the page should say why (`message`).
     @discardableResult
-    func startNext() async -> Bool {
-        guard let engine, let binding, mayStartNext, claimLiveStep() else { return false }
+    func startNext(_ intent: ShowerStartIntent) async -> Bool {
+        guard let engine, let binding, stillHolds(intent), mayStartNext, claimLiveStep() else { return false }
         busy = true; message = nil
         defer { busy = false; liveStepEnded() }
         do {
-            let result = try await engine.startNext(binding)
+            let result = try await engine.startNext(binding, permit:intent.permit)
             apply(result)
             refreshRetained()
             if let stored = (try? services.showerVault.binding()) ?? nil, stored.machineId == binding.machineId {
@@ -654,6 +689,7 @@ enum ShowerProfileFiles {
         guard let bluetooth else { inspectionStatus = Self.deviceText(.notFound); inspectionOutcome = .notFound; return }
         inspecting = true; inspectionStatus = nil; verifiedDevice = nil; inspectionFoundBusy = false; inspectionOutcome = nil
         defer { inspecting = false }
+        let generation = startGeneration
         do {
             let nearby = try await bluetooth.inspect(bleName:bleName, remembered:binding.peripheralID)
             guard nearby > 0 else { inspectionStatus = Self.deviceText(.notFound); inspectionOutcome = .notFound; return }
@@ -674,6 +710,8 @@ enum ShowerProfileFiles {
             }
             verifiedDevice = VerifiedShowerDevice(id:id, name:bleName, machineID:binding.machineId.uppercased(), nearbyCount:nearby, verifiedAt:Date())
             if let proven = outcome.peripheralToRemember { rememberVerified(proven, for:binding) }
+            // The number matched: the next start reads it again, under its usual words.
+            markMatched(binding, generation:generation)
             inspectionStatus = Self.inspectionVerifiedText
             inspectionOutcome = .verified
         } catch {
@@ -687,6 +725,11 @@ enum ShowerProfileFiles {
             }
         }
     }
+
+    /// The binding as stored again (`markMatched`).
+    func setBinding(_ value: ShowerBinding) { binding = value }
+    /// Where the binding is kept (`markMatched`).
+    var showerVault: StoredShowerVault { services.showerVault }
 
     /// The check proved this controller's identity: remember it for the next start.
     private func rememberVerified(_ id: String, for checked: ShowerBinding) {

@@ -44,7 +44,8 @@ public enum ShowerEndFailure: Sendable, Equatable {
         // A check's finding, not an end's.
         case .waterRunning?: return nil
         case .device(.interrupted)?: self = .notSent
-        case .device(.bluetoothOff)?, .device(.notFound)?, .device(.ambiguous)?, .device(.timedOut)?, .device(.disconnected)?:
+        case .device(.bluetoothOff)?, .device(.unauthorized)?, .device(.notFound)?, .device(.ambiguous)?, .device(.timedOut)?,
+             .device(.disconnected)?:
             self = .noConnection
         case .device(.malformedFrame)?, .device(.busy)?, .writeUnconfirmed?: self = .other
         }
@@ -85,7 +86,7 @@ public enum ShowerRecheckResult: Sendable, Equatable {
             self = .noConnection
         case .device(.busy)?: self = .busy
         case .inUseByOther?, .waterRunning?: self = .inUse
-        case .device(.malformedFrame)?, .writeUnconfirmed?, nil: self = .failed
+        case .device(.malformedFrame)?, .device(.unauthorized)?, .writeUnconfirmed?, nil: self = .failed
         }
     }
 
@@ -183,6 +184,13 @@ public struct ShowerPage: Sendable, Equatable {
 public enum ShowerPageEvent: Sendable, Equatable {
     /// 开始洗澡 on the home screen.
     case startTapped
+    /// 开始洗澡 on a dorm whose controller no start has matched yet (`ShowerBinding.matchedAt`):
+    /// the same start, shown as 核对水控 on the 热水洗澡 screen until the number matched.
+    case firstCheckTapped
+    /// The first start stopped before it began (no Bluetooth permission): the line under 开始洗澡.
+    case checkFailed(FirstCheckFailure)
+    /// The 热水洗澡 screen was left: its check line goes.
+    case checkLineCleared
     /// The home button in any other state (正在洗澡, 正在结算…): back to the page as it is.
     case reopen
     /// The record changed (engine update, relaunch restore).
@@ -263,6 +271,18 @@ public struct ShowerPageFlow: Sendable, Equatable {
     /// The last 开始下一次洗澡 threw before anything went out (the record could not be kept):
     /// the stopped page says it didn't go.
     public var nextFailed = false
+    /// The running start is a first check (`ShowerPageEvent.firstCheckTapped`): its first part
+    /// shows as 核对水控 and a pre-authorize failure as a line under 开始洗澡, not as a face.
+    public var firstCheck = false
+    /// Why the last first check came to nothing (nothing was authorized); nil when it didn't.
+    public var checkFailure: FirstCheckFailure?
+    /// Bumped when a first check matched the number (the short 「找到了」).
+    public var checkPassed = 0
+
+    /// A first check is reading the controller's number: nothing has been asked of the school.
+    public var checking: Bool {
+        firstCheck && starting && (record.canStart || record.phase == .authorizing && !record.authorizeSent)
+    }
 
     /// 开始下一次洗澡, the stopped page's one button (not while the controller is found in use).
     public var mayStartNext: Bool {
@@ -345,11 +365,31 @@ public struct ShowerPageFlow: Sendable, Equatable {
             }
             f.presented = true; f.starting = true; f.cancelling = false; f.ending = false
             f.cancelWaiting = false; f.cancelRefused = false; f.endFailed = nil
+            f.firstCheck = false; f.checkFailure = nil
             // A finished record is cleared by the start itself.
             return (f, [.start])
 
+        case .firstCheckTapped:
+            guard flow.record.canStart else { return step(flow, .startTapped) }
+            // The same start, but its first part stays on the 热水洗澡 screen (核对水控): the
+            // page comes up once the number matched.
+            f.starting = true; f.cancelling = false; f.ending = false
+            f.cancelWaiting = false; f.cancelRefused = false; f.endFailed = nil
+            f.firstCheck = true; f.checkFailure = nil
+            return (f, [.start])
+
+        case .checkFailed(let failure):
+            f.firstCheck = false
+            f.checkFailure = failure
+            return (f, [])
+
+        case .checkLineCleared:
+            f.checkFailure = nil
+            return (f, [])
+
         case .startReturned:
             f.starting = false
+            f.firstCheck = false
             if flow.cancelWaiting {
                 // The start was refused before it ran: there is nothing left to cancel.
                 f.cancelWaiting = false; f.cancelling = false
@@ -363,6 +403,23 @@ public struct ShowerPageFlow: Sendable, Equatable {
 
         case .record(let next):
             f.record = next
+            if flow.firstCheck {
+                if next.authorizeSent || [ShowerPhase.writePending, .running, .closing, .settling, .done].contains(next.phase) {
+                    // The number matched and the request left: the page as today.
+                    f.firstCheck = false
+                    f.presented = true
+                    f.checkPassed += 1
+                } else if next.phase == .failed, next.failure?.needsReview != true {
+                    // Came to nothing before the request: a line under 开始洗澡, no face, no record.
+                    f.firstCheck = false
+                    f.checkFailure = FirstCheckFailure.of(next.failure)
+                    f.presented = false
+                    return (f, [.dismissRecord])
+                } else if next.phase == .failed {
+                    f.firstCheck = false
+                    f.presented = true
+                }
+            }
             if flow.cancelWaiting {
                 guard next.phase == .authorizing else { return (f, []) }
                 f.cancelWaiting = false

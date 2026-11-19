@@ -56,10 +56,10 @@ final class ShowerAuthorizeRefusalTests: XCTestCase {
         let e = try ShowerEngine(transport: transport, gateway: gateway, vault: vault, configuration: .init(bleName: "fixture-ble"))
         transport.script(.frame(identity))
         gateway.scriptAuthorize(.fail(.rejected(.lxt6, code: "500", message: "合成提示")))
-        let s = try await e.start(binding)
+        let s = try await e.start(binding, permit: ShowerStartPermit())
         XCTAssertEqual(s.failure?.reason, .authorizeUncertain)
         XCTAssertEqual(try vault.showerState()?.failure?.reason, .authorizeUncertain, "persisted")
-        do { _ = try await e.start(binding); XCTFail("expected blocked") }
+        do { _ = try await e.start(binding, permit: ShowerStartPermit()); XCTFail("expected blocked") }
         catch let error as ShowerEngineError { XCTAssertEqual(error, .blocked) }
         XCTAssertEqual(gateway.authorizeFrames.count, 1)
     }

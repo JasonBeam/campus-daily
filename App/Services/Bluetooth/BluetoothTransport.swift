@@ -75,11 +75,26 @@ struct VerifiedShowerDevice {
         timer?.cancel(); timer = nil
         waiter.complete(result)
     }
+    /// The system's Bluetooth alert, for a start the user confirmed (`BluetoothAccess.request`).
+    /// Creating the manager is what shows the alert; this returns once it was answered (the
+    /// authorization left `notDetermined`), or with what is known when the task is cancelled.
+    /// It never connects or scans.
+    func requestAccess() async -> CBManagerAuthorization {
+        guard CBManager.authorization == .notDetermined else { return CBManager.authorization }
+        if manager == nil { manager = CBCentralManager(delegate: self, queue: .main) }
+        while CBManager.authorization == .notDetermined, !Task.isCancelled {
+            try? await Task.sleep(for: .milliseconds(200))
+        }
+        return CBManager.authorization
+    }
+
     private func prepare(bleName: String) async throws {
         if manager == nil { manager = CBCentralManager(delegate: self, queue: .main) }
         if manager.state == .unknown || manager.state == .resetting {
             try await wait("power") {}
         }
+        // Denied or restricted is not the radio being off: the line says where to change it.
+        if manager.state == .unauthorized { throw ShowerDeviceError.unauthorized }
         guard manager.state == .poweredOn else { throw ShowerDeviceError.bluetoothOff }
         try await awaitRetired()
         targetName = bleName
@@ -225,6 +240,7 @@ struct VerifiedShowerDevice {
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
         if step == "power" {
             if central.state == .poweredOn { complete(.success(())) }
+            else if central.state == .unauthorized { complete(.failure(ShowerDeviceError.unauthorized)) }
             else if central.state != .unknown && central.state != .resetting { complete(.failure(ShowerDeviceError.bluetoothOff)) }
         } else if central.state != .poweredOn { complete(.failure(ShowerDeviceError.bluetoothOff)) }
     }

@@ -58,7 +58,7 @@ final class ShowerDebugLogTests: XCTestCase {
         try vault.saveBinding(binding)
         let e = try engine(client(server, log: log), log: log)
         transport.script(.frame(identity), .frame(FakeFrames.ack))
-        let running = try await e.start(binding)
+        let running = try await e.start(binding, permit: ShowerStartPermit())
         XCTAssertEqual(running.phase, .running)
         clock.advance(600)
         // Stopped on the controller: it answers idle with this machine's identity.
@@ -68,7 +68,7 @@ final class ShowerDebugLogTests: XCTestCase {
         XCTAssertTrue(stopped.canStartNext)
         clock.advance(60)
         transport.script(.frame(identity), .frame(FakeFrames.ack))
-        let next = try await e.startNext(binding)
+        let next = try await e.startNext(binding, permit: ShowerStartPermit())
         XCTAssertEqual(next.phase, .running)
         XCTAssertEqual(try vault.retainedShowers().count, 1, "the stopped shower kept")
         clock.advance(600)
@@ -169,7 +169,7 @@ final class ShowerDebugLogTests: XCTestCase {
             let log = RecordingDebugLog()
             let e = try engine(FakeGateway(), log: log)
             transport.script(.frame(frame))
-            _ = try? await e.start(binding)
+            _ = try? await e.start(binding, permit: ShowerStartPermit())
             XCTAssertTrue(log.lines().contains(expected), "\(expected)\n" + log.lines().joined(separator: "\n"))
             XCTAssertFalse(log.lines().contains { $0.hasPrefix("lxt.authorize") }, "nothing was authorized")
             XCTAssertEqual(DebugLogTesting.leaks(["99887766", machine, "123456"], in: log.lines().joined()), [])
@@ -180,7 +180,7 @@ final class ShowerDebugLogTests: XCTestCase {
         let log = RecordingDebugLog()
         let e = try engine(FakeGateway(), log: log)
         transport.scriptConnect(.failure(.notFound))
-        _ = try? await e.start(binding)
+        _ = try? await e.start(binding, permit: ShowerStartPermit())
         XCTAssertTrue(log.lines().contains("ble.connect result=notFound target=scanned"), log.lines().joined(separator: "\n"))
     }
 
@@ -199,7 +199,7 @@ final class ShowerDebugLogTests: XCTestCase {
         let e = try launchServices(log).showerEngine(gateway: FakeGateway(), bleName: "fixture-ble")
         log.resolve(.testFlight)
         transport.scriptConnect(.failure(.notFound))
-        _ = try? await e.start(binding)
+        _ = try? await e.start(binding, permit: ShowerStartPermit())
         log.flush()
         let lines = log.lines()
         XCTAssertTrue(lines.contains { $0.hasSuffix(" shower.restore saved=none restored=idle") }, "held, then replayed\n" + lines.joined(separator: "\n"))
@@ -214,7 +214,7 @@ final class ShowerDebugLogTests: XCTestCase {
             let e = try launchServices(log).showerEngine(gateway: FakeGateway(), bleName: "fixture-ble")
             log.resolve(decision)
             transport.scriptConnect(.failure(.notFound))
-            _ = try? await e.start(binding)
+            _ = try? await e.start(binding, permit: ShowerStartPermit())
             log.flush()
             XCTAssertEqual(log.lines(), [], "\(decision)")
             XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: folder.path), [], "\(decision)")
@@ -258,11 +258,11 @@ final class ShowerDebugLogTests: XCTestCase {
         gateway.scriptAuthorize(.ok(ShowerAuthorization(machineID: machine, payload: Data(repeating: 0x30, count: 15), authorizationID: "AABBCCDD")))
         let e = try engine(gateway, log: log)
         transport.script(.frame(identity), .frame(FakeFrames.ack))
-        _ = try await e.startOrNext(binding)
+        _ = try await e.startOrNext(binding, permit: ShowerStartPermit())
         transport.script(.frame(identity))
         _ = try await e.finish(binding)
         transport.script(.frame(FakeFrames.active))
-        let busy = try await e.startOrNext(binding)
+        let busy = try await e.startOrNext(binding, permit: ShowerStartPermit())
         XCTAssertTrue(busy.waitingForRelease)
         let lines = log.lines()
         XCTAssertEqual(lines.filter { $0.hasPrefix("shower.action shortcutStart") },
@@ -281,12 +281,12 @@ final class ShowerDebugLogTests: XCTestCase {
         let e = try ShowerEngine(transport: transport, gateway: gateway, vault: flaky, configuration: .init(bleName: "fixture-ble"),
                                  hooks: DebugLogShowerHooks(log), now: clock.function)
         transport.script(.frame(identity), .frame(FakeFrames.ack))
-        _ = try await e.start(binding)
+        _ = try await e.start(binding, permit: ShowerStartPermit())
         transport.script(.frame(identity))
         _ = try await e.finish(binding)
         flaky.failRetain = true
         transport.script(.frame(identity))
-        _ = try? await e.startNext(binding)
+        _ = try? await e.startNext(binding, permit: ShowerStartPermit())
         XCTAssertTrue(log.lines().contains("shower.note nextUse.keepFailed"), log.lines().joined(separator: "\n"))
         XCTAssertFalse(log.lines().contains("shower.note nextUse.recordKept.readBackOK"))
         XCTAssertEqual(gateway.authorizeFrames.count, 1)
@@ -298,7 +298,7 @@ final class ShowerDebugLogTests: XCTestCase {
         let e = try engine(FakeGateway(), log: log)
         transport.script(.hang)
         let b = binding
-        let task = Task { try? await e.start(b) }
+        let task = Task { try? await e.start(b, permit: ShowerStartPermit()) }
         await eventually { [transport] in transport!.writes.count == 1 }
         let accepted = await e.cancelStart()
         XCTAssertTrue(accepted)

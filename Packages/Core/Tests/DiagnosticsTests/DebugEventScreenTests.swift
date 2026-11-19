@@ -90,7 +90,7 @@ final class DebugEventScreenTests: XCTestCase {
     static var notes: [ShowerDiagnostic] {
         [.nextUseDeviceBusy, .nextUseWrongDevice, .nextUseUnreadable, .nextUseCancelled, .nextUseRecordKept, .nextUseKeepFailed,
          .nextUseNotSaved, .reviewWriteNeverApplied, .finishWriteNeverApplied, .settleHeldAfterUnconfirmedClose,
-         .autoReviewDroppedEffect, .settleManualRetry(1), .settleManualRetry(12)] + ShowerPhase.allCases.map(ShowerDiagnostic.resolvedManually)
+         .autoReviewDroppedEffect, .startInvalidated, .settleManualRetry(1), .settleManualRetry(12)] + ShowerPhase.allCases.map(ShowerDiagnostic.resolvedManually)
     }
 
     static var laundryStarts: [DebugLaundryStart] {

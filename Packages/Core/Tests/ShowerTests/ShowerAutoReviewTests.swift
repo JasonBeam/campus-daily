@@ -34,7 +34,7 @@ final class ShowerAutoReviewTests: XCTestCase {
         let e = try engine()
         transport.script(.frame(identity), .frame(FakeFrames.ack))
         gateway.scriptAuthorize(.ok(auth))
-        let s = try await e.start(binding)
+        let s = try await e.start(binding, permit: ShowerStartPermit())
         XCTAssertEqual(s.phase, .running)
         return e
     }

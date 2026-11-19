@@ -38,7 +38,7 @@ final class ShowerCloseBusyTests: XCTestCase {
         let e = try engine()
         transport.script(.frame(identity), .frame(FakeFrames.ack))
         gateway.scriptAuthorize(.ok(auth))
-        let s = try await e.start(binding)
+        let s = try await e.start(binding, permit: ShowerStartPermit())
         XCTAssertEqual(s.phase, .running)
         return e
     }
@@ -163,13 +163,13 @@ final class ShowerCloseBusyTests: XCTestCase {
         let authorizes = gateway.authorizeFrames.count
 
         transport.script(.frame(FakeFrames.active))
-        let waiting = try await e.startNext(binding)
+        let waiting = try await e.startNext(binding, permit: ShowerStartPermit())
         XCTAssertTrue(waiting.waitingForRelease)
         XCTAssertEqual(gateway.authorizeFrames.count, authorizes, "nothing authorized while in use")
 
         transport.script(.frame(identity), .frame(FakeFrames.ack))
         gateway.scriptAuthorize(.ok(next))
-        let fresh = try await e.startNext(binding)
+        let fresh = try await e.startNext(binding, permit: ShowerStartPermit())
         XCTAssertEqual(fresh.phase, .running)
         XCTAssertEqual(fresh.authorizationID, "00AABBCC")
         XCTAssertEqual(gateway.authorizeFrames.count, authorizes + 1)

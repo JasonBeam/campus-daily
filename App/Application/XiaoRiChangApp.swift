@@ -90,6 +90,8 @@ private struct LiveAppHooks: ViewModifier {
                 // The live app's own work runs as usual while the sample is shown: it reaches no
                 // sample page (the sample runs on its own services and draws its own graph).
                 if value == .background { BackgroundRefresh.scheduleRefresh() }
+                // A start waits through the Bluetooth alert (inactive), not the background.
+                ShowerModel.shared.sceneChanged(value == .active ? .active : value == .background ? .background : .inactive)
                 if value == .active {
                     // Launched before the first unlock (pre-warmed), the Keychain could not be read:
                     // read it again now, before the home's foreground refresh runs.

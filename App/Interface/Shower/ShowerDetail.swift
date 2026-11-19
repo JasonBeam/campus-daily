@@ -90,6 +90,8 @@ struct ShowerDetail: View {
             }.padding(20).frame(maxWidth:560).frame(maxWidth:.infinity)
         }.background(NativeTheme.background)
             .navigationTitle("热水洗澡").navigationBarTitleDisplayMode(.inline)
+            .firstCheckExplainer(shower, clear:false)
+            .firstCheckPassedToast(shower, clear:false)
             .showerCardRecordsDestination(isPresented:$recordsOpen)
             .safeAreaInset(edge:.bottom) {
                 VStack(spacing:10) {
@@ -99,19 +101,23 @@ struct ShowerDetail: View {
                                 // Still loading: the spinner only, without words.
                                 Spacer(); ProgressView().tint(Theme.pillInk).controlSize(.small); Spacer()
                             } else {
-                                if shower.busy { ProgressView().tint(Theme.pillInk).controlSize(.small) }
-                                Text(shower.busy ? "正在处理…" : stopped ? ShowerPageText.startNext : closing ? "结束并结算" : "开始洗澡")
+                                if shower.busy || checking { ProgressView().tint(Theme.pillInk).controlSize(.small) }
+                                Text(buttonTitle)
                                     .contentTransition(.opacity)
                                 Spacer(); Image(systemName:closing ? "stop.circle" : "arrow.up.right")
                             }
                         }.padding(.horizontal,18).frame(minHeight:52)
                     }.buttonStyle(ShowerButtonStyle(primary:true,accent:NativeTheme.tint))
                         .disabled(preview == nil && (block != nil || (!demoReady && (stopped ? !shower.mayStartNext : closing ? !shower.mayFinish : !shower.mayStart))))
-                        .accessibilityLabel(shower.busy ? "正在处理…" : stopped ? ShowerPageText.startNext : closing ? "结束并结算" : "开始洗澡")
+                        .accessibilityLabel(buttonTitle)
                         .accessibilityHint(block?.warm ?? "")
                         .accessibilityIdentifier(stopped ? "showerStartNext" : closing ? "finishWater" : "startWater")
                         .modifier(ShowerLaunchSpinner(launching:block == .launching, shown:$launchSpinner))
-                    if let reason = block?.warm {
+                    if checking {
+                        FirstCheckCheckingLine(clear:false)
+                    } else if let failure = checkFailure {
+                        FirstCheckFailureLine(failure:failure, clear:false)
+                    } else if let reason = block?.warm {
                         ShowerStartReason(text:reason) { reasonLinks }
                     } else {
                         // The page this opens says 「结算完成前，先别离开水控。」 once 结束 is tapped.
@@ -238,9 +244,17 @@ struct ShowerDetail: View {
     private func perform() {
         if preview != nil { sample.perform(.startShower) {}; return }
         if demoReady { return }
-        if stopped { shower.pageEventShowingPage(.startNextTapped) }
+        if stopped { shower.tapStart(.page, kind:.next, showingPage:true) }
         else if closing { shower.pageEventShowingPage(.reopen, .endTapped) }
-        else { shower.pageEventShowingPage(.startTapped) }
+        else { shower.tapStart(.page, showingPage:true) }
+    }
+
+    /// A first check reading the controller's number, shown here (not on the page).
+    private var checking: Bool { preview == nil && shower.page.checking }
+    private var checkFailure: FirstCheckFailure? { preview == nil && !stopped && !closing ? shower.page.checkFailure : nil }
+    private var buttonTitle: String {
+        if checking { return FirstCheckText.checkingButton }
+        return shower.busy ? "正在处理…" : stopped ? ShowerPageText.startNext : closing ? "结束并结算" : "开始洗澡"
     }
 }
 

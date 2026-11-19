@@ -47,7 +47,7 @@ final class ShowerStoppedFlowTests: XCTestCase {
         gateway.scriptAuthorize(.ok(auth))
         var flow = ShowerPageFlow(record: .idle)
         XCTAssertEqual(reduce(&flow, .startTapped), [.start])
-        _ = reduce(&flow, .record(try await e.start(binding)))
+        _ = reduce(&flow, .record(try await e.start(binding, permit: ShowerStartPermit())))
         _ = reduce(&flow, .startReturned)
         XCTAssertEqual(flow.page?.phase, .running)
 
@@ -116,7 +116,7 @@ final class ShowerStoppedFlowTests: XCTestCase {
 
         transport.script(.frame(identity), .frame(FakeFrames.ack))
         gateway.scriptAuthorize(.ok(next))
-        _ = reduce(&flow, .record(try await e.startNext(binding)))
+        _ = reduce(&flow, .record(try await e.startNext(binding, permit: ShowerStartPermit())))
         _ = reduce(&flow, .startNextReturned(failed: false))
 
         XCTAssertEqual(flow.page?.phase, .running, "the timer of the new shower")
@@ -135,7 +135,7 @@ final class ShowerStoppedFlowTests: XCTestCase {
 
         _ = reduce(&flow, .startNextTapped)
         transport.script(.frame(FakeFrames.active))
-        _ = reduce(&flow, .record(try await e.startNext(binding)))
+        _ = reduce(&flow, .record(try await e.startNext(binding, permit: ShowerStartPermit())))
         _ = reduce(&flow, .startNextReturned(failed: false))
 
         XCTAssertEqual(flow.page?.phase, .stopped)
@@ -186,7 +186,7 @@ final class ShowerStoppedFlowTests: XCTestCase {
             _ = reduce(&flow, .startNextTapped)
             transport.script(.frame(identity), .frame(FakeFrames.ack))
             gateway.scriptAuthorize(.ok(next))
-            do { _ = try await e.startNext(binding); XCTFail("storage error") }
+            do { _ = try await e.startNext(binding, permit: ShowerStartPermit()); XCTFail("storage error") }
             catch { XCTAssertEqual(error as? ShowerEngineError, .storage) }
             _ = reduce(&flow, .record(await e.state))
             _ = reduce(&flow, .startNextReturned(failed: true))

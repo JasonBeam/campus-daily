@@ -6,7 +6,9 @@ import Core
 extension ShowerModel {
     func pageEvent(_ event: ShowerPageEvent) {
         let (next, effects) = ShowerPageFlow.reduce(page, event)
+        let passed = next.checkPassed > page.checkPassed
         if next != page { page = next }
+        if passed { showCheckPassed() }
         for effect in effects { perform(effect) }
     }
 
@@ -20,10 +22,16 @@ extension ShowerModel {
     private func perform(_ effect: ShowerPageEffect) {
         switch effect {
         case .start:
+            // The slot's start, once. An effect with no start behind it (a tap that did not go
+            // through `tapStart`) runs nothing: the page goes back as it was.
+            guard let intent = takeLaunch(.start) else {
+                Task { pageEvent(.startReturned) }
+                return
+            }
+            startTaskID = intent.id
             startTask = Task {
-                _ = try? await run(start:true)  // the page shows the record itself
-                startTask = nil
-                pageEvent(.startReturned)
+                _ = try? await run(intent, start:true)  // the page shows the record itself
+                startEnded(intent.id, returned:.startReturned)
             }
         case .cancelStart:
             Task {
@@ -45,10 +53,14 @@ extension ShowerModel {
                 await dismiss(only:record)
             }
         case .startNext:
+            guard let intent = takeLaunch(.next) else {
+                Task { pageEvent(.startNextReturned(failed:false)) }
+                return
+            }
+            startTaskID = intent.id
             startTask = Task {
-                let went = await startNext()
-                startTask = nil
-                pageEvent(.startNextReturned(failed:!went))
+                let went = await startNext(intent)
+                startEnded(intent.id, returned:.startNextReturned(failed:!went))
             }
         case .recheck:
             Task {
@@ -63,6 +75,16 @@ extension ShowerModel {
                 await untilIdle()
                 await disarmSettleRetry()
             }
+        }
+    }
+
+    /// 「找到了，是你宿舍的水控。」 for a moment over the page that came up.
+    private func showCheckPassed() {
+        checkToastShown = true
+        let shown = page.checkPassed
+        Task {
+            try? await Task.sleep(for:.seconds(FirstCheckText.passedSeconds))
+            if page.checkPassed == shown { checkToastShown = false }
         }
     }
 

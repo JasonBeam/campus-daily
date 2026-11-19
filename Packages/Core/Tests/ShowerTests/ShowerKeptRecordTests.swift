@@ -75,7 +75,7 @@ final class ShowerKeptRecordTests: XCTestCase {
             XCTAssertEqual(reduce(&flow, .startNextTapped), [.startNext], reason.rawValue)
             transport.script(.frame(FakeFrames.identity(machine)), .frame(FakeFrames.ack))
             gateway.scriptAuthorize(.ok(next))
-            _ = reduce(&flow, .record(try await e.startNext(binding)))
+            _ = reduce(&flow, .record(try await e.startNext(binding, permit: ShowerStartPermit())))
             _ = reduce(&flow, .startNextReturned(failed: false))
             XCTAssertEqual(flow.page?.phase, .running, reason.rawValue)
             XCTAssertEqual(gateway.authorizeFrames.count, 1, "\(reason.rawValue): one new authorization")
@@ -90,7 +90,7 @@ final class ShowerKeptRecordTests: XCTestCase {
         var flow = ShowerPageFlow(record: await e.state, presented: true)
         _ = reduce(&flow, .startNextTapped)
         transport.script(.frame(FakeFrames.active))
-        _ = reduce(&flow, .record(try await e.startNext(binding)))
+        _ = reduce(&flow, .record(try await e.startNext(binding, permit: ShowerStartPermit())))
         _ = reduce(&flow, .startNextReturned(failed: false))
 
         XCTAssertEqual(flow.page?.phase, .stopped)

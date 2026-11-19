@@ -37,7 +37,7 @@ final class ShowerMissingPlatformTests: XCTestCase {
         let e = try engine()
         transport.script(.frame(FakeFrames.identity(machine)), .frame(FakeFrames.ack))
         gateway.scriptAuthorize(.ok(auth))
-        _ = try await e.start(binding)
+        _ = try await e.start(binding, permit: ShowerStartPermit())
         let writes = transport.writes
         let connects = transport.connects
 

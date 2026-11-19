@@ -196,6 +196,11 @@ extension HomeView {
             case "sh-denied-final": return SampleData.showerRecord("sh-denied", now:now)
             case "sh-detail-stopped-charged": return SampleData.showerRecord("sh-detail-stopped", now:now)
             case "sh-detail-kept", "sh-detail-kept-list": return .idle
+            case _ where name.hasPrefix("sh-detail-first-"): return .idle
+            case "sh-first-passed":
+                var s = ShowerState(phase:.authorizing, machineID:dormMachine, peripheralID:"demo")
+                s.authorizeSent = true
+                return s
             case _ where name.hasPrefix("sh-detail-block-") || name.hasPrefix("sh-home-block-"): return block(name) == nil ? nil : .idle
             default: return SampleData.showerRecord(name, now:now)
             }
@@ -247,7 +252,9 @@ extension HomeView {
             // 暖橙's 热水洗澡 reads the live model: drawn set up and idle instead.
             let block = block(name)
             shower.demoStartBlock = block
-            shower.demoReadyDorm = kept || (block != nil && block != .notConfigured) ? SampleData.dorm : nil
+            let first = name?.hasPrefix("sh-detail-first-") == true
+            shower.demoReadyDorm = kept || first || (block != nil && block != .notConfigured) ? SampleData.dorm : nil
+            shower.demoFirstCheck(name)
         }
     }
 

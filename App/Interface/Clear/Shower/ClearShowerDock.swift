@@ -41,12 +41,18 @@ struct ClearShowerDock: View {
             switch phase {
             case nil:
                 let block = startBlock
-                primary(live && shower.busy ? ClearShowerText.busyButton : ClearShowerText.start, symbol:"arrow.up.right",
-                        spinning:live && shower.busy, spinnerOnly:launchSpinner && block == .launching, enabled:mayStart, action:start)
+                let checking = flow.checking
+                primary(checking ? FirstCheckText.checkingButton : live && shower.busy ? ClearShowerText.busyButton : ClearShowerText.start,
+                        symbol:"arrow.up.right", spinning:checking || live && shower.busy,
+                        spinnerOnly:launchSpinner && block == .launching, enabled:mayStart && !checking, action:start)
                     .accessibilityHint(block?.clear ?? "")
                     .accessibilityIdentifier("startWater")
                     .modifier(ShowerLaunchSpinner(launching:block == .launching, shown:$launchSpinner))
-                if let reason = block?.clear {
+                if checking {
+                    FirstCheckCheckingLine(clear:true)
+                } else if let failure = flow.checkFailure {
+                    FirstCheckFailureLine(failure:failure, clear:true)
+                } else if let reason = block?.clear {
                     ShowerStartReason(text:reason) {
                         ForEach(block?.links(clear:true) ?? [], id:\.self) { link in
                             NavigationLink(value:link == .settings ? ClearRoute.account : ClearRoute.dorm) {
@@ -100,7 +106,7 @@ struct ClearShowerDock: View {
                 primary(face.title, symbol:"arrow.up.right", spinning:face.spinning, enabled:face.enabled) {
                     retryTapped = true
                     // A demo shows the tapped look and starts nothing.
-                    if live { shower.pageEvent(.retryTapped) }
+                    if live { shower.tapStart(.retry) }
                 }
                 secondary(ClearShowerText.deniedClose, enabled:!retryTapped) { close(.closeTapped) }
             case .done?, .denied?:
@@ -112,12 +118,13 @@ struct ClearShowerDock: View {
                 }
                 if face.holdsRetrySlot { secondary(ClearShowerText.deniedClose, enabled:false) {}.hidden() }
             case .connectFailed?:
-                primary(ClearShowerText.start, symbol:"arrow.up.right", enabled:!flow.starting) { shower.pageEvent(.retryTapped) }
+                primary(ClearShowerText.start, symbol:"arrow.up.right", enabled:!flow.starting) { shower.tapStart(.retry) }
                 secondary("取消", enabled:true) { close(.closeTapped) }
             }
         }
         .animation(reduceMotion ? nil : .easeInOut(duration:0.2), value:phase)
         .onChange(of:phase) { retryTapped = false }
+        .firstCheckExplainer(shower, clear:true)
         .frame(maxWidth:560)
         .padding(.horizontal,20).padding(.vertical,12)
         .frame(maxWidth:.infinity)
@@ -149,7 +156,7 @@ struct ClearShowerDock: View {
         #if DEBUG
         if !live { shower.showDemoPage(HomeView.ShowerPageDemo.record("sh-connect")); return }
         #endif
-        shower.pageEventShowingPage(.startTapped)
+        shower.tapStart(.page, showingPage:true)
     }
 
     /// From the page brought up or, once it went down, as 暖橙's 热水洗澡 screen does.
@@ -162,7 +169,7 @@ struct ClearShowerDock: View {
         #if DEBUG
         if !live { shower.showDemoPage(HomeView.ShowerPageDemo.record("sh-connect")); return }
         #endif
-        if flow.presented { shower.pageEvent(.startNextTapped) } else { shower.pageEventShowingPage(.startNextTapped) }
+        shower.tapStart(.page, kind:.next, showingPage:!flow.presented)
     }
 
     private func close(_ event: ShowerPageEvent) {
