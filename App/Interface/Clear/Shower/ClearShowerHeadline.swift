@@ -86,6 +86,9 @@ struct ClearShowerHeadline: View {
     private var text: String {
         switch phase {
         case nil:
+            if flow.checking { return FirstCheckText.checkingLine(clear:true) }
+            // A first check came to nothing: its line under the button says why, never 「准备好了…」 over it.
+            if flow.checkFailure != nil { return "" }
             guard live else { return demoBlock.map(\.clearHeadlineLine) ?? (configured ? ClearShowerText.readyBody : "") }
             if shower.inspecting { return "正在只读核对附近水控，不会出水。" }
             // Greyed out: the reason is under the button; never 「准备好了…」 over it.
@@ -101,6 +104,7 @@ struct ClearShowerHeadline: View {
 
     /// The 热水洗澡 screen's headline when no session is shown.
     private var idleTitle: String {
+        if flow.checking { return FirstCheckText.checkingTitle }
         guard live else { return demoBlock.map(Self.title) ?? (configured ? ClearShowerText.readyTitle : "尚未配置热水") }
         if let title = shower.startBlock?.clearTitle { return title }
         if shower.inspecting { return "正在核对水控" }

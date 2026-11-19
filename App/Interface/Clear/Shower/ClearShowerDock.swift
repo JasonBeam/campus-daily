@@ -13,6 +13,8 @@ struct ClearShowerDock: View {
     /// Nil: no session to show (ready to start).
     let phase: ShowerPagePhase?
     let live: Bool
+    /// At the end of the page's scrolling content (accessibility sizes) instead of pinned.
+    var inline = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// 开始洗澡 was tapped on the refused face; cleared when the phase moves.
@@ -49,7 +51,8 @@ struct ClearShowerDock: View {
                     .accessibilityIdentifier("startWater")
                     .modifier(ShowerLaunchSpinner(launching:block == .launching, shown:$launchSpinner))
                 if checking {
-                    FirstCheckCheckingLine(clear:true)
+                    // The headline block says what the check does; the button spins.
+                    EmptyView()
                 } else if let failure = flow.checkFailure {
                     FirstCheckFailureLine(failure:failure, clear:true)
                 } else if let reason = block?.clear {
@@ -126,9 +129,9 @@ struct ClearShowerDock: View {
         .onChange(of:phase) { retryTapped = false }
         .firstCheckExplainer(shower, clear:true)
         .frame(maxWidth:560)
-        .padding(.horizontal,20).padding(.vertical,12)
+        .padding(.horizontal, inline ? 0 : 20).padding(.vertical, inline ? 0 : 12)
         .frame(maxWidth:.infinity)
-        .background(NativeTheme.background)
+        .background(inline ? Color.clear : NativeTheme.background)
     }
 
     // MARK: Actions

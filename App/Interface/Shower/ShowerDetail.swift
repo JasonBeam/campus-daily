@@ -14,9 +14,13 @@ struct ShowerDetail: View {
     @State private var recordsOpen = false
     /// The app is still loading what a start needs, for longer than `ShowerStartBlock.spinnerDelay`.
     @State private var launchSpinner = false
+    @Environment(\.dynamicTypeSize) private var typeSize
     #if DEBUG
     @State private var demoListOpen = false
     #endif
+    /// Accessibility sizes: the start block (开始洗澡, its reason and links) ends the scrolling
+    /// content instead of pinning over it. A shower that is on keeps its button pinned.
+    private var startBlockInline: Bool { typeSize.isAccessibilitySize && !closing && !stopped }
     var body: some View {
         ScrollView {
             VStack(alignment:.leading,spacing:24) {
@@ -87,6 +91,7 @@ struct ShowerDetail: View {
                 } else {
                     NavigationLink("连接检查与水控信息") { AdvancedSettingsView() }.font(.subheadline).frame(minHeight:44)
                 }
+                if startBlockInline { bottomBlock }
             }.padding(20).frame(maxWidth:560).frame(maxWidth:.infinity)
         }.background(NativeTheme.background)
             .navigationTitle("热水洗澡").navigationBarTitleDisplayMode(.inline)
@@ -94,6 +99,26 @@ struct ShowerDetail: View {
             .firstCheckPassedToast(shower, clear:false)
             .showerCardRecordsDestination(isPresented:$recordsOpen)
             .safeAreaInset(edge:.bottom) {
+                if !startBlockInline {
+                    bottomBlock.padding(.horizontal,20).padding(.top,12).padding(.bottom,12).background(NativeTheme.background)
+                }
+            }
+            #if DEBUG
+            // campusdaily://demo/sh-kept-list: the kept list pushed over this page.
+            .navigationDestination(isPresented:$demoListOpen) {
+                if let retained = shower.retainedShown(live:true) { ShowerRetainedList(summary:retained) }
+            }
+            .task {
+                guard shower.demoRetainedListOpen else { return }
+                shower.demoRetainedListOpen = false
+                try? await Task.sleep(for:.milliseconds(400))
+                demoListOpen = true
+            }
+            #endif
+    }
+
+    /// 开始洗澡 (or 结束 / 开始下一次洗澡) and what goes under it.
+    private var bottomBlock: some View {
                 VStack(spacing:10) {
                     Button { perform() } label: {
                         HStack {
@@ -114,7 +139,8 @@ struct ShowerDetail: View {
                         .accessibilityIdentifier(stopped ? "showerStartNext" : closing ? "finishWater" : "startWater")
                         .modifier(ShowerLaunchSpinner(launching:block == .launching, shown:$launchSpinner))
                     if checking {
-                        FirstCheckCheckingLine(clear:false)
+                        // The title block says what the check does; the button spins.
+                        EmptyView()
                     } else if let failure = checkFailure {
                         FirstCheckFailureLine(failure:failure, clear:false)
                     } else if let reason = block?.warm {
@@ -124,20 +150,7 @@ struct ShowerDetail: View {
                         Text(stopped ? ShowerPageText.stoppedNote : closing ? ShowerPageText.runningNote : ShowerStartBlock.warmNote)
                             .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
                     }
-                }.padding(.horizontal,20).padding(.top,12).padding(.bottom,12).background(NativeTheme.background)
-            }
-            #if DEBUG
-            // campusdaily://demo/sh-kept-list: the kept list pushed over this page.
-            .navigationDestination(isPresented:$demoListOpen) {
-                if let retained = shower.retainedShown(live:true) { ShowerRetainedList(summary:retained) }
-            }
-            .task {
-                guard shower.demoRetainedListOpen else { return }
-                shower.demoRetainedListOpen = false
-                try? await Task.sleep(for:.milliseconds(400))
-                demoListOpen = true
-            }
-            #endif
+                }
     }
 
     @ViewBuilder private var cost: some View {
@@ -200,6 +213,7 @@ struct ShowerDetail: View {
 
     /// Under the headline: left out where the reason under the button says it.
     private var statusLine: String {
+        if checking { return FirstCheckText.checkingLine(clear:false) }
         if shower.inspecting { return "正在只读核对附近水控，不会出水。" }
         if demoReady || block?.replacesStatus == true { return "" }
         return shower.status
@@ -226,6 +240,7 @@ struct ShowerDetail: View {
 
     private var headline: String {
         if let title = block?.title(clear:false) { return title }
+        if checking { return FirstCheckText.checkingTitle }
         if demoReady { return demoTitle }
         if shower.inspecting { return "正在核对水控" }
         if shower.busy { return "正在处理" }

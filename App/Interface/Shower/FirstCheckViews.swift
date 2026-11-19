@@ -8,46 +8,55 @@ struct FirstCheckExplainer: View {
     let clear: Bool
     let confirm: () -> Void
     let later: () -> Void
+    @Environment(\.dynamicTypeSize) private var typeSize
+    /// The content's own height: the sheet is as tall as it (no gap above the buttons).
+    @State private var height: CGFloat = 380
 
     var body: some View {
-        VStack(alignment:.leading, spacing:16) {
-            Image(systemName:"checkmark.shield").font(.title).foregroundStyle(NativeTheme.tint).accessibilityHidden(true)
+        Group {
+            if typeSize.isAccessibilitySize {
+                // Large text: the whole sheet, scrolling.
+                ScrollView { content }.presentationDetents([.large])
+            } else {
+                content
+                    .onGeometryChange(for:CGFloat.self) { $0.size.height } action: { height = $0 }
+                    .presentationDetents([.height(height)])
+            }
+        }
+        .frame(maxWidth:.infinity, maxHeight:.infinity, alignment:.top)
+        .background(NativeTheme.background)
+        .presentationDragIndicator(.visible)
+        // Opaque: the 热水洗澡 screen's button must not show through under 等会儿.
+        .presentationBackground(NativeTheme.background)
+    }
+
+    /// Icon, title, body; 32 pt to 好，开始; 等会儿 16 pt above the bottom safe area.
+    private var content: some View {
+        VStack(alignment:.leading, spacing:0) {
+            // Bluetooth to the controller nearby (not a promise that it was already checked).
+            Image(systemName:"dot.radiowaves.left.and.right").font(.title2).foregroundStyle(NativeTheme.tint)
+                .accessibilityHidden(true)
             Text(FirstCheckText.explainerTitle(clear:clear)).font(.title3.bold())
+                .fixedSize(horizontal:false, vertical:true)
                 .accessibilityAddTraits(.isHeader)
+                .padding(.top,16)
             Text(FirstCheckText.explainerBody(clear:clear)).font(.body).foregroundStyle(.secondary)
                 .fixedSize(horizontal:false, vertical:true)
-            Spacer(minLength:8)
+                .padding(.top,16)
             Button(action:confirm) {
                 Text(FirstCheckText.explainerConfirm(clear:clear)).frame(maxWidth:.infinity).frame(minHeight:50)
             }
             .buttonStyle(ShowerButtonStyle(primary:true, accent:NativeTheme.tint))
             .accessibilityIdentifier("firstCheckConfirm")
+            .padding(.top,32)
             Button(action:later) {
                 Text(FirstCheckText.explainerLater(clear:clear)).frame(maxWidth:.infinity).frame(minHeight:44)
             }
             .accessibilityIdentifier("firstCheckLater")
+            .padding(.top,8)
         }
-        .padding(24)
-        .frame(maxWidth:.infinity, maxHeight:.infinity, alignment:.top)
-        .background(NativeTheme.background)
-        .presentationDetents([.medium, .large])
-        .presentationDragIndicator(.visible)
-        // Opaque: the 热水洗澡 screen's button must not show through under 等会儿.
-        .presentationBackground(NativeTheme.background)
-    }
-}
-
-/// While a first check reads the number: under the button, what this step does (and doesn't).
-struct FirstCheckCheckingLine: View {
-    let clear: Bool
-    var body: some View {
-        Label { Text(FirstCheckText.checkingLine(clear:clear)) } icon: {
-            ProgressView().controlSize(.mini).accessibilityHidden(true)
-        }
-        .font(.footnote).foregroundStyle(.secondary)
-        .fixedSize(horizontal:false, vertical:true)
+        .padding(.horizontal,24).padding(.top,32).padding(.bottom,16)
         .frame(maxWidth:.infinity, alignment:.leading)
-        .accessibilityIdentifier("firstCheckChecking")
     }
 }
 
