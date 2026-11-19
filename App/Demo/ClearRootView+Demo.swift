@@ -171,7 +171,6 @@ extension ClearRootView {
         switch step {
         case .login: .account
         case .dorm: .dorm
-        case .water: .controller
         case .done: nil
         }
     }

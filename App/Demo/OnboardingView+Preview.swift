@@ -19,11 +19,6 @@ extension OnboardingView {
         /// Login step: the account saved on this phone (prefilled; 保存密码 follows it).
         var saved: SchoolAccount?
         var loginState = SchoolLoginState.idle
-        /// Controller step: checking, or what the check found.
-        var waterChecking = false
-        var waterOutcome: ShowerModel.InspectionOutcome?
-        /// Controller step: why the check can't run now.
-        var waterBlocked: String?
         /// Dorm step: what the meter lookup shows under the dorm (nil: nothing).
         var meter: DormStepMeter?
         /// Dorm step: the question's row already picked.

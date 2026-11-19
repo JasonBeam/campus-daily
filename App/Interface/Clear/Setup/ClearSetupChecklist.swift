@@ -3,8 +3,8 @@ import Core
 
 /// 清爽's 首次配置 checklist, instead of 暖橙's paged guide: how far setup is, one row per thing to
 /// set (`SetupChecklist`), a button on to the next one or 「完成设置」, then 宿舍电费与小组件.
-/// Each row pushes its step page, which comes back here when the step is done (the dorm goes on
-/// to the controller check first while there is one to check).
+/// Each row pushes its step page, which comes back here when the step is done. The controller is
+/// checked at the first 开始洗澡: 「都准备好了」 says so under its button (`SetupChecklist.doneNote`).
 ///
 /// As the first-run sheet (`inSheet`, the default) it has its own stack and opens with `start`
 /// pushed (campusdaily://login: `.account`); the root marks it seen when the sheet goes. Pushed
@@ -59,6 +59,14 @@ struct ClearSetupChecklist: View {
                     if let next = list.next { row = list.step(for:next) } else { dismiss() }
                 }
                 .accessibilityIdentifier("setupPrimary")
+                if let note = list.doneNote {
+                    Text(note).font(.footnote).foregroundStyle(Theme.ink2)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal:false, vertical:true)
+                        .frame(maxWidth:.infinity)
+                        .padding(.top,-12)
+                        .accessibilityIdentifier("setupDoneNote")
+                }
                 meterCard(list)
                 Text(SetupChecklist.footnote).font(.footnote).foregroundStyle(Theme.ink2)
                     .fixedSize(horizontal:false, vertical:true)
@@ -129,20 +137,16 @@ struct ClearSetupChecklist: View {
 
     @ViewBuilder private func step(_ item: ClearSetupRow) -> some View {
         let back = { row = nil }
-        // The dorm saved: on to the controller check while there is one to check.
-        let afterDorm = { row = previewing ? nil : live.afterDorm }
         #if DEBUG
         let preview = demo?.values
         switch item {
         case .account: ClearSetupAccountPage(preview:preview, done:back)
-        case .dorm: ClearSetupDormPage(preview:preview, done:afterDorm)
-        case .controller: ClearSetupControllerPage(preview:preview, done:back)
+        case .dorm: ClearSetupDormPage(preview:preview, done:back)
         }
         #else
         switch item {
         case .account: ClearSetupAccountPage(done:back)
-        case .dorm: ClearSetupDormPage(done:afterDorm)
-        case .controller: ClearSetupControllerPage(done:back)
+        case .dorm: ClearSetupDormPage(done:back)
         }
         #endif
     }
@@ -177,8 +181,7 @@ struct ClearSetupChecklist: View {
         let dorm = Theme.dorm(campus.room) ?? water.binding.flatMap { Theme.dorm($0.roomLabel) }
         let confirmed = SetupChecklist.isDormSet(dorm:dorm, confirmedDorm:confirmedDorm, controllerBound:water.configured)
         return SetupChecklist(signedIn:campus.configured, dorm:confirmed ? dorm : nil,
-                              controllerBound:water.configured,
-                              controllerChecked:water.verifiedDevice != nil || water.binding?.peripheralID != nil)
+                              controllerBound:water.configured)
     }
 
     #if DEBUG

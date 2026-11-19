@@ -7,10 +7,12 @@
 ### Added
 
 - Say why 开始洗澡 is greyed out on 热水洗澡 (both themes), in the line under the button with an ⓘ in its usual grey: no dorm (「选好宿舍后就能用热水。」, link 选宿舍 › / 选择宿舍), this version has no hot-water profile, the school account signed out or changed (「学校账号退出或换过，先重新核对宿舍的水控。」, link 核对水控 ›), the last 退出登录 did not complete (links 去设置 › and 核对水控 ›), a controller check or another step running, the phone can't save or read the shower record (看校园卡记录 › in 暖橙) and the last shower not settled yet. The line holds at most 3 lines (5 at accessibility text sizes), each link is 44 pt tall, and VoiceOver reads the reason as the button's hint. The page's title follows: 先重新核对水控 / 需要重新核对水控, 热水暂时开不了 / 暂不能开始洗澡, 热水暂时用不了 / 热水暂不可用, 还没设置热水 / 尚未配置热水 and 暂时存不了热水记录 / 热水记录暂不可用; 清爽 no longer says 「准备好了，靠近水控即可开始」 over a greyed-out button. 暖橙's home says the account reasons under 开始洗澡 instead of the last shower. While the app is still loading, the button shows a spinner after 0.3 seconds and no reason.
+- Add 「先不设置」 top right on 暖橙's guide (登录 and 宿舍): closes it, like 清爽's 稍后设置.
 
 ### Changed
 
 - The line under 开始洗澡 reads 「点了开始，再按水控上的出水键。」 (清爽 「开始后，按水控上的出水键」) instead of 「授权后，按水控上的出水键。」.
+- The first-run setup no longer checks the controller (both themes): 暖橙's guide is 登录 → 宿舍 → 好了, its three dots counting 选样子 first; 清爽's checklist goes back to 「都准备好了」 after the dorm. 好了 and 都准备好了 say the controller is checked at the first 开始洗澡. Settings › 核对水控 stays.
 - Say 「核对水控」 instead of 「连接检查」 (Settings › 高级, 清爽's 核对水控与设备信息, the dorm page's 「核对水控」 link), drop 「只读」 from the check's footer, say 学校账号 instead of 学工号 on 清爽's login step, and 「选好宿舍，热水和电费都按它来」 on the checklist's dorm row.
 - The Bluetooth permission prompt says 「用蓝牙连接你宿舍的水控：开水、关水和结算都要用到。」.
 

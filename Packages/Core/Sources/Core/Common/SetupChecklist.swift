@@ -4,23 +4,20 @@ import Foundation
 /// are done, which step a row or its button opens, and what each row says.
 ///
 /// Rows in order: 学校账号, 选择宿舍与水控, both needed (「已完成 1 / 2」). Laundry is not asked:
-/// it is on unless the 学校洗衣机 switch says otherwise, and machines are bound from home. 水控 is
-/// not a row: it is the check after the dorm step while the bound controller wasn't checked.
+/// it is on unless the 学校洗衣机 switch says otherwise, and machines are bound from home. The
+/// controller is not checked here: that is done at the first 开始洗澡, which `doneNote` says.
 public struct SetupChecklist: Equatable, Sendable {
     public enum Row: Hashable, CaseIterable, Sendable {
-        case account, dorm, controller
+        case account, dorm
     }
 
     public var signedIn: Bool
     /// The dorm the user confirmed (「3 栋 108」); nil until then.
     public var dorm: String?
     public var controllerBound: Bool
-    /// The bound controller was checked nearby.
-    public var controllerChecked: Bool
 
-    public init(signedIn: Bool, dorm: String?, controllerBound: Bool, controllerChecked: Bool) {
-        self.signedIn = signedIn; self.dorm = dorm
-        self.controllerBound = controllerBound; self.controllerChecked = controllerChecked
+    public init(signedIn: Bool, dorm: String?, controllerBound: Bool) {
+        self.signedIn = signedIn; self.dorm = dorm; self.controllerBound = controllerBound
     }
 
     private var dormDone: Bool { signedIn && dorm != nil }
@@ -33,7 +30,6 @@ public struct SetupChecklist: Equatable, Sendable {
         switch row {
         case .account: signedIn
         case .dorm: dormDone
-        case .controller: dormDone && controllerBound && controllerChecked
         }
     }
 
@@ -41,9 +37,6 @@ public struct SetupChecklist: Equatable, Sendable {
     public func step(for row: Row) -> Row {
         row == .dorm && !signedIn ? .account : row
     }
-
-    /// After the dorm step: the controller check while the bound controller wasn't checked.
-    public var afterDorm: Row? { controllerBound && !controllerChecked ? .controller : nil }
 
     public var doneCount: Int { needed.filter(isDone).count }
     /// The first needed row not done; nil when both are.
@@ -65,15 +58,13 @@ public struct SetupChecklist: Equatable, Sendable {
         switch row {
         case .account: "学校账号"
         case .dorm: "选择宿舍与水控"
-        case .controller: "水控"
         }
     }
 
     public func detail(_ row: Row) -> String {
         switch row {
         case .account: return signedIn ? "已登录，可查询校园卡余额" : "登录后自动同步校园卡余额"
-        case .dorm: return dorm.flatMap { dormDone ? $0.replacingOccurrences(of:" ", with:"") : nil } ?? "选择楼栋房间，确认自己的设备"
-        case .controller: return isDone(.controller) ? "已核对" : "核对宿舍的水控"
+        case .dorm: return dorm.flatMap { dormDone ? $0.replacingOccurrences(of:" ", with:"") : nil } ?? "选好宿舍，热水和电费都按它来"
         }
     }
 
@@ -86,6 +77,10 @@ public struct SetupChecklist: Equatable, Sendable {
         if !signedIn { return "先登录学校账号，再选择宿舍。" }
         if !dormDone { return "学校账号已登录，接着选择你的宿舍。" }
         return "宿舍已保存，可以开始使用。"
+    }
+    /// Under 「完成设置」 once both rows are done: the controller is checked at the first 开始洗澡.
+    public var doneNote: String? {
+        allDone ? "首次洗澡时请在水控旁点「开始洗澡」；会先核对是否为本宿舍水控" : nil
     }
     /// The button under the rows: on to the next needed row, or done.
     public var button: String {

@@ -3,7 +3,7 @@ import SwiftUI
 import Core
 
 /// campusdaily://demo/onboard/{1,1-filled,1-saved,1-loading,1-wrong,1-locked,1-site,1-unknown,3,3-nolocation,3-missing,3-samename,
-/// 3-samename-picked,4,4-checking,4-showering,4-stopped,4-ok,4-miss,4-bt,4-busy,done}
+/// 3-samename-picked,3-meter-*,done}
 /// Synthetic account and dorm; the primary button only moves to the next step.
 enum OnboardingDemo {
     static func handle(_ url: URL) -> (OnboardingView.Step, OnboardingView.Preview)? {
@@ -39,13 +39,6 @@ enum OnboardingDemo {
                 }
             }
             return (.dorm, preview)
-        case "4": return (.water, preview)
-        case "4-checking": preview.waterChecking = true; return (.water, preview)
-        case "4-showering": preview.waterBlocked = ShowerModel.inspectionShoweringText; return (.water, preview)
-        case "4-stopped": preview.waterBlocked = ShowerPageText.stoppedNote; return (.water, preview)
-        case "4-ok", "4-miss", "4-bt", "4-busy":
-            preview.waterOutcome = ["4-ok":.verified, "4-miss":.notFound, "4-bt":.bluetoothOff, "4-busy":.inUse][name]
-            return (.water, preview)
         case "1-filled", "1-loading", "1-wrong", "1-locked", "1-site", "1-unknown", "1-fallback":
             // The login form's states; 1-locked, 1-site and 1-unknown are the causes a refused
             // login is said by (1-fallback, the old name, is 1-unknown). Nothing is sent.

@@ -39,7 +39,6 @@ struct ClearSetupItem: View {
         switch row {
         case .account: "person.crop.circle"
         case .dorm: "building.2"
-        case .controller: "drop"
         }
     }
 }
