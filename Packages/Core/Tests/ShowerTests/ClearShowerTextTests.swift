@@ -43,9 +43,9 @@ final class ClearShowerTextTests: XCTestCase {
     }
 
     func testNotes() {
-        XCTAssertEqual(ClearShowerText.note(nil), "授权后，按水控上的出水键。")
-        XCTAssertEqual(ClearShowerText.note(.connecting), "授权后，按水控上的出水键。")
-        XCTAssertEqual(ClearShowerText.note(.connectFailed), "授权后，按水控上的出水键。")
+        XCTAssertEqual(ClearShowerText.note(nil), "开始后，按水控上的出水键")
+        XCTAssertEqual(ClearShowerText.note(.connecting), "开始后，按水控上的出水键")
+        XCTAssertEqual(ClearShowerText.note(.connectFailed), "开始后，按水控上的出水键")
         XCTAssertEqual(ClearShowerText.note(.running), "结算完成前，请留在水控附近。")
         XCTAssertEqual(ClearShowerText.note(.settling), "结算完成前，请留在水控附近。")
         XCTAssertEqual(ClearShowerText.note(.stopped), "上一笔费用继续保留；确认机身已停水后，可重新检查并开始。")

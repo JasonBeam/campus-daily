@@ -17,6 +17,8 @@ struct ClearShowerDock: View {
 
     /// 开始洗澡 was tapped on the refused face; cleared when the phase moves.
     @State private var retryTapped = false
+    /// The app is still loading what a start needs, for longer than `ShowerStartBlock.spinnerDelay`.
+    @State private var launchSpinner = false
 
     private var flow: ShowerPageFlow { shower.page }
 
@@ -38,9 +40,24 @@ struct ClearShowerDock: View {
         VStack(spacing:10) {
             switch phase {
             case nil:
+                let block = startBlock
                 primary(live && shower.busy ? ClearShowerText.busyButton : ClearShowerText.start, symbol:"arrow.up.right",
-                        spinning:live && shower.busy, enabled:mayStart, action:start)
-                note(ClearShowerText.startNote)
+                        spinning:live && shower.busy, spinnerOnly:launchSpinner && block == .launching, enabled:mayStart, action:start)
+                    .accessibilityHint(block?.clear ?? "")
+                    .accessibilityIdentifier("startWater")
+                    .modifier(ShowerLaunchSpinner(launching:block == .launching, shown:$launchSpinner))
+                if let reason = block?.clear {
+                    ShowerStartReason(text:reason) {
+                        ForEach(block?.links(clear:true) ?? [], id:\.self) { link in
+                            NavigationLink(value:link == .settings ? ClearRoute.account : ClearRoute.dorm) {
+                                ShowerStartReasonLinkLabel(text:ShowerStartBlock.linkTitle(link, clear:true), clear:true)
+                            }
+                            .buttonStyle(RowPressStyle())
+                        }
+                    }
+                } else {
+                    note(ClearShowerText.startNote)
+                }
             case .connecting?:
                 primary(ClearShowerText.busyButton, spinning:true, enabled:false) {}
                 note(ClearShowerText.startNote)
@@ -112,8 +129,18 @@ struct ClearShowerDock: View {
     private var platformMissing: Bool { live && shower.platformMissing }
 
     private var mayStart: Bool {
-        if !live { return true }
+        if !live { return startBlock == nil }
         return shower.mayStart
+    }
+
+    /// Why 开始洗澡 is greyed out (a demo's, DEBUG).
+    private var startBlock: ShowerStartBlock? {
+        if live { return shower.startBlock }
+        #if DEBUG
+        return shower.demoStartBlock
+        #else
+        return nil
+        #endif
     }
 
     private func start() {
@@ -145,22 +172,28 @@ struct ClearShowerDock: View {
 
     // MARK: Pieces
 
-    private func primary(_ title: String, symbol: String? = nil, spinning: Bool = false, centered: Bool = false, enabled: Bool,
-                         action: @escaping () -> Void) -> some View {
+    private func primary(_ title: String, symbol: String? = nil, spinning: Bool = false, spinnerOnly: Bool = false, centered: Bool = false,
+                         enabled: Bool, action: @escaping () -> Void) -> some View {
         Button(action:action) {
             HStack {
                 // Tinted by the style: white on blue, grey while disabled.
-                if centered { Spacer(minLength:0) }
-                if spinning { ProgressView().controlSize(.small) }
-                Text(title).contentTransition(.opacity)
-                Spacer(minLength:centered ? 0 : nil)
-                if let symbol { Image(systemName:symbol).accessibilityHidden(true) }
+                if spinnerOnly {
+                    // Still loading: the spinner only, without words.
+                    Spacer(minLength:0); ProgressView().controlSize(.small); Spacer(minLength:0)
+                } else {
+                    if centered { Spacer(minLength:0) }
+                    if spinning { ProgressView().controlSize(.small) }
+                    Text(title).contentTransition(.opacity)
+                    Spacer(minLength:centered ? 0 : nil)
+                    if let symbol { Image(systemName:symbol).accessibilityHidden(true) }
+                }
             }
             .padding(.horizontal,18).frame(minHeight:52)
             .contentShape(Rectangle())
         }
         .buttonStyle(ClearShowerButtonStyle())
         .disabled(!enabled)
+        .accessibilityLabel(title)
     }
 
     private func secondary(_ title: String, enabled: Bool, action: @escaping () -> Void) -> some View {

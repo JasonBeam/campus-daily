@@ -86,8 +86,10 @@ struct ClearShowerHeadline: View {
     private var text: String {
         switch phase {
         case nil:
-            guard live else { return configured ? ClearShowerText.readyBody : "" }
+            guard live else { return demoBlock.map(\.clearHeadlineLine) ?? (configured ? ClearShowerText.readyBody : "") }
             if shower.inspecting { return "正在只读核对附近水控，不会出水。" }
+            // Greyed out: the reason is under the button; never 「准备好了…」 over it.
+            if let block = shower.startBlock, block.clear != nil { return block.replacesStatus || shower.status.isEmpty ? block.clearHeadlineLine : shower.status }
             let status = shower.status
             return status.isEmpty && idleTitle == ClearShowerText.readyTitle ? ClearShowerText.readyBody : status
         case .running?:
@@ -99,7 +101,8 @@ struct ClearShowerHeadline: View {
 
     /// The 热水洗澡 screen's headline when no session is shown.
     private var idleTitle: String {
-        guard live else { return configured ? ClearShowerText.readyTitle : "尚未配置热水" }
+        guard live else { return demoBlock.map(Self.title) ?? (configured ? ClearShowerText.readyTitle : "尚未配置热水") }
+        if let title = shower.startBlock?.clearTitle { return title }
         if shower.inspecting { return "正在核对水控" }
         if shower.busy { return "正在处理" }
         if shower.problem { return "本次待核对" }
@@ -110,6 +113,27 @@ struct ClearShowerHeadline: View {
         case .idle: return ClearShowerText.readyTitle
         default: return "当前记录待核对"
         }
+    }
+
+    /// A greyed-out 开始洗澡's headline, where its reason keeps the page's own as it reads live.
+    static func title(_ block: ShowerStartBlock) -> String {
+        if let title = block.clearTitle { return title }
+        switch block {
+        case .inspecting: return "正在核对水控"
+        case .busy: return "正在处理"
+        case .recordUnreadable: return ClearShowerText.problemTitle
+        case .unsettled: return "当前记录待核对"
+        default: return ClearShowerText.readyTitle
+        }
+    }
+
+    /// A DEBUG demo's greyed-out 开始洗澡.
+    private var demoBlock: ShowerStartBlock? {
+        #if DEBUG
+        return shower.demoStartBlock
+        #else
+        return nil
+        #endif
     }
 
     /// On the timer: no platform profile (结束 would close the water with no way to settle it), or

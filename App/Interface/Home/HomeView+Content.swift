@@ -97,6 +97,7 @@ extension HomeView {
         case .unconfigured, .unavailable: return nil
         case .idle:
             if let issue = data.showerIssue { return .start(caption:issue) }
+            if let reason = data.showerBlockCaption { return .start(caption:reason) }
             let last = data.lastShowerMinutes.map { "上次 \($0) 分钟" + (data.lastShowerCost.map { " · " + Theme.yuan($0) } ?? "") }
             return .start(caption:last)
         case .starting: return .starting

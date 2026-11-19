@@ -2,6 +2,16 @@
 
 版本记录采用 Keep a Changelog 格式。源码仓库不保存个人签名证书或个人配置；iPhone 版通过 TestFlight 公开链接分发，Android 安装包通过 GitHub Release 分发。
 
+## [0.11.0]
+
+### Added
+
+- Say why 开始洗澡 is greyed out on 热水洗澡 (both themes), in the line under the button with an ⓘ in its usual grey: no dorm (「选好宿舍后就能用热水。」, link 选宿舍 › / 选择宿舍), this version has no hot-water profile, the school account signed out or changed (「学校账号退出或换过，先重新核对宿舍的水控。」, link 核对水控 ›), the last 退出登录 did not complete (links 去设置 › and 核对水控 ›), a controller check or another step running, the phone can't save or read the shower record (看校园卡记录 › in 暖橙) and the last shower not settled yet. The line holds at most 3 lines (5 at accessibility text sizes), each link is 44 pt tall, and VoiceOver reads the reason as the button's hint. The page's title follows: 先重新核对水控 / 需要重新核对水控, 热水暂时开不了 / 暂不能开始洗澡, 热水暂时用不了 / 热水暂不可用, 还没设置热水 / 尚未配置热水 and 暂时存不了热水记录 / 热水记录暂不可用; 清爽 no longer says 「准备好了，靠近水控即可开始」 over a greyed-out button. 暖橙's home says the account reasons under 开始洗澡 instead of the last shower. While the app is still loading, the button shows a spinner after 0.3 seconds and no reason.
+
+### Changed
+
+- The line under 开始洗澡 reads 「点了开始，再按水控上的出水键。」 (清爽 「开始后，按水控上的出水键」) instead of 「授权后，按水控上的出水键。」.
+
 ## [Unreleased]
 
 ### Added

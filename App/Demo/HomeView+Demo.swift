@@ -132,6 +132,12 @@ extension HomeView {
                 }
                 if url.lastPathComponent == "sh-endfail" { shower.page.endFailed = .noConnection }
                 if url.lastPathComponent == "sh-stopped-busy-rechecking" { shower.page.rechecking = true }
+                if let block = ShowerPageDemo.block(url.lastPathComponent), url.lastPathComponent.hasPrefix("sh-home-block-") {
+                    // Home itself: the reason under 开始洗澡, nothing pushed.
+                    shower.page.presented = false
+                    demo?.showerBlockCaption = block.warm
+                    return
+                }
                 if url.lastPathComponent.hasPrefix("sh-detail") {
                     // The 热水洗澡 screen over home, the page down.
                     shower.page.presented = false
@@ -168,12 +174,29 @@ extension HomeView {
     /// sh-detail-kept-list (热水洗澡 ready, with three synthetic kept showers, the newest charged
     /// on the card's records; -list opens 暖橙's list over it), and sh-detail-stopped-charged
     /// (detail-stopped with its charge on the card's records).
+    /// sh-detail-block-<reason> (`blocks`): 热水洗澡 set up and idle, 开始洗澡 greyed out with
+    /// that reason; sh-home-block-account / -signout: 暖橙's home with the reason under 开始洗澡.
     enum ShowerPageDemo {
+        /// The greyed-out 开始洗澡 demos, by the name after sh-detail-block- / sh-home-block-.
+        static let blocks: [String:ShowerStartBlock] = [
+            "unconfigured":.notConfigured, "platform":.platformMissing, "account":.accountChanged,
+            "signout":.signOutUnfinished, "inspecting":.inspecting, "busy":.busy, "storage":.storage,
+            "unreadable":.recordUnreadable, "unsettled":.unsettled, "launching":.launching,
+        ]
+        static func block(_ name: String?) -> ShowerStartBlock? {
+            guard let name else { return nil }
+            for prefix in ["sh-detail-block-", "sh-home-block-"] where name.hasPrefix(prefix) {
+                return blocks[String(name.dropFirst(prefix.count))]
+            }
+            return nil
+        }
+
         static func record(_ name: String, now: Date = Date()) -> ShowerState? {
             switch name {
             case "sh-denied-final": return SampleData.showerRecord("sh-denied", now:now)
             case "sh-detail-stopped-charged": return SampleData.showerRecord("sh-detail-stopped", now:now)
             case "sh-detail-kept", "sh-detail-kept-list": return .idle
+            case _ where name.hasPrefix("sh-detail-block-") || name.hasPrefix("sh-home-block-"): return block(name) == nil ? nil : .idle
             default: return SampleData.showerRecord(name, now:now)
             }
         }
@@ -222,7 +245,9 @@ extension HomeView {
             shower.demoRetained = kept ? retained() : nil
             shower.demoRetainedListOpen = name == "sh-detail-kept-list"
             // 暖橙's 热水洗澡 reads the live model: drawn set up and idle instead.
-            shower.demoReadyDorm = kept ? SampleData.dorm : nil
+            let block = block(name)
+            shower.demoStartBlock = block
+            shower.demoReadyDorm = kept || (block != nil && block != .notConfigured) ? SampleData.dorm : nil
         }
     }
 

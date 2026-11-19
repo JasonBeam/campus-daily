@@ -80,6 +80,9 @@ struct HomeData {
     var shower = Shower.idle
     /// The last start failed (shown under the shower button instead of the last shower).
     var showerIssue: String?
+    /// 暖橙's 开始洗澡 capsule can't start for a reason that lasts (`ShowerStartBlock.showsOnHome`):
+    /// said under it instead of the last shower; the capsule stays as it is and opens 热水洗澡.
+    var showerBlockCaption: String?
     /// Showering, but the device never confirmed the authorization write (said under the button).
     var showerUnconfirmed = false
     var lastShowerMinutes: Int?
@@ -150,6 +153,7 @@ extension HomeData {
         else if model.platformMissing { shower = .unavailable(ShowerModel.platformMissingText) }
         else { shower = .idle }
         if model.problem, shower == .idle { showerIssue = model.status }
+        if shower == .idle, let block = model.startBlock, block.showsOnHome { showerBlockCaption = block.warm }
         showerUnconfirmed = state.phase == .writePending && shower.showering != nil
         var activities: [AppActivity] = []
         // Minutes of water (from 出水, as the timer counted), not from the 开始洗澡 tap.

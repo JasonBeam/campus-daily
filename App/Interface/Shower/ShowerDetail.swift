@@ -12,6 +12,8 @@ struct ShowerDetail: View {
     @State private var confirmClear = false
     @Environment(\.showerCardRecords) private var cardRecords
     @State private var recordsOpen = false
+    /// The app is still loading what a start needs, for longer than `ShowerStartBlock.spinnerDelay`.
+    @State private var launchSpinner = false
     #if DEBUG
     @State private var demoListOpen = false
     #endif
@@ -31,12 +33,8 @@ struct ShowerDetail: View {
                         Text(headline).font(.title2.bold()).accessibilityIdentifier("waterHeadline")
                     }
                     VStack(alignment:.leading, spacing:ShowerCardRecordsLink.gap) {
-                        Text(demoReady ? "" : shower.inspecting ? "正在只读核对附近水控，不会出水。" : shower.status).font(.subheadline).foregroundStyle(shower.problem ? NativeTheme.notice : .fixed(Color.secondary))
+                        Text(statusLine).font(.subheadline).foregroundStyle(shower.problem ? NativeTheme.notice : .fixed(Color.secondary))
                             .fixedSize(horizontal:false,vertical:true).accessibilityIdentifier("waterStatus")
-                        // A record this build can't read: its charge is on the card's records.
-                        if shower.recordUnreadable, cardRecords.page != nil {
-                            ShowerCardRecordsLink { recordsOpen = true }
-                        }
                     }
                 }
                 }
@@ -97,17 +95,29 @@ struct ShowerDetail: View {
                 VStack(spacing:10) {
                     Button { perform() } label: {
                         HStack {
-                            if shower.busy { ProgressView().tint(Theme.pillInk).controlSize(.small) }
-                            Text(shower.busy ? "正在处理…" : stopped ? ShowerPageText.startNext : closing ? "结束并结算" : "开始洗澡")
-                                .contentTransition(.opacity)
-                            Spacer(); Image(systemName:closing ? "stop.circle" : "arrow.up.right")
+                            if launchSpinner && block == .launching {
+                                // Still loading: the spinner only, without words.
+                                Spacer(); ProgressView().tint(Theme.pillInk).controlSize(.small); Spacer()
+                            } else {
+                                if shower.busy { ProgressView().tint(Theme.pillInk).controlSize(.small) }
+                                Text(shower.busy ? "正在处理…" : stopped ? ShowerPageText.startNext : closing ? "结束并结算" : "开始洗澡")
+                                    .contentTransition(.opacity)
+                                Spacer(); Image(systemName:closing ? "stop.circle" : "arrow.up.right")
+                            }
                         }.padding(.horizontal,18).frame(minHeight:52)
                     }.buttonStyle(ShowerButtonStyle(primary:true,accent:NativeTheme.tint))
-                        .disabled(preview == nil && !demoReady && (stopped ? !shower.mayStartNext : closing ? !shower.mayFinish : !shower.mayStart))
+                        .disabled(preview == nil && (block != nil || (!demoReady && (stopped ? !shower.mayStartNext : closing ? !shower.mayFinish : !shower.mayStart))))
+                        .accessibilityLabel(shower.busy ? "正在处理…" : stopped ? ShowerPageText.startNext : closing ? "结束并结算" : "开始洗澡")
+                        .accessibilityHint(block?.warm ?? "")
                         .accessibilityIdentifier(stopped ? "showerStartNext" : closing ? "finishWater" : "startWater")
-                    // The page this opens says 「结算完成前，先别离开水控。」 once 结束 is tapped.
-                    Text(stopped ? ShowerPageText.stoppedNote : closing ? ShowerPageText.runningNote : "授权后，按水控上的出水键。")
-                        .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                        .modifier(ShowerLaunchSpinner(launching:block == .launching, shown:$launchSpinner))
+                    if let reason = block?.warm {
+                        ShowerStartReason(text:reason) { reasonLinks }
+                    } else {
+                        // The page this opens says 「结算完成前，先别离开水控。」 once 结束 is tapped.
+                        Text(stopped ? ShowerPageText.stoppedNote : closing ? ShowerPageText.runningNote : ShowerStartBlock.warmNote)
+                            .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                    }
                 }.padding(.horizontal,20).padding(.top,12).padding(.bottom,12).background(NativeTheme.background)
             }
             #if DEBUG
@@ -152,6 +162,16 @@ struct ShowerDetail: View {
         #endif
     }
     private var demoReady: Bool { demoDorm != nil }
+    /// A demo's headline where its reason keeps the page's own.
+    private var demoTitle: String {
+        switch block {
+        case .inspecting?: return "正在核对水控"
+        case .busy?: return "正在处理"
+        case .recordUnreadable?: return "本次待核对"
+        case .unsettled?: return "当前记录待核对"
+        default: return ShowerPageText.readyTitle
+        }
+    }
     private var lastEnded: Date? {
         guard let preview else { return shower.lastEnded }
         // The sample's last shower, as home's 最近 has it.
@@ -167,8 +187,40 @@ struct ShowerDetail: View {
         }
     }
 
+    /// Why 开始洗澡 is greyed out, while it is the page's button (not over a shower going on or over).
+    private var block: ShowerStartBlock? {
+        preview == nil && !stopped && !closing ? shower.startBlock : nil
+    }
+
+    /// Under the headline: left out where the reason under the button says it.
+    private var statusLine: String {
+        if shower.inspecting { return "正在只读核对附近水控，不会出水。" }
+        if demoReady || block?.replacesStatus == true { return "" }
+        return shower.status
+    }
+
+    /// What a greyed-out 开始洗澡's reason links to.
+    @ViewBuilder private var reasonLinks: some View {
+        ForEach(block?.links(clear:false) ?? [], id:\.self) { link in
+            let title = ShowerStartBlock.linkTitle(link, clear:false)
+            switch link {
+            case .dorm, .checkController:
+                // Setting the dorm (again) is what lets hot water go on.
+                NavigationLink { CampusOnboardingView() } label: { ShowerStartReasonLinkLabel(text:title) }
+                    .buttonStyle(RowPressStyle())
+            case .settings:
+                NavigationLink { AccountView() } label: { ShowerStartReasonLinkLabel(text:title) }
+                    .buttonStyle(RowPressStyle())
+            case .cardRecords:
+                // A record this build can't read: its charge is on the card's records.
+                if cardRecords.page != nil { ShowerCardRecordsLink { recordsOpen = true } }
+            }
+        }
+    }
+
     private var headline: String {
-        if demoReady { return ShowerPageText.readyTitle }
+        if let title = block?.title(clear:false) { return title }
+        if demoReady { return demoTitle }
         if shower.inspecting { return "正在核对水控" }
         if shower.busy { return "正在处理" }
         if shower.problem { return "本次待核对" }

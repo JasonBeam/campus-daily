@@ -100,6 +100,8 @@ enum ShowerProfileFiles {
     /// campusdaily://demo/sh-detail-kept: 暖橙's 热水洗澡 drawn set up and idle in this dorm
     /// (no binding behind it; nothing connects).
     @Published var demoReadyDorm: String?
+    /// campusdaily://demo/sh-detail-block-...: the greyed-out 开始洗澡 with this reason (no engine).
+    @Published var demoStartBlock: ShowerStartBlock?
     #endif
     @Published private(set) var residenceReviewRequired: Bool
     /// The review is there because the last 退出登录 did not complete (the same person is still
@@ -174,6 +176,16 @@ enum ShowerProfileFiles {
     var mayStart: Bool {
         ShowerLinkRule.mayStart(state, ready:configured && !platformMissing && !residenceReviewRequired && engine != nil && !storageBlocked,
                                 busy:busy, inspecting:inspecting)
+    }
+    /// Why 开始洗澡 is greyed out (`ShowerStartBlock`): nil exactly when `mayStart`.
+    var startBlock: ShowerStartBlock? {
+        #if DEBUG
+        if let demoStartBlock { return demoStartBlock }
+        #endif
+        return ShowerStartBlock.of(.init(configured:configured, profileLoaded:profileLoaded, platformMissing:platformMissing,
+                                         residenceReview:residenceReviewRequired, failedSignOut:reviewAfterFailedSignOut,
+                                         recordUnreadable:recordUnreadable, storageBlocked:storageBlocked, engineReady:engine != nil,
+                                         inspecting:inspecting, busy:busy, canStart:state.canStart))
     }
     /// Not without a platform profile: the water would close with no way to settle it.
     var mayFinish: Bool { configured && !platformMissing && engine != nil && !busy && !storageBlocked && state.canFinish }
