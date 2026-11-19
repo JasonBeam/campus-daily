@@ -11,6 +11,8 @@
 ### Changed
 
 - The line under 开始洗澡 reads 「点了开始，再按水控上的出水键。」 (清爽 「开始后，按水控上的出水键」) instead of 「授权后，按水控上的出水键。」.
+- Say 「核对水控」 instead of 「连接检查」 (Settings › 高级, 清爽's 核对水控与设备信息, the dorm page's 「核对水控」 link), drop 「只读」 from the check's footer, say 学校账号 instead of 学工号 on 清爽's login step, and 「选好宿舍，热水和电费都按它来」 on the checklist's dorm row.
+- The Bluetooth permission prompt says 「用蓝牙连接你宿舍的水控：开水、关水和结算都要用到。」.
 
 ## [Unreleased]
 

@@ -45,7 +45,7 @@ public enum ClearShowerText {
     public static let lastUseSettled = "已结算"
 
     /// The folded controller check.
-    public static let connection = "连接检查与设备信息"
+    public static let connection = "核对水控与设备信息"
     public static let inspect = "扫描并核对本宿舍水控"
     public static let inspecting = "正在核对…"
     public static let verified = "已识别的宿舍设备"

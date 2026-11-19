@@ -49,7 +49,7 @@ struct ClearSetupAccountPage: View {
 
     var body: some View {
         ClearSetupStep(navTitle:"连接校园卡", heading:"登录学校账号",
-                       message:"填写学校学工号和密码，登录后自动同步校园卡。") {
+                       message:"填写学校账号和密码，登录后自动同步校园卡。") {
             SchoolLoginForm(account:$account, password:$password, savePassword:$savePassword,
                             state:loginState, focus:$focus, submit:submit, webLogin:openWebLogin)
             if let issue {

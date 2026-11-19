@@ -13,7 +13,7 @@ struct CampusWebLogin {
     weak var webView: WKWebView?
     @Published var issue: String?
     @Published var reading = false
-    @Published var status = "填写学校学工号和密码，登录后自动同步校园卡。"
+    @Published var status = "填写学校账号和密码，登录后自动同步校园卡。"
     /// Hidden-page phases and their stage line (Core, unit-tested).
     @Published var progress = CampusLoginProgress()
     @Published var now = Date()
@@ -117,7 +117,7 @@ struct OfficialCampusBrowser: UIViewRepresentable {
                                     self.state.portalDormAddress = address
                                     _ = try? await webView.evaluateJavaScript("window.__campusDormAcknowledged=" + quoted)
                                 }
-                            case "login": self.state.status = "填写学校学工号和密码，登录后自动同步校园卡。"
+                            case "login": self.state.status = "填写学校账号和密码，登录后自动同步校园卡。"
                             case "wallet-ready":
                                 if let config = try? await self.state.read(), !Task.isCancelled { self.state.connected = config; return }
                             case "unsupported-entry", "unsupported-origin":

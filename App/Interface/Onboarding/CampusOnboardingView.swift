@@ -172,8 +172,8 @@ struct CampusOnboardingView: View {
             if flow.saved {
                 Section {
                     Label("宿舍已保存",systemImage:"checkmark.circle.fill").foregroundStyle(.green)
-                    NavigationLink("前往连接检查") { AdvancedSettingsView() }
-                    Text("靠近宿舍水控，在“连接检查”里核对水控。也可以直接开始洗澡，校日常会先核对水控编号。")
+                    NavigationLink("核对水控") { AdvancedSettingsView() }
+                    Text("到宿舍水控旁边，在「核对水控」里核对一下。也可以直接开始洗澡，校日常会先核对水控编号。")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
             }

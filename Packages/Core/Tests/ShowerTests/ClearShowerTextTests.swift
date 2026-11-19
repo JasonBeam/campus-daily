@@ -57,7 +57,7 @@ final class ClearShowerTextTests: XCTestCase {
         XCTAssertEqual(ClearShowerText.start, "开始洗澡")
         XCTAssertEqual(ClearShowerText.busyButton, "正在处理…")
         XCTAssertEqual(ClearShowerText.end, "结束并结算")
-        XCTAssertEqual(ClearShowerText.connection, "连接检查与设备信息")
+        XCTAssertEqual(ClearShowerText.connection, "核对水控与设备信息")
         XCTAssertEqual(ClearShowerText.lastUse, "最近一次用水")
         XCTAssertEqual(ClearShowerText.costMissing, "金额未返回")
     }
