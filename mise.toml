@@ -1,0 +1,143 @@
+# Routine commands for 校日常. Run `mise tasks` to list them.
+# Xcode 26, git and python3 come from Xcode and its command line tools; mise
+# installs node (for `mise test-scripts`) from [tools]. `mise android` needs JDK 21.
+#
+# Override defaults with environment variables, for example
+# `SIMULATOR="iPhone 17" mise test-app`. `mise run check` runs every check a
+# commit must pass (build, test, test-app, scan) and fails without the private
+# scan lists; `mise run check-public` runs the same steps without them and says
+# which scans it skipped. BUILD_CMD, TEST_CMD and TEST_APP_CMD replace the
+# xcodebuild build, swift test and xcodebuild test commands (to run them on
+# another machine); BUILD_CMD gets the configuration as its last argument.
+# They run through `eval`, like a line typed in the shell.
+
+[tools]
+node = "lts"
+
+[task_config]
+dir = "{{config_root}}"
+
+[tasks.setup]
+description = "Fetch the pinned Alipay SDK and the shared hot-water profile (both Git-ignored)"
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+[ -d Vendor/AlipaySDK-15.8.30/AlipaySDK.xcframework ] || python3 Scripts/fetch-alipay-sdk.py
+[ -f private/distribution/WaterPlatformProfile.json ] || python3 Scripts/stage-water-profile.py fetch
+'''
+
+[tasks.build]
+description = "Build App and Widget for iOS Simulator, Debug and Release"
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+cmd=${BUILD_CMD:-"xcodebuild build -workspace XiaoRiChang.xcworkspace -scheme App -destination 'generic/platform=iOS Simulator' -derivedDataPath .DerivedData -configuration"}
+eval "$cmd Debug"
+# Release only compiles with a hot-water profile. Without the real one
+# (private/distribution/, or CAMPUS_WATER_PROFILE_PATH), this check build gets a
+# synthetic platform-only profile; package-ipa still requires the real one.
+if [ -z "${CAMPUS_WATER_PROFILE_PATH:-}" ] && [ ! -f private/distribution/WaterPlatformProfile.json ]; then
+  synthetic=$(mktemp -d)
+  trap 'rm -rf "$synthetic"' EXIT
+  CAMPUS_WATER_PROFILE_PATH=$synthetic/SyntheticWaterProfile.json
+  printf '{"secret":"synthetic-release-check","sid":"synthetic","bleName":"SYNTHETIC","typeID":0,"version":1}\n' > "$CAMPUS_WATER_PROFILE_PATH"
+  export CAMPUS_WATER_PROFILE_PATH
+fi
+eval "$cmd Release"
+'''
+
+[tasks.build-device]
+description = "Build App and Widget for a generic iOS device"
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+xcodebuild build -workspace XiaoRiChang.xcworkspace -scheme App \
+  -configuration "${CONFIGURATION:-Debug}" -destination "generic/platform=iOS" \
+  -derivedDataPath .DerivedData
+'''
+
+[tasks.test]
+description = "Run every test: Core package and scripts"
+run = [{ task = "test-core" }, { task = "test-scripts" }]
+
+[tasks.test-core]
+description = "Run the Core package tests on macOS"
+run = 'eval "${TEST_CMD:-swift test --package-path Packages/Core --scratch-path .build-tests}"'
+
+[tasks.test-app]
+description = "Run the App.xctestplan on an iOS Simulator"
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+cmd=${TEST_APP_CMD:-"xcodebuild test -workspace XiaoRiChang.xcworkspace -scheme App -destination 'platform=iOS Simulator,name=${SIMULATOR:-iPhone 17}' -derivedDataPath .DerivedData"}
+eval "$cmd"
+'''
+
+[tasks.test-scripts]
+description = "Run the Python script tests and the school-login automation test"
+run = [
+    "python3 -m unittest discover -s Scripts/Tests -p 'test_*.py'",
+    "node --test Scripts/Tests/campus-login-automation.test.cjs",
+]
+
+[tasks.scan]
+description = "Privacy checks on staged files: patterns, values in $LEAKCHECK_FILE, markers in $MARKER_PATTERNS (except $MARKER_ALLOW); a missing list fails"
+run = "sh Scripts/privacy-check.sh"
+
+[tasks.check]
+description = "Every check before a commit, one after another: builds, all tests, the App.xctestplan, the full privacy scan (fails without the private lists)"
+run = [
+    { task = "build" },
+    { task = "test" },
+    { task = "test-app" },
+    { task = "scan" },
+    "echo 'all checks passed'",
+]
+
+[tasks.check-public]
+description = "check for a checkout without the private lists: the same steps, scans whose list is missing are skipped and said so"
+run = [
+    { task = "build" },
+    { task = "test" },
+    { task = "test-app" },
+    { task = "scan-public" },
+]
+
+[tasks.scan-public]
+description = "The privacy scan of `check-public` (--allow-missing); prints what it skipped"
+hide = true
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+out=$(mktemp)
+trap 'rm -f "$out"' EXIT
+sh Scripts/privacy-check.sh --allow-missing | tee "$out"
+skipped=$(sed -n 's/^skipped: \([a-z]* scan\).*/\1/p' "$out" | paste -sd, - | sed 's/,/, /g')
+if [ -n "$skipped" ]; then
+  echo "public checks passed (skipped: $skipped)"
+else
+  echo "public checks passed"
+fi
+'''
+
+[tasks.build-public]
+description = "Build the unsigned Release app for a device that package-ipa takes (needs the hot-water profile)"
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+xcodebuild build -workspace XiaoRiChang.xcworkspace -scheme App -configuration Release \
+  -destination "generic/platform=iOS" -derivedDataPath .DerivedData CODE_SIGNING_ALLOWED=NO
+echo "APP=.DerivedData/Build/Products/Release-iphoneos/XiaoRiChang.app"
+'''
+
+[tasks.package-ipa]
+description = "Package the unsigned Release build from build-public (APP=..., OUTPUT=..., PROFILE=...)"
+run = 'python3 Scripts/package-ipa.py --app "$APP" --output "$OUTPUT" --platform-profile "$PROFILE"'
+
+[tasks.android]
+description = "Build, unit-test and lint the Android app"
+run = 'bash tools/build-android.sh -PcampusWaterProfile="$PWD/private/distribution/WaterPlatformProfile.json"'
+
+[tasks.clean]
+description = "Remove derived data and SwiftPM build output"
+run = "rm -rf .DerivedData .build-tests Packages/Core/.build"

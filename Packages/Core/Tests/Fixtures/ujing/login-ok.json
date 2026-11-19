@@ -1,0 +1,38 @@
+{
+  "request": {
+    "method": "POST",
+    "url": "https://phoenix.ujing.online/api/v1/login",
+    "headers": {
+      "x-app-code": "ZI",
+      "x-app-version": "2.4.18",
+      "x-mobile-id": "00000000-0000-4000-8000-000000000001",
+      "x-mobile-brand": "apple",
+      "User-Agent": "XiaoRiChang/test",
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "mobile": "13800000000",
+      "captcha": "123456"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "code": 0,
+      "message": "success",
+      "data": {
+        "token": "test.synthetic-ujing-token.not-a-real-jwt-0000",
+        "id": 10001,
+        "userId": "20002",
+        "isTempToken": false
+      }
+    }
+  },
+  "_fixture": {
+    "synthetic": true,
+    "note": "Synthetic reply shaped like the existing iOS/Android U净 code expects (no capture of it yet; to be checked on a device). All ids/phone/tokens are fake."
+  }
+}

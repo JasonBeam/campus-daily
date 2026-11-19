@@ -1,0 +1,29 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "https://isv.lxt6.cn/ZK_BSRS/bathe/getMachineMacAddress?wxcode=typeId=1*_schoolId=20021*_roomId=999999999999999999&sign=REDACTED_TOKEN_27&sid=REDACTED_TOKEN_19",
+    "headers": {
+      "Content-Type": "application/x-www-form-urlencoded"
+    },
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Server": "nginx",
+      "Content-Type": "application/json;charset=UTF-8",
+      "Access-Control-Allow-Origin": "*"
+    },
+    "body": {
+      "message": "系统提示： 当前房间未绑定设备",
+      "data": {},
+      "serial": 1793321440,
+      "code": 5000,
+      "notNormal": true
+    }
+  },
+  "_fixture": {
+    "capturedAt": "2026-10-30",
+    "redacted": true
+  }
+}

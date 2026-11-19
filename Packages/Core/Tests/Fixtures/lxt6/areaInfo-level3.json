@@ -1,0 +1,44 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "https://isv.lxt6.cn/zk_areainfo_api/areaInfo/getAreaForRoomApplests?wxcode=id=997000000000090101&sign=REDACTED_TOKEN_23&sid=REDACTED_TOKEN_19",
+    "headers": {
+      "Content-Type": "application/x-www-form-urlencoded"
+    },
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Server": "nginx",
+      "Content-Type": "application/json;charset=UTF-8"
+    },
+    "body": {
+      "message": "OK",
+      "data": [
+        {
+          "id": "997000000000091197",
+          "name": "989"
+        },
+        {
+          "id": "997000000000091198",
+          "name": "990"
+        },
+        {
+          "id": "991000000000000002",
+          "name": "991"
+        }
+      ],
+      "serial": 1793321431224,
+      "code": 0,
+      "validMessage": null
+    }
+  },
+  "_fixture": {
+    "capturedAt": "2026-10-30",
+    "redacted": true,
+    "synthetic": {
+      "$.data": "Replaced with 3 synthetic rooms (989-991). '991' / 991000000000000002 is the faked user room used by portal/getMyInfo-ok (gydz ...99栋9号1层991房) and lxt6/getMachineMacAddress-ok (roomId). Shape (id: 18-digit string, name: room number string) matches the real response; ids and names are not real."
+    }
+  }
+}

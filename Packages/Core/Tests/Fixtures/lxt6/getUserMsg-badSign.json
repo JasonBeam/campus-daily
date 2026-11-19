@@ -1,0 +1,23 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "https://isv.lxt6.cn/AECC/GDBusinessSchool/getUserMsg?wxcode=schoolid=20021*_random=abc123&sign=REDACTED_TOKEN_28&sid=REDACTED_TOKEN_19&requestType=1",
+    "headers": {
+      "Content-Type": "application/x-www-form-urlencoded"
+    },
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Server": "nginx",
+      "Content-Type": "application/json;charset=utf-8",
+      "Access-Control-Allow-Origin": "*"
+    },
+    "body": "{\"Code\":-301,\"Message\":\"中卡云瓣电子校园卡平台->/AECC/GDBusinessSchool/getUserMsg接口->校验参数 sign 不合法！\",\"Serial\":1793321440693}"
+  },
+  "_fixture": {
+    "capturedAt": "2026-10-30",
+    "redacted": true
+  }
+}

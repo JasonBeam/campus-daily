@@ -1,0 +1,28 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "https://isv.lxt6.cn/zk_areainfo_api/areaInfo/getAreaInfoForApplests?wxcode=id=20021&sign=REDACTED_TOKEN_18&sid=REDACTED_TOKEN_19",
+    "headers": {
+      "Content-Type": "application/x-www-form-urlencoded"
+    },
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Server": "nginx",
+      "Content-Type": "application/json;charset=UTF-8"
+    },
+    "body": {
+      "message": "参数不匹配",
+      "data": null,
+      "serial": 1793321439250,
+      "code": 4002,
+      "validMessage": null
+    }
+  },
+  "_fixture": {
+    "capturedAt": "2026-10-30",
+    "redacted": true
+  }
+}

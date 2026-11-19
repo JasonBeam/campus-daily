@@ -1,0 +1,26 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "https://portal.gdbtu.edu.cn/portalData/v2/personalData/getMyInfo",
+    "headers": {
+      "Accept": "application/json"
+    },
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Server": "nginx/1.28.0",
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "code": -1,
+      "message": "没有访问权限",
+      "data": null
+    }
+  },
+  "_fixture": {
+    "capturedAt": "2026-10-30",
+    "redacted": true
+  }
+}

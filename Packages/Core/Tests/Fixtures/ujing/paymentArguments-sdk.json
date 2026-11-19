@@ -1,0 +1,34 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "https://phoenix.ujing.online/api/v1/payment/arguments?channel=alipay&orderId=TESTORDER0001&payVersion=1",
+    "headers": {
+      "Authorization": "Bearer REDACTED_TOKEN_SYNTHETIC",
+      "x-app-code": "BI",
+      "x-app-version": "2.4.18",
+      "x-mobile-id": "00000000-0000-4000-8000-000000000001",
+      "x-mobile-brand": "apple",
+      "User-Agent": "XiaoRiChang/test"
+    },
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "code": 0,
+      "message": "success",
+      "data": {
+        "payInfo": {
+          "orderInfo": "app_id=2000000000000000&method=alipay.trade.app.pay&charset=utf-8&sign_type=RSA2&timestamp=2026-10-30+12%3A00%3A10&version=1.0&biz_content=%7B%22out_trade_no%22%3A%22TESTTRADE0001%22%2C%22total_amount%22%3A%224.00%22%2C%22subject%22%3A%22%5Cu6d17%5Cu8863%22%2C%22product_code%22%3A%22QUICK_MSECURITY_PAY%22%7D&sign=SYNTHETIC_SIGNATURE"
+        }
+      }
+    }
+  },
+  "_fixture": {
+    "synthetic": true,
+    "note": "Synthetic reply shaped like the existing iOS/Android U净 code expects (no capture of it yet; to be checked on a device). All ids/phone/tokens are fake."
+  }
+}
