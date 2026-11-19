@@ -85,11 +85,11 @@ struct ShowerDetail: View {
                         }
                 }
                 if preview != nil {
-                    NavigationLink("核对水控，看看水控信息") { AdvancedSettingsView(preview:preview) }.font(.subheadline).frame(minHeight:44)
+                    NavigationLink("核对水控，看看水控信息") { AdvancedSettingsView(preview:preview) }.font(.subheadline).multilineTextAlignment(.leading).frame(minHeight:44)
                 } else if !shower.configured && !demoReady {
                     NavigationLink("设置校园账号与宿舍") { CampusOnboardingView() }.frame(minHeight:44)
                 } else {
-                    NavigationLink("核对水控，看看水控信息") { AdvancedSettingsView() }.font(.subheadline).frame(minHeight:44)
+                    NavigationLink("核对水控，看看水控信息") { AdvancedSettingsView() }.font(.subheadline).multilineTextAlignment(.leading).frame(minHeight:44)
                 }
                 if startBlockInline { bottomBlock }
             }.padding(20).frame(maxWidth:560).frame(maxWidth:.infinity)
