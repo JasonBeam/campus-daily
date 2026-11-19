@@ -13,6 +13,7 @@ struct HomeView: View {
     @Environment(\.scenePhase) var phase
     @Environment(ThemeStore.self) var themeStore
     @Environment(SampleMode.self) var sample
+    @Environment(LookPicker.self) var picker: LookPicker?
     /// The graph's services (`CampusScene`): `@AppStorage` here is on their preferences.
     @Environment(\.campusServices) var services
     @Environment(\.accessibilityReduceMotion) var reduceMotion
@@ -79,6 +80,15 @@ struct HomeView: View {
         onboarding = OnboardingRequest.asking(.login, over:onboarding)
     }
 
+    /// The first-run guide. Just after 「选一个样子」 it comes up without the cover's slide: it rises
+    /// in by itself (`LookPicker.entering`).
+    func openFirstRun() {
+        guard picker?.entering == true else { openOnboarding(from:.launch); return }
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) { openOnboarding(from:.launch) }
+    }
+
     /// Shows these pages over home. With the settings sheet up, it is closed first and the pages
     /// are pushed once it has gone: pushed while it slides away, a page comes without its title.
     /// Opened directly, pages still waiting for the sheet to go are dropped: the later request wins.
@@ -108,7 +118,11 @@ struct HomeView: View {
         demo = nil; laundryDemo = nil
         successTick += 1
         // Let the settings sheet go first, otherwise the cover is not presented.
-        Task { try? await Task.sleep(for:.milliseconds(600)); openOnboarding(from:.reset) }
+        // 「选一个样子」 first: the reset cleared the pick.
+        Task {
+            try? await Task.sleep(for:.milliseconds(600))
+            if picker?.presentAfterReset() != true { openOnboarding(from:.reset) }
+        }
     }
 
     /// The shower page goes up over home. Whatever covers home (Settings, the sign-in sheet,
@@ -248,7 +262,7 @@ struct HomeView: View {
             WidgetPreview(page:page.number).onTapGesture { widgetPreview = nil }.onOpenURL { handleDemo($0) }
         }
         #endif
-        .modifier(CampusRootHooks(demo:isDemo, root:.warm, firstRun:{ openOnboarding(from:.launch) }, afterReset:afterReset))
+        .modifier(CampusRootHooks(demo:isDemo, root:.warm, firstRun:openFirstRun, afterReset:afterReset))
         .sampleChrome()
         .onChange(of:sample.isActive, initial:true) { _, active in followSample(active) }
         .onChange(of:sample.loginDue, initial:true) { _, due in openLoginAfterSample(due) }

@@ -9,6 +9,8 @@ import Core
     @State private var sample: SampleMode
     /// Which page shows the sample's blocked message (`SampleChrome`).
     @State private var sampleAlerts = SampleAlertStack()
+    /// 「选一个样子」, on the live theme and preferences (a look picked in the sample is kept).
+    @State private var picker: LookPicker
     init() {
         // Crashes are handed over at a later launch (MetricKit), so this runs first, once.
         CrashReportsLaunch.start(info:Bundle.main.infoDictionary ?? [:]) { AirCrashReports.start(apiKey:$0, endpoint:$1) }
@@ -17,6 +19,11 @@ import Core
         let sample = SampleMode(gate:ShowerModel.liveGate)
         _sample = State(initialValue:sample)
         live = CampusGraph.live()
+        // A new user (as the root's launch check will find, from the same stored state): the
+        // picker is there from the first frame.
+        let firstRun = QuickSetupSeen.isFirstRun(in:live.services.defaults, campusConfigured:live.campus.configured,
+                                                 showerConfigured:live.shower.configured, laundryConfigured:live.laundry.configured)
+        _picker = State(initialValue:LookPicker(live:live.theme, liveDefaults:live.services.defaults, firstRun:firstRun))
         // A reminder prompt queued on the live home waits while the sample covers it.
         live.reminders.held = { [weak sample] in sample?.isActive ?? false }
         ShowerIntentGate.sample = sample
@@ -38,6 +45,7 @@ import Core
                     CampusScene(graph:live)
                 }
             }
+            .modifier(LookPickerHost(picker:picker))
             .environment(sample).environment(sampleAlerts)
             .modifier(LiveAppHooks(campus:live.campus, laundry:live.laundry, reminders:live.reminders, sample:sample))
             // The live record only: while the sample is shown the gate turns every check away.

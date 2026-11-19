@@ -90,6 +90,9 @@ struct OnboardingView: View {
     /// 「保存密码，让小组件自动刷新」: on by default only while the account is the saved one.
     @State private var savePassword: Bool
     @State private var loginState: SchoolLoginState
+    /// Opened just after 「选一个样子」: rises in, its mascot pops (`LookPicker.entering`).
+    @Environment(LookPicker.self) private var picker: LookPicker?
+    @State private var entered = true
     @FocusState private var loginFocus: SchoolLoginField?
 
     /// Keyboard up on the login step: mascot and body make room; the save-password note stays.
@@ -141,6 +144,8 @@ struct OnboardingView: View {
                 if !typeSize.isAccessibilitySize { bottom.background(Theme.bg) }
             }
             .safeAreaInset(edge:.top, spacing:0) { skipBar }
+            .opacity(entered ? 1 : 0)
+            .offset(y:entered || reduceMotion ? 0 : 24)
             .toolbar(.hidden, for:.navigationBar)
             .navigationDestination(isPresented:$dormPicker) { CampusOnboardingView() }
             .navigationDestination(isPresented:$meterPage) { CampusPowerSetupView(start:meterHalted) }
@@ -160,6 +165,13 @@ struct OnboardingView: View {
                 } catch {
                     issue = error as? SchoolLoginFailure == .busy ? SchoolLoginText.busy : "这次没登录上，再试一次。"
                 }
+            }
+        }
+        .onAppear {
+            // Just after 「选一个样子」 (the cover came up without its slide): rise in from 24 pt below.
+            if picker?.takeEntering() == true {
+                entered = false
+                withAnimation(reduceMotion ? .easeInOut(duration:0.3) : .timingCurve(0.2, 0.8, 0.2, 1, duration:0.55).delay(0.1)) { entered = true }
             }
         }
         .onAppear {
@@ -185,6 +197,8 @@ struct OnboardingView: View {
                 // 52 pt at y≈104 on every step; the done screen's mascot is 76 pt at y≈180.
                 let size: CGFloat = step == .done ? 76 : 52
                 icon.frame(width:size, height:size, alignment:.leading)
+                    .scaleEffect(entered || reduceMotion ? 1 : 0.4, anchor:.leading)
+                    .animation(reduceMotion ? nil : .spring(response:0.5, dampingFraction:0.55).delay(0.35), value:entered)
                     .padding(.top,typeSize.isAccessibilitySize ? 32 : step == .done ? 76 : 0)
             }
             // Same title style on every step, done screen included (32 bold); 28 while the

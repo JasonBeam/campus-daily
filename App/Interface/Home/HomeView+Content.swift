@@ -70,7 +70,7 @@ extension HomeView {
     /// The shower button, or a plain row when hot water can't be used here.
     @ViewBuilder func showerSection(_ data: HomeData) -> some View {
         if let kind = showerKind(data) {
-            HomeShowerButton(kind:kind) { tap(kind) }
+            HomeShowerButton(kind:kind) { tap(kind) }.lookSignature()
         } else {
             VStack(spacing:0) {
                 Hairline()

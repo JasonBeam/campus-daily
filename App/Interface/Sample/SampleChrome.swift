@@ -1,23 +1,46 @@
 import SwiftUI
 import Core
 
-/// 「先看看示例」's bar over every page while the sample is on: 「示例数据，不是你的账号」 and
-/// 去登录, back to the login step. VoiceOver reads it as one element whose action is 去登录.
+/// 「先看看示例」's bar over every page while the sample is on: 「示例，不是你的账号」,
+/// 换个样子 (「选一个样子」 over the sample, `LookPicker`) and 去登录, back to the login step.
+/// VoiceOver reads it as one element whose actions are 去登录 and 换个样子.
 struct SampleBar: View {
     @Environment(SampleMode.self) private var sample
+    @Environment(LookPicker.self) private var picker: LookPicker?
+    /// The sample's theme, shown at once when a look is picked.
+    @Environment(ThemeStore.self) private var themeStore
+    @State private var picking = false
+    @Environment(\.dynamicTypeSize) private var typeSize
+    /// Picked in the cover: applied once it has gone (the theme switch replaces this page).
+    @State private var picked: AppTheme?
 
     var body: some View {
         HStack(spacing:12) {
             Image(systemName:"eye").font(.system(size:15, weight:.semibold)).foregroundStyle(Theme.ink2)
                 .accessibilityHidden(true)
             Text(SampleCopy.barText).scaledFont(15, .medium, relativeTo:.subheadline).foregroundStyle(Theme.ink)
-                .lineLimit(2).minimumScaleFactor(0.85)
+                // One line; two only at accessibility sizes.
+                .lineLimit(typeSize.isAccessibilitySize ? 2 : 1).minimumScaleFactor(0.8)
             Spacer(minLength:8)
+            if picker != nil {
+                Button { openPicker() } label: {
+                    Text(SampleCopy.barLook).scaledFont(15, .semibold, relativeTo:.subheadline).foregroundStyle(Theme.ink)
+                        .padding(.horizontal,14).frame(minHeight:34)
+                        .background(Theme.bg, in:Capsule())
+                        .overlay { Capsule().strokeBorder(Theme.separator, lineWidth:0.5) }
+                        .contentShape(Capsule())
+                        .fixedSize()
+                }
+                .buttonStyle(PressScaleStyle())
+                .frame(minHeight:44)
+                .accessibilityIdentifier("sampleLook")
+            }
             Button { sample.leave() } label: {
                 Text(SampleCopy.barAction).scaledFont(15, .semibold, relativeTo:.subheadline).foregroundStyle(Theme.pillInk)
                     .padding(.horizontal,14).frame(minHeight:34)
                     .background(Theme.pill, in:Capsule())
                     .contentShape(Capsule())
+                    .fixedSize()
             }
             .buttonStyle(PressScaleStyle())
             .frame(minHeight:44)
@@ -32,7 +55,20 @@ struct SampleBar: View {
         .accessibilityLabel(SampleCopy.barSpoken)
         .accessibilityAddTraits(.isButton)
         .accessibilityAction { sample.leave() }
+        .accessibilityAction(named:SampleCopy.barLook) { openPicker() }
         .accessibilityIdentifier("sampleBar")
+        .fullScreenCover(isPresented:$picking, onDismiss:{
+            picker?.dismiss()
+            if let theme = picked { picked = nil; picker?.choose(theme, shownOn:themeStore) }
+        }) {
+            LookPickerView(mode:.sample, choose:{ theme in picked = theme; picking = false },
+                           close:{ picking = false })
+        }
+    }
+
+    private func openPicker() {
+        picker?.present(.sample)
+        picking = true
     }
 }
 
@@ -51,13 +87,15 @@ struct SampleChrome: ViewModifier {
     @Environment(SampleMode.self) private var sample
     @Environment(SampleAlertStack.self) private var stack
     @State private var id = UUID()
+    /// Inside 「选一个样子」's previews: no bar.
+    @Environment(\.lookPreview) private var lookPreview
     /// False where the root's bar already shows (a sheet that leaves it visible).
     var bar = true
 
     func body(content: Content) -> some View {
         // Above the page, not a safe-area inset: a navigation bar would stay under an inset.
         VStack(spacing:0) {
-            if bar && sample.isActive { SampleBar() }
+            if bar && sample.isActive && !lookPreview { SampleBar() }
             content
         }
             .alert(SampleCopy.blocked, isPresented:Binding(get:{ sample.blocked != nil && stack.shown.last == id },

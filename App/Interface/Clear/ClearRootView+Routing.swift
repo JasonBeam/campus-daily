@@ -116,7 +116,11 @@ extension ClearRootView {
         popAll(from:.reset)
         successTick += 1
         // Let a closing sheet go first, otherwise the new one is not presented.
-        Task { try? await Task.sleep(for:.milliseconds(600)); navigator.openSetup(from:.reset) }
+        // 「选一个样子」 first: the reset cleared the pick.
+        Task {
+            try? await Task.sleep(for:.milliseconds(600))
+            if picker?.presentAfterReset() != true { navigator.openSetup(from:.reset) }
+        }
     }
 
     // MARK: Links
