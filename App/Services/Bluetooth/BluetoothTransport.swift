@@ -32,8 +32,14 @@ struct VerifiedShowerDevice {
     }
 }
 
+/// A link the read-only 连接检查 can also count nearby controllers on (`ShowerModel.inspectBluetooth`).
+protocol ShowerInspectingTransport: ShowerTransport {
+    /// How many controllers carry `bleName` nearby; reads only.
+    func inspect(bleName: String, remembered: String?) async throws -> Int
+}
+
 // CoreBluetooth delegates are delivered on the explicit main queue below.
-@MainActor final class BluetoothTransport: NSObject, ShowerTransport, @preconcurrency CBCentralManagerDelegate, @preconcurrency CBPeripheralDelegate {
+@MainActor final class BluetoothTransport: NSObject, ShowerInspectingTransport, @preconcurrency CBCentralManagerDelegate, @preconcurrency CBPeripheralDelegate {
     private var manager: CBCentralManager!
     private var peripheral: CBPeripheral?
     private var retiring: CBPeripheral?

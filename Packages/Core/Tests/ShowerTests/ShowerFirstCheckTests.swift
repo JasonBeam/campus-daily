@@ -209,6 +209,45 @@ final class ShowerFirstCheckTests: XCTestCase {
         XCTAssertEqual(again.failure?.reason, .authorizeUncertain)
     }
 
+    /// 11b, the race's other side: `consume()` won and the request is out (held at the school);
+    /// a `revoke()` then returns false and changes nothing. Released as uncertain, or as OK with
+    /// the write timing out, the record on disk is the one the request left: kept for review or
+    /// waiting on its write, never asked a second time, never settled.
+    func testARevokeWhileTheRequestIsOutChangesNothing() async throws {
+        for released in ["uncertain", "ok+write timeout"] {
+            reset()
+            let held = HeldGateway()
+            let permit = ShowerStartPermit()
+            if released == "uncertain" { transport.script(.frame(identity)) }
+            else { transport.script(.frame(identity), .fail(.timedOut)) }
+            let e = try ShowerEngine(transport: transport, gateway: held, vault: vault, configuration: .init(bleName: "fixture-ble"),
+                                     hooks: hooks, now: { [t0] in t0 })
+            let start = Task { [e, b = binding, permit] in try await e.start(b, permit: permit) }
+            await eventually(seconds: 5) { held.authorizeCount == 1 }
+            XCTAssertEqual(held.authorizeCount, 1, released)
+            XCTAssertFalse(permit.revoke(), "\(released): consumed, the request is out")
+            XCTAssertEqual(try vault.showerState()?.authorizeSent, true, "\(released): marked sent before it left")
+            held.release(released == "uncertain" ? .failure(ServiceError.timedOut) : .success(auth))
+            let s = try await start.value
+            let disk = try vault.showerState()
+            if released == "uncertain" {
+                XCTAssertEqual(s.failure?.reason, .authorizeUncertain)
+                XCTAssertEqual(disk?.failure?.reason, .authorizeUncertain, "kept")
+                XCTAssertEqual(disk?.failure?.needsReview, true)
+            } else {
+                XCTAssertEqual(s.phase, .writePending)
+                XCTAssertEqual(disk?.phase, .writePending, "kept")
+            }
+            XCTAssertFalse(disk?.canStart ?? true, released)
+            XCTAssertNil(FirstCheckFailure.of(s.failure), released)
+            try? await Task.sleep(for: .milliseconds(50))
+            XCTAssertEqual(held.authorizeCount, 1, "\(released): never asked twice")
+            XCTAssertEqual(held.settleCount, 0, "\(released): nothing settled")
+            let after = await e.state
+            XCTAssertEqual(after.phase, s.phase, released)
+        }
+    }
+
     /// The authorization arrived but its write timed out: the record waits on its write.
     func testAWriteTimeoutAfterTheAuthorizeIsKept() async throws {
         let permit = ShowerStartPermit()
@@ -455,6 +494,51 @@ final class ShowerFirstCheckTests: XCTestCase {
         XCTAssertFalse(flow.presented)
     }
 
+    /// Taken back while the number was read (退出登录 during the probe): the engine's "sent" mark
+    /// comes before the permit's last word, so it no longer brings the page up or says 找到了;
+    /// the withdrawn start ends as a cleared record with no line.
+    func testAWithdrawnFirstChecksSentMarkIsNotTheRequestLeaving() {
+        var flow = ShowerPageFlow(record: .idle)
+        _ = reduce(&flow, .firstCheckTapped)
+        _ = reduce(&flow, .record(ShowerState(phase: .authorizing, machineID: machine)))
+        _ = reduce(&flow, .firstCheckWithdrawn)
+        var marked = ShowerState(phase: .authorizing, machineID: machine)
+        marked.authorizeSent = true
+        XCTAssertEqual(reduce(&flow, .record(marked)), [])
+        XCTAssertFalse(flow.presented)
+        XCTAssertEqual(flow.checkPassed, 0, "no 找到了")
+        XCTAssertTrue(flow.checking, "still 核对水控 on the screen")
+        var refused = ShowerState(phase: .failed, machineID: machine)
+        refused.failure = ShowerFailure(reason: .deviceUnavailable, needsReview: false, deviceError: .interrupted)
+        XCTAssertEqual(reduce(&flow, .record(refused)), [.dismissRecord])
+        XCTAssertFalse(flow.presented)
+        XCTAssertNil(flow.checkFailure)
+        XCTAssertFalse(flow.firstCheckWithdrawn)
+    }
+
+    /// Taken back after the permit's last word: the request had left, and what follows it is
+    /// today's page (written, or kept for review).
+    func testAWithdrawnFirstCheckWhoseRequestLeftIsTodaysFlow() {
+        var unclear = ShowerState(phase: .failed, machineID: machine, authorizeSent: true)
+        unclear.failure = ShowerFailure(reason: .authorizeUncertain, needsReview: true)
+        for after in [ShowerState(phase: .writePending, machineID: machine, authorizeSent: true), unclear] {
+            var flow = ShowerPageFlow(record: .idle)
+            _ = reduce(&flow, .firstCheckTapped)
+            _ = reduce(&flow, .firstCheckWithdrawn)
+            _ = reduce(&flow, .record(after))
+            XCTAssertTrue(flow.presented, "\(after.phase)")
+            XCTAssertFalse(flow.firstCheck)
+        }
+    }
+
+    func testAWithdrawalWithoutAFirstCheckChangesNothing() {
+        var flow = ShowerPageFlow(record: .idle)
+        _ = reduce(&flow, .startTapped)
+        let before = flow
+        XCTAssertEqual(reduce(&flow, .firstCheckWithdrawn), [])
+        XCTAssertEqual(flow, before)
+    }
+
     /// After the request left, a first check's outcome is today's: the kept record's face.
     func testAfterTheRequestTheFirstCheckIsTodaysFlow() {
         var flow = ShowerPageFlow(record: .idle)
@@ -514,5 +598,43 @@ final class HookedShowerVault: ShowerVault, @unchecked Sendable {
     func retainShower(_ state: ShowerState) throws {
         try inner.retainShower(state)
         onRetain?(state)
+    }
+}
+
+/// A gateway whose authorize request is counted, then held until `release`.
+final class HeldGateway: ShowerGateway, @unchecked Sendable {
+    private let lock = NSLock()
+    private var _authorizes = 0
+    private var _settles = 0
+    private var held: CheckedContinuation<Result<ShowerAuthorization, Error>, Never>?
+    private var early: Result<ShowerAuthorization, Error>?
+    var authorizeCount: Int { lock.withLock { _authorizes } }
+    var settleCount: Int { lock.withLock { _settles } }
+
+    func authorize(_ binding: ShowerBinding, frame: Data) async throws -> ShowerAuthorization {
+        let result = await withCheckedContinuation { (c: CheckedContinuation<Result<ShowerAuthorization, Error>, Never>) in
+            let ready: Result<ShowerAuthorization, Error>? = lock.withLock {
+                _authorizes += 1
+                if let early { self.early = nil; return early }
+                held = c
+                return nil
+            }
+            if let ready { c.resume(returning: ready) }
+        }
+        return try result.get()
+    }
+
+    func settle(_ binding: ShowerBinding, frame: Data) async throws -> ShowerReceipt {
+        lock.withLock { _settles += 1 }
+        throw ServiceError.timedOut
+    }
+
+    func release(_ result: Result<ShowerAuthorization, Error>) {
+        let c: CheckedContinuation<Result<ShowerAuthorization, Error>, Never>? = lock.withLock {
+            defer { held = nil }
+            if held == nil { early = result }
+            return held
+        }
+        c?.resume(returning: result)
     }
 }

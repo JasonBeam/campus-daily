@@ -185,6 +185,9 @@ extension ShowerModel {
         startSlot = nil
         permissionTask?.cancel()
         permissionTask = nil
+        // A first check still reading the number: its "sent" mark is no longer the request
+        // leaving (the permit may refuse it), so the page waits for what really follows.
+        pageEvent(.firstCheckWithdrawn)
     }
 
     func sceneChanged(_ scene: ShowerScene) {

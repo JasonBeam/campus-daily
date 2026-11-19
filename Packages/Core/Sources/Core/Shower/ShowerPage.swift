@@ -191,6 +191,11 @@ public enum ShowerPageEvent: Sendable, Equatable {
     case checkFailed(FirstCheckFailure)
     /// The 热水洗澡 screen was left: its check line goes.
     case checkLineCleared
+    /// The first check's start was taken back (退出登录, an account switch, another dorm, the app
+    /// sent to the background) while it ran: a "sent" mark alone no longer means the request
+    /// left (the engine marks it before the permit's last word), so only what follows a request
+    /// that left brings the page up.
+    case firstCheckWithdrawn
     /// The home button in any other state (正在洗澡, 正在结算…): back to the page as it is.
     case reopen
     /// The record changed (engine update, relaunch restore).
@@ -273,7 +278,9 @@ public struct ShowerPageFlow: Sendable, Equatable {
     public var nextFailed = false
     /// The running start is a first check (`ShowerPageEvent.firstCheckTapped`): its first part
     /// shows as 核对水控 and a pre-authorize failure as a line under 开始洗澡, not as a face.
-    public var firstCheck = false
+    public var firstCheck = false { didSet { firstCheckWithdrawn = false } }
+    /// The running first check's start was taken back (`ShowerPageEvent.firstCheckWithdrawn`).
+    public private(set) var firstCheckWithdrawn = false
     /// Why the last first check came to nothing (nothing was authorized); nil when it didn't.
     public var checkFailure: FirstCheckFailure?
     /// Bumped when a first check matched the number (the short 「找到了」).
@@ -281,7 +288,7 @@ public struct ShowerPageFlow: Sendable, Equatable {
 
     /// A first check is reading the controller's number: nothing has been asked of the school.
     public var checking: Bool {
-        firstCheck && starting && (record.canStart || record.phase == .authorizing && !record.authorizeSent)
+        firstCheck && starting && (record.canStart || record.phase == .authorizing && (!record.authorizeSent || firstCheckWithdrawn))
     }
 
     /// 开始下一次洗澡, the stopped page's one button (not while the controller is found in use).
@@ -387,6 +394,11 @@ public struct ShowerPageFlow: Sendable, Equatable {
             f.checkFailure = nil
             return (f, [])
 
+        case .firstCheckWithdrawn:
+            guard flow.firstCheck else { return (flow, []) }
+            f.firstCheckWithdrawn = true
+            return (f, [])
+
         case .startReturned:
             f.starting = false
             f.firstCheck = false
@@ -404,7 +416,8 @@ public struct ShowerPageFlow: Sendable, Equatable {
         case .record(let next):
             f.record = next
             if flow.firstCheck {
-                if next.authorizeSent || [ShowerPhase.writePending, .running, .closing, .settling, .done].contains(next.phase) {
+                let left = [ShowerPhase.writePending, .running, .closing, .settling, .done].contains(next.phase)
+                if left || next.authorizeSent && !flow.firstCheckWithdrawn {
                     // The number matched and the request left: the page as today.
                     f.firstCheck = false
                     f.presented = true

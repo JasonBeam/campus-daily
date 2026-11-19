@@ -139,7 +139,7 @@ enum ShowerProfileFiles {
     private var observer: Task<Void, Never>?
     private let gateway = ShowerGatewayBox()
     /// The services' Bluetooth, for the read-only controller check; nil when they have no radio (the sample's).
-    private var bluetooth: BluetoothTransport? { services.showerTransport as? BluetoothTransport }
+    private var bluetooth: (any ShowerInspectingTransport)? { services.showerTransport as? any ShowerInspectingTransport }
     private var syncGate = ShowerSyncGate()
     /// What the 「还在计时」 reminder counts from (`ShowerReminderStart`).
     private var reminderStart: Date?

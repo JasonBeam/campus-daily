@@ -239,7 +239,11 @@ final class ShowerFirstStartModelTests: XCTestCase {
         await settle(shower)
         XCTAssertEqual(http.sent, 0, "authorize 0")
         XCTAssertEqual(link.writes, [ShowerFrames.probeCommand], "no authorization written")
-        // The check's failure is cleared off the screen once the engine is free (`.dismissRecord`).
+        // The engine's "sent" mark came before the permit refused: no page, no 找到了, and the
+        // withdrawn start is cleared off the screen once the engine is free (`.dismissRecord`).
+        XCTAssertFalse(shower.page.presented, "no failure face")
+        XCTAssertEqual(shower.page.checkPassed, 0, "no 找到了")
+        XCTAssertFalse(shower.checkToastShown)
         await waitUntil { shower.state.phase == .idle }
         XCTAssertEqual(shower.state.phase, .idle)
         XCTAssertNil(try StoredShowerVault(store:store).showerState()?.failure)
