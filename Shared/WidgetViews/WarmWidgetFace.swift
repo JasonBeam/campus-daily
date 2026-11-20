@@ -4,17 +4,21 @@ import Core
 
 /// 暖橙's widget face (`CampusWidgetFace` whenever the theme isn't 清爽), on the apricot
 /// `CampusWidgetPalette.warm`: electricity is the hero, with a level bar out of 100 度, and the
-/// mascot sits in the top-right corner of every face with numbers. Without the container
-/// background, like `CampusWidgetFace`.
+/// mascot sits in the top-right corner of every face with numbers (full colour only: accented,
+/// tinted and clear Home Screens draw no mascot). Without the container background, like
+/// `CampusWidgetFace`.
 struct WarmWidgetFace: View {
     let model: CampusWidgetModel
     var medium = false
+    @Environment(\.widgetRenderingMode) private var renderingMode
     private let P = CampusWidgetPalette.warm
 
     /// The mascot in the corner, 13 pt from the top and the right.
     static let cornerMascot: CGFloat = 20
     /// The signed-out face's mascot.
     static func signedOutMascot(medium: Bool) -> CGFloat { medium ? 64 : 40 }
+    /// The mascot only on a full-colour Home Screen: accented, tinted and clear ones draw none.
+    static func drawsMascot(_ mode: WidgetRenderingMode) -> Bool { mode == .fullColor }
 
     enum Content: Equatable {
         case signedOut, firstRead, numbers
@@ -72,7 +76,7 @@ struct WarmWidgetFace: View {
         .frame(maxWidth:.infinity, maxHeight:.infinity, alignment:.topLeading)
         .overlay(alignment:.topTrailing) {
             // Inside the widget's 16-pt margins: 3 pt out, 13 from the edges.
-            if content.cornerMascot { mascot(Self.cornerMascot).offset(x:3, y:-3) }
+            if content.cornerMascot && drawsMascot { mascot(Self.cornerMascot).offset(x:3, y:-3) }
         }
         .typesettingLanguage(Locale.Language(identifier:"zh-Hans"))
         .accessibilityElement(children:.ignore)
@@ -80,6 +84,7 @@ struct WarmWidgetFace: View {
     }
 
     private var level: Level { Level.of(model) }
+    private var drawsMascot: Bool { Self.drawsMascot(renderingMode) }
     private var expired: Bool { model.state == .expired }
 
     // MARK: Signed out, first read
@@ -88,7 +93,7 @@ struct WarmWidgetFace: View {
         Group {
             if medium {
                 HStack(spacing:16) {
-                    mascot(Self.signedOutMascot(medium:true))
+                    if drawsMascot { mascot(Self.signedOutMascot(medium:true)) }
                     VStack(alignment:.leading, spacing:4) {
                         Text("登录后显示余额和电量").font(.system(size:17, weight:.semibold)).foregroundStyle(P.ink)
                             .lineLimit(1).minimumScaleFactor(0.8)
@@ -98,7 +103,7 @@ struct WarmWidgetFace: View {
                 .frame(maxHeight:.infinity)
             } else {
                 VStack(alignment:.leading, spacing:12) {
-                    mascot(Self.signedOutMascot(medium:false)).padding(.leading,-4)
+                    if drawsMascot { mascot(Self.signedOutMascot(medium:false)).padding(.leading,-4) }
                     // Broken after 显示: the line would otherwise leave 量 alone on the second.
                     Text("登录后显示\n余额和电量").font(.system(size:15, weight:.semibold)).foregroundStyle(P.ink)
                         .lineSpacing(2).fixedSize(horizontal:false, vertical:true)
@@ -179,7 +184,7 @@ struct WarmWidgetFace: View {
     // MARK: Pieces
 
     private func mascot(_ size: CGFloat) -> some View {
-        MascotGlyph(size:size, color:P.accent).widgetAccentable().unredacted()
+        MascotGlyph(size:size, color:P.accent).unredacted()
     }
 
     /// bolt / creditcard 13 in accent and the label 13 semibold ink2.

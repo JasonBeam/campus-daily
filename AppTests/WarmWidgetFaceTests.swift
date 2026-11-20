@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import WidgetKit
 import XCTest
 import Core
 @testable import XiaoRiChang
@@ -80,6 +81,13 @@ final class WarmWidgetFaceTests: XCTestCase {
         XCTAssertEqual(WarmWidgetFace.signedOutMascot(medium:false), 40)
         XCTAssertEqual(WarmWidgetFace.signedOutMascot(medium:true), 64)
         XCTAssertEqual(WarmWidgetFace.cornerMascot, 20)
+    }
+
+    /// Accented, tinted and clear Home Screens draw no mascot at all, in the corner or signed out.
+    func testTheMascotIsDrawnOnlyInFullColor() {
+        XCTAssertTrue(WarmWidgetFace.drawsMascot(.fullColor))
+        XCTAssertFalse(WarmWidgetFace.drawsMascot(.accented))
+        XCTAssertFalse(WarmWidgetFace.drawsMascot(.vibrant))
     }
 
     // MARK: Bar and level
