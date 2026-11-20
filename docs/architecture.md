@@ -1070,6 +1070,13 @@ floors (`N楼`) → rooms (`NNN`) → `[]`. `getMeterStatus` works at any level 
 every meter, ≈2.3k rows; a room returns 1). The app walks the tree level by level and reads
 only the room's meter (see Electricity resolution).
 
+`getMeterStatus` fields the app reads: `remaining` (度 left; `leftMoney ÷ price`), `leftMoney`,
+`price`, and `preUseDay`, the school's estimate of the **days** `remaining` lasts, not a day's use
+(at the same use it scales with `remaining`: 13.6 度 → about 1.2, 182.5 度 after a top-up →
+about 16). Home's 「够用约 N 天」/「只够到今晚／明晚」 count those days from the reading; the daily
+average shown elsewhere is `remaining ÷ preUseDay`. A missing, 0, negative or over-365 value
+shows neither. `Meter` keeps it in `estimatedDaysLeft`, cached under the old `dailyUseKWh` key.
+
 Money/state endpoints in the official JS (never called by the app; recharge stays in the
 school's WeChat service): `/api/business/balRechargeApply`, `/api/business/balRechargeOrder`,
 `/api/business/getOrderSupportPayType`, `/api/pay/wxJsPay`, `/api/electricnew/applyorderid`,
