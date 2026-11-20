@@ -48,29 +48,59 @@ struct UjingLoginView: View {
     @State private var consent = false
     /// On the code field once the code is sent, so iOS can offer it from Messages there.
     @FocusState private var codeFocused: Bool
+    @Environment(\.dynamicTypeSize) private var typeSize
+    /// At accessibility sizes the code row and the agreement stack vertically: neither fits beside
+    /// the other there. Normal sizes keep their rows.
+    static func stacked(_ size: DynamicTypeSize) -> Bool { size.isAccessibilitySize }
+    static let consentText = "我已阅读并同意 U净 服务协议和隐私政策"
+
+    private var codeField: some View {
+        TextField("短信验证码",text:$code).keyboardType(.numberPad).textContentType(.oneTimeCode)
+            .focused($codeFocused)
+            .accessibilityIdentifier("ujingSMSCode")
+    }
+
+    private var sendButton: some View {
+        TimelineView(.periodic(from:Date(),by:1)) { timeline in
+            let remaining = login.remaining(mobile,at:timeline.date)
+            Button(remaining > 0 ? "\(remaining)秒后重试" : "获取验证码") { Task { await login.send(mobile, laundry:laundry) } }
+                .disabled(login.busy || !consent || !UjingInput.isMobile(mobile) || remaining > 0)
+                .accessibilityIdentifier("sendUjingSMS")
+        }
+    }
+
+    private var agreementLink: some View {
+        Link("服务协议",destination:URL(string:"https://wx.zhinengxiyifang.cn/about_us/service_agreement.html")!)
+    }
+
+    private var privacyLink: some View {
+        Link("隐私政策",destination:URL(string:"https://wx.zhinengxiyifang.cn/static/user-agreement/app2.0/20260804/ujing_privacy_policy.html")!)
+    }
+
     var body: some View {
         NavigationStack {
             Form {
                 Section {
                     TextField("U净 绑定手机号",text:$mobile).keyboardType(.phonePad).textContentType(.telephoneNumber)
                         .accessibilityIdentifier("ujingMobile")
-                    // The button holds the row's only Text, so the line under it would start there.
-                    HStack {
-                        TextField("短信验证码",text:$code).keyboardType(.numberPad).textContentType(.oneTimeCode)
-                            .focused($codeFocused)
-                            .accessibilityIdentifier("ujingSMSCode")
-                        TimelineView(.periodic(from:Date(),by:1)) { timeline in
-                            let remaining = login.remaining(mobile,at:timeline.date)
-                            Button(remaining > 0 ? "\(remaining)秒后重试" : "获取验证码") { Task { await login.send(mobile, laundry:laundry) } }
-                                .disabled(login.busy || !consent || !UjingInput.isMobile(mobile) || remaining > 0)
-                                .accessibilityIdentifier("sendUjingSMS")
+                    if Self.stacked(typeSize) {
+                        // Accessibility sizes: the button on its own row under the field, full width,
+                        // so neither wraps beside the other.
+                        codeField
+                        sendButton.frame(maxWidth:.infinity, alignment:.leading)
+                        VStack(alignment:.leading, spacing:8) {
+                            // The switch keeps the words as its label for VoiceOver; the text is read there.
+                            Text(Self.consentText).font(.footnote).fixedSize(horizontal:false, vertical:true)
+                                .accessibilityHidden(true)
+                            Toggle(Self.consentText, isOn:$consent).labelsHidden()
                         }
-                    }.alignmentGuide(.listRowSeparatorLeading) { $0[.leading] }
-                    Toggle("我已阅读并同意 U净 服务协议和隐私政策",isOn:$consent).font(.footnote)
-                    HStack(spacing:20) {
-                        Link("服务协议",destination:URL(string:"https://wx.zhinengxiyifang.cn/about_us/service_agreement.html")!)
-                        Link("隐私政策",destination:URL(string:"https://wx.zhinengxiyifang.cn/static/user-agreement/app2.0/20260804/ujing_privacy_policy.html")!)
-                    }.font(.footnote)
+                        VStack(alignment:.leading, spacing:8) { agreementLink; privacyLink }.font(.footnote)
+                    } else {
+                        // The button holds the row's only Text, so the line under it would start there.
+                        HStack { codeField; sendButton }.alignmentGuide(.listRowSeparatorLeading) { $0[.leading] }
+                        Toggle(Self.consentText, isOn:$consent).font(.footnote)
+                        HStack(spacing:20) { agreementLink; privacyLink }.font(.footnote)
+                    }
                 } footer: { Text("用你自己的 U净 账号。手机号和验证码只发给 U净 官方，登录信息只存在这台手机上。") }
                 if login.sent { Text("验证码已发出，看一下短信。").font(.footnote).foregroundStyle(.secondary) }
                 if let issue = login.issue { Text(issue).font(.footnote).foregroundStyle(NativeTheme.notice) }
