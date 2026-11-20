@@ -33,6 +33,9 @@ public struct RefreshReport: Sendable, Equatable {
     /// while holding it): nothing was read here. `snapshot` is the stored one, and the app
     /// shows it without an error.
     public var leaseBusy: Bool
+    /// This refresh's own `SchoolReading.ownBalance` (never a stored or joined-in value from
+    /// another process). Red-phase stub: never set.
+    public var ownBalance: CardBalanceRead? = nil
 
     public init(outcome: Outcome, snapshot: HomeSnapshot, snapshotSaved: Bool, leaseBusy: Bool = false) {
         self.outcome = outcome; self.snapshot = snapshot; self.snapshotSaved = snapshotSaved

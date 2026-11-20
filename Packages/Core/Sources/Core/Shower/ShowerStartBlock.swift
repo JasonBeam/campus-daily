@@ -26,6 +26,8 @@ public enum ShowerStartBlock: Sendable, Equatable, CaseIterable {
     /// The app is still loading what a start needs: no reason, a spinner on the button after
     /// `spinnerDelay`.
     case launching
+    /// The campus card's balance is below zero and debt isn't allowed on this phone.
+    case balanceNegative
 
     /// What the model knows when the button is drawn.
     public struct Facts: Sendable, Equatable {
@@ -43,10 +45,13 @@ public enum ShowerStartBlock: Sendable, Equatable, CaseIterable {
         public var busy: Bool
         /// The record allows a start (`ShowerState.canStart`).
         public var canStart: Bool
+        /// `ShowerBalanceGate.blocks`.
+        public var balanceBlocked: Bool
         public init(configured: Bool = true, profileLoaded: Bool = true, platformMissing: Bool = false,
                     residenceReview: Bool = false, failedSignOut: Bool = false, recordUnreadable: Bool = false,
                     storageBlocked: Bool = false, engineReady: Bool = true, inspecting: Bool = false,
-                    busy: Bool = false, canStart: Bool = true) {
+                    busy: Bool = false, canStart: Bool = true, balanceBlocked: Bool = false) {
+            self.balanceBlocked = balanceBlocked
             self.configured = configured; self.profileLoaded = profileLoaded; self.platformMissing = platformMissing
             self.residenceReview = residenceReview; self.failedSignOut = failedSignOut
             self.recordUnreadable = recordUnreadable; self.storageBlocked = storageBlocked
@@ -94,6 +99,8 @@ public enum ShowerStartBlock: Sendable, Equatable, CaseIterable {
         case .signOutUnfinished: return [.settings, .checkController]
         case .recordUnreadable: return clear ? [] : [.cardRecords]
         case .platformMissing, .inspecting, .busy, .storage, .unsettled, .launching: return []
+        // Red-phase stub.
+        case .balanceNegative: return []
         }
     }
 
@@ -119,6 +126,8 @@ public enum ShowerStartBlock: Sendable, Equatable, CaseIterable {
         case .recordUnreadable: return "读不到热水记录。去校园卡记录里看看这次扣了没有，扣费要 1 小时左右才出现。"
         case .unsettled: return "上一次洗澡还没结算完，结完才能开始新的。"
         case .launching: return nil
+        // Red-phase stub; the words wait for Camo.
+        case .balanceNegative: return nil
         }
     }
 
@@ -135,6 +144,8 @@ public enum ShowerStartBlock: Sendable, Equatable, CaseIterable {
         case .recordUnreadable: return "读不到热水记录；可在校园卡消费明细中核对，扣费约 1 小时后入账"
         case .unsettled: return "上一次洗澡尚未结算完成；结算后可开始新的洗澡"
         case .launching: return nil
+        // Red-phase stub; the words wait for Camo.
+        case .balanceNegative: return nil
         }
     }
 
@@ -148,7 +159,7 @@ public enum ShowerStartBlock: Sendable, Equatable, CaseIterable {
         case .platformMissing: return "热水暂时用不了"
         case .notConfigured: return "还没设置热水"
         case .storage: return "暂时存不了热水记录"
-        case .recordUnreadable, .unsettled, .inspecting, .busy, .launching: return nil
+        case .recordUnreadable, .unsettled, .inspecting, .busy, .launching, .balanceNegative: return nil
         }
     }
 
@@ -160,7 +171,7 @@ public enum ShowerStartBlock: Sendable, Equatable, CaseIterable {
         case .platformMissing: return "热水暂不可用"
         case .notConfigured: return "尚未配置热水"
         case .storage: return "热水记录暂不可用"
-        case .recordUnreadable, .unsettled, .inspecting, .busy, .launching: return nil
+        case .recordUnreadable, .unsettled, .inspecting, .busy, .launching, .balanceNegative: return nil
         }
     }
 

@@ -122,6 +122,11 @@ enum ShowerProfileFiles {
     /// of this model's (drawn set up, with `demoReadyDorm`; nothing connects).
     @Published var demoDetailRecord: ShowerState?
     #endif
+    /// The campus card's balance a start goes by (`ShowerBalanceGate.reading`), pushed by
+    /// `CampusModel`; nil when it can't be trusted.
+    @Published private(set) var balance: ShowerBalance?
+    /// Debt is allowed on this phone: a balance below zero doesn't refuse a start.
+    @Published private(set) var allowsDebt: Bool
     @Published private(set) var residenceReviewRequired: Bool
     /// The review is there because the last 退出登录 did not complete (the same person is still
     /// signed in), not because of an account switch or a sign-out that went through.
@@ -150,6 +155,8 @@ enum ShowerProfileFiles {
     init(services: CampusServices, reminders: Reminders, activities: ShowerActivityController?, gate: LiveShowerGate? = nil,
          bluetoothAccess: BluetoothAccess? = nil) {
         self.services = services
+        // Red-phase stub: `ShowerStartOverrideStore` is not read yet.
+        allowsDebt = false
         self.bluetoothAccess = bluetoothAccess ?? BluetoothAccessFor.transport(services.showerTransport)
         self.reminders = reminders
         self.activities = activities
@@ -188,6 +195,24 @@ enum ShowerProfileFiles {
         case .loaded: return recordUnreadable || storageBlocked ? .unreadable : .known(state)
         }
     }
+
+    // MARK: Balance
+
+    // Red-phase stub: kept, not yet acted on.
+    func noteBalance(_ value: ShowerBalance?) { balance = value }
+
+    // Red-phase stub: kept, not yet acted on (no start is taken back).
+    func setAllowsDebt(_ value: Bool) { allowsDebt = value }
+
+    /// The phrase typed after the five taps on the version: allows debt when it matches,
+    /// says nothing otherwise. Red-phase stub: does nothing.
+    func tryUnlock(_ input: String, digest: String = ShowerStartOverride.digest) {}
+
+    /// A start is refused for the balance (`ShowerBalanceGate.blocks`).
+    var balanceBlocks: Bool { ShowerBalanceGate.blocks(balance, allowsDebt:allowsDebt) }
+
+    /// Why 开始下一次洗澡 is greyed out on the stopped page. Red-phase stub: never.
+    var nextBlock: ShowerStartBlock? { nil }
 
     // MARK: Derived state (what the views read)
 

@@ -29,6 +29,8 @@ public enum StoreKey: String, Sendable, CaseIterable {
     /// The shared snapshot may still hold the previous person's numbers (`since` a time only):
     /// nothing reads it while this is there, and the next snapshot write drops it.
     case sharedSnapshotStale = "shared.snapshotStale"
+    /// How 开始洗澡 treats a balance below zero on this phone (`ShowerStartOverrideStore`).
+    case showerStartMode = "water.startMode"
 
     public static let servicePrefix = "org.zaxh.xiaorichang."
     public static let account = "default"
@@ -53,7 +55,7 @@ public enum StoreKey: String, Sendable, CaseIterable {
         switch self {
         case .sharedSnapshot, .sharedReminderLines, .sharedCredentialLog, .sharedResetMarker, .sharedSnapshotStale, .schoolEcykt, .schoolPortal, .schoolProfile, .schoolPassword, .schoolDevice:
             return true
-        case .showerBinding, .showerSession, .showerRetained, .laundryAccount, .laundryCheckout, .laundryHistory, .laundryHistorySalt:
+        case .showerBinding, .showerSession, .showerRetained, .showerStartMode, .laundryAccount, .laundryCheckout, .laundryHistory, .laundryHistorySalt:
             return false
         }
     }

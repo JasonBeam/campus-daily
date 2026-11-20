@@ -26,9 +26,14 @@ struct ClearShowerDock: View {
 
     /// The refused face's 开始洗澡: from the tap until the phase moves, 正在处理… spinning and off,
     /// as while a start runs.
-    static func retryFace(tapped: Bool, starting: Bool) -> (title: String, spinning: Bool, enabled: Bool) {
+    /// `blocked`: the balance refuses a start (red-phase stub: not yet taken into account).
+    static func retryFace(tapped: Bool, starting: Bool, blocked: Bool = false) -> (title: String, spinning: Bool, enabled: Bool) {
         tapped || starting ? (ClearShowerText.busyButton, true, false) : (ClearShowerText.deniedRetry, false, true)
     }
+
+    /// Whether the refused face's tapped look stays after `tapStart(.retry)` answered `tap`.
+    /// Red-phase stub: always (today's behaviour).
+    static func retryKeepsSpinning(after tap: ShowerStartTap) -> Bool { true }
 
     /// The one button of an answered face. Settled: 开始洗澡 with its arrow. Refused without a
     /// retry: 好, centred and without an arrow, held where 开始洗澡 stands on the face that retries
