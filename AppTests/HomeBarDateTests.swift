@@ -16,10 +16,17 @@ final class HomeBarDateTests: XCTestCase {
         try await check(sample: true)
     }
 
-    private func check(sample: Bool) async throws {
+    /// At the largest text size the sample's bar wraps onto three rows: the large date still
+    /// shows at rest, not the bar's (its height settles in more than one pass).
+    func testTheDateStaysOutOfTheBarAtRestUnderTheWrappedSampleBar() async throws {
+        try await check(sample: true, size: .accessibilityExtraExtraExtraLarge)
+    }
+
+    private func check(sample: Bool, size: UIContentSizeCategory? = nil) async throws {
         guard #available(iOS 26, *) else { throw XCTSkip("the scroll-edge effect is iOS 26's") }
         let harness = RootHarness(theme: .warm, seenSetup: true)
         addTeardownBlock { @MainActor in harness.close() }
+        if let size { harness.window.traitOverrides.preferredContentSizeCategory = size }
         if sample { XCTAssertEqual(harness.sample.enter(), .entered) }
         await pause(1000)
         XCTAssertNil(harness.presented, "home, nothing over it")
@@ -27,9 +34,11 @@ final class HomeBarDateTests: XCTestCase {
             .max { $0.bounds.height < $1.bounds.height })
         XCTAssertTrue(scroll.topEdgeEffect.isHidden, "at rest the large date shows, not the bar's")
 
-        // Just far enough for the large date (lifted into the bar's row) to pass under the bar.
+        // Just far enough for the large date (lifted into the bar's row) to pass under the bar;
+        // at accessibility sizes it is not lifted and is taller, so further.
         let bar = try XCTUnwrap(Self.views(of: UINavigationBar.self, in: harness.window).first)
-        scroll.setContentOffset(CGPoint(x: 0, y: -scroll.adjustedContentInset.top + bar.frame.height + 24), animated: false)
+        let past = bar.frame.height + 24 + (size == nil ? 0 : 260)
+        scroll.setContentOffset(CGPoint(x: 0, y: -scroll.adjustedContentInset.top + past), animated: false)
         await pause(600)
         XCTAssertFalse(scroll.topEdgeEffect.isHidden, "scrolled under the bar: the bar shows the date")
 

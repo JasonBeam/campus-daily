@@ -30,6 +30,8 @@ struct HomeView: View {
     /// bar when it is above the page. Follows the stack's frame only, never what the bar shows,
     /// so the date in the bar can't feed back into it (the 0b98af5 layout loop).
     @State var barTop: CGFloat = 64
+    /// The large date's bottom edge in the window, kept without drawing home again as it scrolls.
+    @State var dateBottom = DateBottom()
     /// The time 「最近」 (and the date at the top) count from: moved on at a day change
     /// (`DayChange`) and on coming back to the foreground, and by the minute while open.
     @State var clock = Date()
@@ -217,7 +219,7 @@ struct HomeView: View {
                 .navigationDestination(for:HomeRoute.self) { route in destination(route).navOpen(route.debugPage, from:.homeButton) }
             }
             // The stack's frame starts under the status bar, or under the sample's bar: the bar's top.
-            .onGeometryChange(for:CGFloat.self) { $0.frame(in:.global).minY } action: { barTop = $0 }
+            .onGeometryChange(for:CGFloat.self) { $0.frame(in:.global).minY } action: { barTop = $0; followDateEdge(barTop:$0) }
 
             SettlementOverlay(result:$panel)
         }
@@ -392,4 +394,10 @@ struct HomeView: View {
         successTick += 1
         panel = .laundryDone(amount:done.amount, detail:done.detail)
     }
+}
+
+/// The large date's bottom edge in the window (`HomeView.followDateEdge`): a reference, so
+/// writing it on every scrolled frame does not draw home again.
+final class DateBottom {
+    var maxY = CGFloat.infinity
 }

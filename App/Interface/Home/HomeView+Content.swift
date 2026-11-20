@@ -67,8 +67,16 @@ extension HomeView {
         .accessibilityLabel([dateTitle, SchoolCalendar.weekday(Date(), calendar:data.calendar), data.dorm].compactMap { $0 }.joined(separator:"，"))
         .accessibilityAddTraits(.isHeader)
         // Under the bar once its bottom passes the bar's top edge (`barTop`): measured, so a bar
-        // above the page (the sample's) is counted.
-        .onGeometryChange(for:Bool.self) { [barTop] in $0.frame(in:.global).maxY < barTop } action: { scrolledPastDate = $0 }
+        // above the page (the sample's) is counted. Both are measured and compared again when
+        // either moves: the sample's bar wrapped at large text sizes settles its height over
+        // more than one pass, moving both at once.
+        .onGeometryChange(for:CGFloat.self) { $0.frame(in:.global).maxY } action: { dateBottom.maxY = $0; followDateEdge() }
+    }
+
+    /// `scrolledPastDate` from the latest date bottom and bar top, whichever moved.
+    func followDateEdge(barTop top: CGFloat? = nil) {
+        let past = dateBottom.maxY < (top ?? barTop)
+        if past != scrolledPastDate { scrolledPastDate = past }
     }
 
     // MARK: Shower

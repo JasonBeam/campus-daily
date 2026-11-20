@@ -15,37 +15,29 @@ struct SampleBar: View {
     @State private var picked: AppTheme?
 
     var body: some View {
-        HStack(spacing:12) {
-            Image(systemName:"eye").font(.system(size:15, weight:.semibold)).foregroundStyle(Theme.ink2)
-                .accessibilityHidden(true)
-            Text(SampleCopy.barText).scaledFont(15, .medium, relativeTo:.subheadline).foregroundStyle(Theme.ink)
-                // One line; two only at accessibility sizes.
-                .lineLimit(typeSize.isAccessibilitySize ? 2 : 1).minimumScaleFactor(0.8)
-            Spacer(minLength:8)
-            if picker != nil {
-                Button { openPicker() } label: {
-                    Text(SampleCopy.barLook).scaledFont(15, .semibold, relativeTo:.subheadline).foregroundStyle(Theme.ink)
-                        .padding(.horizontal,14).frame(minHeight:34)
-                        .background(Theme.bg, in:Capsule())
-                        .overlay { Capsule().strokeBorder(Theme.separator, lineWidth:0.5) }
-                        .contentShape(Capsule())
-                        .fixedSize()
+        Group {
+            if typeSize.isAccessibilitySize {
+                // Too wide for one row at these sizes: the words over the buttons, and the buttons
+                // under each other when side by side would still run off the screen.
+                VStack(alignment:.leading, spacing:6) {
+                    HStack(alignment:.firstTextBaseline, spacing:12) { eye; words }
+                    ViewThatFits(in:.horizontal) {
+                        HStack(spacing:12) { buttons }
+                        VStack(alignment:.leading, spacing:0) { buttons }
+                    }
                 }
-                .buttonStyle(PressScaleStyle())
-                .frame(minHeight:44)
-                .accessibilityIdentifier("sampleLook")
+                .frame(maxWidth:.infinity, alignment:.leading)
+            } else {
+                HStack(spacing:12) {
+                    eye
+                    words
+                    Spacer(minLength:8)
+                    buttons
+                }
             }
-            Button { sample.leave() } label: {
-                Text(SampleCopy.barAction).scaledFont(15, .semibold, relativeTo:.subheadline).foregroundStyle(Theme.pillInk)
-                    .padding(.horizontal,14).frame(minHeight:34)
-                    .background(Theme.pill, in:Capsule())
-                    .contentShape(Capsule())
-                    .fixedSize()
-            }
-            .buttonStyle(PressScaleStyle())
-            .frame(minHeight:44)
         }
-        .padding(.horizontal,16).padding(.vertical,4)
+        // 20 pt in from the screen edges, as the pages under it.
+        .padding(.horizontal,20).padding(.vertical,4)
         .frame(maxWidth:.infinity)
         .background {
             ZStack { Rectangle().fill(.ultraThinMaterial); Theme.group.opacity(0.9) }.ignoresSafeArea(edges:.top)
@@ -64,6 +56,43 @@ struct SampleBar: View {
             LookPickerView(mode:.sample, choose:{ theme in picked = theme; picking = false },
                            close:{ picking = false })
         }
+    }
+
+    private var eye: some View {
+        Image(systemName:"eye").font(.system(size:15, weight:.semibold)).foregroundStyle(Theme.ink2)
+            .accessibilityHidden(true)
+    }
+
+    private var words: some View {
+        Text(SampleCopy.barText).scaledFont(15, .medium, relativeTo:.subheadline).foregroundStyle(Theme.ink)
+            // One line; at accessibility sizes, where the buttons are below, as many as it takes.
+            .lineLimit(typeSize.isAccessibilitySize ? nil : 1).minimumScaleFactor(typeSize.isAccessibilitySize ? 1 : 0.8)
+            .fixedSize(horizontal:false, vertical:typeSize.isAccessibilitySize)
+    }
+
+    @ViewBuilder private var buttons: some View {
+        if picker != nil {
+            Button { openPicker() } label: {
+                Text(SampleCopy.barLook).scaledFont(15, .semibold, relativeTo:.subheadline).foregroundStyle(Theme.ink)
+                    .padding(.horizontal,14).frame(minHeight:34)
+                    .background(Theme.bg, in:Capsule())
+                    .overlay { Capsule().strokeBorder(Theme.separator, lineWidth:0.5) }
+                    .contentShape(Capsule())
+                    .fixedSize()
+            }
+            .buttonStyle(PressScaleStyle())
+            .frame(minHeight:44)
+            .accessibilityIdentifier("sampleLook")
+        }
+        Button { sample.leave() } label: {
+            Text(SampleCopy.barAction).scaledFont(15, .semibold, relativeTo:.subheadline).foregroundStyle(Theme.pillInk)
+                .padding(.horizontal,14).frame(minHeight:34)
+                .background(Theme.pill, in:Capsule())
+                .contentShape(Capsule())
+                .fixedSize()
+        }
+        .buttonStyle(PressScaleStyle())
+        .frame(minHeight:44)
     }
 
     private func openPicker() {
