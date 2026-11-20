@@ -33,6 +33,8 @@ struct AdvancedSettingsView: View {
     @State private var diagnosticFailed = false
     /// Last import failure, shown under the import rows (the models' own issue lines live elsewhere).
     @State private var importIssue: String?
+    /// 暖橙: the version's five taps and the debt start setting's group above it.
+    @State private var debtVisit = DebtShowerVisit()
     private func importRow(_ title: String) -> some View {
         Button {
             if sample.isActive { sample.perform(.importShowerProfile) {}; return }
@@ -183,8 +185,11 @@ struct AdvancedSettingsView: View {
                 importSection(header:"导入配置", footer:"一般不用导入。有没结算的记录时，别卸载 App，也别换配置。")
                 ShowerTroubleshootingSections(preview:preview)
                 ShortcutsSection()
+                DebtShowerSection(visit:$debtVisit, clear:false) { EmptyView() }
                 Section {
                     VersionRow()
+                        .contentShape(Rectangle())
+                        .onTapGesture { debtVisit.tapVersion(at:Date(), sample:sample.isActive, on:shower.allowsDebt) }
                 }.listRowBackground(Theme.group)
             }
             if debugLogShown || services.debugLog.isEnabled { debugLogSection }
@@ -194,6 +199,7 @@ struct AdvancedSettingsView: View {
         .scrollContentBackground(.hidden)
         .background(Theme.bg.ignoresSafeArea())
         .navigationTitle(appTheme == .clear ? "故障排查" : "高级").navigationBarTitleDisplayMode(.inline)
+        .debtShowerUnlock($debtVisit, shower:shower)
         .alert(ShowerDiagnosticReport.failed, isPresented:$diagnosticFailed) { Button("知道了", role:.cancel) {} }
         .task {
             await services.debugLog.waitUntilResolved()

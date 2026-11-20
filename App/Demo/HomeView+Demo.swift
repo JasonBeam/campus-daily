@@ -11,6 +11,13 @@ extension HomeView {
             guard !sample.isActive else { return }
             // A synthetic running record in this root's own (live) hot-water vault.
             if url.host == "demo", url.path == "/seed/shower-running" { shower.demoSeedRunningRecord(); return }
+            // campusdaily://demo/seed/debt-on: the debt start setting on (stored, as the phrase would);
+            // /seed/debt-off-unstored: on, and every turn-off of it reads as not stored.
+            if url.host == "demo", ["/seed/debt-on", "/seed/debt-off-unstored"].contains(url.path) {
+                DebtShowerVisit.demoTurnOffUnstored = url.path == "/seed/debt-off-unstored"
+                shower.setAllowsDebt(true)
+                return
+            }
             if let kind = notifyDemo(url) { Task { await reminders.demoNotify(kind) }; return }
             // campusdaily://demo/theme/<warm|clear>: what 主题 would pick, keeping the screen shown.
             if url.host == "demo", url.pathComponents.dropFirst().first == "theme",
