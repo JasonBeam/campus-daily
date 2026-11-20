@@ -7,6 +7,7 @@ import Core
 struct ClearBalanceCard: View {
     let data: HomeData
     @Environment(ClearNavigator.self) private var navigator
+    @Environment(SampleMode.self) private var sample
     @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
@@ -41,12 +42,18 @@ struct ClearBalanceCard: View {
             Text(ClearBalanceText.title).font(.headline).foregroundStyle(Theme.ink)
                 .accessibilityAddTraits(.isHeader)
             Spacer(minLength:8)
-            Button(ClearBalanceText.meterLink(bound:data.powerBound)) { navigator.push(.powerSetup) }
+            Button(ClearBalanceText.meterLink(bound:data.powerBound)) { Self.openMeter(sample:sample, navigator:navigator) }
                 .font(.caption).foregroundStyle(Theme.accentText)
                 .buttonStyle(.plain)
                 .frame(minHeight:44)
                 .contentShape(Rectangle())
         }
+    }
+
+    /// The meter page, or in the sample the sample's message at once (as 暖橙's 「电表」): the
+    /// sample binds no meter.
+    static func openMeter(sample: SampleMode, navigator: ClearNavigator) {
+        sample.perform(.bindMeter) { navigator.push(.powerSetup) }
     }
 
     @ViewBuilder private var problems: some View {
