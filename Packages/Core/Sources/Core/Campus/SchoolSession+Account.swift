@@ -43,7 +43,7 @@ extension SchoolSession {
             let session = try await exchangeSession(portalToken: token, userAgent: current.userAgent, previous: current)
             let (card, updated) = try await liveCard(session)
             try ensureSignedIn(since: started)
-            guard SignedInPerson.match(before, cardUnionID: card.unionID, account: nil) == .same else {
+            guard SignedInPerson.match(before, cardUnionID: Self.evidence(card, updated), account: nil) == .same else {
                 throw SchoolLoginFailure.differentAccount
             }
             exchanged = updated
@@ -71,12 +71,21 @@ extension SchoolSession {
         if let lease { try lease.locked(forget) } else { try forget() }
     }
 
+    /// The card a login's check found, as evidence of who signed in: not when it was a fallback
+    /// from the card that session named (`liveCard`).
+    static func evidence(_ card: BoundCard, _ session: EcyktSession) -> String? {
+        session.cardIsFallback == true ? nil : card.unionID
+    }
+
     /// The person signed in when `stored` was read, or nil when nobody was. A card session or
     /// account that is stored but no longer decodes still means someone was: a person nobody can
     /// tell (what it does tell, the other item, still counts).
+    /// A card a read fell back to (`EcyktSession.cardIsFallback`) is only what home shows, never
+    /// evidence of who signed in: the person is then told by the account, or by nobody.
     static func signedInPerson(_ stored: StoredCredentials) -> SignedInPerson? {
         guard stored.session != nil || stored.account != nil || stored.unreadablePerson else { return nil }
-        return SignedInPerson(cardUnionID: stored.session?.cardUnionID, account: stored.account?.account)
+        let card = stored.session?.cardIsFallback == true ? nil : stored.session?.cardUnionID
+        return SignedInPerson(cardUnionID: card, account: stored.account?.account)
     }
 
     /// Whether a sign-in removed the dorm or meter that `old` had (another dorm counts).
@@ -150,7 +159,7 @@ extension SchoolSession {
         let session = try await exchangeSession(portalToken: portalToken, userAgent: EcyktSession.defaultUserAgent, previous: nil)
         let (card, updated) = try await liveCard(session)
         try ensureSignedIn(since: started)
-        let match = SignedInPerson.match(before, cardUnionID: card.unionID, account: account)
+        let match = SignedInPerson.match(before, cardUnionID: Self.evidence(card, updated), account: account)
         let vault = vault, token = stamped(portalToken), at = now()
         var writing = false
         let old: SchoolProfile?, profile: SchoolProfile
@@ -206,7 +215,7 @@ extension SchoolSession {
         let before = Self.signedInPerson(start)
         let (card, updated) = try await liveCard(session)
         try ensureSignedIn(since: started)
-        let match = SignedInPerson.match(before, cardUnionID: card.unionID, account: nil)
+        let match = SignedInPerson.match(before, cardUnionID: Self.evidence(card, updated), account: nil)
         let switched = match == .different
         // As for the form sign-in: without the new dorm, a dorm and meter that may be someone
         // else's are not kept. No dorm is read here, so that happens right here.
