@@ -58,6 +58,9 @@ struct PowerChoice: Identifiable, Equatable {
     private var interruptions = InterruptionStreak()
     /// Bumped by `signOut()`: a refresh that returns afterwards must not put the old values back.
     private(set) var signOutGeneration = 0
+    /// Bumped by a sign-out, a reset, the start of a login and an account switch's clean-up: a
+    /// balance read before one of them never reaches hot water (`feedBalance`).
+    private(set) var accountGeneration = 0
     let services: CampusServices
     private let session: SchoolSession
     /// The school session these models read (校园卡记录's pages).
@@ -76,7 +79,7 @@ struct PowerChoice: Identifiable, Equatable {
     /// hot-water binding goes (`previousPersonCleared`).
     var afterSnapshotCleared: (@MainActor () async -> Void)?
     /// Tests only: runs in a refresh right before its last await (who is signed in now), once
-    /// the early checks passed. Red-phase stub: not called yet.
+    /// the early checks passed.
     var beforeBalanceStamp: (@MainActor () async -> Void)?
     #endif
 
@@ -171,6 +174,7 @@ struct PowerChoice: Identifiable, Equatable {
         refreshesRunning += 1; loading = true
         defer { refreshesRunning -= 1; loading = refreshesRunning > 0 }
         let started = signOutGeneration
+        let accountStarted = accountGeneration
         let report = await refresher.refresh(inBackground:inBackground, includingChanges:force)
         lastReadCard = report.outcome == .ok
         guard started == signOutGeneration else { return }
@@ -205,6 +209,21 @@ struct PowerChoice: Identifiable, Equatable {
         if report.outcome == .ok {
             reminders.campusRead(snapshot)
         }
+        await feedBalance(report.ownBalance, account:accountStarted, started:started)
+    }
+
+    /// Hands this refresh's own balance read to hot water (nil: the read failed or can't be
+    /// trusted, a start goes), last, after its last await: dropped as a whole when a sign-out,
+    /// reset, login or account switch came since the refresh began, the refresh was cancelled,
+    /// or the read was not for whoever is signed in now. Never a snapshot's value.
+    private func feedBalance(_ read: CardBalanceRead?, account: Int, started: Int) async {
+        #if DEBUG
+        await beforeBalanceStamp?()
+        #endif
+        let person = await session.personStamp()
+        guard started == signOutGeneration, account == accountGeneration, !Task.isCancelled else { return }
+        let own = read.flatMap { $0.counts(forPerson:person, signedIn:configured) ? ShowerBalance(amount:$0.amount, readAt:$0.readAt) : nil }
+        hotWater()?.noteBalance(own)
     }
 
     /// 校园卡记录 or the hot-water hand-off found the card session expired: renewed the
@@ -224,6 +243,8 @@ struct PowerChoice: Identifiable, Equatable {
         await signOutsFinished()
         let started = signOutGeneration
         let session = session, state = login.state
+        let hold = holdHotWaterForLogin()
+        defer { hotWater()?.releaseLoginHold(hold) }
         // Under the lease like the password sign-in: never beside the widget's own login.
         // A sign-in that throws after its writes began has changed the person too.
         _ = try await SchoolSession.signingIn(on:session, {
@@ -274,6 +295,8 @@ struct PowerChoice: Identifiable, Equatable {
         await signOutsFinished()
         let started = signOutGeneration
         let session = session
+        let hold = holdHotWaterForLogin()
+        defer { hotWater()?.releaseLoginHold(hold) }
         // A sign-in that throws after its writes began has changed the person too.
         _ = try await SchoolSession.signingIn(on:session, {
             try await refresher.holdingLease { owning in
@@ -287,6 +310,18 @@ struct PowerChoice: Identifiable, Equatable {
         matchPowerAutomatically(.signedIn)
     }
 
+    /// A login that may change who is signed in begins (before anything of it is written): no
+    /// new shower start until it is over, and a start whose authorize request hasn't left is
+    /// taken back; a balance read before it is not hot water's. The hold is this attempt's only:
+    /// the same person (or nothing written) lets it go, an account switch's clean-up takes over
+    /// with its own hold first (`previousPersonCleared`).
+    private func holdHotWaterForLogin() -> UUID {
+        let id = UUID()
+        accountGeneration += 1
+        hotWater()?.holdForLogin(id)
+        return id
+    }
+
     /// The login was someone else, or nothing showed it was the same person: Core already
     /// dropped their school data and marked the snapshot stale. Here: the widget snapshot (a
     /// clear that fails is logged; the mark keeps it hidden), a request for the widget to draw
@@ -295,6 +330,13 @@ struct PowerChoice: Identifiable, Equatable {
     /// the sign-in started (`started`): what is stored now is whoever signed in after it.
     func previousPersonCleared(unconfirmed: Bool, dormAndMeterCleared: Bool, since started: Int) async {
         guard started == signOutGeneration else { return }
+        // Before any wait: the previous person's binding no longer starts anything (a start that
+        // hasn't sent its authorize request is taken back), and their balance goes.
+        accountGeneration += 1
+        if let shower = hotWater() {
+            shower.holdForSignOut()
+            shower.noteBalance(nil)
+        }
         let refresher = refresher
         #if DEBUG
         let afterSnapshotCleared = afterSnapshotCleared
@@ -351,19 +393,24 @@ struct PowerChoice: Identifiable, Equatable {
     /// Reset, before the stores are cleared: a refresh still running must not write the old
     /// values back afterwards, and the widget snapshot is cleared first so nothing rewrites it.
     func signOutForReset() async {
-        signOutGeneration += 1; personChanges += 1
+        signOutGeneration += 1; personChanges += 1; accountGeneration += 1
+        hotWater()?.noteBalance(nil)
         _ = await signOuts.start().value
         configured = false; snapshot = .empty; profile = nil; issue = nil; account = nil
         lookup.clear(); powerMatchIssue = nil; lastRefresh = nil
     }
 
     func signOut() {
-        signOutGeneration += 1; personChanges += 1
+        signOutGeneration += 1; personChanges += 1; accountGeneration += 1
         // The lease goes first: a widget read in the middle of a login loses it and writes
         // nothing. Waiting for its file lock happens off the main thread.
         let signedOut = signOuts.start()
         // The binding holds this person's school identity: no new shower starts with it from now.
-        hotWater()?.holdForSignOut()
+        // Their balance goes in the same step.
+        if let shower = hotWater() {
+            shower.holdForSignOut()
+            shower.noteBalance(nil)
+        }
         signOutHotWater = Task {
             guard await signedOut.value else {
                 // Show what is still stored, so 退出登录 can be tried again. Still signed in:

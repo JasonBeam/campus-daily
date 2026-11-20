@@ -140,9 +140,14 @@ extension ShowerModel {
     func confirmExplainer(_ id: UUID) {
         guard let slot = startSlot, slot.id == id, slot.phase == .awaitingConfirm else { return }
         if slot.demo { startSlot = nil; return }
+        // Taken back since (or refused for the balance now): nothing is asked.
+        guard slot.permit.isOpen, !balanceBlocks else { startSlot = nil; return }
         startSlot?.phase = .awaitingPermission
         let access = bluetoothAccess
+        let permit = slot.permit
         permissionTask = Task { [weak self] in
+            // Taken back before the request went: the system is not asked.
+            guard permit.isOpen else { self?.permissionReturned(id, .notDetermined); return }
             let answer = await access.request()
             self?.permissionReturned(id, answer)
         }
@@ -224,6 +229,8 @@ extension ShowerModel {
     /// Siri and Shortcuts: never explains, never asks for Bluetooth.
     func startFromShortcut(clear: Bool) async throws -> ShowerActionOutcome {
         if startSlot != nil { throw ShowerActionFailure(.busy) }
+        // The balance before Bluetooth: nothing to ask or explain for a start that can't go.
+        if let text = balanceRefusal(clear:clear) { throw ShowerActionFailure(text) }
         switch bluetoothAccess.authorization {
         case .notDetermined: throw ShowerActionFailure(FirstCheckText.shortcutNeverAsked(clear:clear))
         case .denied: throw ShowerActionFailure(FirstCheckFailure.noPermission.text(clear:clear))

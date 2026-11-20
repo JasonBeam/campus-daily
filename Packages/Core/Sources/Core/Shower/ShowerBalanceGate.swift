@@ -4,8 +4,8 @@ import Foundation
 /// now) never blocks.
 public enum ShowerBalanceGate {
     /// True when a start is refused for the balance.
-    // Red-phase stub, never blocks (today's behaviour).
     public static func blocks(_ balance: ShowerBalance?, allowsDebt: Bool) -> Bool {
-        false
+        guard let balance, !allowsDebt else { return false }
+        return balance.amount < .zero
     }
 }

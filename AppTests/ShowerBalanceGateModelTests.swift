@@ -285,9 +285,9 @@ final class ShowerBalanceGateModelTests: XCTestCase {
         XCTAssertEqual(link.connects, 0)
     }
 
-    /// … and a record waiting for its check.
+    /// … and a shower still running (not over: over one, Siri's start is 开始下一次洗澡).
     func testSiriSaysTheUnsettledRecordBeforeTheBalance() async throws {
-        let shower = try await model(record:Fixture.awaitingReview)
+        let shower = try await model(record:Fixture.running)
         shower.noteBalance(Self.owed)
         XCTAssertEqual(shower.startBlock, .unsettled)
         let text = await shortcutRefusal(shower)

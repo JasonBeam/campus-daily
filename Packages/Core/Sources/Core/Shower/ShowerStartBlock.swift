@@ -70,6 +70,7 @@ public enum ShowerStartBlock: Sendable, Equatable, CaseIterable {
         if f.inspecting { return .inspecting }
         if f.busy { return .busy }
         if !f.canStart { return .unsettled }
+        if f.balanceBlocked { return .balanceNegative }
         return nil
     }
 
@@ -98,9 +99,7 @@ public enum ShowerStartBlock: Sendable, Equatable, CaseIterable {
         case .accountChanged: return [.checkController]
         case .signOutUnfinished: return [.settings, .checkController]
         case .recordUnreadable: return clear ? [] : [.cardRecords]
-        case .platformMissing, .inspecting, .busy, .storage, .unsettled, .launching: return []
-        // Red-phase stub.
-        case .balanceNegative: return []
+        case .platformMissing, .inspecting, .busy, .storage, .unsettled, .launching, .balanceNegative: return []
         }
     }
 
@@ -126,8 +125,8 @@ public enum ShowerStartBlock: Sendable, Equatable, CaseIterable {
         case .recordUnreadable: return "读不到热水记录。去校园卡记录里看看这次扣了没有，扣费要 1 小时左右才出现。"
         case .unsettled: return "上一次洗澡还没结算完，结完才能开始新的。"
         case .launching: return nil
-        // Red-phase stub; the words wait for Camo.
-        case .balanceNegative: return nil
+        // Interim words until Camo's.
+        case .balanceNegative: return "校园卡余额是负的，充值后再开始洗澡。"
         }
     }
 
@@ -144,8 +143,8 @@ public enum ShowerStartBlock: Sendable, Equatable, CaseIterable {
         case .recordUnreadable: return "读不到热水记录；可在校园卡消费明细中核对，扣费约 1 小时后入账"
         case .unsettled: return "上一次洗澡尚未结算完成；结算后可开始新的洗澡"
         case .launching: return nil
-        // Red-phase stub; the words wait for Camo.
-        case .balanceNegative: return nil
+        // Interim words until Camo's.
+        case .balanceNegative: return "校园卡余额为负；充值后可开始洗澡"
         }
     }
 
