@@ -33,7 +33,7 @@ struct WidgetPreview: View {
     private func model(_ state: WidgetFreshness = .fresh, power: String = "42.6", card: String = "86.50", extras: Bool = false,
                        at time: Date? = nil) -> CampusWidgetModel {
         CampusWidgetModel(state:state, remainingKWh:Decimal(string:power), balance:Decimal(string:card),
-                          yesterdayKWh:extras ? Decimal(string:"5.1") : nil,
+                          dailyAverageKWh:extras ? Decimal(string:"5.1") : nil,
                           powerBalance:extras ? Decimal(string:"23.40") : nil, updated:time ?? (state == .stale ? staleTime : updated))
     }
     /// Signed in, nothing read yet.
@@ -74,7 +74,7 @@ struct WidgetPreview: View {
                     tile(model(.expired, power:"4.8", card:"12.30"), caption:"登录过期 · 电量低 · 只留校园卡")
                 }
                 tile(firstRead, medium:true, caption:"中号 · 登录了 · 还没数据")
-                tile(model(), medium:true, caption:"中号 · 没有昨天用电和电费余额")
+                tile(model(), medium:true, caption:"中号 · 没有每天约用和电费余额")
             }
         }
         .padding(.top,64)

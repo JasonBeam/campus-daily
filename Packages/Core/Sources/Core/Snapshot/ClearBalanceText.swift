@@ -1,7 +1,7 @@
 import Foundation
 
 /// Words and numbers of 清爽 home's 双余额 card and the rest of its page: two decimals, 「电费」 and
-/// 「昨日」 under the electricity, 「校园消费余额」 under the card, each column with its own read
+/// 「日均」 under the electricity, 「校园消费余额」 under the card, each column with its own read
 /// time, and one 「校园充值 · 微信」 link at the bottom.
 public enum ClearBalanceText {
     public static let homeTitle = "校园生活"
@@ -11,6 +11,11 @@ public enum ClearBalanceText {
     public static let cardCaption = "校园消费余额"
     public static let topUp = "校园充值 · 微信"
     public static let pullHint = "下拉刷新余额"
+    /// The daily average under the electricity (card and small widget): 「日均约 4.60 度」, or
+    /// 「日均 未返回」 without a usable estimate.
+    public static let dailyAverageLabel = "日均约"
+    public static let dailyAverageMissingLabel = "日均"
+    public static let notReturned = "未返回"
     /// A reading older than this (or with a failed read after it) is drawn as 「上次」.
     public static let staleAfter: TimeInterval = 20 * 60
 
@@ -39,9 +44,10 @@ public enum ClearBalanceText {
         "电费 " + (meter?.leftMoney.map { "¥" + number($0.yuan) } ?? "未获取")
     }
 
-    /// 「昨日 4.60 度」, or 「昨日 未返回」 when the meter didn't report it.
-    public static func yesterday(_ meter: Meter?) -> String {
-        "昨日 " + (meter?.estimatedDaysLeft.map { number($0) + " 度" } ?? "未返回")
+    /// 「日均约 4.60 度」 (remaining ÷ the school's days), or 「日均 未返回」 without a usable estimate.
+    public static func dailyAverage(_ meter: Meter?) -> String {
+        guard let average = meter?.averageDailyKWh else { return dailyAverageMissingLabel + " " + notReturned }
+        return dailyAverageLabel + " " + number(average) + " 度"
     }
 
     /// Older than `staleAfter`, read after it with an error, or dated in the future.

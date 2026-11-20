@@ -3,6 +3,8 @@ import Foundation
 /// Number and time formats shared by the app (Theme) and the widget.
 enum CampusFormat {
     private static let posix = Locale(identifier:"en_US_POSIX")
+    /// 暖橙's label for the daily average behind the school's days left (widget, sample page).
+    static let dailyAverageLabel = "每天约用"
     /// 「¥86.50」
     static func yuan(_ value: Decimal) -> String {
         "¥" + plainYuan(value)

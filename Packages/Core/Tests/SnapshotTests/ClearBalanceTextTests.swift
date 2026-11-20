@@ -7,9 +7,9 @@ final class ClearBalanceTextTests: XCTestCase {
     let posix = Locale(identifier: "en_US_POSIX")
     let now = Date(timeIntervalSince1970: 1_800_000_000)
 
-    func meter(money: String? = "25.56", daily: Decimal? = 4.6) -> Meter {
+    func meter(money: String? = "25.56", days: Decimal? = 9.26) -> Meter {
         Meter(comAddress: "M1", name: "3栋108", leftMoney: money.flatMap { Money(yuanString: $0) },
-              remainingKWh: 42.6, estimatedDaysLeft: daily)
+              remainingKWh: 42.6, estimatedDaysLeft: days)
     }
 
     func testTitlesAndLinks() {
@@ -41,8 +41,12 @@ final class ClearBalanceTextTests: XCTestCase {
         XCTAssertEqual(ClearBalanceText.powerMoney(meter()), "电费 ¥25.56")
         XCTAssertEqual(ClearBalanceText.powerMoney(meter(money: nil)), "电费 未获取")
         XCTAssertEqual(ClearBalanceText.powerMoney(nil), "电费 未获取")
-        XCTAssertEqual(ClearBalanceText.yesterday(meter()), "昨日 4.60 度")
-        XCTAssertEqual(ClearBalanceText.yesterday(meter(daily: nil)), "昨日 未返回")
+        // 10: the daily average behind the school's days (42.6 度 over 9.26 days), not 「昨日」.
+        XCTAssertEqual(ClearBalanceText.dailyAverage(meter()), "日均约 4.60 度")
+        XCTAssertEqual(ClearBalanceText.dailyAverage(meter(days: nil)), "日均 未返回")
+        XCTAssertEqual(ClearBalanceText.dailyAverage(meter(days: 0)), "日均 未返回")
+        XCTAssertEqual(ClearBalanceText.dailyAverage(meter(days: 400)), "日均 未返回")
+        XCTAssertEqual(ClearBalanceText.dailyAverage(nil), "日均 未返回")
     }
 
     func testEachColumnHasItsOwnReadTime() {

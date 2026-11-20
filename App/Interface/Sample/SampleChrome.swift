@@ -192,6 +192,10 @@ struct SampleCardPage: View {
 /// 充值 opens 校园充值 and 电表 is blocked. (The live 电量 is 校园充值 itself.)
 struct SamplePowerPage: View {
     let data: HomeData
+    /// 「4.6 度」: the daily average behind the meter's days left, 「—」 without one.
+    static func dailyUse(_ meter: Meter?) -> String {
+        meter?.averageDailyKWh.map { Theme.kwh($0) + " 度" } ?? "—"
+    }
     @Environment(SampleMode.self) private var sample
 
     var body: some View {
@@ -201,7 +205,7 @@ struct SamplePowerPage: View {
             Section {
                 row("宿舍", data.meterLocation ?? data.dorm ?? "")
                 row("剩余电量", meter?.remainingKWh.map { Theme.kwh($0) + " 度" } ?? "—")
-                row("每天约用", meter?.estimatedDaysLeft.map { Theme.kwh($0) + " 度" } ?? "—")
+                row(CampusFormat.dailyAverageLabel, Self.dailyUse(meter))
                 if let subline = figure.subline { row("预计", subline.text) }
             } footer: {
                 if let read = data.snapshot.power.fetchedAt {

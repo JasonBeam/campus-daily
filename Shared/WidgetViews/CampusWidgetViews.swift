@@ -9,8 +9,8 @@ struct CampusWidgetModel: Sendable {
     var state: WidgetFreshness
     var remainingKWh: Decimal?
     var balance: Decimal?
-    /// 「昨天用了 X 度」: only when the meter reported it.
-    var yesterdayKWh: Decimal?
+    /// 「每天约用 X 度」: the daily average behind the school's days left, only when it has one.
+    var dailyAverageKWh: Decimal?
     /// 「电费余额 ¥X」: the meter's money balance, only when a meter reading exists.
     var powerBalance: Decimal?
     /// The last successful update (the stored `fetchedAt`).
@@ -28,15 +28,15 @@ struct CampusWidgetModel: Sendable {
     /// Sample shapes only, always drawn redacted: no number on it is anyone's, and none is shown.
     static let placeholderFace: CampusWidgetModel = {
         var model = CampusWidgetModel(state:.fresh, remainingKWh:Decimal(string:"42.6"), balance:Decimal(string:"86.50"),
-                                      yesterdayKWh:Decimal(string:"5.1"), powerBalance:Decimal(string:"23.40"), updated:Date())
+                                      dailyAverageKWh:Decimal(string:"5.1"), powerBalance:Decimal(string:"23.40"), updated:Date())
         model.placeholder = true
         return model
     }()
 
-    init(state: WidgetFreshness, remainingKWh: Decimal? = nil, balance: Decimal? = nil, yesterdayKWh: Decimal? = nil,
+    init(state: WidgetFreshness, remainingKWh: Decimal? = nil, balance: Decimal? = nil, dailyAverageKWh: Decimal? = nil,
          powerBalance: Decimal? = nil, updated: Date? = nil, now: Date = Date()) {
         self.state = state; self.remainingKWh = remainingKWh; self.balance = balance
-        self.yesterdayKWh = yesterdayKWh; self.powerBalance = powerBalance; self.updated = updated; self.now = now
+        self.dailyAverageKWh = dailyAverageKWh; self.powerBalance = powerBalance; self.updated = updated; self.now = now
         tap = state.opensLogin ? .login : .home
     }
 
@@ -46,7 +46,7 @@ struct CampusWidgetModel: Sendable {
         guard let snapshot, state != .never else { self = .never; return }
         let meter = snapshot.power.value
         self.init(state:state, remainingKWh:meter?.remainingKWh, balance:snapshot.card.value?.yuan,
-                  yesterdayKWh:meter?.estimatedDaysLeft, powerBalance:meter?.leftMoney?.yuan,
+                  dailyAverageKWh:meter?.averageDailyKWh, powerBalance:meter?.leftMoney?.yuan,
                   updated:WidgetStatus.shownUpdated(snapshot), now:now)
         tap = WidgetStatus.tap(snapshot:snapshot, account:account, now:now)
     }
@@ -98,6 +98,10 @@ struct CampusWidgetFace: View {
     /// The app's theme when the entry was made.
     var theme: AppTheme = .standard
     private var P: CampusWidgetPalette { .of(theme) }
+    /// 「每天约用 11.3 度」, nil (no line) without one.
+    static func dailyAverageLine(_ value: Decimal?) -> String? {
+        value.map { CampusFormat.dailyAverageLabel + " " + CampusFormat.kwh($0) + " 度" }
+    }
     var body: some View {
         if ClearScriptsFace.draws(model, medium:medium, theme:theme) {
             ClearScriptsFace(model:model)
@@ -193,7 +197,7 @@ struct CampusWidgetFace: View {
                         if model.remainingKWh != nil { Text("度").font(.system(size:15, weight:.medium)).foregroundStyle(P.ink2) }
                     }.padding(.top,8)
                     VStack(alignment:.leading, spacing:2) {
-                        if let yesterday = model.yesterdayKWh { mini("昨天用了", CampusFormat.kwh(yesterday), " 度") }
+                        if let average = model.dailyAverageKWh { mini(CampusFormat.dailyAverageLabel, CampusFormat.kwh(average), " 度") }
                         if let money = model.powerBalance { mini("电费余额", CampusFormat.yuan(money), "") }
                     }.padding(.top,4)
                     Spacer(minLength:0)

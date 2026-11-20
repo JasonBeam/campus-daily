@@ -11,6 +11,7 @@ final class SampleDataTests: XCTestCase {
         XCTAssertEqual(s.card.value, Money(yuanString: "86.50"))
         XCTAssertEqual(s.power.value?.remainingKWh, Decimal(string: "42.6"))
         XCTAssertEqual(s.power.value?.estimatedDaysLeft, Decimal(string: "9.26"))
+        XCTAssertEqual(ClearBalanceText.number(s.power.value?.averageDailyKWh), "4.60")
         XCTAssertEqual(s.roomLabel, "3栋108")
         XCTAssertFalse(s.activity.value?.records.isEmpty ?? true)
     }

@@ -75,7 +75,7 @@ struct ClearBalanceCard: View {
         return ClearBalanceColumn(title:ClearBalanceText.powerTitle,
                                   value:ClearBalanceText.number(meter?.remainingKWh), unit:"度",
                                   low:data.powerFigure(now:now).low,
-                                  lines:[ClearBalanceText.powerMoney(meter), ClearBalanceText.yesterday(meter)],
+                                  lines:[ClearBalanceText.powerMoney(meter), ClearBalanceText.dailyAverage(meter)],
                                   stamp:meter == nil ? nil : ClearBalanceText.powerStamp(tile, now:now))
     }
 

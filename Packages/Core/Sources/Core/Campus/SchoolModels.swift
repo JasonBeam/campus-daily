@@ -216,6 +216,13 @@ public struct Meter: Sendable, Equatable, Codable {
         guard let days = estimatedDaysLeft, days > 0, days <= Self.maxEstimatedDays else { return nil }
         return days
     }
+
+    /// The daily use behind the school's estimate: remaining ÷ days. Nil without a usable estimate
+    /// or with nothing left. Every 「每天约用」/「日均约」 reads this one value.
+    public var averageDailyKWh: Decimal? {
+        guard let days = usableDaysLeft, let remaining = remainingKWh, remaining > 0 else { return nil }
+        return remaining / days
+    }
 }
 
 /// The saved meter: the room's directory node plus the meter's `comAddress`.
