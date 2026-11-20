@@ -164,7 +164,7 @@ public enum ShowerStartBlock: Sendable, Equatable, CaseIterable {
     /// `.balanceNegative`'s line for a balance below zero: what the card owes, 「¥0.50」 as home
     /// writes the card's number (清爽 gives the balance itself, 「-¥0.50」).
     public static func balanceLine(_ balance: Money, clear: Bool) -> String {
-        let owed = "¥" + Money(fen:abs(balance.fen)).yuanText
+        let owed = "¥" + balance.magnitudeYuanText
         return clear ? "校园卡余额 -\(owed)；请充值后再开始洗澡" : "校园卡欠了 \(owed)，充上再来洗。"
     }
 

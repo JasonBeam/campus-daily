@@ -43,10 +43,13 @@ public struct Money: Hashable, Comparable, Sendable, Codable, CustomStringConver
     public var yuan: Decimal { Decimal(fen) / 100 }
 
     /// "7.90", "-0.06".
-    public var yuanText: String {
-        let sign = fen < 0 ? "-" : ""
-        let a = abs(fen)
-        return "\(sign)\(a / 100).\(String(format: "%02d", a % 100))"
+    public var yuanText: String { (fen < 0 ? "-" : "") + magnitudeYuanText }
+
+    /// The amount without its sign: "0.50" for -50 fen. Exact for every value, `Int.min` too
+    /// (the magnitude is unsigned, where `abs` would trap).
+    public var magnitudeYuanText: String {
+        let a = fen.magnitude
+        return "\(a / 100).\(String(format: "%02d", Int(a % 100)))"
     }
 
     public var description: String { "¥" + yuanText }

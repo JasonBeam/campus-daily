@@ -75,6 +75,16 @@ final class ShowerStartBlockBalanceTests: XCTestCase {
         XCTAssertEqual(ShowerStartBlock.busy.text(clear:false, balance:owed), ShowerStartBlock.busy.warm)
     }
 
+    /// The most a card could owe: formatted from the unsigned magnitude, no trap at `Int.min`.
+    func testTheLineAtTheLimits() {
+        XCTAssertEqual(ShowerStartBlock.balanceLine(Money(fen:.min), clear:false), "校园卡欠了 ¥92233720368547758.08，充上再来洗。")
+        XCTAssertEqual(ShowerStartBlock.balanceLine(Money(fen:.min), clear:true), "校园卡余额 -¥92233720368547758.08；请充值后再开始洗澡")
+        XCTAssertEqual(Money(fen:.min).yuanText, "-92233720368547758.08")
+        XCTAssertEqual(Money(fen:.max).yuanText, "92233720368547758.07")
+        XCTAssertEqual(Money(fen:-50).magnitudeYuanText, "0.50")
+        XCTAssertEqual(Money(fen:0).yuanText, "0.00")
+    }
+
     /// Its headline, and one link: the campus card's top-up page.
     func testTitleAndTopUpLink() {
         XCTAssertEqual(ShowerStartBlock.balanceNegative.title(clear:false), "校园卡欠费了")
