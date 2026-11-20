@@ -913,8 +913,9 @@ entitlements files and both Info.plists are filled from `APP_BUNDLE_IDENTIFIER` 
 (Info.plist keys `AppGroupIdentifier` = `group.$(APP_BUNDLE_IDENTIFIER)` and
 `KeychainGroupIdentifier` = `$(APP_BUNDLE_IDENTIFIER)`, read by `AppIdentity`; the widget carries
 the app's values, not its own bundle id; `BGTaskSchedulerPermittedIdentifiers` =
-`$(APP_BUNDLE_IDENTIFIER).refresh`). The table shows the values for the default bundle id. iOS
-builds before it used `com.beamjason.xiaorichang` for all of these; nothing is migrated, so the
+`$(APP_BUNDLE_IDENTIFIER).refresh`). The table shows the values for the default bundle id. The
+author's released old iOS app was `com.beamjason.campushotwater` (our early test builds used
+`com.beamjason.xiaorichang`) for all of these; nothing is migrated, so the
 new id installs as a separate app and the user signs in once. A build
 with another `APP_BUNDLE_IDENTIFIER` (Developer.xcconfig) gets its own groups; the Keychain service
 names stay `org.zaxh.xiaorichang.<name>.v1` in every build. An IPA re-signed under another

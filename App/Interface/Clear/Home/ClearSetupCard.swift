@@ -1,8 +1,8 @@
 import SwiftUI
 import Core
 
-/// 「继续设置」 on home while the account, the dorm or the usual washer is not set: opens the
-/// first-run checklist.
+/// 「继续设置」 on home while the school account or the dorm is not set (`HomeSetupCard.detail`):
+/// opens the first-run checklist.
 struct ClearSetupCard: View {
     let detail: String
     let action: () -> Void
