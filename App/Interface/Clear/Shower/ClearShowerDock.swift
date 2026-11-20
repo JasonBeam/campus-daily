@@ -26,8 +26,22 @@ struct ClearShowerDock: View {
 
     /// The refused face's 开始洗澡: from the tap until the phase moves, 正在处理… spinning and off,
     /// as while a start runs.
-    static func retryFace(tapped: Bool, starting: Bool) -> (title: String, spinning: Bool, enabled: Bool) {
-        tapped || starting ? (ClearShowerText.busyButton, true, false) : (ClearShowerText.deniedRetry, false, true)
+    /// `blocked`: the balance refuses a start: 开始洗澡, off and still (a tap already refused
+    /// doesn't spin).
+    static func retryFace(tapped: Bool, starting: Bool, blocked: Bool = false) -> (title: String, spinning: Bool, enabled: Bool) {
+        if starting { return (ClearShowerText.busyButton, true, false) }
+        if blocked { return (ClearShowerText.deniedRetry, false, false) }
+        return tapped ? (ClearShowerText.busyButton, true, false) : (ClearShowerText.deniedRetry, false, true)
+    }
+
+    /// Whether the refused face's tapped look stays after `tapStart(.retry)` answered `tap`.
+    /// Only a start that went (or one already under way): any refusal leaves the page where it
+    /// is, so the face goes back at once.
+    static func retryKeepsSpinning(after tap: ShowerStartTap) -> Bool {
+        switch tap {
+        case .started, .joined: return true
+        case .explainer, .refused, .notAllowed: return false
+        }
     }
 
     /// The one button of an answered face. Settled: 开始洗澡 with its arrow. Refused without a
@@ -47,7 +61,7 @@ struct ClearShowerDock: View {
                 primary(checking ? FirstCheckText.checkingButton : live && shower.busy ? ClearShowerText.busyButton : ClearShowerText.start,
                         symbol:"arrow.up.right", spinning:checking || live && shower.busy,
                         spinnerOnly:launchSpinner && block == .launching, enabled:mayStart && !checking, action:start)
-                    .accessibilityHint(block?.clear ?? "")
+                    .accessibilityHint(shower.startReason(block, clear:true) ?? "")
                     .accessibilityIdentifier("startWater")
                     .modifier(ShowerLaunchSpinner(launching:block == .launching, shown:$launchSpinner))
                 if checking {
@@ -55,10 +69,10 @@ struct ClearShowerDock: View {
                     EmptyView()
                 } else if let failure = flow.checkFailure {
                     FirstCheckFailureLine(failure:failure, clear:true)
-                } else if let reason = block?.clear {
-                    ShowerStartReason(text:reason) {
+                } else if let reason = shower.startReason(block, clear:true) {
+                    ShowerStartReason(text:reason, digits:block == .balanceNegative) {
                         ForEach(block?.links(clear:true) ?? [], id:\.self) { link in
-                            NavigationLink(value:link == .settings ? ClearRoute.account : ClearRoute.dorm) {
+                            NavigationLink(value:Self.route(link)) {
                                 ShowerStartReasonLinkLabel(text:ShowerStartBlock.linkTitle(link, clear:true), clear:true)
                             }
                             .buttonStyle(RowPressStyle())
@@ -105,11 +119,12 @@ struct ClearShowerDock: View {
             case .denied? where shower.deniedRetryable:
                 // Nothing was issued: start again here, as after a failed connect. The tap shows
                 // the starting look at once, without waiting for the page to move.
-                let face = Self.retryFace(tapped:retryTapped, starting:flow.starting)
+                let face = Self.retryFace(tapped:retryTapped, starting:flow.starting, blocked:live && shower.balanceBlocks)
                 primary(face.title, symbol:"arrow.up.right", spinning:face.spinning, enabled:face.enabled) {
                     retryTapped = true
-                    // A demo shows the tapped look and starts nothing.
-                    if live { shower.tapStart(.retry) }
+                    // A demo shows the tapped look and starts nothing. A retry refused here (or
+                    // waiting on the explainer) doesn't leave the face spinning.
+                    if live, !Self.retryKeepsSpinning(after:shower.tapStart(.retry)) { retryTapped = false }
                 }
                 secondary(ClearShowerText.deniedClose, enabled:!retryTapped) { close(.closeTapped) }
             case .done?, .denied?:
@@ -132,6 +147,15 @@ struct ClearShowerDock: View {
         .padding(.horizontal, inline ? 0 : 20).padding(.vertical, inline ? 0 : 12)
         .frame(maxWidth:.infinity)
         .background(inline ? Color.clear : NativeTheme.background)
+    }
+
+    /// Where a reason's link goes on 清爽's stack.
+    static func route(_ link: ShowerStartBlock.Link) -> ClearRoute {
+        switch link {
+        case .settings: return .account
+        case .topUp: return .card
+        case .dorm, .checkController, .cardRecords: return .dorm
+        }
     }
 
     // MARK: Actions

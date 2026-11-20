@@ -187,7 +187,7 @@ struct ShowerDetail: View {
                     }.buttonStyle(ShowerDetailPill())
                         .disabled(!startEnabled)
                         .accessibilityLabel(buttonTitle)
-                        .accessibilityHint(block?.warm ?? "")
+                        .accessibilityHint(shower.startReason(block, clear:false) ?? "")
                         .accessibilityIdentifier(stopped ? "showerStartNext" : closing ? "finishWater" : "startWater")
                         .modifier(ShowerLaunchSpinner(launching:block == .launching, shown:$launchSpinner))
                     if checking {
@@ -195,8 +195,8 @@ struct ShowerDetail: View {
                         EmptyView()
                     } else if let failure = checkFailure {
                         FirstCheckFailureLine(failure:failure, clear:false)
-                    } else if let reason = block?.warm {
-                        ShowerStartReason(text:reason, color:Theme.ink2) { reasonLinks }
+                    } else if let reason = shower.startReason(block, clear:false) {
+                        ShowerStartReason(text:reason, color:Theme.ink2, digits:block == .balanceNegative) { reasonLinks }
                     } else {
                         // The page this opens says 「结算完成前，先别离开水控。」 once 结束 is tapped.
                         Text(stopped ? ShowerPageText.stoppedNote : closing ? ShowerPageText.runningNote : ShowerStartBlock.warmNote)
@@ -314,6 +314,10 @@ struct ShowerDetail: View {
             case .cardRecords:
                 // A record this build can't read: its charge is on the card's records.
                 if cardRecords.page != nil { ShowerCardRecordsLink { recordsOpen = true } }
+            case .topUp:
+                NavigationLink { CampusTopUpView() } label: { ShowerStartReasonLinkLabel(text:title) }
+                    .buttonStyle(RowPressStyle())
+                    .accessibilityIdentifier("showerTopUp")
             }
         }
     }

@@ -122,6 +122,13 @@ enum ShowerProfileFiles {
     /// of this model's (drawn set up, with `demoReadyDorm`; nothing connects).
     @Published var demoDetailRecord: ShowerState?
     #endif
+    /// The campus card's balance a start goes by, pushed by `CampusModel` (`noteBalance`); nil
+    /// when it can't be trusted.
+    @Published private(set) var balance: ShowerBalance?
+    /// Debt is allowed on this phone: a balance below zero doesn't refuse a start.
+    @Published private(set) var allowsDebt: Bool
+    /// Login attempts that may change who is signed in (`holdForLogin`): no new start meanwhile.
+    @Published private(set) var loginHolds: Set<UUID> = []
     @Published private(set) var residenceReviewRequired: Bool
     /// The review is there because the last 退出登录 did not complete (the same person is still
     /// signed in), not because of an account switch or a sign-out that went through.
@@ -150,6 +157,7 @@ enum ShowerProfileFiles {
     init(services: CampusServices, reminders: Reminders, activities: ShowerActivityController?, gate: LiveShowerGate? = nil,
          bluetoothAccess: BluetoothAccess? = nil) {
         self.services = services
+        allowsDebt = ShowerStartOverrideStore(store:services.secureStore).isOn
         self.bluetoothAccess = bluetoothAccess ?? BluetoothAccessFor.transport(services.showerTransport)
         self.reminders = reminders
         self.activities = activities
@@ -189,6 +197,75 @@ enum ShowerProfileFiles {
         }
     }
 
+    // MARK: Balance
+
+    /// The balance the gate goes by (nil: unknown, a start goes). Turning it below zero takes
+    /// back a start whose authorize request hasn't left, in the same step.
+    func noteBalance(_ value: ShowerBalance?) {
+        let before = balanceBlocks
+        balance = value
+        if !before, balanceBlocks { revokeUnsentStart() }
+    }
+
+    /// Debt allowed on this phone, kept in the Keychain. Turned on only once it is stored.
+    /// Turned off here at once (a start that would now be refused is taken back), also when the
+    /// Keychain refuses. Returns whether it was stored: false for a turn-off means the item still
+    /// says "allowed" and a relaunch would read it back, so the caller must not show it as off
+    /// for good (and may try again).
+    @discardableResult
+    func setAllowsDebt(_ value: Bool) -> Bool {
+        let store = ShowerStartOverrideStore(store:services.secureStore)
+        let stored = (try? store.set(value)) != nil
+        if value, !stored { return false }
+        applyAllowsDebt(value)
+        return stored
+    }
+
+    /// The running model's value; a flip to refused takes back a start that hasn't sent its
+    /// authorize request.
+    private func applyAllowsDebt(_ value: Bool) {
+        let before = balanceBlocks
+        allowsDebt = value
+        if !before, balanceBlocks { revokeUnsentStart() }
+    }
+
+    /// The phrase typed after the five taps on the version: allows debt when it matches,
+    /// says nothing otherwise.
+    func tryUnlock(_ input: String, digest: String = ShowerStartOverride.digest) {
+        guard ShowerStartOverride.matches(input, digest:digest) else { return }
+        setAllowsDebt(true)
+    }
+
+    /// A start is refused for the balance (`ShowerBalanceGate.blocks`).
+    var balanceBlocks: Bool { ShowerBalanceGate.blocks(balance, allowsDebt:allowsDebt) }
+
+    /// Why 开始下一次洗澡 is greyed out on the stopped page: the balance, when nothing else holds it.
+    var nextBlock: ShowerStartBlock? { balanceBlocks && nextReady ? .balanceNegative : nil }
+
+    /// A login that may change who is signed in begins (`id`: its attempt): no new start from
+    /// here, and a start whose authorize request hasn't left is taken back.
+    func holdForLogin(_ id: UUID) {
+        loginHolds.insert(id)
+        revokeUnsentStart()
+    }
+
+    /// That attempt is over (the same person, nothing written, or its clean-up has taken over).
+    /// Only its own hold goes; a start taken back stays taken back.
+    func releaseLoginHold(_ id: UUID) { loginHolds.remove(id) }
+
+    /// Takes back the start in the slot unless its authorize request already left
+    /// (`ShowerStartPermit.revoke()` false: the start goes on as it would have). One waiting on
+    /// the explainer goes; one waiting on the system alert ends when it is answered
+    /// (`stillHolds`); one running stops before its authorize request (the engine's consume).
+    func revokeUnsentStart() {
+        guard let slot = startSlot, slot.permit.revoke() else { return }
+        switch slot.phase {
+        case .awaitingConfirm: startSlot = nil
+        case .awaitingPermission: break
+        case .starting: if slot.firstCheck { pageEvent(.firstCheckWithdrawn) }
+        }
+    }
+
     // MARK: Derived state (what the views read)
 
     var configured: Bool { binding != nil }
@@ -196,7 +273,7 @@ enum ShowerProfileFiles {
     var platformMissing: Bool { binding != nil && profile == nil }
     var mayStart: Bool {
         ShowerLinkRule.mayStart(state, ready:configured && !platformMissing && !residenceReviewRequired && engine != nil && !storageBlocked,
-                                busy:busy, inspecting:inspecting)
+                                busy:busy || !loginHolds.isEmpty, inspecting:inspecting) && !balanceBlocks
     }
     /// Why 开始洗澡 is greyed out (`ShowerStartBlock`): nil exactly when `mayStart`.
     var startBlock: ShowerStartBlock? {
@@ -208,7 +285,8 @@ enum ShowerProfileFiles {
         return ShowerStartBlock.of(.init(configured:configured, profileLoaded:profileLoaded, platformMissing:platformMissing,
                                          residenceReview:residenceReviewRequired, failedSignOut:reviewAfterFailedSignOut,
                                          recordUnreadable:recordUnreadable, storageBlocked:storageBlocked, engineReady:engine != nil,
-                                         inspecting:inspecting, busy:busy, canStart:state.canStart))
+                                         inspecting:inspecting, busy:busy || !loginHolds.isEmpty, canStart:state.canStart,
+                                         balanceBlocked:balanceBlocks))
     }
     /// Not without a platform profile: the water would close with no way to settle it.
     var mayFinish: Bool { configured && !platformMissing && engine != nil && !busy && !storageBlocked && state.canFinish }
@@ -221,8 +299,12 @@ enum ShowerProfileFiles {
         // Demo records have no engine behind them: the button is drawn as it would be.
         if engine == nil, binding == nil, page.record.canStartNext, page.record.showerOver { return true }
         #endif
-        return configured && !platformMissing && !residenceReviewRequired && engine != nil && !busy && !storageBlocked && !inspecting
-            && state.canStartNext
+        return nextReady && !balanceBlocks
+    }
+    /// 开始下一次洗澡 as far as everything but the balance goes.
+    private var nextReady: Bool {
+        configured && !platformMissing && !residenceReviewRequired && engine != nil && !busy && loginHolds.isEmpty && !storageBlocked
+            && !inspecting && state.canStartNext
     }
     /// Binding / profile may change only with no session that could still be open or charged.
     var mayImport: Bool { ShowerImportRule.mayImport(state, busy:busy, storageBlocked:storageBlocked) }
@@ -383,6 +465,10 @@ enum ShowerProfileFiles {
 
     /// After a reset cleared the stores: no binding, no record, bundled profile only.
     func reloadAfterReset() async {
+        // Back to the default in the running model whatever the Keychain still holds: a reset
+        // that couldn't delete the item has reported it, and never turns debt back on here.
+        applyAllowsDebt(false)
+        balance = nil
         binding = (try? services.showerVault.binding()) ?? nil
         residenceReviewRequired = services.defaults.bool(forKey:PreferenceKey.showerNeedsResidenceReview)
         reviewAfterFailedSignOut = services.defaults.bool(forKey:PreferenceKey.showerReviewAfterFailedSignOut)
@@ -574,8 +660,19 @@ enum ShowerProfileFiles {
                 : "学校账号退出或换过，先在校日常里重新核对宿舍水控。"
         }
         if inspecting { return "正在核对水控，等一下再开始。" }
+        // A login that may change who is signed in is under way: as for a step already running.
+        if !loginHolds.isEmpty { return ShowerActionFailure(.busy).message }
+        if let balanceText = balanceRefusal(clear:false) { return balanceText }
         if !state.canStart { return ShowerActionFailure.blockedText(state.failure) }
         return "现在开始不了，打开校日常看看。"
+    }
+
+    /// What Siri says when the balance is the only reason a start (or, over a shower that is
+    /// over, a next one) can't go; nil otherwise.
+    func balanceRefusal(clear: Bool) -> String? {
+        let block = state.showerOver ? nextBlock : startBlock
+        guard block == .balanceNegative else { return nil }
+        return ShowerStartBlock.balanceNegative.text(clear:clear, balance:balance?.amount)
     }
 
     /// Read-only state probe of the session's controller (Settings › 高级 › 检查水控状态).

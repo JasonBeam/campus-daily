@@ -9,16 +9,18 @@ struct ShowerStartReason<Links: View>: View {
     let text: String
     /// The text and ⓘ: the footnote's secondary colour unless given (暖橙's 热水洗澡: ink2).
     var color: ThemeColor? = nil
+    /// Figures in the text (an amount) take tabular digits.
+    var digits = false
     let links: Links
     @Environment(\.dynamicTypeSize) private var typeSize
 
-    init(text: String, color: ThemeColor? = nil, @ViewBuilder links: () -> Links) {
-        self.text = text; self.color = color; self.links = links()
+    init(text: String, color: ThemeColor? = nil, digits: Bool = false, @ViewBuilder links: () -> Links) {
+        self.text = text; self.color = color; self.digits = digits; self.links = links()
     }
 
     var body: some View {
         VStack(alignment:.leading, spacing:4) {
-            Label { Text(text) } icon: { Image(systemName:"info.circle").accessibilityHidden(true) }
+            Label { digits ? Text(text).monospacedDigit() : Text(text) } icon: { Image(systemName:"info.circle").accessibilityHidden(true) }
                 .font(.footnote).foregroundStyle(color.map(AnyShapeStyle.init) ?? AnyShapeStyle(.secondary))
                 .lineLimit(typeSize.isAccessibilitySize ? 5 : 3)
                 .fixedSize(horizontal:false, vertical:true)

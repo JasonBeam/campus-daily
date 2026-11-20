@@ -126,7 +126,8 @@ final class KeychainStoreTests: XCTestCase {
         XCTAssertEqual(StoreKey.laundryHistory.service, "org.zaxh.xiaorichang.laundry.history.v1")
         XCTAssertEqual(StoreKey.laundryHistorySalt.service, "org.zaxh.xiaorichang.laundry.historySalt.v1")
         XCTAssertEqual(StoreKey.sharedSnapshotStale.service, "org.zaxh.xiaorichang.shared.snapshotStale.v1")
-        XCTAssertEqual(StoreKey.allCases.count, 17, "a new item needs its stored name pinned here")
+        XCTAssertEqual(StoreKey.showerStartMode.service, "org.zaxh.xiaorichang.water.startMode.v1")
+        XCTAssertEqual(StoreKey.allCases.count, 18, "a new item needs its stored name pinned here")
     }
 
     /// The finished-order list and its salt stay in the app's private group: the widget can't read them.

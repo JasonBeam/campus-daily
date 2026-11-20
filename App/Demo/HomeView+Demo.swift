@@ -11,6 +11,13 @@ extension HomeView {
             guard !sample.isActive else { return }
             // A synthetic running record in this root's own (live) hot-water vault.
             if url.host == "demo", url.path == "/seed/shower-running" { shower.demoSeedRunningRecord(); return }
+            // campusdaily://demo/seed/debt-on: the debt start setting on (stored, as the phrase would);
+            // /seed/debt-off-unstored: on, and every turn-off of it reads as not stored.
+            if url.host == "demo", ["/seed/debt-on", "/seed/debt-off-unstored"].contains(url.path) {
+                DebtShowerVisit.demoTurnOffUnstored = url.path == "/seed/debt-off-unstored"
+                shower.setAllowsDebt(true)
+                return
+            }
             if let kind = notifyDemo(url) { Task { await reminders.demoNotify(kind) }; return }
             // campusdaily://demo/theme/<warm|clear>: what 主题 would pick, keeping the screen shown.
             if url.host == "demo", url.pathComponents.dropFirst().first == "theme",
@@ -176,14 +183,17 @@ extension HomeView {
     /// (detail-stopped with its charge on the card's records).
     /// sh-detail-ready / -run / -done (`detail`): 暖橙's 热水洗澡 before a start, running, settled.
     /// sh-detail-block-<reason> (`blocks`): 热水洗澡 set up and idle, 开始洗澡 greyed out with
-    /// that reason; sh-home-block-account / -signout: 暖橙's home with the reason under 开始洗澡.
+    /// that reason (-balance: the card at -¥0.50); sh-home-block-account / -signout: 暖橙's home with the reason under 开始洗澡.
     enum ShowerPageDemo {
         /// The greyed-out 开始洗澡 demos, by the name after sh-detail-block- / sh-home-block-.
         static let blocks: [String:ShowerStartBlock] = [
             "unconfigured":.notConfigured, "platform":.platformMissing, "account":.accountChanged,
             "signout":.signOutUnfinished, "inspecting":.inspecting, "busy":.busy, "storage":.storage,
             "unreadable":.recordUnreadable, "unsettled":.unsettled, "launching":.launching,
+            "balance":.balanceNegative,
         ]
+        /// What the card owes on sh-detail-block-balance (synthetic).
+        static let owed = Money(fen:-50)
         static func block(_ name: String?) -> ShowerStartBlock? {
             guard let name else { return nil }
             for prefix in ["sh-detail-block-", "sh-home-block-"] where name.hasPrefix(prefix) {

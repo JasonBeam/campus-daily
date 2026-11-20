@@ -20,6 +20,11 @@ enum AccountText {
     static func signOutFailed(hotWaterHeld: Bool) -> String { hotWaterHeld ? signOutFailedHotWaterHeld : signOutFailed }
     /// 保存密码 off didn't go through (the Keychain or the lease file couldn't be written yet).
     static let forgetFailed = "密码还存着，没关掉。再试一次。"
+    /// 保存密码 after a web sign-in, where the login's card couldn't confirm the signed-in person
+    /// (copy v2 §4): never a wrong password or another account, and no sign-out first.
+    static func unconfirmedPerson(clear: Bool) -> String {
+        clear ? "未能保存密码；请使用学校账号和密码重新登录并选择保存" : "这次没能存下密码。用学校账号和密码再登录一次，选保存就行。"
+    }
     /// The hold: the school never answered the last login, or answered it and then failed a later step.
     static let pausedNoAnswer = "上次登录学校没走完，自动登录先停一会儿，免得反复发密码，过几个小时会自己再试。"
 
@@ -51,6 +56,7 @@ struct AccountView: View {
     /// DEBUG demo: the switch flips locally (seeded from the demo data).
     @State private var previewSaved: Bool?
     @EnvironmentObject private var campus: CampusModel
+    @Environment(\.appTheme) private var appTheme
     @State private var confirmSignOut = false
     @State private var askPassword = false
     @State private var typedAccount = ""
@@ -259,7 +265,7 @@ struct AccountView: View {
         guard !password.isEmpty else { return }
         if preview != nil {
             // DEBUG demo of the web-login case: any account but the demo one is someone else.
-            if askedAccount, !name.isEmpty, name != "99100991" { refusal = SchoolLoginFailure.differentAccount.savePasswordRefusal } else { previewSaved = true }
+            if askedAccount, !name.isEmpty, name != "99100991" { saveIssue = AccountText.unconfirmedPerson(clear:appTheme == .clear) } else { previewSaved = true }
             return
         }
         saving = true
@@ -269,6 +275,10 @@ struct AccountView: View {
                 try await campus.savePassword(password, account:account == nil ? name : nil)
             } catch SchoolLoginFailure.wrongCredentials {
                 saveIssue = askedAccount ? "账号或密码不对，没保存。" : AccountText.wrongPassword
+            } catch SchoolLoginFailure.differentAccount where askedAccount {
+                // Signed in on the web page: no account was stored, so this is the login's card
+                // not confirming the person signed in (`SchoolSession.savePassword`).
+                saveIssue = AccountText.unconfirmedPerson(clear:appTheme == .clear)
             } catch let failure as SchoolLoginFailure where failure.savePasswordRefusal != nil {
                 refusal = failure.savePasswordRefusal
             } catch {

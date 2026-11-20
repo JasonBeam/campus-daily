@@ -26,6 +26,8 @@ public enum ShowerStartBlock: Sendable, Equatable, CaseIterable {
     /// The app is still loading what a start needs: no reason, a spinner on the button after
     /// `spinnerDelay`.
     case launching
+    /// The campus card's balance is below zero and debt isn't allowed on this phone.
+    case balanceNegative
 
     /// What the model knows when the button is drawn.
     public struct Facts: Sendable, Equatable {
@@ -43,10 +45,13 @@ public enum ShowerStartBlock: Sendable, Equatable, CaseIterable {
         public var busy: Bool
         /// The record allows a start (`ShowerState.canStart`).
         public var canStart: Bool
+        /// `ShowerBalanceGate.blocks`.
+        public var balanceBlocked: Bool
         public init(configured: Bool = true, profileLoaded: Bool = true, platformMissing: Bool = false,
                     residenceReview: Bool = false, failedSignOut: Bool = false, recordUnreadable: Bool = false,
                     storageBlocked: Bool = false, engineReady: Bool = true, inspecting: Bool = false,
-                    busy: Bool = false, canStart: Bool = true) {
+                    busy: Bool = false, canStart: Bool = true, balanceBlocked: Bool = false) {
+            self.balanceBlocked = balanceBlocked
             self.configured = configured; self.profileLoaded = profileLoaded; self.platformMissing = platformMissing
             self.residenceReview = residenceReview; self.failedSignOut = failedSignOut
             self.recordUnreadable = recordUnreadable; self.storageBlocked = storageBlocked
@@ -65,6 +70,7 @@ public enum ShowerStartBlock: Sendable, Equatable, CaseIterable {
         if f.inspecting { return .inspecting }
         if f.busy { return .busy }
         if !f.canStart { return .unsettled }
+        if f.balanceBlocked { return .balanceNegative }
         return nil
     }
 
@@ -85,6 +91,8 @@ public enum ShowerStartBlock: Sendable, Equatable, CaseIterable {
         case settings
         /// 校园卡记录 (暖橙 only).
         case cardRecords
+        /// 校园充值 (the campus card's top-up page).
+        case topUp
     }
 
     public func links(clear: Bool) -> [Link] {
@@ -93,6 +101,7 @@ public enum ShowerStartBlock: Sendable, Equatable, CaseIterable {
         case .accountChanged: return [.checkController]
         case .signOutUnfinished: return [.settings, .checkController]
         case .recordUnreadable: return clear ? [] : [.cardRecords]
+        case .balanceNegative: return [.topUp]
         case .platformMissing, .inspecting, .busy, .storage, .unsettled, .launching: return []
         }
     }
@@ -103,6 +112,7 @@ public enum ShowerStartBlock: Sendable, Equatable, CaseIterable {
         case .checkController: return "核对水控"
         case .settings: return "去设置"
         case .cardRecords: return "看校园卡记录"
+        case .topUp: return clear ? "前往校园充值" : "去充值"
         }
     }
 
@@ -119,6 +129,8 @@ public enum ShowerStartBlock: Sendable, Equatable, CaseIterable {
         case .recordUnreadable: return "读不到热水记录。去校园卡记录里看看这次扣了没有，扣费要 1 小时左右才出现。"
         case .unsettled: return "上一次洗澡还没结算完，结完才能开始新的。"
         case .launching: return nil
+        // Without the amount (`text(clear:balance:)` says it).
+        case .balanceNegative: return "校园卡欠费了，充上再来洗。"
         }
     }
 
@@ -135,10 +147,26 @@ public enum ShowerStartBlock: Sendable, Equatable, CaseIterable {
         case .recordUnreadable: return "读不到热水记录；可在校园卡消费明细中核对，扣费约 1 小时后入账"
         case .unsettled: return "上一次洗澡尚未结算完成；结算后可开始新的洗澡"
         case .launching: return nil
+        // Without the amount (`text(clear:balance:)` says it).
+        case .balanceNegative: return "校园卡已欠费；请充值后再开始洗澡"
         }
     }
 
     public func text(clear: Bool) -> String? { clear ? self.clear : warm }
+
+    /// The line under the button with the card's balance where the reason is the balance
+    /// (`balanceLine`); the other reasons' as `text(clear:)`.
+    public func text(clear: Bool, balance: Money?) -> String? {
+        if self == .balanceNegative, let balance { return Self.balanceLine(balance, clear:clear) }
+        return text(clear:clear)
+    }
+
+    /// `.balanceNegative`'s line for a balance below zero: what the card owes, 「¥0.50」 as home
+    /// writes the card's number (清爽 gives the balance itself, 「-¥0.50」).
+    public static func balanceLine(_ balance: Money, clear: Bool) -> String {
+        let owed = "¥" + balance.magnitudeYuanText
+        return clear ? "校园卡余额 -\(owed)；请充值后再开始洗澡" : "校园卡欠了 \(owed)，充上再来洗。"
+    }
 
     /// The page's headline (暖橙); nil keeps the page's own.
     public var warmTitle: String? {
@@ -148,6 +176,7 @@ public enum ShowerStartBlock: Sendable, Equatable, CaseIterable {
         case .platformMissing: return "热水暂时用不了"
         case .notConfigured: return "还没设置热水"
         case .storage: return "暂时存不了热水记录"
+        case .balanceNegative: return "校园卡欠费了"
         case .recordUnreadable, .unsettled, .inspecting, .busy, .launching: return nil
         }
     }
@@ -160,6 +189,7 @@ public enum ShowerStartBlock: Sendable, Equatable, CaseIterable {
         case .platformMissing: return "热水暂不可用"
         case .notConfigured: return "尚未配置热水"
         case .storage: return "热水记录暂不可用"
+        case .balanceNegative: return "校园卡已欠费"
         case .recordUnreadable, .unsettled, .inspecting, .busy, .launching: return nil
         }
     }

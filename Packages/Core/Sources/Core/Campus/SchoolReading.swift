@@ -35,6 +35,9 @@ public struct SchoolReading: Sendable, Equatable {
     /// No meter is bound (none saved, or one bound to the campus node by an older build): the
     /// stored electricity reading belongs to no meter and is cleared.
     public var noMeter: Bool
+    /// The balance request succeeded for the card this login is bound to (not a fallback to
+    /// another card), with nobody else signed in meanwhile; nil otherwise.
+    public var ownBalance: CardBalanceRead? = nil
 
     public init(outcome: Outcome, checkedAt: Date, balance: Result<Money, ServiceError>? = nil,
                 meter: Result<Meter?, ServiceError>? = nil, roomLabel: String? = nil, readAt: Date? = nil,

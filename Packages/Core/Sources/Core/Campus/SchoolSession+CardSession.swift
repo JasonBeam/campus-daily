@@ -77,12 +77,22 @@ extension SchoolSession {
     /// Updates the session with the latest `custid` ciphertext.
     func liveCard(_ s: EcyktSession) async throws -> (BoundCard, EcyktSession) {
         let cards = try await ecykt.boundCards(s)
-        guard let card = cards.first(where: { $0.unionID != nil && $0.unionID == s.cardUnionID }) ?? cards.first else {
+        let saved = cards.first(where: { $0.unionID != nil && $0.unionID == s.cardUnionID })
+        guard let card = saved ?? cards.first else {
             throw ServiceError.rejected(.ecykt, code: "noCard", message: "这个账号还没有绑定校园卡")
         }
         var updated = s
         updated.custid = card.custid
         updated.cardUnionID = card.unionID
+        if saved == nil, s.cardUnionID != nil { updated.cardIsFallback = true }
         return (card, updated)
+    }
+
+    /// `card` is the one this login is bound to, as `stored` (read before the card was picked)
+    /// says: its saved card, never one a read fell back to. An older login with no saved card
+    /// is confirmed from the read after the one that saved it.
+    static func isBoundCard(_ card: BoundCard, of stored: EcyktSession) -> Bool {
+        guard stored.cardIsFallback != true, let bound = stored.cardUnionID else { return false }
+        return card.unionID == bound
     }
 }

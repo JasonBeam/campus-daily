@@ -10,6 +10,9 @@ struct ClearSettingsTab: View {
     @EnvironmentObject private var laundry: LaundryModel
     @EnvironmentObject private var reminders: Reminders
     @AppStorage(ReminderKey.laundryDone) private var laundryAlert = true
+    @Environment(SampleMode.self) private var sample
+    /// The version's five taps and the debt start setting's group above it.
+    @State private var debtVisit = DebtShowerVisit()
     private var preview: HomeData? { navigator.demo }
 
     private var laundryOn: Bool {
@@ -26,15 +29,18 @@ struct ClearSettingsTab: View {
                 } header: {
                     Text(groups[index].title)
                 } footer: {
-                    if index == groups.count - 1 { footer }
+                    // The version closes the page: under the debt group while that shows.
+                    if index == groups.count - 1, !debtShown { footer }
                 }.listRowBackground(Theme.group)
             }
+            DebtShowerSection(visit:$debtVisit, clear:true) { footer }
         }
         .scrollContentBackground(.hidden)
         .background(Theme.bg.ignoresSafeArea())
         .tint(Theme.accentText)
         .navigationTitle(SettingsLayout.clearTitle).navigationBarTitleDisplayMode(.inline)
         .onAppear { if preview == nil { campus.reloadAccount() } }
+        .debtShowerUnlock($debtVisit, shower:shower)
         .task { await reminders.refreshAuthorization() }
     }
 
@@ -86,7 +92,10 @@ struct ClearSettingsTab: View {
     /// On demo data: the two machines its 常用洗衣机 shows.
     private func washerCount(_ data: HomeData) -> Int { preview != nil ? (data.laundryBound ? 2 : 0) : laundry.savedMachines.count }
 
-    /// 「校日常 0.9.0 (53)」 and that it is not the school's app.
+    private var debtShown: Bool { debtVisit.shows(pending:DebtShowerPending.shared.unstored) && !sample.isActive }
+
+    /// 「校日常 0.9.0 (53)」 and that it is not the school's app. Five taps on the version, each
+    /// within a second of the last, ask for the debt start setting's phrase.
     private var footer: some View {
         let bundle = Bundle.main
         let receipt = bundle.appStoreReceiptURL
@@ -96,7 +105,11 @@ struct ClearSettingsTab: View {
             isBeta:VersionText.isBeta(receiptName:receipt?.lastPathComponent,
                                       receiptExists:receipt.map { FileManager.default.fileExists(atPath:$0.path) } ?? false))
         return VStack(spacing:4) {
-            Text(version).accessibilityIdentifier("settingsVersion")
+            Text(version)
+                .frame(maxWidth:.infinity, minHeight:44)
+                .contentShape(Rectangle())
+                .onTapGesture { debtVisit.tapVersion(at:Date(), sample:sample.isActive, on:shower.allowsDebt) }
+                .accessibilityIdentifier("settingsVersion")
             Text("非学校官方应用")
         }
         .scaledFont(12, relativeTo:.caption).multilineTextAlignment(.center).foregroundStyle(Theme.ink2)

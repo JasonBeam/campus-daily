@@ -108,6 +108,9 @@ public struct EcyktSession: Sendable, Equatable, Codable, CustomStringConvertibl
     public var custid: String?
     /// Stable card identity (`custunionid`), used to pick the same card again.
     public var cardUnionID: String?
+    /// True once a read fell back from the saved card to another one (`cardUnionID` is then
+    /// that other card's): its balance is never taken for this login's card. Cleared by a sign-in.
+    public var cardIsFallback: Bool?
     public var areacode: String
     public var userAgent: String
     /// When this token was minted (exchange or web sign-in), and when the liveness check last
