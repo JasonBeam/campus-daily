@@ -158,38 +158,7 @@ final class EcyktLivenessTests: XCTestCase {
     }
 }
 
-final class EcyktFreshLoginTests: XCTestCase {
-    func testFreshLoginSuccess() async throws {
-        let f = try FixtureLoader.load("ecykt/loginBySysId-mintSeries1")
-        let server = StubServer()
-        server.serve(f)
-        let s = T.session(token: f.requestBody?["acc_token"]?.text ?? "", syscustid: f.requestBody?["syscustid"]?.text ?? "")
-        let login = try await EcyktClient(http: server.makeClient()).freshLogin(s)
-        XCTAssertEqual(login.isbind, 1)
-        XCTAssertEqual(login.token, "REDACTED_TOKEN_9")
-        XCTAssertNotEqual(login.syscustid, s.syscustid, "syscustid is re-encrypted per call")
-        let r = try XCTUnwrap(server.requests.first)
-        XCTAssertNil(r.bodyJSON?["timestamp"])
-        XCTAssertEqual(r.bodyField("redirect"), "/recharge?isbind=1")
-        XCTAssertEqual(r.bodyField("syscustid"), s.syscustid)
-    }
-
-    func testFreshLoginFailures() async throws {
-        let cases: [(String, ServiceError)] = [
-            ("ecykt/loginBySysId-badToken", .sessionExpired(.ecykt)),
-            ("ecykt/loginBySysId-missingSyscustid", .badRequest(.ecykt)),
-        ]
-        for (name, expected) in cases {
-            let server = StubServer()
-            try server.serve(name)
-            await T.expectError(expected) { _ = try await EcyktClient(http: server.makeClient()).freshLogin(T.session()) }
-        }
-        let server = StubServer()
-        server.respond("POST", "https://ecykt.gdbtu.edu.cn/ykt-mini/api/customer/loginBySysId",
-                       body: Data(#"{"code":0,"msg":"操作成功","data":{"syscustid":"x","isbind":1}}"#.utf8))
-        await T.expectError(.malformed(.ecykt, "data.token")) { _ = try await EcyktClient(http: server.makeClient()).freshLogin(T.session()) }
-    }
-
+final class EcyktLoginTests: XCTestCase {
     func testTicketExchange() async throws {
         let server = StubServer()
         server.respond("POST", T.exchangeURL, body: T.exchangeBody(token: "NEW-TOKEN"))
@@ -353,8 +322,11 @@ final class EcyktElectricityTests: XCTestCase {
         XCTAssertEqual(campus[0].online, true)
         let room = try await c.meters(T.session(), nodeID: "991001001000109000001003")
         XCTAssertEqual(room, [Meter(comAddress: "000000000991", name: "99栋991", leftMoney: Money(fen: 3692),
-                                    remainingKWh: DecimalText.parse("52.00"), dailyUseKWh: DecimalText.parse("3.2"),
+                                    remainingKWh: DecimalText.parse("52.00"), estimatedDaysLeft: DecimalText.parse("3.2"),
                                     price: DecimalText.parse("0.7100"), online: true, switchState: "合闸-", updatedAt: "2026-10-30 08:10:22")])
+        // 11: `preUseDay` is the days 52 度 lasts, 16.25 度 a day.
+        XCTAssertEqual(room.first?.estimatedDaysLeft, 3.2)
+        XCTAssertEqual(room.first?.averageDailyKWh, 16.25)
         let floor = try await c.meters(T.session(), nodeID: "991001001000109000001")
         XCTAssertEqual(floor.count, 3)
         let unknown = try await c.meters(T.session(), nodeID: "999999")
@@ -379,13 +351,5 @@ final class EcyktElectricityTests: XCTestCase {
             s2.serve(T.editingData(room) { $0 = data })
             await T.expectError(.malformed(.ecykt, path)) { _ = try await EcyktClient(http: s2.makeClient()).meters(T.session(), nodeID: "1") }
         }
-    }
-
-    /// The recharge WebView's electricity entry: the query as captured, ciphertext `%` encoded as `%25`.
-    func testPowerEntryURLMatchesTheCapture() throws {
-        let fixtureURL = try FixtureLoader.load("ecykt/getPowerUrl-ok").url
-        let url = EcyktClient.powerEntryURL(T.session(), custid: T.custid)
-        XCTAssertEqual(url.path, fixtureURL.path)
-        XCTAssertEqual(url.query, fixtureURL.query)
     }
 }

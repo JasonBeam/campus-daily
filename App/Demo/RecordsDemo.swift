@@ -35,10 +35,11 @@ enum RecordsDemo: String {
 
     var source: CardRecordsSource {
         let demo = self
-        let rows = SampleData.cardRecords(days:demo.days, now:Date())
+        let school = SampleData.calendar
+        let rows = SampleData.cardRecords(days:demo.days, now:Date(), school:school)
         return CardRecordsSource(stamp:{ 0 }, page:{ query, _ in
             try await Task.sleep(for:.milliseconds(500))
-            let firstRange = query.end == SchoolCalendar.dayString(Date())
+            let firstRange = query.end == SchoolCalendar.dayString(Date(), calendar:school)
             switch demo {
             case .loading: try await Task.sleep(for:.seconds(3600))
             case .failed: throw ServiceError.offline
@@ -47,7 +48,7 @@ enum RecordsDemo: String {
             default: break
             }
             return SampleData.recordPage(rows, query)
-        })
+        }, calendar:school)
     }
 
     /// Days back from today that have records.

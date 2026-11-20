@@ -26,6 +26,15 @@ struct HomeView: View {
     @State var ujingLogin = false
     @State var onboarding: OnboardingRequest?
     @State var scrolledPastDate = false
+    /// The navigation bar's top edge in the window: under the status bar, or under the sample's
+    /// bar when it is above the page. Follows the stack's frame only, never what the bar shows,
+    /// so the date in the bar can't feed back into it (the 0b98af5 layout loop).
+    @State var barTop: CGFloat = 64
+    /// The large date's bottom edge in the window, kept without drawing home again as it scrolls.
+    @State var dateBottom = DateBottom()
+    /// The time 「最近」 (and the date at the top) count from: moved on at a day change
+    /// (`DayChange`) and on coming back to the foreground, and by the minute while open.
+    @State var clock = Date()
     /// For 「最近」 (`recentCount`): the visible height, where it starts, its header's height and each row's height.
     @State var homeViewport: CGFloat = 0
     @State var recentsTop: CGFloat = 0
@@ -209,9 +218,12 @@ struct HomeView: View {
                 }
                 .navigationDestination(for:HomeRoute.self) { route in destination(route).navOpen(route.debugPage, from:.homeButton) }
             }
+            // The stack's frame starts under the status bar, or under the sample's bar: the bar's top.
+            .onGeometryChange(for:CGFloat.self) { $0.frame(in:.global).minY } action: { barTop = $0; followDateEdge(barTop:$0) }
 
             SettlementOverlay(result:$panel)
         }
+        .environment(\.schoolCalendar, data.calendar)
         .sensoryFeedback(.impact(weight:.medium), trigger:startTick)
         .sensoryFeedback(.success, trigger:successTick)
         .sensoryFeedback(.error, trigger:errorTick)
@@ -274,6 +286,9 @@ struct HomeView: View {
         .onChange(of:shower.page.page?.phase) { _, _ in followShowerPage(shower.page.presented) }
         .onChange(of:shower.pageWanted) { _, _ in followShowerPage(shower.page.presented) }
         .onChange(of:data.laundryDone, initial:true) { _, done in presentLaundryDone(done) }
+        // 今天/昨天 follow the day: at midnight while open, and on coming back after it.
+        .onReceive(DayChange.publisher) { clock = Date() }
+        .onChange(of:phase) { _, now in if now == .active { clock = Date() } }
         // A done panel that arrived while another panel was up is shown once that one closes.
         .onChange(of:panel == nil) { _, clear in if clear { presentLaundryDone(data.laundryDone) } }
         .modifier(ReminderHooks(open:{ follow($0 == .laundry ? [.laundry] : []) }, homeClear:homeClear))
@@ -379,4 +394,10 @@ struct HomeView: View {
         successTick += 1
         panel = .laundryDone(amount:done.amount, detail:done.detail)
     }
+}
+
+/// The large date's bottom edge in the window (`HomeView.followDateEdge`): a reference, so
+/// writing it on every scrolled frame does not draw home again.
+final class DateBottom {
+    var maxY = CGFloat.infinity
 }

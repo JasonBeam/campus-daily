@@ -2,7 +2,7 @@ import XCTest
 @testable import Core
 import CoreTestSupport
 
-/// Recharge and the hot-water hand-off on an expired card session: renewed once as home renews
+/// The hot-water hand-off on an expired card session: renewed once as home renews
 /// it (the forced refresh), then tried once more, before the user is asked to sign in.
 final class CardSessionRenewalTests: XCTestCase {
     /// The app's wiring: the step under the lease, the refresh as the renewal.
@@ -25,19 +25,6 @@ final class CardSessionRenewalTests: XCTestCase {
         try h.server.serve("ecykt/card-getRecordList-ok")
     }
 
-    func testAnExpiredRechargeIsRenewedOnceAndOpens() async throws {
-        let h = Harness()
-        try h.signedIn(portal: true)
-        try expiredThenRenewedByThePortal(h)
-        try h.server.serve("ecykt/loginBySysId-mintSeries1")
-        let web = try await renewingOnce(h) { session, owning in try await session.rechargeSession(.card, owning: owning) }
-        XCTAssertEqual(try JSONValue.parse(web.stateJSON)["logintoken"]?.text, "REDACTED_TOKEN_9")
-        XCTAssertEqual(h.server.requests(path: "/csalogintoken/450010").count, 1, "one renewal")
-        XCTAssertEqual(h.loginBySysIdCalls(), 1, "only the second try mints the recharge token")
-        XCTAssertEqual(h.server.requests(path: "/loginBySysId").first?.bodyField("acc_token"), "REEXCHANGED-TOKEN")
-        XCTAssertEqual(h.livenessCalls(), 4, "expired twice, then the renewed session and the second try")
-    }
-
     func testAnExpiredHandOffIsRenewedOnceAndGoesOn() async throws {
         let h = Harness()
         try h.signedIn(portal: true)
@@ -51,17 +38,18 @@ final class CardSessionRenewalTests: XCTestCase {
     }
 
     /// Nothing to renew with (no portal token, no saved password): the expiry reaches the user
-    /// after one try and one renewal attempt; nothing is minted.
+    /// after one try and one renewal attempt; no hand-off is asked for.
     func testWithNothingToRenewWithTheUserIsAskedToSignIn() async throws {
         let h = Harness()
         try h.signedIn()
         try h.server.serve("ecykt/getSysBindCustInfo-badToken")
-        try h.server.serve("ecykt/loginBySysId-mintSeries1")
+        try h.server.serve("ecykt/getSignData-ok")
         await T.expectError(.sessionExpired(.ecykt)) {
-            _ = try await self.renewingOnce(h) { session, owning in try await session.rechargeSession(.card, owning: owning) }
+            _ = try await self.renewingOnce(h) { session, owning in try await session.showerHandoff(owning: owning) }
         }
-        XCTAssertEqual(h.livenessCalls(), 2, "the recharge check and the refresh's own")
-        XCTAssertEqual(h.loginBySysIdCalls(), 0)
+        XCTAssertEqual(h.livenessCalls(), 2, "the hand-off's check and the refresh's own")
+        XCTAssertEqual(h.server.requests(path: "/getSignData").count, 0)
+        XCTAssertEqual(h.server.requests(path: "/csalogintoken/450010").count, 0, "nothing to renew with")
     }
 
     /// Renewed, and the step still finds the session expired: asked once more, never in a loop.

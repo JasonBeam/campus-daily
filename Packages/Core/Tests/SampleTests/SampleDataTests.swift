@@ -10,13 +10,14 @@ final class SampleDataTests: XCTestCase {
         let s = SampleData.homeSnapshot(now: now)
         XCTAssertEqual(s.card.value, Money(yuanString: "86.50"))
         XCTAssertEqual(s.power.value?.remainingKWh, Decimal(string: "42.6"))
-        XCTAssertEqual(s.power.value?.dailyUseKWh, Decimal(string: "4.6"))
+        XCTAssertEqual(s.power.value?.estimatedDaysLeft, Decimal(string: "9.26"))
+        XCTAssertEqual(ClearBalanceText.number(s.power.value?.averageDailyKWh), "4.60")
         XCTAssertEqual(s.roomLabel, "3栋108")
         XCTAssertFalse(s.activity.value?.records.isEmpty ?? true)
     }
 
     func testNoRecordIsLaterThanAQuarterHourAgo() {
-        let school = SchoolCalendar.shanghai
+        let school = SampleData.calendar
         let home = SampleData.homeSnapshot(now: now).activity.value?.records ?? []
         let all = SampleData.cardRecords(days: SampleData.recordDays, now: now)
         for record in home + all {
@@ -25,7 +26,7 @@ final class SampleDataTests: XCTestCase {
     }
 
     func testRecordsAreNewestFirstWithVouchers() {
-        let school = SchoolCalendar.shanghai
+        let school = SampleData.calendar
         let rows = SampleData.cardRecords(days: SampleData.recordDays, now: now)
         XCTAssertGreaterThan(rows.count, 60)
         XCTAssertTrue(rows.allSatisfy { $0.voucher?.hasPrefix("99") == true })

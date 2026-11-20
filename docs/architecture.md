@@ -60,7 +60,7 @@ Shared/               compiled into App and Widget
 Widget/               XiaoRiChangWidget, ShowerLiveActivity, LaundryLiveActivity, Info.plist, Widget.entitlements
 Packages/Core/        one library product `Core` (swift-tools 6.0, iOS 17 / macOS 14, Swift 6 mode)
   Sources/Core/
-    Campus/           CAS/portal/ecykt session, balance and electricity, meter matching, recharge, SchoolVault + store
+    Campus/           CAS/portal/ecykt session, balance and electricity, meter matching, 校园充值, SchoolVault + store
     Shower/           lxt6 signed client and signing, BLE frame codec, ShowerEngine + reducer, onboarding, platform profile,
                       ShowerVault + store
     Laundry/          U净 client, order/payment rules, LaundryEngine + reducer, LaundryVault + store, 学校洗衣机 switch
@@ -212,12 +212,10 @@ struct PortalClient { // X-Id-Token, X-Device-Info: PC, X-Terminal-Info: PC
 struct EcyktClient { // POST JSON, acc_token in header AND body
   func exchange(ticket: String) async throws -> EcyktLogin            // csalogintoken
   func boundCards(_ s: EcyktSession) async throws -> [BoundCard]      // getSysBindCustInfo  (VALIDATES token)
-  func freshLogin(_ s: EcyktSession) async throws -> EcyktLogin       // loginBySysId        (VALIDATES token)
   func signData(_ s: EcyktSession, custid: String) async throws -> ShowerHandoff // getSignData (VALIDATES)
   func balance(_ s: EcyktSession, custid: String) async throws -> Money        // scanpay/getUserBalance
   func buildings(_ s: EcyktSession, parent: String?) async throws -> [PowerNode] // electricnew/service getBuildingInfo
   func meters(_ s: EcyktSession, nodeID: String) async throws -> [Meter]         // electricnew/service getMeterStatus
-  func rechargeWebSession(_ s: EcyktSession, card: BoundCard) async throws -> RechargeWebSession
 }
 ```
 
@@ -242,8 +240,7 @@ Facts the design relies on (from the read-only captures):
 - `syscustid`/`custid` are re-encrypted on every response. Never compare them for identity; keep
   the value from the latest validating response and use it as input next time.
 - `loginBySysId` mints a new token per call and does not revoke old ones; it does not check
-  `timestamp`. Do not call it on every refresh (token sprawl); only when building a recharge web
-  session (and then use the **fresh** token for `logintoken`, not the old one).
+  `timestamp`. The app does not call it (token sprawl).
 
 **Refresh algorithm (`SnapshotRefresher.refresh()` → `SchoolSession.refresh()`; the same in the
 foreground, the BG task and the widget):**
@@ -292,7 +289,7 @@ portal says one is dead, one diagnostic line records only the kind and measured 
 older builds wrote is deleted at launch (`RetiredDiagnostics`) and by reset.
 
 **One refresh at a time.** Callers are pull-to-refresh, the app coming to the foreground,
-the background task, the refreshes after a state change (sign-in, meter choice, recharge), and
+the background task, the refreshes after a state change (sign-in, meter choice, coming back from 校园充值), and
 the widget's timeline. Within a process the refresher runs one read at a time; a caller arriving
 while one runs awaits that read and gets its report (pull-to-refresh awaits it, so the "updated"
 time or the failure really shows). Exceptions to joining:
@@ -324,7 +321,7 @@ the bundle id the process runs under: `AppIdentity.usableAppGroup`, see 4.2):
   process takes it over in one locked step;
 - a read that lost the lease (it ran out and was taken, or a sign-out removed it) stops at the next
   of those steps and writes nothing;
-- the card session write-back (refresh, recharge, the hot-water hand-off) and the snapshot save run
+- the card session write-back (refresh, the hot-water hand-off) and the snapshot save run
   inside that lock (`RefreshLease.withOwnership`, through `LeaseOwnership`): the lease is checked
   and renewed, the stored value compared and the new one written in one locked step, so the other
   process can't take the lease or store its own value in between; the step is synchronous (a
@@ -352,7 +349,7 @@ the bundle id the process runs under: `AppIdentity.usableAppGroup`, see 4.2):
   inside the same lock (`SchoolSession.profileLock`), so the widget's move of a replaced meter
   never lands in the middle of one. The clear after a save that a sign-out followed is one
   locked step too (`RefreshLease.afterLosing`): it removes only the snapshot that read saved;
-- each `holdingLease` call (a login, 保存密码, recharge, the hot-water hand-off) takes the lease
+- each `holdingLease` call (a login, 保存密码, the hot-water hand-off) takes the lease
   under its own owner (the process's owner plus `-login-` and a random UUID): two of them at once
   (the login sheet closed and submitted again) take turns like the two processes, and the first
   giving its lease back never releases the second's; each refresh run likewise takes it under
@@ -365,7 +362,7 @@ the bundle id the process runs under: `AppIdentity.usableAppGroup`, see 4.2):
 - snapshot writes are ordered: a reading whose `checkedAt` is older than the stored snapshot's is
   dropped (unless more than 30 minutes older: the clock moved back, and the reading is written), and a "nobody signed in" reading leaves an emptied snapshot empty.
 - signed without the App Group (no container), the app keeps the lease in its own container
-  (`Application Support/refresh.lease`, `RefreshLease.appFile`), so its reads, logins, recharge
+  (`Application Support/refresh.lease`, `RefreshLease.appFile`), so its reads, logins
   and hand-off still take turns; the widget has no lease file and never takes the lease: it draws
   the stored snapshot, so the two still never read at the same time.
 
@@ -408,7 +405,7 @@ meter page opens there with the matched levels on one line, 「重选」, and th
 connection.
 Only room nodes are bound. A campus-node binding saved by an older build counts as no meter: at
 launch it is removed from the profile (the dorm stays) and the launch lookup walks to the room;
-neither refresh nor the recharge check reads it meanwhile.
+refresh does not read it meanwhile.
 The lookup starts at launch, after every sign-in and on 「再找一次电表」, only signed in with no
 meter (`MeterLookupGate`), never on return to the foreground or after a refresh. A sign-in
 during a running lookup is looked up once it ends; a same-name list or stopped level stays until
@@ -812,8 +809,6 @@ The debug log notes only `topUp.weChat opened=yes|no`.
   tap. Back to active after the tap took the user out of the app, the balances are read once in
   the background (`CampusModel.refresh(force:)`), with nothing on screen. In the sample
   (先看看示例) the button copies and opens the same, and nothing is read after coming back.
-- The old signed-in web top-up (`RechargeWebSession`, `RechargeNavigation`) has no entry in the
-  app any more; its Core code and tests stay until they are removed on their own.
 
 ---
 
@@ -882,8 +877,8 @@ keeps the original and retries next launch, so nobody is signed out or loses a b
 Group (`group.$(APP_BUNDLE_IDENTIFIER)`, both targets) holds the lease file and the theme
 choice (its UserDefaults, `xrc.theme`); a re-signed
 build without it keeps working: the app keeps its lease file in its own container
-(`RefreshLease.appFile`, Application Support, excluded from backup), so its reads, logins,
-recharge and hot-water hand-off still take turns, and the widget, which can't open that file,
+(`RefreshLease.appFile`, Application Support, excluded from backup), so its reads, logins
+and hot-water hand-off still take turns, and the widget, which can't open that file,
 leaves every refresh to the app, so the two never read at once. Live Activities get data via ActivityKit content
 state. Each snapshot write calls `WidgetCenter.reloadTimelines(ofKind:)`; tiles carry their own
 `fetchedAt`, and `needsLogin` shows a "需重新登录" badge instead of silently stale numbers.
@@ -913,8 +908,9 @@ entitlements files and both Info.plists are filled from `APP_BUNDLE_IDENTIFIER` 
 (Info.plist keys `AppGroupIdentifier` = `group.$(APP_BUNDLE_IDENTIFIER)` and
 `KeychainGroupIdentifier` = `$(APP_BUNDLE_IDENTIFIER)`, read by `AppIdentity`; the widget carries
 the app's values, not its own bundle id; `BGTaskSchedulerPermittedIdentifiers` =
-`$(APP_BUNDLE_IDENTIFIER).refresh`). The table shows the values for the default bundle id. iOS
-builds before it used `com.beamjason.xiaorichang` for all of these; nothing is migrated, so the
+`$(APP_BUNDLE_IDENTIFIER).refresh`). The table shows the values for the default bundle id. The
+author's released old iOS app was `com.beamjason.campushotwater` (our early test builds used
+`com.beamjason.xiaorichang`) for all of these; nothing is migrated, so the
 new id installs as a separate app and the user signs in once. A build
 with another `APP_BUNDLE_IDENTIFIER` (Developer.xcconfig) gets its own groups; the Keychain service
 names stay `org.zaxh.xiaorichang.<name>.v1` in every build. An IPA re-signed under another
@@ -957,12 +953,11 @@ Every endpoint gets at least: success, expired/unauthorized, refused with messag
 | Path | Fixtures |
 |---|---|
 | ecykt liveness ok / expired | `getSysBindCustInfo-ok`, `-badToken` |
-| fresh login (recharge) ok / expired / bad params | `loginBySysId-mintSeries1`, `-mintSeries2`, `-badToken`, `-missingSyscustid` (empty body → badRequest) |
 | balance (incl. "no expiry signal here") | `getUserBalance-ok`, `-missingCustid` (empty body → badRequest) |
 | electricity tree / meters | `electric-getBuildingInfo-root`, `-level1..4`, `-leafEmpty`; `electric-getMeterStatus-ok` (campus), `-leaf`, `-room`, `-unknownBuilding` (`[]`); `electric-service-missingServer` (500) |
-| electricity web entry | `getPowerUrl-ok` (302 not followed) |
+| HTTP client: a 3xx is not followed | `getPowerUrl-ok` (302) |
 | water hand-off | `getSignData-ok`, `-badToken` |
-| recharge web session state | `localStorage-elecampus_state-csaLogin` |
+| web sign-in state (`elecampus_state`) | `localStorage-elecampus_state-csaLogin` |
 | card records (最近, 昨天花了) | `card-getRecordList-ok` |
 | portal | `getMyInfo-ok`, `-badtoken` (-1001), `-notoken` (-1), `getMyECard-ok` |
 | lxt6 reads | `getUserMsg-ok`, `-badSign` (-301, JSON-in-string); `areaInfo-level0..3`, `-badSign` (4002), `-unknownParent` (4034); `getMachineMacAddress-ok`, `-unknownRoom` (5000) |
@@ -987,8 +982,8 @@ maintainer's device:
 | hot water `bathingConsumptionAuthorization` success + refusal shapes | decoder from the existing iOS/Android code; on device |
 | hot water `analysisOfBathingConsumptionData` success (+ whether a repeat is idempotent) | decoder from existing code; on device; settle is never auto-retried until then |
 | U净 SMS captcha + login (incl. `isTempToken`/challenge), scan, program info, order detail, payment methods, create → pay → status 20/40/50, cancel from 10/17 | client from existing code; on device |
-| card recharge submit | not needed: recharge stays in the school's web page |
-| electricity recharge order | not needed: recharge stays in the school's web page |
+| card recharge submit | not needed: recharge stays in the school's WeChat service |
+| electricity recharge order | not needed: recharge stays in the school's WeChat service |
 | `csalogintoken` ticket exchange | shape taken from the official page's JS (synthetic test fixture); `adoptWebState` fallback; on device |
 | token lifetime: ecykt at +2/+6/+24 h idle; portal token lifetime | scheduled read-only probes (`getSysBindCustInfo`); no user session needed beyond one sign-in |
 
@@ -1075,8 +1070,15 @@ floors (`N楼`) → rooms (`NNN`) → `[]`. `getMeterStatus` works at any level 
 every meter, ≈2.3k rows; a room returns 1). The app walks the tree level by level and reads
 only the room's meter (see Electricity resolution).
 
+`getMeterStatus` fields the app reads: `remaining` (度 left; `leftMoney ÷ price`), `leftMoney`,
+`price`, and `preUseDay`, the school's estimate of the **days** `remaining` lasts, not a day's use
+(at the same use it scales with `remaining`: 13.6 度 → about 1.2, 182.5 度 after a top-up →
+about 16). Home's 「够用约 N 天」/「只够到今晚／明晚」 count those days from the reading; the daily
+average shown elsewhere is `remaining ÷ preUseDay`. A missing, 0, negative or over-365 value
+shows neither. `Meter` keeps it in `estimatedDaysLeft`, cached under the old `dailyUseKWh` key.
+
 Money/state endpoints in the official JS (never called by the app; recharge stays in the
-school's web page): `/api/business/balRechargeApply`, `/api/business/balRechargeOrder`,
+school's WeChat service): `/api/business/balRechargeApply`, `/api/business/balRechargeOrder`,
 `/api/business/getOrderSupportPayType`, `/api/pay/wxJsPay`, `/api/electricnew/applyorderid`,
 `/api/electricnew/CreateOrder`, card loss/password/bind endpoints, `/api/water/*`.
 

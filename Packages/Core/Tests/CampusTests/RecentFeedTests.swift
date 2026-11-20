@@ -291,9 +291,57 @@ final class RecentFeedTests: XCTestCase {
         XCTAssertEqual(CardSpending.yesterday(activity(otherDay, fetchedAt: noon), now: noon), Money(fen: 1200))
     }
 
-    func testTheRangeIsThreeSchoolDays() {
+    func testTheRangeIsSevenSchoolDays() {
+        XCTAssertEqual(CardActivity.days, 7)
         let r = CardActivity.range(at: moment(30, 0, 10))
-        XCTAssertEqual(r.begin, "20261028")
+        XCTAssertEqual(r.begin, "20261024")
         XCTAssertEqual(r.end, "20261030")
+        // Just before midnight in Shanghai: still the 30th's week.
+        let late = CardActivity.range(at: moment(30, 23, 59))
+        XCTAssertEqual(late.begin, "20261024")
+        XCTAssertEqual(late.end, "20261030")
+        let next = CardActivity.range(at: moment(31, 0, 0))
+        XCTAssertEqual(next.begin, "20261025")
+        XCTAssertEqual(next.end, "20261031")
+    }
+
+    /// 最近 keeps the records of all seven days, newest first; a week-old one reads by its weekday.
+    func testRecentsCoverTheSevenDays() {
+        let records = (0...6).map { back in record("202610\(30 - back)", "120000", "示例超市", "1") }
+        let items = RecentFeed.items(card: records, app: [], limit: RecentFeed.homeCandidates)
+        XCTAssertEqual(items.count, 7)
+        XCTAssertEqual(items.map(\.date), (0...6).map { moment(30 - $0, 12) })
+        XCTAssertEqual(UpdateTimeText.recent(items[0].date, now: noon.addingTimeInterval(3600)), "今天 12:00")
+        XCTAssertEqual(UpdateTimeText.recent(items[1].date, now: noon), "昨天 12:00")
+        XCTAssertEqual(UpdateTimeText.recent(items[2].date, now: noon), "周三 12:00")
+        XCTAssertEqual(UpdateTimeText.recent(items[5].date, now: noon), "周日 12:00")
+        XCTAssertEqual(UpdateTimeText.recent(items[6].date, now: noon), "10月24日 12:00", "six days back: the date")
+    }
+
+    /// At midnight the same rows move on a day: 今天 → 昨天 → a weekday.
+    func testRecentLabelsRollOverAtMidnight() {
+        let lunch = moment(30, 12, 16), lastNight = moment(29, 22, 14)
+        let beforeMidnight = moment(30, 23, 59), afterMidnight = moment(31, 0, 0)
+        XCTAssertEqual(UpdateTimeText.recent(lunch, now: beforeMidnight), "今天 12:16")
+        XCTAssertEqual(UpdateTimeText.recent(lastNight, now: beforeMidnight), "昨天 22:14")
+        XCTAssertEqual(UpdateTimeText.recent(lunch, now: afterMidnight), "昨天 12:16")
+        XCTAssertEqual(UpdateTimeText.recent(lastNight, now: afterMidnight), "周四 22:14")
+        // A record a few minutes before midnight is 刚刚 either side of it.
+        XCTAssertEqual(UpdateTimeText.recent(moment(30, 23, 58), now: afterMidnight), "刚刚")
+        XCTAssertEqual(UpdateTimeText.recent(moment(30, 23, 50), now: moment(31, 0, 1)), "昨天 23:50")
+    }
+
+    /// Seven days rarely fit one page: 昨天花了 still shows when the page reached a day before
+    /// yesterday, as the school lists newest first.
+    func testYesterdayFromAPageCutShortThatReachesAnOlderDay() {
+        let records = [record("20261030", "080000", "示例超市", "1"),
+                       record("20261029", "080000", "示例超市", "2"),
+                       record("20261028", "080000", "示例超市", "4")]
+        let reached = activity(records, fetchedAt: noon, complete: false, begin: "20261024")
+        XCTAssertTrue(reached.value!.holdsAll(of: "20261029"))
+        XCTAssertFalse(reached.value!.holdsAll(of: "20261028"), "its oldest day may go on on the next page")
+        XCTAssertEqual(CardSpending.yesterday(reached, now: noon), Money(fen: 200))
+        let short = activity(Array(records.prefix(2)), fetchedAt: noon, complete: false, begin: "20261024")
+        XCTAssertNil(CardSpending.yesterday(short, now: noon), "yesterday is the page's oldest day")
     }
 }

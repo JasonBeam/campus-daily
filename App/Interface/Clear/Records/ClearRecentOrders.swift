@@ -34,6 +34,8 @@ struct ClearRecentOrders: Equatable {
     var retained: ShowerRetainedSummary?
     /// The card's recent records, for a kept shower's 「校园卡已扣」 (nil while unread).
     var cardRecords: [CardRecord]?
+    /// The calendar `cardRecords` are written in (`HomeData.calendar`).
+    var calendar = SchoolCalendar.shanghai
 
     /// Finished orders stay listed this long (as the laundry page's line).
     private static let recentWindow: TimeInterval = 3 * 3600
@@ -41,6 +43,7 @@ struct ClearRecentOrders: Equatable {
     init(data: HomeData, laundry facts: LaundryFacts, retained: ShowerRetainedSummary? = nil, now: Date = Date()) {
         self.retained = retained
         cardRecords = data.snapshot.activity.value?.records
+        calendar = data.calendar
         if data.laundryEnabled { laundry = Self.laundry(facts, now:now) }
         showerOpen = ClearOpenItem.shower(data.shower)
         let shower = data.recentActivities
@@ -57,11 +60,13 @@ struct ClearRecentOrders: Equatable {
 
     /// Two lines per kept shower, newest first: the start time, then 「水控 编号 · 原因」 (the dorm's own controller left out);
     /// a third, 「校园卡已扣 ¥x」, when the card's records show its charge.
-    func retainedLines(time: (Date) -> String = { ShowerRetainedText.time($0) }) -> [ShowerRetainedText.Line] {
-        let records = cardRecords
+    /// Each start time reads as 上次热水 (`ClearBalanceText.dayTime`): 「今天 21:05」, 「11月18日 08:41」.
+    func retainedLines(now: Date = Date(), time: ((Date) -> String)? = nil) -> [ShowerRetainedText.Line] {
+        let records = cardRecords, calendar = calendar
+        let time = time ?? { ClearBalanceText.dayTime($0, now:now, calendar:calendar) }
         return retained.map { summary in
             ShowerRetainedText.lines(summary, reason:ShowerRetainedText.Clear.reason, time:time) { started in
-                ShowerCardCharge.amount(started:started, records:records)
+                ShowerCardCharge.amount(started:started, records:records, calendar:calendar)
             }
         } ?? []
     }

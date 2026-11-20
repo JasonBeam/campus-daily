@@ -174,6 +174,7 @@ extension HomeView {
     /// sh-detail-kept-list (热水洗澡 ready, with three synthetic kept showers, the newest charged
     /// on the card's records; -list opens 暖橙's list over it), and sh-detail-stopped-charged
     /// (detail-stopped with its charge on the card's records).
+    /// sh-detail-ready / -run / -done (`detail`): 暖橙's 热水洗澡 before a start, running, settled.
     /// sh-detail-block-<reason> (`blocks`): 热水洗澡 set up and idle, 开始洗澡 greyed out with
     /// that reason; sh-home-block-account / -signout: 暖橙's home with the reason under 开始洗澡.
     enum ShowerPageDemo {
@@ -196,6 +197,7 @@ extension HomeView {
             case "sh-denied-final": return SampleData.showerRecord("sh-denied", now:now)
             case "sh-detail-stopped-charged": return SampleData.showerRecord("sh-detail-stopped", now:now)
             case "sh-detail-kept", "sh-detail-kept-list": return .idle
+            case "sh-detail-ready", "sh-detail-run", "sh-detail-done": return detail(name, now:now)
             case _ where name.hasPrefix("sh-detail-first-"): return .idle
             case "sh-first-passed":
                 var s = ShowerState(phase:.authorizing, machineID:dormMachine, peripheralID:"demo")
@@ -203,6 +205,17 @@ extension HomeView {
                 return s
             case _ where name.hasPrefix("sh-detail-block-") || name.hasPrefix("sh-home-block-"): return block(name) == nil ? nil : .idle
             default: return SampleData.showerRecord(name, now:now)
+            }
+        }
+
+        /// 暖橙's 热水洗澡 drawn set up in the demo dorm on a synthetic record: before a start, water
+        /// running (结束并结算) and settled (the cost).
+        static func detail(_ name: String?, now: Date = Date()) -> ShowerState? {
+            switch name {
+            case "sh-detail-ready": return .idle
+            case "sh-detail-run": return SampleData.showerRecord("sh-run", now:now)
+            case "sh-detail-done": return SampleData.showerRecord("sh-done", now:now)
+            default: return nil
             }
         }
 
@@ -229,7 +242,7 @@ extension HomeView {
         static func charging(_ data: HomeData, started: Date?) -> HomeData {
             var data = data
             guard let started, var activity = data.snapshot.activity.value else { return data }
-            let school = SchoolCalendar.shanghai
+            let school = data.calendar
             let c = school.dateComponents([.year, .month, .day, .hour, .minute, .second], from:started)
             activity.records.append(CardRecord(date:String(format:"%04d%02d%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0),
                                                time:String(format:"%02d%02d%02d", c.hour ?? 0, c.minute ?? 0, c.second ?? 0),
@@ -253,7 +266,9 @@ extension HomeView {
             let block = block(name)
             shower.demoStartBlock = block
             let first = name?.hasPrefix("sh-detail-first-") == true
-            shower.demoReadyDorm = kept || first || (block != nil && block != .notConfigured) ? SampleData.dorm : nil
+            let detailRecord = detail(name)
+            shower.demoDetailRecord = detailRecord
+            shower.demoReadyDorm = kept || first || detailRecord != nil || (block != nil && block != .notConfigured) ? SampleData.dorm : nil
             shower.demoFirstCheck(name)
         }
     }

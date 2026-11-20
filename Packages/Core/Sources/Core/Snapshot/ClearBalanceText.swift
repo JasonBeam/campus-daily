@@ -1,7 +1,7 @@
 import Foundation
 
 /// Words and numbers of 清爽 home's 双余额 card and the rest of its page: two decimals, 「电费」 and
-/// 「昨日」 under the electricity, 「校园消费余额」 under the card, each column with its own read
+/// 「日均」 under the electricity, 「校园消费余额」 under the card, each column with its own read
 /// time, and one 「校园充值 · 微信」 link at the bottom.
 public enum ClearBalanceText {
     public static let homeTitle = "校园生活"
@@ -11,6 +11,14 @@ public enum ClearBalanceText {
     public static let cardCaption = "校园消费余额"
     public static let topUp = "校园充值 · 微信"
     public static let pullHint = "下拉刷新余额"
+    /// The daily average under the electricity (card and small widget): 「日均约 4.60 度」, or
+    /// 「日均 未返回」 without a usable estimate.
+    public static let dailyAverageLabel = "日均约"
+    public static let dailyAverageMissingLabel = "日均"
+    public static let notReturned = "未返回"
+    /// The small widget's row: 「约 5.10 度 … 日均」, or 「未返回 … 日均」.
+    public static let widgetDailyAverageLabel = "日均"
+    public static let widgetDailyAveragePrefix = "约 "
     /// A reading older than this (or with a failed read after it) is drawn as 「上次」.
     public static let staleAfter: TimeInterval = 20 * 60
 
@@ -39,9 +47,10 @@ public enum ClearBalanceText {
         "电费 " + (meter?.leftMoney.map { "¥" + number($0.yuan) } ?? "未获取")
     }
 
-    /// 「昨日 4.60 度」, or 「昨日 未返回」 when the meter didn't report it.
-    public static func yesterday(_ meter: Meter?) -> String {
-        "昨日 " + (meter?.dailyUseKWh.map { number($0) + " 度" } ?? "未返回")
+    /// 「日均约 4.60 度」 (remaining ÷ the school's days), or 「日均 未返回」 without a usable estimate.
+    public static func dailyAverage(_ meter: Meter?) -> String {
+        guard let average = meter?.averageDailyKWh else { return dailyAverageMissingLabel + " " + notReturned }
+        return dailyAverageLabel + " " + number(average) + " 度"
     }
 
     /// Older than `staleAfter`, read after it with an error, or dated in the future.
@@ -51,16 +60,14 @@ public enum ClearBalanceText {
     }
 
     /// The electricity column's time: 「查询 7:01」, 「上次 7:01」 once stale; nil before any read.
-    public static func powerStamp(_ tile: Tile<Meter>, now: Date, locale: Locale = .autoupdatingCurrent,
-                                  timeZone: TimeZone = .autoupdatingCurrent) -> String? {
+    public static func powerStamp(_ tile: Tile<Meter>, now: Date, timeZone: TimeZone = .autoupdatingCurrent) -> String? {
         guard let at = tile.fetchedAt else { return nil }
-        return (isStale(tile, now: now) ? "上次 " : "查询 ") + clock(at, locale: locale, timeZone: timeZone)
+        return (isStale(tile, now: now) ? "上次 " : "查询 ") + clock(at, timeZone: timeZone)
     }
 
     /// The card column's time: always 「查询 7:01」; nil before any read.
-    public static func cardStamp(_ tile: Tile<Money>, locale: Locale = .autoupdatingCurrent,
-                                 timeZone: TimeZone = .autoupdatingCurrent) -> String? {
-        tile.fetchedAt.map { "查询 " + clock($0, locale: locale, timeZone: timeZone) }
+    public static func cardStamp(_ tile: Tile<Money>, timeZone: TimeZone = .autoupdatingCurrent) -> String? {
+        tile.fetchedAt.map { "查询 " + clock($0, timeZone: timeZone) }
     }
 
     /// The card column's second small line: 「更新中」, 「已更新」, 「上次余额」, 「暂未获取」 or
@@ -80,24 +87,44 @@ public enum ClearBalanceText {
         return lines
     }
 
-    /// 「7:01」 in the reader's own clock style (「早上7:01」 in Chinese).
-    public static func clock(_ date: Date, locale: Locale = .autoupdatingCurrent,
-                             timeZone: TimeZone = .autoupdatingCurrent) -> String {
-        var style = Date.FormatStyle(date: .omitted, time: .shortened, locale: locale)
-        style.timeZone = timeZone
+    /// 「07:01」, 「18:46」 (「18:46:09」 with `seconds`): 24-hour whatever the phone's region or
+    /// its 12/24-hour setting, as 暖橙's times (never 「下午6:46」 or 「6:46 PM」).
+    public static func clock(_ date: Date, seconds: Bool = false, timeZone: TimeZone = .autoupdatingCurrent) -> String {
+        let style = seconds
+            ? Date.VerbatimFormatStyle(format: "\(hour: .twoDigits(clock: .twentyFourHour, hourCycle: .zeroBased)):\(minute: .twoDigits):\(second: .twoDigits)",
+                                       timeZone: timeZone, calendar: gregorian)
+            : Date.VerbatimFormatStyle(format: "\(hour: .twoDigits(clock: .twentyFourHour, hourCycle: .zeroBased)):\(minute: .twoDigits)",
+                                       timeZone: timeZone, calendar: gregorian)
         return date.formatted(style)
     }
 
-    /// 「¥1.32」 as the system writes yuan for the reader (「CN¥1.32」 outside China's region).
-    public static func currency(_ yuan: Decimal, locale: Locale = .autoupdatingCurrent) -> String {
-        yuan.formatted(.currency(code: "CNY").locale(locale))
+    /// 「¥1.32」, 「¥1,234.50」: always the 「¥」 sign and two places, whatever the phone's region
+    /// (the system's CNY style would write 「CN¥1.32」 outside China's).
+    public static func currency(_ yuan: Decimal) -> String {
+        (yuan < 0 ? "-¥" : "¥") + number(yuan < 0 ? -yuan : yuan)
     }
 
-    /// 「2026年11月9日 上午11:02」: when the last shower was settled.
-    public static func dateTime(_ date: Date, locale: Locale = .autoupdatingCurrent,
-                                timeZone: TimeZone = .autoupdatingCurrent) -> String {
-        var style = Date.FormatStyle(date: .abbreviated, time: .shortened, locale: locale)
-        style.timeZone = timeZone
-        return date.formatted(style)
+    /// 「2026年11月9日 18:46」: when the last shower was settled, in the same words whatever the
+    /// phone's region, with a 24-hour time.
+    public static func dateTime(_ date: Date, timeZone: TimeZone = .autoupdatingCurrent) -> String {
+        let day = Date.VerbatimFormatStyle(format: "\(year: .defaultDigits)年\(month: .defaultDigits)月\(day: .defaultDigits)日",
+                                           timeZone: timeZone, calendar: gregorian)
+        return date.formatted(day) + " " + clock(date, timeZone: timeZone)
     }
+
+    /// 上次热水 on home and the 订单 tab's times out of a day group: 「今天 11:20」, 「昨天 11:20」,
+    /// 「11月18日 08:41」, with 「2025年」 in front only outside `now`'s year. 24-hour in `calendar`
+    /// (the school's, or the sample's), whatever the phone's region or its 12/24-hour setting.
+    public static func dayTime(_ date: Date, now: Date, calendar: Calendar) -> String {
+        let parts = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: date)
+        let time = String(format: "%02d:%02d", parts.hour ?? 0, parts.minute ?? 0)
+        if calendar.isDate(date, inSameDayAs: now) { return "今天 " + time }
+        if let yesterday = calendar.date(byAdding: .day, value: -1, to: now), calendar.isDate(date, inSameDayAs: yesterday) {
+            return "昨天 " + time
+        }
+        let year = parts.year == calendar.component(.year, from: now) ? "" : "\(parts.year ?? 0)年"
+        return year + "\(parts.month ?? 0)月\(parts.day ?? 0)日 " + time
+    }
+
+    private static var gregorian: Calendar { Calendar(identifier: .gregorian) }
 }

@@ -50,8 +50,8 @@ struct CardRecordsView: View {
     private func days(now: Date) -> [CardDay] {
         switch model.phase {
         case .loading: return []
-        case .failed: return CardDays.groups(history:nil, app:app, now:now)
-        case .loaded: return model.history.map { CardDays.groups(history:$0, app:app, now:now) } ?? []
+        case .failed: return CardDays.groups(history:nil, app:app, now:now, calendar:model.calendar)
+        case .loaded: return model.history.map { CardDays.groups(history:$0, app:app, now:now, calendar:model.calendar) } ?? []
         }
     }
 

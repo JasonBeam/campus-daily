@@ -74,8 +74,8 @@ public enum HomeFigures {
     }
 
     /// 电量: low under the user's power line or when the estimate is a day or less. The estimate
-    /// (remaining ÷ the previous day's use, counted from the reading) needs a previous day's use
-    /// above zero; without it the subline is hidden. Without a meter: 「—」 and whether it is
+    /// is the school's days left (`preUseDay`), counted from the reading; without a usable one
+    /// (missing, 0, negative, over a year) the subline is hidden. Without a meter: 「—」 and whether it is
     /// being looked for or not found.
     public static func power(_ snapshot: HomeSnapshot, signedIn: Bool, meter: HomeFigure.MeterState = .bound,
                              lines: ReminderLines, now: Date,
@@ -89,9 +89,9 @@ public enum HomeFigures {
         guard let meter = snapshot.power.value, let remaining = meter.remainingKWh else {
             return HomeFigure(value: nil, low: false, subline: nil)
         }
-        let estimate = self.estimate(remaining: remaining, dailyUse: meter.dailyUseKWh,
+        let estimate = self.estimate(remaining: remaining, daysLeft: meter.usableDaysLeft,
                                      readAt: snapshot.power.fetchedAt ?? now, now: now, calendar: calendar)
-        let low = remaining < lines.power || (estimate.map { $0.days <= 1 } ?? false)
+        let low = remaining <= 0 || remaining < lines.power || (estimate.map { $0.days <= 1 } ?? false)
         var subline: HomeFigure.Subline?
         if let estimate {
             if low, let night = estimate.night { subline = .lastsUntil(night) }
@@ -102,13 +102,14 @@ public enum HomeFigures {
 
     /// Whole days left from `now` to the estimated end (rounded down; a reading two days old
     /// has two days fewer left) and, when the end falls today or tomorrow by `now`, which night.
-    /// An end already past reads as tonight, with no days left.
-    static func estimate(remaining: Decimal, dailyUse: Decimal?, readAt: Date, now: Date,
+    /// An end already past reads as tonight, with no days left. Nothing left (or less) has no
+    /// end: the school may still give days beside 0 度, and they can't be right.
+    static func estimate(remaining: Decimal, daysLeft: Decimal?, readAt: Date, now: Date,
                          calendar: Calendar) -> (days: Int, night: HomeFigure.Night?)? {
-        guard let dailyUse, dailyUse > 0, remaining >= 0 else { return nil }
-        let daysLeft = NSDecimalNumber(decimal: remaining / dailyUse).doubleValue
-        guard daysLeft.isFinite else { return nil }
-        let end = readAt.addingTimeInterval(daysLeft * 86_400)
+        guard let daysLeft, daysLeft > 0, remaining > 0 else { return nil }
+        let days = NSDecimalNumber(decimal: daysLeft).doubleValue
+        guard days.isFinite else { return nil }
+        let end = readAt.addingTimeInterval(days * 86_400)
         let today = calendar.startOfDay(for: now)
         var night: HomeFigure.Night?
         if let tomorrow = calendar.date(byAdding: .day, value: 1, to: today),

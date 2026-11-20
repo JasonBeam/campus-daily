@@ -5,11 +5,15 @@ import Core
 /// a row; each row but the kept showers' opens its page on 日常 (those are plain, read-only rows).
 struct ClearRecentOrdersSections: View {
     let orders: ClearRecentOrders
+    /// What 「今天」/「昨天」 count from: the list's clock, moved on at midnight (`DayChange`).
+    var now = Date()
     /// A row of the kept showers came on screen (+1) or went off it (-1): the list scrolls to
     /// them only when none is on screen.
     var retainedVisible: (Int) -> Void = { _ in }
     @Environment(ClearNavigator.self) private var navigator
     @EnvironmentObject private var laundry: LaundryModel
+    /// The days 「今天」/「昨天」 count in, as home's.
+    @Environment(\.schoolCalendar) private var calendar
 
     var body: some View {
         if let order = orders.laundry {
@@ -41,7 +45,7 @@ struct ClearRecentOrdersSections: View {
                     HStack {
                         VStack(alignment:.leading, spacing:6) {
                             Text(ClearRecentOrders.settled).foregroundStyle(Color.primary)
-                            Text(settled.date.formatted(date:.abbreviated, time:.shortened))
+                            Text(ClearBalanceText.dayTime(settled.date, now:now, calendar:calendar))
                                 .font(.caption).foregroundStyle(Color.secondary)
                         }
                         Spacer(minLength:8)
@@ -63,7 +67,7 @@ struct ClearRecentOrdersSections: View {
     @ViewBuilder private var retainedSection: some View {
         if orders.retained != nil {
             Section {
-                ForEach(Array(orders.retainedLines().enumerated()), id:\.offset) { _, line in
+                ForEach(Array(orders.retainedLines(now:now).enumerated()), id:\.offset) { _, line in
                     VStack(alignment:.leading, spacing:4) {
                         Text(line.title).font(.body).foregroundStyle(Color.primary)
                         if let detail = line.detail {

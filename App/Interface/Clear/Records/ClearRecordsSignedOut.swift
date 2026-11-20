@@ -5,6 +5,8 @@ import SwiftUI
 struct ClearRecordsSignedOut: View {
     let orders: ClearRecentOrders
     @Environment(ClearNavigator.self) private var navigator
+    /// The rows' 「今天」/「昨天」 move on at midnight and after a clock change.
+    @State private var clock = Date()
 
     var body: some View {
         if orders.sections.isEmpty {
@@ -13,10 +15,12 @@ struct ClearRecordsSignedOut: View {
                 .background(Color(uiColor:.systemGroupedBackground))
         } else {
             List {
-                ClearRecentOrdersSections(orders:orders)
+                ClearRecentOrdersSections(orders:orders, now:clock)
                 signIn.listRowBackground(Color.clear)
             }
             .listStyle(.insetGrouped)
+            .onAppear { clock = Date() }
+            .onReceive(DayChange.publisher) { clock = Date() }
         }
     }
 

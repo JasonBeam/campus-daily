@@ -223,68 +223,6 @@ final class SchoolRefreshTests: XCTestCase {
     }
 }
 
-final class SchoolRechargeTests: XCTestCase {
-    /// The recharge session calls loginBySysId once and uses the fresh token.
-    func testCardRechargeSessionUsesFreshToken() async throws {
-        let h = Harness()
-        try h.signedIn()
-        try h.server.serve("ecykt/getSysBindCustInfo-ok")
-        try h.server.serve("ecykt/loginBySysId-mintSeries1")
-        let web = try await h.session().rechargeSession(.card, owning: .unchecked)
-        XCTAssertEqual(h.loginBySysIdCalls(), 1)
-        XCTAssertEqual(h.livenessCalls(), 1)
-        XCTAssertEqual(web.startURL, SchoolEndpoints.rechargePage)
-        let state = try JSONValue.parse(web.stateJSON)
-        XCTAssertEqual(state["logintoken"]?.text, "REDACTED_TOKEN_9")
-        XCTAssertNotEqual(state["logintoken"]?.text, "REDACTED_TOKEN_2")
-        XCTAssertEqual(state["loginInfo"]?["token"]?.text, "REDACTED_TOKEN_9")
-        XCTAssertEqual(state["loginInfo"]?["syscustid"]?.text, "TESTid00000000000000000000000003")
-        XCTAssertEqual(state["schoolid"]?.text, "450010")
-        XCTAssertEqual(state["custInfo"]?["custunionid"]?.text, "TESTid00000000000000000000000001")
-        XCTAssertEqual(state["custid"]?.text, "TESTid00000000000000000000000002")
-        XCTAssertTrue(web.userScript.contains("location.origin !== 'https://ecykt.gdbtu.edu.cn'"))
-        XCTAssertTrue(web.userScript.contains("elecampus_state"))
-        XCTAssertFalse("\(web)".contains("REDACTED_TOKEN_9"))
-        XCTAssertEqual(try h.vault.ecyktSession()?.syscustid, "TESTid00000000000000000000000003")
-        // Same shape as the official CSA state for the fields the page reads.
-        let official = try FixtureLoader.csaLoginState()
-        for key in ["logintoken", "loginInfo", "schoolid", "custInfo"] { XCTAssertNotNil(official[key], key); XCTAssertNotNil(state[key], key) }
-    }
-
-    func testElectricityRechargeStartsAtPowerEntry() async throws {
-        let h = Harness()
-        try h.signedIn()
-        try h.server.serve("ecykt/getSysBindCustInfo-ok")
-        try h.server.serve("ecykt/loginBySysId-mintSeries2")
-        let web = try await h.session().rechargeSession(.electricity, owning: .unchecked)
-        let comps = try XCTUnwrap(URLComponents(url: web.startURL, resolvingAgainstBaseURL: false))
-        XCTAssertEqual(comps.path, "/ykt-mini/api/electricnew/getPowerUrl")
-        XCTAssertEqual(comps.queryItems?.first { $0.name == "syscustid" }?.value, "TESTid00000000000000000000000004")
-        XCTAssertEqual(comps.queryItems?.first { $0.name == "custid" }?.value, "TESTid00000000000000000000000002")
-    }
-
-    func testExpiredRechargeNeverMints() async throws {
-        let h = Harness()
-        try h.signedIn()
-        try h.server.serve("ecykt/getSysBindCustInfo-badToken")
-        try h.server.serve("ecykt/loginBySysId-mintSeries1")
-        await T.expectError(.sessionExpired(.ecykt)) { _ = try await h.session().rechargeSession(.card, owning: .unchecked) }
-        XCTAssertEqual(h.loginBySysIdCalls(), 0)
-    }
-
-    func testNavigationAllowList() {
-        let ecykt = "ecykt.gdbtu.edu.cn"
-        XCTAssertEqual(RechargeNavigation.decide(URL(string: "https://ecykt.gdbtu.edu.cn/ykt-view/recharge")!, isUserTap: false, sourceHost: nil), .allow)
-        XCTAssertEqual(RechargeNavigation.decide(URL(string: "https://cas.gdbtu.edu.cn/cas/login")!, isUserTap: false, sourceHost: ecykt), .allow)
-        XCTAssertEqual(RechargeNavigation.decide(URL(string: "http://ecykt.gdbtu.edu.cn/")!, isUserTap: true, sourceHost: ecykt), .cancel)
-        XCTAssertEqual(RechargeNavigation.decide(URL(string: "https://evil.example/")!, isUserTap: true, sourceHost: ecykt), .cancel)
-        XCTAssertEqual(RechargeNavigation.decide(URL(string: "alipays://platformapi/startapp")!, isUserTap: true, sourceHost: ecykt), .openExternal)
-        XCTAssertEqual(RechargeNavigation.decide(URL(string: "weixin://wap/pay")!, isUserTap: true, sourceHost: ecykt), .openExternal)
-        XCTAssertEqual(RechargeNavigation.decide(URL(string: "alipays://platformapi/startapp")!, isUserTap: false, sourceHost: ecykt), .cancel)
-        XCTAssertEqual(RechargeNavigation.decide(URL(string: "alipays://platformapi/startapp")!, isUserTap: true, sourceHost: "portal.gdbtu.edu.cn"), .cancel)
-    }
-}
-
 final class SchoolElectricityTests: XCTestCase {
     /// Campus-wide rows + one synthetic row for the faked user room.
     static func campusMeters(extra: [String], comAddresses: [String]? = nil) throws -> Fixture {
@@ -523,7 +461,7 @@ extension Fixture {
 
 /// The card's recent records are read with the balance, in the same refresh.
 final class CardActivityRefreshTests: XCTestCase {
-    func testRecordsOfThreeSchoolDaysAreStoredWithTheBalance() async throws {
+    func testRecordsOfSevenSchoolDaysAreStoredWithTheBalance() async throws {
         let h = Harness()
         try h.signedIn()
         try h.server.serve("ecykt/getSysBindCustInfo-ok")
@@ -536,7 +474,7 @@ final class CardActivityRefreshTests: XCTestCase {
         XCTAssertEqual(activity.records.first?.title, "蓝牙热水(中卡)(蓝牙热水(中卡))热水POS01(中卡)")
         XCTAssertFalse(activity.complete, "36 records, 5 came back")
         let request = try XCTUnwrap(h.server.requests(path: "/card/getRecordList").first)
-        XCTAssertEqual(request.bodyField("begin"), "20261028", "the school's day: 02:53 on the 30th")
+        XCTAssertEqual(request.bodyField("begin"), "20261024", "the school's day: 02:53 on the 30th")
         XCTAssertEqual(request.bodyField("end"), "20261030")
         XCTAssertEqual(request.bodyField("pageSize"), String(CardActivity.pageSize))
         XCTAssertEqual(h.server.requests(path: "/card/getRecordList").count, 1)

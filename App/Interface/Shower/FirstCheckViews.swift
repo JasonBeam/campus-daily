@@ -60,7 +60,8 @@ struct FirstCheckExplainer: View {
     }
 }
 
-/// Why the last first check came to nothing (nothing was authorized), in the notice colour,
+/// Why the last first check came to nothing (nothing was authorized), in the notice colour (暖橙:
+/// the theme's, as on 热水洗澡; 清爽: the system pages'),
 /// with its one link (改宿舍 / 去设置) when it has one.
 struct FirstCheckFailureLine: View {
     let failure: FirstCheckFailure
@@ -72,7 +73,7 @@ struct FirstCheckFailureLine: View {
             Label { Text(failure.text(clear:clear)) } icon: {
                 Image(systemName:"exclamationmark.circle").accessibilityHidden(true)
             }
-            .font(.footnote).foregroundStyle(NativeTheme.notice)
+            .font(.footnote).foregroundStyle(clear ? NativeTheme.notice : Theme.notice)
             .lineLimit(typeSize.isAccessibilitySize ? 6 : 4)
             .fixedSize(horizontal:false, vertical:true)
             .accessibilityIdentifier("firstCheckFailure")

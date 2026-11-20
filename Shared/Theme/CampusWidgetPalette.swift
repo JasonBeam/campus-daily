@@ -1,10 +1,12 @@
 import SwiftUI
 import Core
 
-/// The widget's colours, which has no asset catalog: 暖橙 repeats App/Resources/Assets.xcassets/Theme,
-/// 清爽 is `ClearPalette`. Red is the same in both.
+/// The widget's colours, which has no asset catalog: 暖橙 is its own apricot face (the app's accent,
+/// accentText and red, warmer greys), 清爽 is `ClearPalette`. Red is the same in both.
 struct CampusWidgetPalette: Sendable {
     let group, ink, ink2, ink3, separator, accent, accentText, redLarge: Color
+    /// The electricity bar's track, and its track when the electricity is low.
+    let track, lowTrack: Color
     /// 「登录过期了」.
     let notice: Color
     /// creditcard and bolt.
@@ -18,23 +20,34 @@ struct CampusWidgetPalette: Sendable {
             return UIColor(red:c.0, green:c.1, blue:c.2, alpha:c.3)
         })
     }
-    private static let warmInk2 = dynamic((0.431, 0.431, 0.431, 1), (0.549, 0.549, 0.549, 1))
-    private static let warmAccentText = dynamic((0.761, 0.278, 0.039, 1), (1, 0.541, 0.271, 1))
-    private static let red = dynamic((0.898, 0.200, 0.165, 1), (1, 0.271, 0.227, 1))
+    /// `rgb` as 0xRRGGBB.
+    private static func hex(_ light: UInt32, _ lightAlpha: CGFloat = 1, dark: UInt32, _ darkAlpha: CGFloat = 1) -> Color {
+        func part(_ rgb: UInt32, _ shift: UInt32) -> CGFloat { CGFloat((rgb >> shift) & 0xFF) / 255 }
+        return dynamic((part(light, 16), part(light, 8), part(light, 0), lightAlpha),
+                       (part(dark, 16), part(dark, 8), part(dark, 0), darkAlpha))
+    }
+    private static let warmAccent = hex(0xF2600B, dark:0xFF7A2E)
+    private static let warmAccentText = hex(0xC2470A, dark:0xFF8A45)
+    private static let red = hex(0xE5332A, dark:0xFF453A)
 
+    /// The apricot face: ink2 5.5 / 5.6:1 and accentText 4.6 / 7.5:1 on `group`; red is for
+    /// large numbers only (4.0 / 5.1:1).
     static let warm = CampusWidgetPalette(
-        group:dynamic((1, 1, 1, 1), (0.110, 0.110, 0.118, 1)),
-        ink:dynamic((0.067, 0.067, 0.067, 1), (0.961, 0.961, 0.961, 1)),
-        ink2:warmInk2,
-        ink3:dynamic((0.769, 0.769, 0.769, 1), (0.290, 0.290, 0.290, 1)),
-        separator:dynamic((0, 0, 0, 0.08), (1, 1, 1, 0.09)),
-        accent:dynamic((0.949, 0.376, 0.047, 1), (1, 0.478, 0.180, 1)),
-        accentText:warmAccentText, redLarge:red, notice:warmAccentText, icon:warmInk2, numberDesign:.rounded)
+        group:hex(0xFFF4EB, dark:0x211812),
+        ink:hex(0x111111, dark:0xF5F5F5),
+        ink2:hex(0x6B625C, dark:0x9A918A),
+        ink3:hex(0xA39A93, dark:0x5E554F),
+        separator:hex(0x6B625C, 0.18, dark:0xFFFFFF, 0.10),
+        accent:warmAccent, accentText:warmAccentText, redLarge:red,
+        track:hex(0xF2600B, 0.16, dark:0xFF7A2E, 0.22),
+        lowTrack:hex(0xE5332A, 0.16, dark:0xFF453A, 0.16),
+        notice:warmAccentText, icon:warmAccent, numberDesign:.rounded)
 
     static let clear = CampusWidgetPalette(
         group:ClearPalette.group, ink:ClearPalette.ink, ink2:ClearPalette.ink2, ink3:ClearPalette.ink3,
         separator:ClearPalette.separator, accent:ClearPalette.accent, accentText:ClearPalette.accentText,
-        redLarge:red, notice:ClearPalette.notice, icon:ClearPalette.accentText, numberDesign:.default)
+        redLarge:red, track:ClearPalette.accent.opacity(0.16), lowTrack:red.opacity(0.16),
+        notice:ClearPalette.notice, icon:ClearPalette.accentText, numberDesign:.default)
 
     static func of(_ theme: AppTheme) -> CampusWidgetPalette { theme == .clear ? .clear : .warm }
 }

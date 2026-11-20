@@ -232,7 +232,7 @@ final class ExpiredCredentialLogLineTests: XCTestCase {
     }
 }
 
-/// Paths outside the lease (sign-in, saving a password, recharge, the hot-water handoff) may
+/// Paths outside the lease (sign-in, saving a password, the hot-water handoff) may
 /// store a session with the same token and new ciphertexts: the refresh doesn't overwrite it.
 final class WriteBackComparisonTests: XCTestCase {
     func testASessionWithTheSameTokenButANewSyscustidIsKept() async throws {

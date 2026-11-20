@@ -285,6 +285,10 @@ public struct ShowerPageFlow: Sendable, Equatable {
     public var checkFailure: FirstCheckFailure?
     /// Bumped when a first check matched the number (the short 「找到了」).
     public var checkPassed = 0
+    /// The start under way passed its first check (the 「找到了」 above): the connecting face says
+    /// it is opening the water / asking for the authorization, not connecting again. Cleared by
+    /// the next start.
+    public var afterCheck = false
 
     /// A first check is reading the controller's number: nothing has been asked of the school.
     public var checking: Bool {
@@ -372,7 +376,7 @@ public struct ShowerPageFlow: Sendable, Equatable {
             }
             f.presented = true; f.starting = true; f.cancelling = false; f.ending = false
             f.cancelWaiting = false; f.cancelRefused = false; f.endFailed = nil
-            f.firstCheck = false; f.checkFailure = nil
+            f.firstCheck = false; f.checkFailure = nil; f.afterCheck = false
             // A finished record is cleared by the start itself.
             return (f, [.start])
 
@@ -382,7 +386,7 @@ public struct ShowerPageFlow: Sendable, Equatable {
             // page comes up once the number matched.
             f.starting = true; f.cancelling = false; f.ending = false
             f.cancelWaiting = false; f.cancelRefused = false; f.endFailed = nil
-            f.firstCheck = true; f.checkFailure = nil
+            f.firstCheck = true; f.checkFailure = nil; f.afterCheck = false
             return (f, [.start])
 
         case .checkFailed(let failure):
@@ -422,6 +426,7 @@ public struct ShowerPageFlow: Sendable, Equatable {
                     f.firstCheck = false
                     f.presented = true
                     f.checkPassed += 1
+                    f.afterCheck = true
                 } else if next.phase == .failed, next.failure?.needsReview != true {
                     // Came to nothing before the request: a line under 开始洗澡, no face, no record.
                     f.firstCheck = false

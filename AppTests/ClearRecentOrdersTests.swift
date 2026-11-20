@@ -62,6 +62,23 @@ final class ClearRecentOrdersTests: XCTestCase {
         XCTAssertEqual(none.sections, [.showerSettled], "nothing kept or unreadable: no section")
     }
 
+    /// The kept showers' start times read as 上次热水 and home: 「今天 10:00」, 「昨天 …」, 「11月18日 08:41」.
+    func testRetainedTimesReadAsHome() {
+        let probe = ClearRecentOrders(data:HomeData.sample(now:Date()), laundry:LaundryFacts(), now:Date())
+        let calendar = probe.calendar
+        let now = calendar.date(from:DateComponents(year:2026, month:11, day:20, hour:12))!
+        func at(_ day: Int, _ hour: Int, _ minute: Int) -> Date {
+            calendar.date(from:DateComponents(year:2026, month:11, day:day, hour:hour, minute:minute))!
+        }
+        let retained = ShowerRetainedSummary(records:[
+            ShowerState(phase:.running, machineID:"11223344", startedAt:at(18, 8, 41), stateReviewRequired:true),
+            ShowerState(phase:.running, machineID:"11223344", startedAt:at(19, 21, 5), stateReviewRequired:true),
+            ShowerState(phase:.running, machineID:"11223344", startedAt:at(20, 10, 0), stateReviewRequired:true),
+        ])
+        let orders = ClearRecentOrders(data:HomeData.sample(now:now), laundry:LaundryFacts(), retained:retained, now:now)
+        XCTAssertEqual(orders.retainedLines(now:now).map(\.title), ["今天 10:00", "昨天 21:05", "11月18日 08:41"])
+    }
+
     func testNoLaundryWhileSchoolLaundryIsOff() {
         let now = Date()
         var data = HomeData.sample(now:now)

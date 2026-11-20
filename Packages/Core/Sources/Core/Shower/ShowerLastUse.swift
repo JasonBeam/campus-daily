@@ -20,6 +20,17 @@ public struct ShowerLastUse: Equatable, Sendable {
 
     /// 「11 分钟」, the tile's words.
     public var duration: String { "\(minutes) 分钟" }
+    /// When it was settled, as home's 「最近」 writes it: 「今天 06:54」, 「昨天 18:43」,
+    /// 「11月18日 08:41」 (`UpdateTimeText.recent`: 24-hour, no year, whatever the phone's region).
+    public static func when(_ ended: Date, now: Date, calendar: Calendar = SchoolCalendar.shanghai) -> String {
+        UpdateTimeText.recent(ended, now: now, calendar: calendar)
+    }
+
+    /// `when(_:now:calendar:)` for this shower; nil when no end time was kept.
+    public func endedText(now: Date, calendar: Calendar = SchoolCalendar.shanghai) -> String? {
+        ended.map { Self.when($0, now: now, calendar: calendar) }
+    }
+
     /// 「¥1.32」; nil when no amount was read.
     public var amount: String? { cost.map { Money(yuan: $0).description } }
 }

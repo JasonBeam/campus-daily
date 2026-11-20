@@ -111,7 +111,10 @@ struct RecentRow: View {
     var accentWord: String? = nil
     /// Under a day header (校园卡记录): the time alone, 「12:05 · 示例面馆」.
     var clockOnly = false
+    /// What 「刚刚」/今天/昨天 count from: home passes its clock, which moves on at a day change.
+    var now: Date? = nil
     @Environment(\.dynamicTypeSize) private var typeSize
+    @Environment(\.schoolCalendar) private var calendar
     @ScaledMetric(relativeTo:.title2) private var iconColumn: CGFloat = RowMetrics.iconColumn
     var body: some View {
         // Accessibility sizes: the icon sits on the first title line's baseline.
@@ -152,8 +155,8 @@ struct RecentRow: View {
                 .lineLimit(1).minimumScaleFactor(0.7)
         }
     }
-    private var subtitle: String {
-        [clockOnly ? CardDays.clock(item.date) : Theme.when(item.date), item.detail].compactMap { $0 }.joined(separator:" · ")
+    var subtitle: String {
+        [clockOnly ? CardDays.clock(item.date, calendar:calendar) : Theme.when(item.date, now:now ?? Date(), calendar:calendar), item.detail].compactMap { $0 }.joined(separator:" · ")
     }
 }
 

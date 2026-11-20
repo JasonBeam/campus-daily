@@ -62,6 +62,7 @@ struct ClearRootView: View {
             .tabItem { Label("设备", systemImage:"slider.horizontal.3") }
             .tag(ClearNavigator.Tab.settings)
         }
+        .environment(\.schoolCalendar, navigator.demo?.calendar ?? SchoolCalendar.shanghai)
         .sensoryFeedback(.success, trigger:successTick)
         .accountSwitchAlert { openShowerSetup() }
         .sheet(isPresented:$navigator.relogin) { SchoolReloginSheet().navOpen(.signIn, from:.updateLine).typesettingLanguage(Theme.typesetting) }

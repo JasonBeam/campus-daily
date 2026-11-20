@@ -4,8 +4,11 @@ import Core
 extension HomeView {
     // MARK: Content
 
+    /// The calendar of the data on screen: the school's, or the sample's (`HomeData.calendar`).
+    var schoolCalendar: Calendar { demo?.calendar ?? SchoolCalendar.shanghai }
+
     /// The school's day, as 最近 below it.
-    var dateTitle: String { SchoolCalendar.dayTitle(Date()) }
+    var dateTitle: String { SchoolCalendar.dayTitle(Date(), calendar:schoolCalendar) }
 
     /// A balance tapped: 校园充值 (on `route`, which the sample shows as its own page), the
     /// meter picker, or the login step.
@@ -18,7 +21,8 @@ extension HomeView {
     }
 
     @ViewBuilder func content(_ data: HomeData) -> some View {
-        let now = Date()
+        // Read here so a day change (`clock`) draws home again: the date, 昨天花了 and 最近.
+        let now = max(Date(), clock)
         VStack(alignment:.leading, spacing:0) {
             dateBlock(data).id("top")
             HomeDuo(card:data.cardFigure(now:now), power:data.powerFigure(now:now),
@@ -52,7 +56,7 @@ extension HomeView {
         VStack(spacing:2) {
             // Rounded like the numbers under it; other pages keep the theme's serif title.
             Text(dateTitle).scaledFont(appTheme.titleFont.size, appTheme.titleFont.weight, design:.rounded, relativeTo:.title2).foregroundStyle(Theme.ink)
-            Text([SchoolCalendar.weekday(Date()), data.dorm].compactMap { $0 }.joined(separator:" · "))
+            Text([SchoolCalendar.weekday(Date(), calendar:data.calendar), data.dorm].compactMap { $0 }.joined(separator:" · "))
                 .scaledFont(13, design:.rounded, relativeTo:.footnote).foregroundStyle(Theme.ink2)
         }
         .frame(maxWidth:.infinity)
@@ -60,9 +64,19 @@ extension HomeView {
         // accessibility sizes the taller date would run under the bar, so it stays below it.
         .padding(.top,typeSize.isAccessibilitySize ? 0 : dateLift)
         .accessibilityElement(children:.ignore)
-        .accessibilityLabel([dateTitle, SchoolCalendar.weekday(Date()), data.dorm].compactMap { $0 }.joined(separator:"，"))
+        .accessibilityLabel([dateTitle, SchoolCalendar.weekday(Date(), calendar:data.calendar), data.dorm].compactMap { $0 }.joined(separator:"，"))
         .accessibilityAddTraits(.isHeader)
-        .onGeometryChange(for:Bool.self) { $0.frame(in:.global).maxY < 64 } action: { scrolledPastDate = $0 }
+        // Under the bar once its bottom passes the bar's top edge (`barTop`): measured, so a bar
+        // above the page (the sample's) is counted. Both are measured and compared again when
+        // either moves: the sample's bar wrapped at large text sizes settles its height over
+        // more than one pass, moving both at once.
+        .onGeometryChange(for:CGFloat.self) { $0.frame(in:.global).maxY } action: { dateBottom.maxY = $0; followDateEdge() }
+    }
+
+    /// `scrolledPastDate` from the latest date bottom and bar top, whichever moved.
+    func followDateEdge(barTop top: CGFloat? = nil) {
+        let past = dateBottom.maxY < (top ?? barTop)
+        if past != scrolledPastDate { scrolledPastDate = past }
     }
 
     // MARK: Shower
@@ -191,8 +205,8 @@ extension HomeView {
     /// none, and no section, when not one does. The header and every row are measured, unseen,
     /// at the current text size.
     func recentCount(_ items: [RecentItem]) -> Int {
-        RecentFit.count(viewport:homeViewport, above:recentsTop, header:recentsHeaderHeight,
-                        rowHeights:items.map { Double(recentHeights[$0.id] ?? 0) })
+        RecentFit.homeRows(viewport:homeViewport, above:recentsTop, header:recentsHeaderHeight,
+                           rowHeights:items.map { Double(recentHeights[$0.id] ?? 0) })
     }
 
     /// No height of its own: the section's top, and the hidden header and rows measured there.
@@ -205,20 +219,26 @@ extension HomeView {
     /// The app's own showers and open orders open their page; finished orders and card records are plain rows.
     @ViewBuilder func recentRows(_ items: [RecentItem]) -> some View {
         let shown = items.prefix(recentCount(items))
-        VStack(spacing:0) {
-            ForEach(Array(shown.enumerated()), id:\.element.id) { index, item in
-                VStack(spacing:0) {
-                    if index > 0 { RowSeparator() }
-                    if item.source == .app, item.opensPage {
-                        // A button, not a link: the page says it came from 最近.
-                        let route = item.kind == .laundry ? HomeRoute.laundry : HomeRoute.shower
-                        Button { mark(.recents, [route.debugPage]); path.append(route) } label: { RecentRow(item:item) }
-                            .buttonStyle(RowPressStyle())
-                    } else {
-                        RecentRow(item:item)
+        // By the minute, so 刚刚 and 今天/昨天 move on while home stays open (`clock` covers
+        // the day change and the return to the foreground at once).
+        let moved = clock
+        TimelineView(.everyMinute) { context in
+            let now = max(context.date, moved)
+            VStack(spacing:0) {
+                ForEach(Array(shown.enumerated()), id:\.element.id) { index, item in
+                    VStack(spacing:0) {
+                        if index > 0 { RowSeparator() }
+                        if item.source == .app, item.opensPage {
+                            // A button, not a link: the page says it came from 最近.
+                            let route = item.kind == .laundry ? HomeRoute.laundry : HomeRoute.shower
+                            Button { mark(.recents, [route.debugPage]); path.append(route) } label: { RecentRow(item:item, now:now) }
+                                .buttonStyle(RowPressStyle())
+                        } else {
+                            RecentRow(item:item, now:now)
+                        }
                     }
+                    .transition(reduceMotion ? .opacity : .move(edge:.top).combined(with:.opacity))
                 }
-                .transition(reduceMotion ? .opacity : .move(edge:.top).combined(with:.opacity))
             }
         }
         .frame(maxWidth:.infinity, alignment:.top)
@@ -233,7 +253,7 @@ extension HomeView {
             ForEach(Array(items.enumerated()), id:\.element.id) { index, item in
                 VStack(spacing:0) {
                     if index > 0 { RowSeparator() }
-                    RecentRow(item:item)
+                    RecentRow(item:item, now:clock)
                 }
                 .onGeometryChange(for:CGFloat.self) { $0.size.height } action: { recentHeights[item.id] = $0 }
             }

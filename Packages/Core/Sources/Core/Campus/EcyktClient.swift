@@ -49,16 +49,6 @@ public struct EcyktClient: Sendable {
         }
     }
 
-    /// `loginBySysId` — mints a new token on every call (old ones are not revoked). Use only
-    /// to build a recharge web session.
-    public func freshLogin(_ s: EcyktSession) async throws -> EcyktLogin {
-        let data = try await call("/api/customer/loginBySysId", s, validating: true, extra: [
-            "areacode": .string(s.areacode), "version": .string(SchoolEndpoints.ecyktVersion),
-            "appid": .string(SchoolEndpoints.ecyktAppID), "redirect": .string("/recharge?isbind=1"),
-        ])
-        return try login(from: data)
-    }
-
     /// `getSignData` — the hand-off to the hot-water platform (validates the token).
     public func signData(_ s: EcyktSession, custid: String) async throws -> ShowerHandoff {
         // The captured official request sends `timestamp: ""` here.
@@ -157,18 +147,11 @@ public struct EcyktClient: Sendable {
         return Meter(comAddress: address, name: name,
                      leftMoney: row["leftMoney"]?.text.flatMap(Money.init(yuanString:)),
                      remainingKWh: DecimalText.parse(row["remaining"]?.text),
-                     dailyUseKWh: DecimalText.parse(row["preUseDay"]?.text),
+                     estimatedDaysLeft: DecimalText.parse(row["preUseDay"]?.text),
                      price: DecimalText.parse(row["price"]?.text),
                      online: online,
                      switchState: row["meterStatus"]?.text,
                      updatedAt: row["updateDateTime"]?.text)
-    }
-
-    /// `GET /api/electricnew/getPowerUrl?custid&syscustid`: a 302 to the electricity page, which
-    /// the recharge WebView follows.
-    public static func powerEntryURL(_ s: EcyktSession, custid: String) -> URL {
-        URL(string: SchoolEndpoints.ecyktBase.absoluteString + "/api/electricnew/getPowerUrl?custid="
-            + FormEncoding.encode(custid) + "&syscustid=" + FormEncoding.encode(s.syscustid))!
     }
 
     // MARK: Plumbing

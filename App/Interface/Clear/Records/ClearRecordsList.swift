@@ -13,6 +13,8 @@ struct ClearRecordsList: View {
     @StateObject private var model: CardRecordsModel
     /// Rows of the kept showers' section on screen.
     @State private var retainedOnScreen = 0
+    /// The recent orders' 「今天」/「昨天」 move on at midnight and after a clock change.
+    @State private var clock = Date()
     @Environment(ClearNavigator.self) private var navigator
     @EnvironmentObject private var laundry: LaundryModel
 
@@ -26,7 +28,7 @@ struct ClearRecordsList: View {
         let days = days(now:Date())
         ScrollViewReader { proxy in
         List {
-            ClearRecentOrdersSections(orders:orders) { retainedOnScreen = max(0, retainedOnScreen + $0) }
+            ClearRecentOrdersSections(orders:orders, now:clock) { retainedOnScreen = max(0, retainedOnScreen + $0) }
             switch model.phase {
             case .loading: loadingSection
             case .failed: failedSection
@@ -42,6 +44,8 @@ struct ClearRecordsList: View {
             footer(empty:days.isEmpty)
         }
         .listStyle(.insetGrouped)
+        .onAppear { clock = Date() }
+        .onReceive(DayChange.publisher) { clock = Date() }
         // SwiftUI cancels the pull's own task when the list changes under it (the read starting
         // does): a read cancelled that way would come back as failed. The read runs on its own.
         .refreshable { await Task { await model.reload() }.value }
@@ -60,8 +64,8 @@ struct ClearRecordsList: View {
     private func days(now: Date) -> [CardDay] {
         switch model.phase {
         case .loading: return []
-        case .failed: return CardDays.groups(history:nil, app:app, now:now)
-        case .loaded: return model.history.map { CardDays.groups(history:$0, app:app, now:now) } ?? []
+        case .failed: return CardDays.groups(history:nil, app:app, now:now, calendar:model.calendar)
+        case .loaded: return model.history.map { CardDays.groups(history:$0, app:app, now:now, calendar:model.calendar) } ?? []
         }
     }
 

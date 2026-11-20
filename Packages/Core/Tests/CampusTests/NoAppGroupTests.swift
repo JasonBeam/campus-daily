@@ -3,7 +3,7 @@ import XCTest
 import CoreTestSupport
 
 /// A build signed without the App Group (re-signed under another group) has no shared lease
-/// file. The app then keeps its lease in its own container, so its reads, logins, recharge and
+/// file. The app then keeps its lease in its own container, so its reads, logins and
 /// hand-off still take turns inside the app instead of reporting "busy" forever or running side
 /// by side; the widget has no lease file at all and leaves every school read to the app, so the
 /// two never read at once.
@@ -60,7 +60,7 @@ final class NoAppGroupTests: XCTestCase {
         XCTAssertTrue(report.snapshotSaved)
     }
 
-    /// Two logins in the app (the form's and Settings', or a login beside recharge) run one
+    /// Two logins in the app (the form's and Settings', or a login beside the hot-water hand-off) run one
     /// after the other, never side by side.
     func testTwoLoginsInTheAppTakeTurns() async throws {
         let refresher = stack(Harness(), role: "app").refresher

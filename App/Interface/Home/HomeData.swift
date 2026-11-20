@@ -104,9 +104,12 @@ struct HomeData {
     var laundryDone: LaundryDone?
     /// The app's own showers and laundry orders, merged with the card records in 最近.
     var appActivities: [AppActivity] = []
+    /// The calendar the card's records are written and read in: the school's, or the sample's
+    /// (`SampleData.calendar`, the phone's time zone). Home's pages read it as `schoolCalendar`.
+    var calendar = SchoolCalendar.shanghai
 
     func cardFigure(now: Date = Date()) -> HomeFigure {
-        HomeFigures.card(snapshot, signedIn:signedIn, lines:lines, now:now)
+        HomeFigures.card(snapshot, signedIn:signedIn, lines:lines, now:now, calendar:calendar)
     }
     func powerFigure(now: Date = Date()) -> HomeFigure {
         let meter: HomeFigure.MeterState = powerBound ? .bound : findingMeter ? .finding : .notFound
@@ -120,7 +123,7 @@ struct HomeData {
     /// signed in (the snapshot is empty otherwise).
     var recents: [RecentItem] {
         RecentFeed.items(card:snapshot.activity.value?.records, app:recentActivities,
-                         limit:RecentFeed.homeCandidates)
+                         limit:RecentFeed.homeCandidates, calendar:calendar)
     }
     /// The app's own records 最近 and 校园卡记录 show: laundry only while 学校洗衣机 is on.
     var recentActivities: [AppActivity] {

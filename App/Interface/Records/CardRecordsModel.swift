@@ -29,6 +29,8 @@ extension CardRecordsSource {
     var loadingMore: Bool { state.loadingMore }
     var moreFailed: Bool { state.moreFailed }
     var reloads: Int { state.reloads }
+    /// The calendar the records are read in (the school's, or the sample's).
+    var calendar: Calendar { loader.calendar }
 
     /// From today again (first visit, pull).
     func reload() async { await loader.reload() }

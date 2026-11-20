@@ -1,6 +1,6 @@
 import Foundation
 
-/// Recharge and the hot-water hand-off on a card session that expired: it is renewed once the
+/// The hot-water hand-off on a card session that expired: it is renewed once the
 /// way home renews it (portal token, else the saved password), and the step is tried once more.
 /// Only when that renewal did not read the card again does the expiry reach the user, who is
 /// then asked to sign in. Any other failure is passed on as it is, with nothing renewed.

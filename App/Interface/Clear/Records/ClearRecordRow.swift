@@ -5,6 +5,7 @@ import Core
 struct ClearRecordRow: View {
     let item: RecentItem
     @Environment(\.dynamicTypeSize) private var typeSize
+    @Environment(\.schoolCalendar) private var calendar
     @ScaledMetric(relativeTo:.title3) private var iconColumn: CGFloat = 28
 
     var body: some View {
@@ -48,6 +49,6 @@ struct ClearRecordRow: View {
     }
 
     private var subtitle: String {
-        [CardDays.clock(item.date), item.detail].compactMap { $0 }.joined(separator:" · ")
+        [CardDays.clock(item.date, calendar:calendar), item.detail].compactMap { $0 }.joined(separator:" · ")
     }
 }

@@ -36,7 +36,7 @@ struct ClearShowerConnectionCard: View {
                         Group {
                             Text(ClearShowerText.deviceID(String(device.id.prefix(8))))
                             Text(ClearShowerText.nearby(device.nearbyCount))
-                            Text(ClearShowerText.verifiedAt(device.verifiedAt.formatted(date:.omitted, time:.standard)))
+                            Text(ClearShowerText.verifiedAt(ClearBalanceText.clock(device.verifiedAt, seconds:true)))
                         }
                         .font(.caption).foregroundStyle(.secondary)
                         Text(ClearShowerText.disconnected).font(.footnote).foregroundStyle(.secondary)

@@ -152,7 +152,7 @@ enum HomeDemo: String, CaseIterable {
             // Runs out tomorrow evening (只够到明晚); the balance is under the default line too.
             let target = calendar.date(bySettingHour:21, minute:0, second:0, of:calendar.date(byAdding:.day, value:1, to:now)!)!
             let days = target.timeIntervalSince(read) / 86400
-            data.snapshot = Self.snapshot(now:now, read:read, kwh:"4.8", dailyKWh:String(format:"%.3f", 4.8 / days), balance:"12.40")
+            data.snapshot = Self.snapshot(now:now, read:read, kwh:"4.8", daysLeft:String(format:"%.3f", days), balance:"12.40")
             data.laundry = .running(program:"标准洗", end:now.addingTimeInterval(18 * 60 - 30))
             return (data, nil)
         case .empty:
@@ -182,8 +182,8 @@ enum HomeDemo: String, CaseIterable {
     static var showerAgo: TimeInterval { SampleData.showerAgo }
     static var laundryAgo: TimeInterval { SampleData.laundryAgo }
 
-    static func snapshot(now: Date, read: Date, kwh: String, dailyKWh: String, balance: String = "86.50") -> HomeSnapshot {
-        SampleData.homeSnapshot(now:now, read:read, kwh:kwh, dailyKWh:dailyKWh, balance:balance)
+    static func snapshot(now: Date, read: Date, kwh: String, daysLeft: String, balance: String = "86.50") -> HomeSnapshot {
+        SampleData.homeSnapshot(now:now, read:read, kwh:kwh, daysLeft:daysLeft, balance:balance)
     }
 }
 #endif

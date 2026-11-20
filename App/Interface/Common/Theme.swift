@@ -49,8 +49,8 @@ enum Theme {
         CampusFormat.updated(date, now:now, calendar:calendar)
     }
     /// Recent-row time: 「刚刚」/「今天 09:12」/「昨天 22:14」/「周一 19:02」/「10月20日 19:02」
-    static func when(_ date: Date, now: Date = Date()) -> String {
-        UpdateTimeText.recent(date, now:now)
+    static func when(_ date: Date, now: Date = Date(), calendar: Calendar = SchoolCalendar.shanghai) -> String {
+        UpdateTimeText.recent(date, now:now, calendar:calendar)
     }
 }
 

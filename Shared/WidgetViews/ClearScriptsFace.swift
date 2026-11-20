@@ -3,7 +3,7 @@ import Core
 
 /// 清爽's small widget with numbers: the 170 × 170 POWER / CARD face on a paper ground, drawn
 /// edge to edge (it undoes the widget's 16-pt margins). Dot-matrix numbers with a bar each
-/// (electricity out of 100 度, the card out of 30 元), then 昨日用电 and 电费余额 (「上次查询」 once
+/// (electricity out of 100 度, the card out of 30 元), then 日均 (the daily average) and 电费余额 (「上次查询」 once
 /// the numbers are old).
 struct ClearScriptsFace: View {
     let model: CampusWidgetModel
@@ -11,6 +11,13 @@ struct ClearScriptsFace: View {
     static let paper = Color(red:0.96, green:0.957, blue:0.937)
     /// The widget's own margins, drawn over.
     static let margin: CGFloat = 16
+
+    /// 「约 11.33 度 … 日均」, or 「未返回 … 日均」 without a daily average.
+    static func dailyAverageRow(_ value: Decimal?) -> (value: String, label: String) {
+        let label = ClearBalanceText.widgetDailyAverageLabel
+        guard let value else { return (ClearBalanceText.notReturned, label) }
+        return (ClearBalanceText.widgetDailyAveragePrefix + ClearBalanceText.number(value) + " 度", label)
+    }
 
     private func number(_ value: Decimal?) -> String {
         guard let value else { return "—" }
@@ -50,8 +57,9 @@ struct ClearScriptsFace: View {
             text("度", 14, 92); text("元", 101, 92)
             bar(model.remainingKWh, 100, 14, 65); bar(model.balance, 30, 101, 55)
             line(90, 54, 0.67, 60); line(14, 118, 142, 0.67)
-            text(number(model.yesterdayKWh) + " 度", 14, 128, 10.67, false, false, 80)
-            text("昨日用电", 156, 128, 10.67, false, true, 65)
+            let average = Self.dailyAverageRow(model.dailyAverageKWh)
+            text(average.value, 14, 128, 10.67, false, false, 80)
+            text(average.label, 156, 128, 10.67, false, true, 65)
             text(number(model.powerBalance) + " 元", 14, 145, 10.67, false, false, 80)
             text(model.state == .stale ? "上次查询" : "电费余额", 156, 145, 10.67, false, true, 65)
         }

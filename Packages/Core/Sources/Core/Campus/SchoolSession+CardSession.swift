@@ -1,7 +1,7 @@
 import Foundation
 
 /// The card session: liveness, writing it back, and the steps that run on it (the hot-water
-/// hand-off, recharge, the card records).
+/// hand-off, the card records).
 extension SchoolSession {
     /// False only when the card session was read and is not there. Async like the
     /// `SchoolReader` requirement, so this is what the refresher calls (not the protocol's default).
@@ -45,21 +45,6 @@ extension SchoolSession {
         try ensureSignedIn(since: started)
         saveIfUnchanged(live, over: stored, owning: owning)
         return try await ecykt.signData(live, custid: card.custid)
-    }
-
-    /// Liveness check, then one `loginBySysId`; the fresh token goes into `logintoken`. The app
-    /// runs it under the refresh lease; the live session is kept only over the one it started from,
-    /// and only while `owning` finds the lease still held, in the same locked step.
-    public func rechargeSession(_ kind: RechargeKind, owning: LeaseOwnership) async throws -> RechargeWebSession {
-        guard let stored = try vault.ecyktSession() else { throw ServiceError.sessionExpired(.ecykt) }
-        let started = personGeneration
-        let (card, live) = try await liveCard(stored)
-        let fresh = try await ecykt.freshLogin(live)
-        var updated = live
-        updated.syscustid = fresh.syscustid   // latest ciphertext, valid as input next time
-        try ensureSignedIn(since: started)
-        saveIfUnchanged(updated, over: stored, owning: owning)
-        return try RechargeWebSessionBuilder.build(kind: kind, session: updated, fresh: fresh, card: card)
     }
 
     /// One page of 校园卡记录 (`card/getRecordList`), read with the stored card session as it is:

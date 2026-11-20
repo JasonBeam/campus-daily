@@ -308,7 +308,7 @@ enum ReminderKey {
         if snapshot.power.error == nil, let meter = snapshot.power.value, let left = meter.remainingKWh {
             evaluate(kind:"power", low:left < lines.power, enabled:ReminderKey.powerLow,
                      armed:ReminderKey.powerArmed, sentDay:ReminderKey.powerSentDay, now:now) {
-                self.make(title:"宿舍快没电了", body:Self.powerBody(meter, now:now), thread:"power", route:.home, sound:false)
+                self.make(title:"宿舍快没电了", body:Self.powerBody(meter, readAt:snapshot.power.fetchedAt, now:now), thread:"power", route:.home, sound:false)
             }
         }
         if snapshot.card.error == nil, let balance = snapshot.card.value?.yuan {
@@ -338,16 +338,20 @@ enum ReminderKey {
         let parts = Calendar.current.dateComponents([.year, .month, .day], from:date)
         return "\(parts.year ?? 0)-\(parts.month ?? 0)-\(parts.day ?? 0)"
     }
-    /// 「只剩 8.6 度，大约能用到明晚。记得充电费。」 when yesterday's use gives 今晚/明晚, else the short form.
-    static func powerBody(_ meter: Meter, now: Date = Date(), calendar: Calendar = .current) -> String {
+    /// 「只剩 8.6 度，大约能用到明晚。记得充电费。」 when the school's days left, counted from the
+    /// reading time (`readAt`), end tonight or tomorrow; else the short form. Settings changes judge
+    /// the stored reading again, which may be a day old, so the end is never counted from now:
+    /// without a reading time, with the end already past, or with nothing left, only the short form.
+    static func powerBody(_ meter: Meter, readAt: Date?, now: Date = Date(), calendar: Calendar = .current) -> String {
         let remaining = meter.remainingKWh ?? 0
         let left = Theme.kwh(remaining)
-        if let used = meter.dailyUseKWh, used > 0 {
-            let hours = NSDecimalNumber(decimal:remaining / used).doubleValue * 24
-            let end = now.addingTimeInterval(hours * 3600)
-            let word: String? = calendar.isDate(end, inSameDayAs:now) ? "今晚"
-                : calendar.date(byAdding:.day, value:1, to:now).map { calendar.isDate(end, inSameDayAs:$0) } == true ? "明晚" : nil
-            if let word { return "只剩 \(left) 度，大约能用到\(word)。记得充电费。" }
+        if remaining > 0, let days = meter.usableDaysLeft, let readAt {
+            let end = readAt.addingTimeInterval(NSDecimalNumber(decimal:days).doubleValue * 86_400)
+            if end > now {
+                let word: String? = calendar.isDate(end, inSameDayAs:now) ? "今晚"
+                    : calendar.date(byAdding:.day, value:1, to:now).map { calendar.isDate(end, inSameDayAs:$0) } == true ? "明晚" : nil
+                if let word { return "只剩 \(left) 度，大约能用到\(word)。记得充电费。" }
+            }
         }
         return "只剩 \(left) 度了，记得充电费。"
     }
