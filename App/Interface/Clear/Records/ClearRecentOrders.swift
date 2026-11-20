@@ -60,8 +60,10 @@ struct ClearRecentOrders: Equatable {
 
     /// Two lines per kept shower, newest first: the start time, then 「水控 编号 · 原因」 (the dorm's own controller left out);
     /// a third, 「校园卡已扣 ¥x」, when the card's records show its charge.
-    func retainedLines(time: (Date) -> String = { ShowerRetainedText.time($0) }) -> [ShowerRetainedText.Line] {
+    /// Each start time reads as 上次热水 (`ClearBalanceText.dayTime`): 「今天 21:05」, 「11月18日 08:41」.
+    func retainedLines(now: Date = Date(), time: ((Date) -> String)? = nil) -> [ShowerRetainedText.Line] {
         let records = cardRecords, calendar = calendar
+        let time = time ?? { ClearBalanceText.dayTime($0, now:now, calendar:calendar) }
         return retained.map { summary in
             ShowerRetainedText.lines(summary, reason:ShowerRetainedText.Clear.reason, time:time) { started in
                 ShowerCardCharge.amount(started:started, records:records, calendar:calendar)

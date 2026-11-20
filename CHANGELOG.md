@@ -21,6 +21,7 @@
 - Once the first check found the controller, the start says the water is opening (暖橙 「正在打开水控…」, 清爽 「正在申请授权…」) instead of still connecting.
 - U净's login at accessibility text sizes: 「获取验证码」 sits under the code field at full width, and the agreement wraps above its switch.
 - 先看看示例: the sample bar and home stay on screen at the largest text sizes (the bar's words over 换个样子 and 去登录); 暖橙's date shows in the navigation bar under the sample bar; 清爽's 「电表设置 / 绑定电表」 says the sample's message at once; and the sample's records and shower use the phone's time zone, so abroad they agree and no meal sits ahead of the clock.
+- 清爽's 「上次热水 · 已结算」 on home and the 订单 tab's 最近热水结算 and 待核对的热水记录 write their times as home does: 「今天 11:20」, 「昨天 11:20」, 「11月18日 08:41」, with the year only for another year (was 「2026年11月18日 08:41」 and, for kept showers, never 今天／昨天), 24-hour whatever the phone's region; they move on at midnight. Rows under a day of the card's records keep the time alone (「11:20」).
 
 ### Removed
 

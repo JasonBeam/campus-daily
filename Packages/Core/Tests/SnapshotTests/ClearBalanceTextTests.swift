@@ -108,4 +108,34 @@ final class ClearBalanceTextTests: XCTestCase {
         XCTAssertEqual(ClearBalanceText.dateTime(evening, timeZone: zone), "2027年1月15日 18:46")
         XCTAssertEqual(ClearBalanceText.cardStamp(Tile(value: Money(fen: 1), fetchedAt: evening), timeZone: zone), "查询 18:46")
     }
+
+    /// 上次热水 and the 订单 tab: 「今天 11:20」, 「昨天 11:20」, 「11月18日 08:41」, the year only
+    /// outside `now`'s; 24-hour in the given calendar whatever the phone's region.
+    func testDayTimeReadsAsHome() {
+        var shanghai = Calendar(identifier: .gregorian); shanghai.timeZone = zone
+        // 1_800_000_000 is 2027-01-15 16:00:00 in Shanghai.
+        func at(_ y: Int, _ m: Int, _ d: Int, _ h: Int, _ min: Int) -> Date {
+            shanghai.date(from: DateComponents(year: y, month: m, day: d, hour: h, minute: min))!
+        }
+        XCTAssertEqual(ClearBalanceText.dayTime(at(2027, 1, 15, 11, 20), now: now, calendar: shanghai), "今天 11:20")
+        XCTAssertEqual(ClearBalanceText.dayTime(now.addingTimeInterval(-60), now: now, calendar: shanghai), "今天 15:59", "no 刚刚")
+        XCTAssertEqual(ClearBalanceText.dayTime(at(2027, 1, 15, 0, 0), now: now, calendar: shanghai), "今天 00:00")
+        XCTAssertEqual(ClearBalanceText.dayTime(at(2027, 1, 14, 23, 59), now: now, calendar: shanghai), "昨天 23:59")
+        XCTAssertEqual(ClearBalanceText.dayTime(at(2027, 1, 14, 18, 46), now: now, calendar: shanghai), "昨天 18:46")
+        XCTAssertEqual(ClearBalanceText.dayTime(at(2027, 1, 13, 8, 41), now: now, calendar: shanghai), "1月13日 08:41", "no weekday")
+        XCTAssertEqual(ClearBalanceText.dayTime(at(2027, 1, 1, 8, 5), now: now, calendar: shanghai), "1月1日 08:05")
+        XCTAssertEqual(ClearBalanceText.dayTime(at(2026, 12, 31, 21, 5), now: now, calendar: shanghai), "2026年12月31日 21:05")
+        XCTAssertEqual(ClearBalanceText.dayTime(at(2026, 11, 18, 8, 41), now: now, calendar: shanghai), "2026年11月18日 08:41")
+        // Yesterday across the new year is still 昨天.
+        let newYear = at(2027, 1, 1, 9, 0)
+        XCTAssertEqual(ClearBalanceText.dayTime(at(2026, 12, 31, 22, 10), now: newYear, calendar: shanghai), "昨天 22:10")
+        // The days and the clock follow the calendar's time zone: 16:00 in Shanghai is 08:00 in London.
+        var london = Calendar(identifier: .gregorian); london.timeZone = TimeZone(identifier: "Europe/London")!
+        XCTAssertEqual(ClearBalanceText.dayTime(now, now: now, calendar: london), "今天 08:00")
+        XCTAssertEqual(ClearBalanceText.dayTime(at(2027, 1, 15, 7, 30), now: now, calendar: london), "昨天 23:30")
+        // A 12-hour or another region's calendar still writes 24 hours and 月/日.
+        var us = shanghai; us.locale = Locale(identifier: "en_US")
+        XCTAssertEqual(ClearBalanceText.dayTime(at(2027, 1, 14, 18, 46), now: now, calendar: us), "昨天 18:46")
+        XCTAssertEqual(ClearBalanceText.dayTime(at(2027, 1, 10, 18, 46), now: now, calendar: us), "1月10日 18:46")
+    }
 }

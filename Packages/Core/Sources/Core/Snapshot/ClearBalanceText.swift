@@ -112,5 +112,19 @@ public enum ClearBalanceText {
         return date.formatted(day) + " " + clock(date, timeZone: timeZone)
     }
 
+    /// 上次热水 on home and the 订单 tab's times out of a day group: 「今天 11:20」, 「昨天 11:20」,
+    /// 「11月18日 08:41」, with 「2025年」 in front only outside `now`'s year. 24-hour in `calendar`
+    /// (the school's, or the sample's), whatever the phone's region or its 12/24-hour setting.
+    public static func dayTime(_ date: Date, now: Date, calendar: Calendar) -> String {
+        let parts = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: date)
+        let time = String(format: "%02d:%02d", parts.hour ?? 0, parts.minute ?? 0)
+        if calendar.isDate(date, inSameDayAs: now) { return "今天 " + time }
+        if let yesterday = calendar.date(byAdding: .day, value: -1, to: now), calendar.isDate(date, inSameDayAs: yesterday) {
+            return "昨天 " + time
+        }
+        let year = parts.year == calendar.component(.year, from: now) ? "" : "\(parts.year ?? 0)年"
+        return year + "\(parts.month ?? 0)月\(parts.day ?? 0)日 " + time
+    }
+
     private static var gregorian: Calendar { Calendar(identifier: .gregorian) }
 }
