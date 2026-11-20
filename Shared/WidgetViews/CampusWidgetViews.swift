@@ -105,10 +105,14 @@ struct CampusWidgetFace: View {
     var body: some View {
         if ClearScriptsFace.draws(model, medium:medium, theme:theme) {
             ClearScriptsFace(model:model)
+        } else if Self.drawsWarm(theme:theme) {
+            WarmWidgetFace(model:model, medium:medium)
         } else {
             face
         }
     }
+    /// 暖橙's apricot face (`WarmWidgetFace`); 清爽 keeps the faces below.
+    static func drawsWarm(theme: AppTheme) -> Bool { theme != .clear }
 
     private var face: some View {
         Group {

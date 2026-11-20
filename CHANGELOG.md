@@ -4,6 +4,10 @@
 
 ## [0.11.1]
 
+### Changed
+
+- 暖橙's home-screen widget has a face of its own: a warm apricot ground with the mascot in the top-right corner and the icons in orange. Electricity leads, its number over a level bar out of 100 度; below your 电量 reminder line the number, 度 and the bar turn red. The small widget has the campus card under a hairline; the medium one has it in its own column with 电费余额, and says 「每天约用 X 度」 instead of 「昨天用了 X 度」. Signed out it shows the mascot with 「登录后显示余额和电量」; while loading the same layout shows grey bars with the mascot; old numbers on the small widget say 「昨天 · 打开 App 更新」 where the bar was, and an expired login greys the card's number. 清爽's widget is unchanged.
+
 ### Fixed
 
 - 电量's 「够用约 N 天」 stayed the same however much electricity was left (13.6 度 and 182.5 度 both read 「够用约 11 天」), so running low never turned it red or said 只够到今晚／明晚. The school's `preUseDay` is how many days what is left lasts, not a day's use; the app divided by it as if it were. Home now counts those days from the reading (13.6 度 lasting 1.2 days reads 「只够到明晚」 in red), and the low-electricity notification names 今晚／明晚 from them. With no estimate, or one of 0, below 0 or over 365 days, the line is hidden rather than wrong.
