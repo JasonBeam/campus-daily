@@ -28,6 +28,9 @@ final class ShowerBalanceGateModelTests: XCTestCase {
     /// −0.50, read now.
     static let owed = ShowerBalance(amount:Money(yuanString:"-0.50")!, readAt:Date())
     static func balance(fen: Int) -> ShowerBalance { ShowerBalance(amount:Money(fen:fen), readAt:Date()) }
+    /// What each theme says for `owed` (copy v2 §1).
+    static let warmLine = "校园卡欠了 ¥0.50，充上再来洗。"
+    static let clearLine = "校园卡余额 -¥0.50；请充值后再开始洗澡"
 
     /// A binding whose controller a start has matched already: a start goes straight to the page.
     var matched: ShowerBinding {
@@ -96,13 +99,11 @@ final class ShowerBalanceGateModelTests: XCTestCase {
         XCTAssertEqual(shower.startBlock, .balanceNegative)
     }
 
-    /// Siri and Shortcuts can't see the page: the refusal says 余额 and 充值.
+    /// Siri and Shortcuts can't see the page: the refusal says what the card owes.
     func testTheRefusalTextSaysTheBalance() async throws {
         let shower = try await model()
         shower.noteBalance(Self.owed)
-        let text = shower.startRefusalText
-        XCTAssertTrue(text.contains("余额"), text)
-        XCTAssertTrue(text.contains("充值"), text)
+        XCTAssertEqual(shower.startRefusalText, Self.warmLine)
     }
 
     /// The other reasons say what is going on first.
@@ -227,10 +228,8 @@ final class ShowerBalanceGateModelTests: XCTestCase {
         shower.noteBalance(Self.owed)
         let warm = await shortcutRefusal(shower)
         let clear = await shortcutRefusal(shower, clear:true)
-        for text in [warm, clear] {
-            XCTAssertNotNil(text, "refused")
-            XCTAssertTrue(text?.contains("余额") ?? false, text ?? "nil")
-        }
+        XCTAssertEqual(warm, Self.warmLine)
+        XCTAssertEqual(clear, Self.clearLine)
         assertNothingSent(shower, "Siri")
     }
 
@@ -240,7 +239,7 @@ final class ShowerBalanceGateModelTests: XCTestCase {
         let shower = try await model()
         shower.noteBalance(Self.owed)
         let text = await shortcutRefusal(shower)
-        XCTAssertTrue(text?.contains("余额") ?? false, text ?? "nil")
+        XCTAssertEqual(text, Self.warmLine)
         assertNothingSent(shower, "Siri, never asked")
     }
 
@@ -250,7 +249,7 @@ final class ShowerBalanceGateModelTests: XCTestCase {
         let shower = try await model(record:stopped)
         shower.noteBalance(Self.owed)
         let text = await shortcutRefusal(shower)
-        XCTAssertTrue(text?.contains("余额") ?? false, text ?? "nil")
+        XCTAssertEqual(text, Self.warmLine)
         XCTAssertEqual(link.connects, 0)
         XCTAssertEqual(http.sent, 0)
     }
@@ -261,7 +260,7 @@ final class ShowerBalanceGateModelTests: XCTestCase {
     func testTheNextRefusalTextIsTheBalance() async throws {
         let shower = try await model(record:stopped)
         shower.noteBalance(Self.owed)
-        XCTAssertTrue(shower.startRefusalText.contains("余额"), shower.startRefusalText)
+        XCTAssertEqual(shower.startRefusalText, Self.warmLine)
         XCTAssertEqual(shower.nextBlock, .balanceNegative, "the line under 开始下一次洗澡")
     }
 
@@ -280,7 +279,8 @@ final class ShowerBalanceGateModelTests: XCTestCase {
         shower.holdForSignOut()
         let text = await shortcutRefusal(shower)
         XCTAssertEqual(text, shower.startRefusalText)
-        XCTAssertFalse(text?.contains("余额") ?? true, text ?? "nil")
+        XCTAssertNotNil(text)
+        XCTAssertFalse(text?.contains("欠") ?? true, text ?? "nil")
         XCTAssertTrue(text?.contains("学校账号") ?? false, text ?? "nil")
         XCTAssertEqual(link.connects, 0)
     }
@@ -291,7 +291,8 @@ final class ShowerBalanceGateModelTests: XCTestCase {
         shower.noteBalance(Self.owed)
         XCTAssertEqual(shower.startBlock, .unsettled)
         let text = await shortcutRefusal(shower)
-        XCTAssertFalse(text?.contains("余额") ?? true, text ?? "nil")
+        XCTAssertNotNil(text)
+        XCTAssertFalse(text?.contains("欠") ?? true, text ?? "nil")
         // (No connect assertion: the record's own check may reach the controller, as today.)
     }
 

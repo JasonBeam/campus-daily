@@ -672,7 +672,7 @@ enum ShowerProfileFiles {
     func balanceRefusal(clear: Bool) -> String? {
         let block = state.showerOver ? nextBlock : startBlock
         guard block == .balanceNegative else { return nil }
-        return ShowerStartBlock.balanceNegative.text(clear:clear)
+        return ShowerStartBlock.balanceNegative.text(clear:clear, balance:balance?.amount)
     }
 
     /// Read-only state probe of the session's controller (Settings › 高级 › 检查水控状态).

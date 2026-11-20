@@ -60,19 +60,29 @@ final class ShowerStartBlockBalanceTests: XCTestCase {
         XCTAssertEqual(ShowerStartBlock.allCases.last, .balanceNegative)
     }
 
-    /// Both themes say it under the button (the words are Camo's; here only that they say
-    /// 余额 and 充值, the way the brief asks), as the other reasons do.
+    /// Both themes say it under the button with what the card owes (copy v2 §1).
     func testItSaysWhyInBothThemes() {
-        let warm = ShowerStartBlock.balanceNegative.warm
-        let clear = ShowerStartBlock.balanceNegative.clear
-        XCTAssertNotNil(warm)
-        XCTAssertNotNil(clear)
-        for line in [warm, clear].compactMap({ $0 }) {
-            XCTAssertTrue(line.contains("余额"), line)
-            XCTAssertTrue(line.contains("充值"), line)
-        }
-        XCTAssertTrue(warm?.hasSuffix("。") ?? false, "暖橙 ends its sentences")
-        XCTAssertFalse(clear?.hasSuffix("。") ?? true, "清爽 has no sentence-final 。")
+        let owed = Money(fen:-50)
+        XCTAssertEqual(ShowerStartBlock.balanceNegative.text(clear:false, balance:owed), "校园卡欠了 ¥0.50，充上再来洗。")
+        XCTAssertEqual(ShowerStartBlock.balanceNegative.text(clear:true, balance:owed), "校园卡余额 -¥0.50；请充值后再开始洗澡")
+        XCTAssertEqual(ShowerStartBlock.balanceLine(Money(fen:-12345), clear:false), "校园卡欠了 ¥123.45，充上再来洗。")
+        XCTAssertEqual(ShowerStartBlock.balanceLine(Money(fen:-1), clear:true), "校园卡余额 -¥0.01；请充值后再开始洗澡")
+        // Without the amount (never drawn: the balance is known when it refuses).
+        XCTAssertTrue(ShowerStartBlock.balanceNegative.warm?.hasSuffix("。") ?? false, "暖橙 ends its sentences")
+        XCTAssertFalse(ShowerStartBlock.balanceNegative.clear?.hasSuffix("。") ?? true, "清爽 has no sentence-final 。")
+        XCTAssertEqual(ShowerStartBlock.balanceNegative.text(clear:true, balance:nil), ShowerStartBlock.balanceNegative.clear)
+        // Another reason ignores the balance.
+        XCTAssertEqual(ShowerStartBlock.busy.text(clear:false, balance:owed), ShowerStartBlock.busy.warm)
+    }
+
+    /// Its headline, and one link: the campus card's top-up page.
+    func testTitleAndTopUpLink() {
+        XCTAssertEqual(ShowerStartBlock.balanceNegative.title(clear:false), "校园卡欠费了")
+        XCTAssertEqual(ShowerStartBlock.balanceNegative.title(clear:true), "校园卡已欠费")
+        XCTAssertEqual(ShowerStartBlock.balanceNegative.links(clear:false), [.topUp])
+        XCTAssertEqual(ShowerStartBlock.balanceNegative.links(clear:true), [.topUp])
+        XCTAssertEqual(ShowerStartBlock.linkTitle(.topUp, clear:false), "去充值")
+        XCTAssertEqual(ShowerStartBlock.linkTitle(.topUp, clear:true), "前往校园充值")
     }
 
     /// Not a reason that replaces the headline's status line.

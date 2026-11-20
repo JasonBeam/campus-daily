@@ -61,7 +61,7 @@ struct ClearShowerDock: View {
                 primary(checking ? FirstCheckText.checkingButton : live && shower.busy ? ClearShowerText.busyButton : ClearShowerText.start,
                         symbol:"arrow.up.right", spinning:checking || live && shower.busy,
                         spinnerOnly:launchSpinner && block == .launching, enabled:mayStart && !checking, action:start)
-                    .accessibilityHint(block?.clear ?? "")
+                    .accessibilityHint(shower.startReason(block, clear:true) ?? "")
                     .accessibilityIdentifier("startWater")
                     .modifier(ShowerLaunchSpinner(launching:block == .launching, shown:$launchSpinner))
                 if checking {
@@ -69,10 +69,10 @@ struct ClearShowerDock: View {
                     EmptyView()
                 } else if let failure = flow.checkFailure {
                     FirstCheckFailureLine(failure:failure, clear:true)
-                } else if let reason = block?.clear {
-                    ShowerStartReason(text:reason) {
+                } else if let reason = shower.startReason(block, clear:true) {
+                    ShowerStartReason(text:reason, digits:block == .balanceNegative) {
                         ForEach(block?.links(clear:true) ?? [], id:\.self) { link in
-                            NavigationLink(value:link == .settings ? ClearRoute.account : ClearRoute.dorm) {
+                            NavigationLink(value:Self.route(link)) {
                                 ShowerStartReasonLinkLabel(text:ShowerStartBlock.linkTitle(link, clear:true), clear:true)
                             }
                             .buttonStyle(RowPressStyle())
@@ -147,6 +147,15 @@ struct ClearShowerDock: View {
         .padding(.horizontal, inline ? 0 : 20).padding(.vertical, inline ? 0 : 12)
         .frame(maxWidth:.infinity)
         .background(inline ? Color.clear : NativeTheme.background)
+    }
+
+    /// Where a reason's link goes on 清爽's stack.
+    static func route(_ link: ShowerStartBlock.Link) -> ClearRoute {
+        switch link {
+        case .settings: return .account
+        case .topUp: return .card
+        case .dorm, .checkController, .cardRecords: return .dorm
+        }
     }
 
     // MARK: Actions

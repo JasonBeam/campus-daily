@@ -81,8 +81,11 @@ final class ShowerStartBlockModelTests: XCTestCase {
         XCTAssertNil(shower.demoReadyDorm, "drawn without a dorm")
         XCTAssertEqual(HomeView.ShowerPageDemo.record("sh-detail-block-storage"), .idle)
         XCTAssertNil(HomeView.ShowerPageDemo.record("sh-detail-block-nope"))
-        // The balance has no demo page yet (its words and face wait for Camo).
-        XCTAssertEqual(Set(HomeView.ShowerPageDemo.blocks.values), Set(ShowerStartBlock.allCases).subtracting([.balanceNegative]))
+        XCTAssertEqual(Set(HomeView.ShowerPageDemo.blocks.values), Set(ShowerStartBlock.allCases))
+        HomeView.ShowerPageDemo.apply("sh-detail-block-balance", to:shower)
+        XCTAssertEqual(shower.startBlock, .balanceNegative)
+        XCTAssertEqual(shower.startReason(shower.startBlock, clear:false), "校园卡欠了 ¥0.50，充上再来洗。", "the demo's -¥0.50")
+        XCTAssertEqual(shower.startReason(shower.startBlock, clear:true), "校园卡余额 -¥0.50；请充值后再开始洗澡")
         HomeView.ShowerPageDemo.apply(nil, to:shower)
         XCTAssertEqual(shower.startBlock, .notConfigured, "back to the live model's")
         XCTAssertNil(shower.demoStartBlock)
