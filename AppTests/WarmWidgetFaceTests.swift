@@ -83,6 +83,34 @@ final class WarmWidgetFaceTests: XCTestCase {
         XCTAssertEqual(WarmWidgetFace.cornerMascot, 20)
     }
 
+    /// How much ink a line of text puts on white, at 1×.
+    @MainActor private func ink(_ text: Text) -> Int {
+        let renderer = ImageRenderer(content:text.foregroundStyle(.black).frame(width:340, height:40).background(Color.white))
+        renderer.scale = 1
+        guard let image = renderer.cgImage,
+              let ctx = CGContext(data:nil, width:image.width, height:image.height, bitsPerComponent:8, bytesPerRow:image.width * 4,
+                                  space:CGColorSpaceCreateDeviceRGB(), bitmapInfo:CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return 0 }
+        ctx.draw(image, in:CGRect(x:0, y:0, width:image.width, height:image.height))
+        let px = ctx.data!.bindMemory(to:UInt8.self, capacity:image.width * image.height * 4)
+        var sum = 0
+        for i in 0..<(image.width * image.height) { sum += 765 - Int(px[i * 4]) - Int(px[i * 4 + 1]) - Int(px[i * 4 + 2]) }
+        return sum / 255
+    }
+
+    /// The signed-out lines are PingFang SC Semibold: the system font's semibold falls back to a
+    /// lighter Han weight, so 「登录后显示余额和电量」 looked regular.
+    @MainActor func testTheSignedOutLinesAreSemiboldInChinese() {
+        let line = "登录后显示余额和电量"
+        for size: CGFloat in [15, 17] {
+            let face = ink(Text(line).font(WarmWidgetFace.signedOutFont(size)))
+            let pingFangSemibold = ink(Text(line).font(.custom("PingFangSC-Semibold", fixedSize:size)))
+            let systemSemibold = ink(Text(line).font(.system(size:size, weight:.semibold)))
+            XCTAssertGreaterThan(pingFangSemibold, systemSemibold, "the system font's semibold is lighter in Chinese")
+            XCTAssertEqual(face, pingFangSemibold, "\(size) pt")
+        }
+    }
+
     /// Accented, tinted and clear Home Screens draw no mascot at all, in the corner or signed out.
     func testTheMascotIsDrawnOnlyInFullColor() {
         XCTAssertTrue(WarmWidgetFace.drawsMascot(.fullColor))

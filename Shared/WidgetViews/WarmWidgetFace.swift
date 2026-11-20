@@ -19,6 +19,9 @@ struct WarmWidgetFace: View {
     static func signedOutMascot(medium: Bool) -> CGFloat { medium ? 64 : 40 }
     /// The mascot only on a full-colour Home Screen: accented, tinted and clear ones draw none.
     static func drawsMascot(_ mode: WidgetRenderingMode) -> Bool { mode == .fullColor }
+    /// The signed-out lines in PingFang SC Semibold: the system font's semibold falls back to a
+    /// lighter Han weight, and the lines read as regular.
+    static func signedOutFont(_ size: CGFloat) -> Font { .custom("PingFangSC-Semibold", fixedSize:size) }
 
     enum Content: Equatable {
         case signedOut, firstRead, numbers
@@ -95,7 +98,7 @@ struct WarmWidgetFace: View {
                 HStack(spacing:16) {
                     if drawsMascot { mascot(Self.signedOutMascot(medium:true)) }
                     VStack(alignment:.leading, spacing:4) {
-                        Text("登录后显示余额和电量").font(.system(size:17, weight:.semibold)).foregroundStyle(P.ink)
+                        Text("登录后显示余额和电量").font(Self.signedOutFont(17)).foregroundStyle(P.ink)
                             .lineLimit(1).minimumScaleFactor(0.8)
                         Text("打开 App，登录学校账号").font(.system(size:13)).foregroundStyle(P.ink2).lineLimit(1)
                     }
@@ -105,7 +108,7 @@ struct WarmWidgetFace: View {
                 VStack(alignment:.leading, spacing:12) {
                     if drawsMascot { mascot(Self.signedOutMascot(medium:false)).padding(.leading,-4) }
                     // Broken after 显示: the line would otherwise leave 量 alone on the second.
-                    Text("登录后显示\n余额和电量").font(.system(size:15, weight:.semibold)).foregroundStyle(P.ink)
+                    Text("登录后显示\n余额和电量").font(Self.signedOutFont(15)).foregroundStyle(P.ink)
                         .lineSpacing(2).fixedSize(horizontal:false, vertical:true)
                 }
             }
