@@ -47,4 +47,10 @@ final class LowPowerNotificationTests: XCTestCase {
         XCTAssertEqual(Reminders.powerBody(meter(kwh:8.4, days:1.2), readAt:threeDaysAgo, now:now, calendar:calendar),
                        "只剩 8.4 度了，记得充电费。")
     }
+
+    /// Nothing left while the school still gives days: no end time, only the short form.
+    func testNothingLeftIsTheShortFormEvenWithDays() {
+        XCTAssertEqual(Reminders.powerBody(meter(kwh:0, days:1.2), readAt:now, now:now, calendar:calendar),
+                       "只剩 0.0 度了，记得充电费。")
+    }
 }

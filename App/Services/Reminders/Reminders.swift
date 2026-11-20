@@ -341,11 +341,11 @@ enum ReminderKey {
     /// 「只剩 8.6 度，大约能用到明晚。记得充电费。」 when the school's days left, counted from the
     /// reading time (`readAt`), end tonight or tomorrow; else the short form. Settings changes judge
     /// the stored reading again, which may be a day old, so the end is never counted from now:
-    /// without a reading time, or with the end already past, only the short form.
+    /// without a reading time, with the end already past, or with nothing left, only the short form.
     static func powerBody(_ meter: Meter, readAt: Date?, now: Date = Date(), calendar: Calendar = .current) -> String {
         let remaining = meter.remainingKWh ?? 0
         let left = Theme.kwh(remaining)
-        if let days = meter.usableDaysLeft, let readAt {
+        if remaining > 0, let days = meter.usableDaysLeft, let readAt {
             let end = readAt.addingTimeInterval(NSDecimalNumber(decimal:days).doubleValue * 86_400)
             if end > now {
                 let word: String? = calendar.isDate(end, inSameDayAs:now) ? "今晚"

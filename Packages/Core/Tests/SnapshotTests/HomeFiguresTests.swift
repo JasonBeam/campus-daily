@@ -133,6 +133,14 @@ final class HomeFiguresTests: XCTestCase {
         XCTAssertEqual(power(snapshot(kwh: 0, days: 0)), HomeFigure(value: 0, low: true, subline: nil))
     }
 
+    /// Nothing left while the school still gives days: red, and no days line or night.
+    func testPowerNothingLeftIgnoresTheSchoolsDays() {
+        XCTAssertEqual(power(snapshot(kwh: 0, days: 3.2)), HomeFigure(value: 0, low: true, subline: nil))
+        XCTAssertEqual(power(snapshot(kwh: 0, days: 1.2)), HomeFigure(value: 0, low: true, subline: nil))
+        XCTAssertEqual(HomeFigures.power(snapshot(kwh: 0, days: 3.2), signedIn: true, lines: ReminderLines(powerKWh: 0, cardYuan: 20),
+                                         now: now, calendar: calendar).low, true)
+    }
+
     /// 8: under the line with many days left: red, and the days still say how long.
     func testPowerUnderTheLineKeepsTheSchoolsDays() {
         XCTAssertEqual(power(snapshot(kwh: 9.9, days: 19)), HomeFigure(value: 9.9, low: true, subline: .lastsDays(19)))
