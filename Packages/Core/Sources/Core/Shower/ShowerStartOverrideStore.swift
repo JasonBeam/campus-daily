@@ -6,10 +6,12 @@ public struct ShowerStartOverrideStore: Sendable {
     let store: SecureStore
     public init(store: SecureStore) { self.store = store }
 
-    /// Off when absent or unreadable.
-    // Red-phase stub: always off.
-    public var isOn: Bool { false }
+    private static let on = Data("allowsDebt".utf8)
 
-    // Red-phase stub: writes nothing.
-    public func set(_ on: Bool) throws {}
+    /// Off when absent or unreadable.
+    public var isOn: Bool { ((try? store.read(.showerStartMode)) ?? nil) == Self.on }
+
+    public func set(_ on: Bool) throws {
+        if on { try store.write(Self.on, for: .showerStartMode) } else { try store.delete(.showerStartMode) }
+    }
 }
