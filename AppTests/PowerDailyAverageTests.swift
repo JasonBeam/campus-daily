@@ -39,8 +39,8 @@ final class PowerDailyAverageTests: XCTestCase {
     }
 
     func testClearWidgetLine() {
-        XCTAssertEqual(ClearScriptsFace.dailyAverageRow(Decimal(string:"11.333")).value, "11.33 度")
-        XCTAssertEqual(ClearScriptsFace.dailyAverageRow(Decimal(string:"11.333")).label, "日均约")
+        XCTAssertEqual(ClearScriptsFace.dailyAverageRow(Decimal(string:"11.333")).value, "约 11.33 度")
+        XCTAssertEqual(ClearScriptsFace.dailyAverageRow(Decimal(string:"11.333")).label, "日均")
         XCTAssertEqual(ClearScriptsFace.dailyAverageRow(nil).value, "未返回")
         XCTAssertEqual(ClearScriptsFace.dailyAverageRow(nil).label, "日均")
     }

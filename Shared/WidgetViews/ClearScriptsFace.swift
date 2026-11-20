@@ -12,10 +12,11 @@ struct ClearScriptsFace: View {
     /// The widget's own margins, drawn over.
     static let margin: CGFloat = 16
 
-    /// 「11.33 度 … 日均约」, or 「未返回 … 日均」 without a daily average.
+    /// 「约 11.33 度 … 日均」, or 「未返回 … 日均」 without a daily average.
     static func dailyAverageRow(_ value: Decimal?) -> (value: String, label: String) {
-        guard let value else { return (ClearBalanceText.notReturned, ClearBalanceText.dailyAverageMissingLabel) }
-        return (ClearBalanceText.number(value) + " 度", ClearBalanceText.dailyAverageLabel)
+        let label = ClearBalanceText.widgetDailyAverageLabel
+        guard let value else { return (ClearBalanceText.notReturned, label) }
+        return (ClearBalanceText.widgetDailyAveragePrefix + ClearBalanceText.number(value) + " 度", label)
     }
 
     private func number(_ value: Decimal?) -> String {

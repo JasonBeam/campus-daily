@@ -16,6 +16,9 @@ public enum ClearBalanceText {
     public static let dailyAverageLabel = "日均约"
     public static let dailyAverageMissingLabel = "日均"
     public static let notReturned = "未返回"
+    /// The small widget's row: 「约 5.10 度 … 日均」, or 「未返回 … 日均」.
+    public static let widgetDailyAverageLabel = "日均"
+    public static let widgetDailyAveragePrefix = "约 "
     /// A reading older than this (or with a failed read after it) is drawn as 「上次」.
     public static let staleAfter: TimeInterval = 20 * 60
 
