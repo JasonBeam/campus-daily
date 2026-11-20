@@ -106,4 +106,15 @@ final class RecentFitTests: XCTestCase {
         // Before the first measurement the chrome changes nothing.
         XCTAssertEqual(RecentFit.count(viewport: 0, above: 0, chrome: 28, rowHeights: rows), 3)
     }
+
+    /// 暖橙 home: the rows that fit, and at least one while there is a record, even where it
+    /// makes home scroll (a small phone, an accessibility size).
+    func testHomeShowsAtLeastOneRow() {
+        XCTAssertEqual(RecentFit.homeRows(viewport: 800, above: 400, header: 40, rowHeights: rows), 6)
+        XCTAssertEqual(RecentFit.homeRows(viewport: 600, above: 500, header: 40, rowHeights: rows), 1, "none fits: one")
+        XCTAssertEqual(RecentFit.homeRows(viewport: 600, above: 1400, rowHeights: [180, 180]), 1, "an accessibility size")
+        XCTAssertEqual(RecentFit.homeRows(viewport: 0, above: 0, rowHeights: rows), 3, "not measured yet")
+        XCTAssertEqual(RecentFit.homeRows(viewport: 800, above: 400, rowHeights: []), 0, "nothing to show")
+        XCTAssertEqual(RecentFit.homeRows(viewport: 800, above: 1400, rowHeights: [0, 0]), 0, "no row measured yet")
+    }
 }

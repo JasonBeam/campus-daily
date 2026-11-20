@@ -21,7 +21,8 @@ extension HomeView {
     }
 
     @ViewBuilder func content(_ data: HomeData) -> some View {
-        let now = Date()
+        // Read here so a day change (`clock`) draws home again: the date, 昨天花了 and 最近.
+        let now = max(Date(), clock)
         VStack(alignment:.leading, spacing:0) {
             dateBlock(data).id("top")
             HomeDuo(card:data.cardFigure(now:now), power:data.powerFigure(now:now),
@@ -196,8 +197,8 @@ extension HomeView {
     /// none, and no section, when not one does. The header and every row are measured, unseen,
     /// at the current text size.
     func recentCount(_ items: [RecentItem]) -> Int {
-        RecentFit.count(viewport:homeViewport, above:recentsTop, header:recentsHeaderHeight,
-                        rowHeights:items.map { Double(recentHeights[$0.id] ?? 0) })
+        RecentFit.homeRows(viewport:homeViewport, above:recentsTop, header:recentsHeaderHeight,
+                           rowHeights:items.map { Double(recentHeights[$0.id] ?? 0) })
     }
 
     /// No height of its own: the section's top, and the hidden header and rows measured there.
@@ -210,20 +211,26 @@ extension HomeView {
     /// The app's own showers and open orders open their page; finished orders and card records are plain rows.
     @ViewBuilder func recentRows(_ items: [RecentItem]) -> some View {
         let shown = items.prefix(recentCount(items))
-        VStack(spacing:0) {
-            ForEach(Array(shown.enumerated()), id:\.element.id) { index, item in
-                VStack(spacing:0) {
-                    if index > 0 { RowSeparator() }
-                    if item.source == .app, item.opensPage {
-                        // A button, not a link: the page says it came from 最近.
-                        let route = item.kind == .laundry ? HomeRoute.laundry : HomeRoute.shower
-                        Button { mark(.recents, [route.debugPage]); path.append(route) } label: { RecentRow(item:item) }
-                            .buttonStyle(RowPressStyle())
-                    } else {
-                        RecentRow(item:item)
+        // By the minute, so 刚刚 and 今天/昨天 move on while home stays open (`clock` covers
+        // the day change and the return to the foreground at once).
+        let moved = clock
+        TimelineView(.everyMinute) { context in
+            let now = max(context.date, moved)
+            VStack(spacing:0) {
+                ForEach(Array(shown.enumerated()), id:\.element.id) { index, item in
+                    VStack(spacing:0) {
+                        if index > 0 { RowSeparator() }
+                        if item.source == .app, item.opensPage {
+                            // A button, not a link: the page says it came from 最近.
+                            let route = item.kind == .laundry ? HomeRoute.laundry : HomeRoute.shower
+                            Button { mark(.recents, [route.debugPage]); path.append(route) } label: { RecentRow(item:item, now:now) }
+                                .buttonStyle(RowPressStyle())
+                        } else {
+                            RecentRow(item:item, now:now)
+                        }
                     }
+                    .transition(reduceMotion ? .opacity : .move(edge:.top).combined(with:.opacity))
                 }
-                .transition(reduceMotion ? .opacity : .move(edge:.top).combined(with:.opacity))
             }
         }
         .frame(maxWidth:.infinity, alignment:.top)
@@ -238,7 +245,7 @@ extension HomeView {
             ForEach(Array(items.enumerated()), id:\.element.id) { index, item in
                 VStack(spacing:0) {
                     if index > 0 { RowSeparator() }
-                    RecentRow(item:item)
+                    RecentRow(item:item, now:clock)
                 }
                 .onGeometryChange(for:CGFloat.self) { $0.size.height } action: { recentHeights[item.id] = $0 }
             }

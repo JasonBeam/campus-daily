@@ -30,6 +30,9 @@ struct HomeView: View {
     /// bar when it is above the page. Follows the stack's frame only, never what the bar shows,
     /// so the date in the bar can't feed back into it (the 0b98af5 layout loop).
     @State var barTop: CGFloat = 64
+    /// The time 「最近」 (and the date at the top) count from: moved on at a day change
+    /// (`DayChange`) and on coming back to the foreground, and by the minute while open.
+    @State var clock = Date()
     /// For 「最近」 (`recentCount`): the visible height, where it starts, its header's height and each row's height.
     @State var homeViewport: CGFloat = 0
     @State var recentsTop: CGFloat = 0
@@ -281,6 +284,9 @@ struct HomeView: View {
         .onChange(of:shower.page.page?.phase) { _, _ in followShowerPage(shower.page.presented) }
         .onChange(of:shower.pageWanted) { _, _ in followShowerPage(shower.page.presented) }
         .onChange(of:data.laundryDone, initial:true) { _, done in presentLaundryDone(done) }
+        // 今天/昨天 follow the day: at midnight while open, and on coming back after it.
+        .onReceive(DayChange.publisher) { clock = Date() }
+        .onChange(of:phase) { _, now in if now == .active { clock = Date() } }
         // A done panel that arrived while another panel was up is shown once that one closes.
         .onChange(of:panel == nil) { _, clear in if clear { presentLaundryDone(data.laundryDone) } }
         .modifier(ReminderHooks(open:{ follow($0 == .laundry ? [.laundry] : []) }, homeClear:homeClear))

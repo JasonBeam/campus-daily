@@ -32,6 +32,16 @@ public enum RecentFit {
         return count
     }
 
+    /// 暖橙 home's rows: the whole ones that fit (`count`), and at least one once a row is
+    /// measured, even where it makes home scroll (a small phone, an accessibility size), so
+    /// 「最近」 never goes while there is a record.
+    public static func homeRows(viewport: Double, above: Double, header: Double = 0, rowHeights: [Double],
+                                bottomGap: Double = bottomGap) -> Int {
+        let fit = count(viewport: viewport, above: above, header: header, rowHeights: rowHeights, bottomGap: bottomGap)
+        guard fit == 0, let tallest = rowHeights.max(), tallest > 0 else { return fit }
+        return 1
+    }
+
     /// Whether 「最近」 is shown at all: not as a header (and 全部) over no row.
     public static func showsSection(viewport: Double, above: Double, header: Double = 0, chrome: Double = 0, rowHeights: [Double],
                                     bottomGap: Double = bottomGap) -> Bool {
