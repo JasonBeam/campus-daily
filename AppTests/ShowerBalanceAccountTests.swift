@@ -451,6 +451,47 @@ final class ShowerBalanceAccountTests: XCTestCase {
         XCTAssertFalse(shower.balanceBlocks)
     }
 
+    /// −0.50 read and trusted; the next round reads +12.50 but its last write is skipped: a
+    /// newer snapshot was stored meanwhile (`.older`), or the lease was lost. A skipped round is
+    /// no result at all: the −0.50 and the refusal stay (nothing is taken from the snapshot).
+    func testASkippedRoundLeavesTheTrustedBalance() async throws {
+        for skip in ["older", "lease lost"] {
+            try await setUp()
+            let (campus, shower) = try await models()
+            await campus.refresh(force:true)
+            XCTAssertEqual(shower.balance?.amount, Money(fen:-50), "\(skip): trusted −0.50")
+            school.yuan = 12.5
+            school.holdRecords = true
+            let refresh = Task { await campus.refresh(force:true) }
+            await waitUntil { self.school.isHoldingRecords }
+            XCTAssertTrue(school.isHoldingRecords, "\(skip): the next round's records are on their way")
+            if skip == "older" {
+                // The other process stored a newer reading meanwhile.
+                try SharedSnapshotStore(store:store).saveSnapshot(HomeSnapshot(checkedAt:Date().addingTimeInterval(60)))
+            } else {
+                try RefreshLease(file:LeaseFile(url:leaseURL), owner:"widget-synthetic").clear()
+            }
+            school.releaseRecords()
+            await refresh.value
+            XCTAssertEqual(shower.balance?.amount, Money(fen:-50), "\(skip): the trusted −0.50 stays")
+            XCTAssertTrue(shower.balanceBlocks, skip)
+            await assertRefused(shower, skip)
+        }
+    }
+
+    /// A current round that really couldn't read the balance (its request failed) makes it
+    /// unknown: the earlier −0.50 no longer refuses a start.
+    func testACurrentRoundThatCantReadTheBalanceMakesItUnknown() async throws {
+        let (campus, shower) = try await models()
+        await campus.refresh(force:true)
+        XCTAssertEqual(shower.balance?.amount, Money(fen:-50))
+        school.failBalance = true
+        await campus.refresh(force:true)
+        XCTAssertNil(shower.balance, "unknown")
+        XCTAssertFalse(shower.balanceBlocks)
+        XCTAssertTrue(shower.mayStart)
+    }
+
     // MARK: A fallback card is no proof of who signed in
 
     /// A is signed in; a read finds only B's card on the account and falls back to it (shown on
