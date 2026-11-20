@@ -2,7 +2,7 @@
 
 版本记录采用 Keep a Changelog 格式。源码仓库不保存个人签名证书或个人配置；iPhone 版通过 TestFlight 公开链接分发，Android 安装包通过 GitHub Release 分发。
 
-## [0.11.1]
+## [0.11.1] - 2026-11-20
 
 ### Changed
 
