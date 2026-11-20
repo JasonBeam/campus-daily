@@ -8,6 +8,7 @@
 
 - 暖橙's home-screen widget has a face of its own: a warm apricot ground with the mascot in the top-right corner and the icons in orange. Electricity leads, its number over a level bar out of 100 度; below your 电量 reminder line the number, 度 and the bar turn red. The small widget has the campus card under a hairline; the medium one has it in its own column with 电费余额, and says 「每天约用 X 度」 instead of 「昨天用了 X 度」. Signed out it shows the mascot with 「登录后显示余额和电量」; while loading the same layout shows grey bars with the mascot; old numbers on the small widget say 「昨天 · 打开 App 更新」 where the bar was, and an expired login greys the card's number. On a tinted or clear Home Screen the widget draws no mascot. 清爽's widget is unchanged.
 - 暖橙's 热水洗澡 page speaks home's language instead of the system grey look: the warm grey page without white cards, each section under a hairline, a 28 pt headline with an orange dot, the settled 本次费用 in large rounded figures and 最近一次用水 drawn as a 最近 row. Its button is home's black pill with a drop (开始洗澡, 开始下一次洗澡), orange with a stop symbol for 结束并结算 and grey when it can't be tapped; the reasons under it and 核对水控，看看水控信息 › take the theme's colours. Nothing it does or says changed, and 清爽's page is unchanged.
+- 暖橙's home 「最近」 reads seven days of campus card records instead of three, so a quiet week still fills it; 昨天花了 shows whenever the records reach a day before yesterday.
 
 ### Fixed
 
@@ -15,6 +16,11 @@
 - Where the app showed that number as a day's use, it now shows the daily average behind the school's estimate (what is left ÷ the days): 暖橙's medium widget 「每天约用 X 度」 (was 「昨天用了 X 度」), 清爽's 双余额 card 「日均约 X 度」 (was 「昨日」; 「日均 未返回」 without one), 清爽's small widget 「约 X 度 … 日均」 (was 「X 度 … 昨日用电」; 「未返回 … 日均」 without one), and the sample's 电量 page 「每天约用」.
 - The low-electricity notification counts its 今晚／明晚 from when the meter was read, not from when it is sent: a reading from yesterday 09:15 lasting 1.2 days no longer says 「大约能用到明晚」 while home says 「只够到今晚」. Without a reading time, or once the estimated end has passed, it says only 「只剩 X 度了，记得充电费。」.
 - With 0 度 left (or less) and the school still giving days, home shows the red number with no 「够用约 N 天」 line and the notification names no night, only 「只剩 0.0 度了，记得充电费。」.
+- 暖橙's 「最近」 keeps at least one row while there is a record, on a small phone or at an accessibility text size, and its 今天／昨天／刚刚 move on while home is open, at midnight, after a time change and on coming back to the app.
+- Money reads 「¥1.32」 and times use 24 hours whatever the phone's region (it was 「CN¥1.32」 and 「下午6:46」 / 「6:46 PM」): the shower page's cost, 最近一次用水 (both themes), 清爽's 订单 tab and laundry amounts, 核对于, 查询于, 读取于 and 清爽's home read stamps. 最近一次用水's date reads as home's 「最近」 (「今天 06:54」, 「昨天 18:43」).
+- Once the first check found the controller, the start says the water is opening (暖橙 「正在打开水控…」, 清爽 「正在申请授权…」) instead of still connecting.
+- U净's login at accessibility text sizes: 「获取验证码」 sits under the code field at full width, and the agreement wraps above its switch.
+- 先看看示例: the sample bar and home stay on screen at the largest text sizes (the bar's words over 换个样子 and 去登录); 暖橙's date shows in the navigation bar under the sample bar; 清爽's 「电表设置 / 绑定电表」 says the sample's message at once; and the sample's records and shower use the phone's time zone, so abroad they agree and no meal sits ahead of the clock.
 
 ### Removed
 
