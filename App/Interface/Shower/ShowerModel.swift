@@ -118,6 +118,9 @@ enum ShowerProfileFiles {
     @Published var demoReadyDorm: String?
     /// campusdaily://demo/sh-detail-block-...: the greyed-out 开始洗澡 with this reason (no engine).
     @Published var demoStartBlock: ShowerStartBlock?
+    /// campusdaily://demo/sh-detail-ready / -run / -done: the record 暖橙's 热水洗澡 reads instead
+    /// of this model's (drawn set up, with `demoReadyDorm`; nothing connects).
+    @Published var demoDetailRecord: ShowerState?
     #endif
     @Published private(set) var residenceReviewRequired: Bool
     /// The review is there because the last 退出登录 did not complete (the same person is still

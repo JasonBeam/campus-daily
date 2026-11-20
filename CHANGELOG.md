@@ -7,6 +7,7 @@
 ### Changed
 
 - 暖橙's home-screen widget has a face of its own: a warm apricot ground with the mascot in the top-right corner and the icons in orange. Electricity leads, its number over a level bar out of 100 度; below your 电量 reminder line the number, 度 and the bar turn red. The small widget has the campus card under a hairline; the medium one has it in its own column with 电费余额, and says 「每天约用 X 度」 instead of 「昨天用了 X 度」. Signed out it shows the mascot with 「登录后显示余额和电量」; while loading the same layout shows grey bars with the mascot; old numbers on the small widget say 「昨天 · 打开 App 更新」 where the bar was, and an expired login greys the card's number. 清爽's widget is unchanged.
+- 暖橙's 热水洗澡 page speaks home's language instead of the system grey look: the warm grey page without white cards, each section under a hairline, a 28 pt headline with an orange dot, the settled 本次费用 in large rounded figures and 最近一次用水 drawn as a 最近 row. Its button is home's black pill with a drop (开始洗澡, 开始下一次洗澡), orange with a stop symbol for 结束并结算 and grey when it can't be tapped; the reasons under it and 核对水控，看看水控信息 › take the theme's colours. Nothing it does or says changed, and 清爽's page is unchanged.
 
 ### Fixed
 
