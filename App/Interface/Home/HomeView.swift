@@ -212,6 +212,7 @@ struct HomeView: View {
 
             SettlementOverlay(result:$panel)
         }
+        .environment(\.schoolCalendar, data.calendar)
         .sensoryFeedback(.impact(weight:.medium), trigger:startTick)
         .sensoryFeedback(.success, trigger:successTick)
         .sensoryFeedback(.error, trigger:errorTick)

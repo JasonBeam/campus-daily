@@ -16,7 +16,7 @@ final class SampleDataTests: XCTestCase {
     }
 
     func testNoRecordIsLaterThanAQuarterHourAgo() {
-        let school = SchoolCalendar.shanghai
+        let school = SampleData.calendar
         let home = SampleData.homeSnapshot(now: now).activity.value?.records ?? []
         let all = SampleData.cardRecords(days: SampleData.recordDays, now: now)
         for record in home + all {
@@ -25,7 +25,7 @@ final class SampleDataTests: XCTestCase {
     }
 
     func testRecordsAreNewestFirstWithVouchers() {
-        let school = SchoolCalendar.shanghai
+        let school = SampleData.calendar
         let rows = SampleData.cardRecords(days: SampleData.recordDays, now: now)
         XCTAssertGreaterThan(rows.count, 60)
         XCTAssertTrue(rows.allSatisfy { $0.voucher?.hasPrefix("99") == true })

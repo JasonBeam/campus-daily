@@ -18,9 +18,11 @@ struct ShowerCardRecords: Sendable {
     var openFromCover: (@MainActor @Sendable () -> Void)?
     /// Home's last read of the card's recent records (nil while signed out or unread).
     var records: [CardRecord]?
+    /// The calendar `records` are written in (`HomeData.calendar`).
+    var calendar = SchoolCalendar.shanghai
 
     /// The card's charge for the shower started at `started`, when exactly one matched.
-    func charge(started: Date?) -> Money? { ShowerCardCharge.amount(started:started, records:records) }
+    func charge(started: Date?) -> Money? { ShowerCardCharge.amount(started:started, records:records, calendar:calendar) }
 }
 
 private struct ShowerCardRecordsKey: EnvironmentKey {

@@ -10,12 +10,16 @@ public struct CardRecordsSource: Sendable {
     public var samePerson: @Sendable (Int) async -> Bool
     /// The card session expired: renew it as home does; true when the card was read again.
     public var renew: @Sendable () async -> Bool
+    /// The calendar its records are written in: the school's, or the sample's (`SampleData.calendar`).
+    public var calendar: Calendar
 
     public init(stamp: @escaping @Sendable () async -> Int,
                 page: @escaping @Sendable (CardHistoryQuery, Int) async throws -> CardRecordPage,
                 samePerson: @escaping @Sendable (Int) async -> Bool = { _ in true },
-                renew: @escaping @Sendable () async -> Bool = { false }) {
+                renew: @escaping @Sendable () async -> Bool = { false },
+                calendar: Calendar = SchoolCalendar.shanghai) {
         self.stamp = stamp; self.page = page; self.samePerson = samePerson; self.renew = renew
+        self.calendar = calendar
     }
 }
 
@@ -61,13 +65,16 @@ public struct CardRecordsState: Sendable, Equatable {
         self.source = source; self.now = now
     }
 
+    /// The calendar the records' days and times are read in (`CardRecordsSource.calendar`).
+    public var calendar: Calendar { source.calendar }
+
     /// From today again (first visit, pull).
     public func reload() async {
         generation += 1
         let mine = generation
         state.reloading = true
         let stamp = await source.stamp()
-        let load = await Self.read(CardHistory(now: now()), source: source, stamp: stamp)
+        let load = await Self.read(CardHistory(now: now(), calendar: source.calendar), source: source, stamp: stamp)
         guard mine == generation else { return }
         self.stamp = stamp
         var next = state

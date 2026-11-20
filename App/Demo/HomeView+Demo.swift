@@ -229,7 +229,7 @@ extension HomeView {
         static func charging(_ data: HomeData, started: Date?) -> HomeData {
             var data = data
             guard let started, var activity = data.snapshot.activity.value else { return data }
-            let school = SchoolCalendar.shanghai
+            let school = data.calendar
             let c = school.dateComponents([.year, .month, .day, .hour, .minute, .second], from:started)
             activity.records.append(CardRecord(date:String(format:"%04d%02d%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0),
                                                time:String(format:"%02d%02d%02d", c.hour ?? 0, c.minute ?? 0, c.second ?? 0),

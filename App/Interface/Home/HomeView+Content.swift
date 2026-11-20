@@ -4,8 +4,11 @@ import Core
 extension HomeView {
     // MARK: Content
 
+    /// The calendar of the data on screen: the school's, or the sample's (`HomeData.calendar`).
+    var schoolCalendar: Calendar { demo?.calendar ?? SchoolCalendar.shanghai }
+
     /// The school's day, as 最近 below it.
-    var dateTitle: String { SchoolCalendar.dayTitle(Date()) }
+    var dateTitle: String { SchoolCalendar.dayTitle(Date(), calendar:schoolCalendar) }
 
     /// A balance tapped: 校园充值 (on `route`, which the sample shows as its own page), the
     /// meter picker, or the login step.
@@ -52,7 +55,7 @@ extension HomeView {
         VStack(spacing:2) {
             // Rounded like the numbers under it; other pages keep the theme's serif title.
             Text(dateTitle).scaledFont(appTheme.titleFont.size, appTheme.titleFont.weight, design:.rounded, relativeTo:.title2).foregroundStyle(Theme.ink)
-            Text([SchoolCalendar.weekday(Date()), data.dorm].compactMap { $0 }.joined(separator:" · "))
+            Text([SchoolCalendar.weekday(Date(), calendar:data.calendar), data.dorm].compactMap { $0 }.joined(separator:" · "))
                 .scaledFont(13, design:.rounded, relativeTo:.footnote).foregroundStyle(Theme.ink2)
         }
         .frame(maxWidth:.infinity)
@@ -60,7 +63,7 @@ extension HomeView {
         // accessibility sizes the taller date would run under the bar, so it stays below it.
         .padding(.top,typeSize.isAccessibilitySize ? 0 : dateLift)
         .accessibilityElement(children:.ignore)
-        .accessibilityLabel([dateTitle, SchoolCalendar.weekday(Date()), data.dorm].compactMap { $0 }.joined(separator:"，"))
+        .accessibilityLabel([dateTitle, SchoolCalendar.weekday(Date(), calendar:data.calendar), data.dorm].compactMap { $0 }.joined(separator:"，"))
         .accessibilityAddTraits(.isHeader)
         .onGeometryChange(for:Bool.self) { $0.frame(in:.global).maxY < 64 } action: { scrolledPastDate = $0 }
     }

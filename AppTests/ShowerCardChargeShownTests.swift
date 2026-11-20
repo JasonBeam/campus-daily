@@ -27,7 +27,7 @@ final class ShowerCardChargeShownTests: XCTestCase {
     func testWarmPagesMatchFromTheCardRecords() {
         let start = Date().addingTimeInterval(-3600)
         let data = HomeView.ShowerPageDemo.charging(HomeData.sample(), started:start)
-        let records = ShowerCardRecords(records:data.snapshot.activity.value?.records)
+        let records = ShowerCardRecords(records:data.snapshot.activity.value?.records, calendar:data.calendar)
         XCTAssertEqual(records.charge(started:start), Money(fen:132))
         XCTAssertNil(records.charge(started:start.addingTimeInterval(1)))
         XCTAssertNil(ShowerCardRecords().charge(started:start), "signed out: no records, nothing shown")
@@ -37,7 +37,7 @@ final class ShowerCardChargeShownTests: XCTestCase {
     func testTheKeptDemoChargesOneShower() {
         let kept = HomeView.ShowerPageDemo.retained()
         let data = HomeView.ShowerPageDemo.charging(HomeData.sample(), started:HomeView.ShowerPageDemo.chargedStart(kept))
-        let records = ShowerCardRecords(records:data.snapshot.activity.value?.records)
+        let records = ShowerCardRecords(records:data.snapshot.activity.value?.records, calendar:data.calendar)
         XCTAssertEqual(kept.entries.map { records.charge(started:$0.started) }, [nil, nil, Money(fen:132)])
     }
 }

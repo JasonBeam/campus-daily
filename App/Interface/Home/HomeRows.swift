@@ -112,6 +112,7 @@ struct RecentRow: View {
     /// Under a day header (校园卡记录): the time alone, 「12:05 · 示例面馆」.
     var clockOnly = false
     @Environment(\.dynamicTypeSize) private var typeSize
+    @Environment(\.schoolCalendar) private var calendar
     @ScaledMetric(relativeTo:.title2) private var iconColumn: CGFloat = RowMetrics.iconColumn
     var body: some View {
         // Accessibility sizes: the icon sits on the first title line's baseline.
@@ -153,7 +154,7 @@ struct RecentRow: View {
         }
     }
     private var subtitle: String {
-        [clockOnly ? CardDays.clock(item.date) : Theme.when(item.date), item.detail].compactMap { $0 }.joined(separator:" · ")
+        [clockOnly ? CardDays.clock(item.date, calendar:calendar) : Theme.when(item.date, calendar:calendar), item.detail].compactMap { $0 }.joined(separator:" · ")
     }
 }
 
