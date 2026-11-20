@@ -217,8 +217,8 @@ struct PowerChoice: Identifiable, Equatable {
         await feedBalance(report, started:started)
     }
 
-    /// Hands this refresh round's own balance read to hot water (nil: the read failed, was
-    /// skipped or can't be trusted; a start goes), last, after its last await. Dropped as a
+    /// Hands this refresh round's own balance read to hot water (nil: the read failed or can't
+    /// be trusted; a start goes; a discarded round, its last write skipped, changes nothing), last, after its last await. Dropped as a
     /// whole when a sign-out, reset, login or account switch came since the round began (its
     /// `roundTag`, not this caller's), when a later round already handed over its result, when
     /// the refresh was cancelled, or when the read was not for whoever is signed in now (nil
@@ -231,7 +231,9 @@ struct PowerChoice: Identifiable, Equatable {
         guard started == signOutGeneration, report.roundTag == accountGeneration, report.round > balanceRound,
               !Task.isCancelled else { return }
         balanceRound = report.round
-        let own = report.ownBalance.flatMap {
+        // A discarded round (its last write skipped) leaves the balance held as it is.
+        guard case .delivered(let read) = report.balance else { return }
+        let own = read.flatMap {
             $0.counts(forPerson:person, signedIn:configured) ? ShowerBalance(amount:$0.amount, readAt:$0.readAt) : nil
         }
         hotWater()?.noteBalance(own)

@@ -33,10 +33,23 @@ public struct RefreshReport: Sendable, Equatable {
     /// while holding it): nothing was read here. `snapshot` is the stored one, and the app
     /// shows it without an error.
     public var leaseBusy: Bool
-    /// This refresh's own `SchoolReading.ownBalance` (never a stored value or one from the
-    /// other process); nil when signed out meanwhile, or when its last write was skipped (the
-    /// lease lost, a newer reading stored by the other process): such a read is no balance.
-    public var ownBalance: CardBalanceRead? = nil
+    /// What this refresh says about the card balance (`SchoolReading.ownBalance`, never a stored
+    /// value or one from the other process).
+    public enum BalanceResult: Sendable, Equatable {
+        /// The round's last write was skipped (judged older than the stored snapshot, the lease
+        /// lost, signed out or cancelled meanwhile): it says nothing, the balance already held
+        /// stays as it is.
+        case discarded
+        /// The round's result: its own read, or nil = unknown (this round really couldn't read
+        /// it: never got the lease, the read failed or was interrupted, the card not this login's).
+        case delivered(CardBalanceRead?)
+    }
+    public var balance: BalanceResult = .delivered(nil)
+    /// The delivered read, if any (nil both for unknown and for a discarded round).
+    public var ownBalance: CardBalanceRead? {
+        if case .delivered(let read) = balance { return read }
+        return nil
+    }
     /// The round (run) that produced this report: rounds start in this order, and every caller
     /// that joined one gets the same number. 0 = not from a round.
     public var round: Int = 0
@@ -291,8 +304,14 @@ public actor SnapshotRefresher {
         let (written, stored) = await write(reading, started: started, lease: lease)
         var report = written
         // Only a read this round actually stored as the newest one (whether or not the local save
-        // then failed): one whose write was skipped is no balance.
-        if stored, started == generation, report.outcome == .ok { report.ownBalance = reading.ownBalance }
+        // then failed) is delivered; a failed current round delivers unknown. One whose last write
+        // was skipped (older, lease lost, signed out, cancelled) is discarded: it must not clear a
+        // balance already held either.
+        if !stored || started != generation {
+            report.balance = .discarded
+        } else {
+            report.balance = .delivered(report.outcome == .ok ? reading.ownBalance : nil)
+        }
         // The heartbeat has stopped before the lease is given back: a renewal still running
         // would otherwise bring it back and hold the other process off for a whole lease.
         heartbeat?.cancel()
