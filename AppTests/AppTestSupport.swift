@@ -36,9 +36,16 @@ final class ScriptedStore: SecureStore, @unchecked Sendable {
         if let error { throw error }
         return data
     }
+    private var _afterWrite: (@Sendable (StoreKey) -> Void)?
+    /// Runs after each write, outside the store's lock, on the writer's thread (it may block it).
+    var afterWrite: (@Sendable (StoreKey) -> Void)? {
+        get { lock.withLock { _afterWrite } }
+        set { lock.withLock { _afterWrite = newValue } }
+    }
     func write(_ data: Data, for key: StoreKey) throws {
         if refusing.contains(key) { throw StorageError(operation: "write", status: -25308) }
         lock.withLock { items[key.rawValue] = data }
+        afterWrite?(key)
     }
     func delete(_ key: StoreKey) throws {
         if refusing.contains(key) { throw StorageError(operation: "delete", status: -25308) }

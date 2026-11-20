@@ -75,6 +75,9 @@ struct PowerChoice: Identifiable, Equatable {
     /// Tests only: runs once the previous person's widget snapshot is cleared, before the
     /// hot-water binding goes (`previousPersonCleared`).
     var afterSnapshotCleared: (@MainActor () async -> Void)?
+    /// Tests only: runs in a refresh right before its last await (who is signed in now), once
+    /// the early checks passed. Red-phase stub: not called yet.
+    var beforeBalanceStamp: (@MainActor () async -> Void)?
     #endif
 
     init(services: CampusServices, stack: SchoolRefreshStack, reminders: Reminders, hotWater: @escaping () -> ShowerModel?) {

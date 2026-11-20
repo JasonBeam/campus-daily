@@ -482,6 +482,45 @@ final class ShowerBalanceGateModelTests: XCTestCase {
         XCTAssertEqual(held.sent, 1, "sent once, never again")
     }
 
+    /// The platform, held until `release`, then a successful authorize (synthetic values).
+    final class HeldAuthorizeOK: HTTPClient, @unchecked Sendable {
+        private let lock = NSLock()
+        private var _sent = 0
+        private var waiting: CheckedContinuation<Void, Never>?
+        private var released = false
+        var sent: Int { lock.withLock { _sent } }
+        var isHolding: Bool { lock.withLock { waiting != nil } }
+        func send(_ request: HTTPRequest) async throws -> HTTPResponse {
+            let go: Bool = lock.withLock { _sent += 1; return released }
+            if !go { await withCheckedContinuation { c in lock.withLock { waiting = c } } }
+            let body = #"{"code":0,"data":{"machineid":"11223344","studentId":"a1b2c3d4","systemData":"000102030405060708090a0b0c0d0e"}}"#
+            return HTTPResponse(status:200, headers:["Content-Type":"application/json"], body:Data(body.utf8))
+        }
+        func release() { lock.withLock { released = true; let w = waiting; waiting = nil; return w }?.resume() }
+    }
+
+    /// Consume wins, with an authorize that succeeds: the balance coming back below zero after
+    /// the request left interrupts nothing; the open command still goes to the controller.
+    func testAfterASuccessfulAuthorizeTheOpenWriteGoesOn() async throws {
+        let platform = HeldAuthorizeOK()
+        link.replies = [FakeFramesApp.idle, FakeFramesApp.active]
+        let shower = try await model(platform:platform)
+        XCTAssertEqual(shower.tapStart(.page), .started(firstCheck:false))
+        await waitUntil { platform.isHolding }
+        XCTAssertTrue(platform.isHolding, "the authorize request is out")
+        let slot = shower.startSlot?.id
+        let permit = shower.startSlot?.permit
+        shower.noteBalance(Self.owed)
+        XCTAssertEqual(shower.startSlot?.id, slot, "the start that won is left alone")
+        XCTAssertEqual(permit?.revoke(), false, "consumed: nothing to take back")
+        platform.release()
+        await settle(shower)
+        XCTAssertEqual(platform.sent, 1, "one authorize")
+        XCTAssertEqual(link.writes.first, ShowerFrames.probeCommand)
+        XCTAssertGreaterThanOrEqual(link.writes.count, 2, "the open command was written after the authorize")
+        XCTAssertNotEqual(shower.state.phase, .idle, "the start went on")
+    }
+
     /// The same when debt is turned off after the authorize request left.
     func testTurningDebtOffAfterTheAuthorizeLeftChangesNothing() async throws {
         let held = HeldHTTP()
