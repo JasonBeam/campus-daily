@@ -41,7 +41,7 @@ public enum ClearBalanceText {
 
     /// 「昨日 4.60 度」, or 「昨日 未返回」 when the meter didn't report it.
     public static func yesterday(_ meter: Meter?) -> String {
-        "昨日 " + (meter?.dailyUseKWh.map { number($0) + " 度" } ?? "未返回")
+        "昨日 " + (meter?.estimatedDaysLeft.map { number($0) + " 度" } ?? "未返回")
     }
 
     /// Older than `staleAfter`, read after it with an error, or dated in the future.

@@ -46,7 +46,7 @@ struct CampusWidgetModel: Sendable {
         guard let snapshot, state != .never else { self = .never; return }
         let meter = snapshot.power.value
         self.init(state:state, remainingKWh:meter?.remainingKWh, balance:snapshot.card.value?.yuan,
-                  yesterdayKWh:meter?.dailyUseKWh, powerBalance:meter?.leftMoney?.yuan,
+                  yesterdayKWh:meter?.estimatedDaysLeft, powerBalance:meter?.leftMoney?.yuan,
                   updated:WidgetStatus.shownUpdated(snapshot), now:now)
         tap = WidgetStatus.tap(snapshot:snapshot, account:account, now:now)
     }

@@ -9,7 +9,7 @@ final class ClearBalanceTextTests: XCTestCase {
 
     func meter(money: String? = "25.56", daily: Decimal? = 4.6) -> Meter {
         Meter(comAddress: "M1", name: "3栋108", leftMoney: money.flatMap { Money(yuanString: $0) },
-              remainingKWh: 42.6, dailyUseKWh: daily)
+              remainingKWh: 42.6, estimatedDaysLeft: daily)
     }
 
     func testTitlesAndLinks() {

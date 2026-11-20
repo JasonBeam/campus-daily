@@ -41,21 +41,21 @@ public enum SampleData {
         ]
     }
 
-    /// Home as the sample shows it: read 25 minutes ago, 42.6 kWh left at 4.6 a day.
+    /// Home as the sample shows it: read 25 minutes ago, 42.6 kWh left for 9.26 days (4.6 a day).
     public static func homeSnapshot(now: Date, school: Calendar = SampleData.calendar) -> HomeSnapshot {
-        homeSnapshot(now: now, read: now.addingTimeInterval(-25 * 60), kwh: "42.6", dailyKWh: "4.6", school: school)
+        homeSnapshot(now: now, read: now.addingTimeInterval(-25 * 60), kwh: "42.6", daysLeft: "9.26", school: school)
     }
 
     /// Synthetic balance, meter and card records, never later than `now`, written in `school`
     /// (`calendar`: the phone's time zone) as the school writes its own. Meals sit at meal times
     /// (07:42, 12:16, 17:58) of the last days, so 最近 reads like a real week.
-    public static func homeSnapshot(now: Date, read: Date, kwh: String, dailyKWh: String, balance: String = "86.50",
+    public static func homeSnapshot(now: Date, read: Date, kwh: String, daysLeft: String, balance: String = "86.50",
                                     school: Calendar = SampleData.calendar) -> HomeSnapshot {
         let range = CardActivity.range(at: now, calendar: school)
         var s = HomeSnapshot()
         s.card.succeed(Money(yuanString: balance)!, at: read)
         s.power.succeed(Meter(comAddress: "demo-meter", name: roomLabel, remainingKWh: Decimal(string: kwh),
-                              dailyUseKWh: Decimal(string: dailyKWh)), at: read)
+                              estimatedDaysLeft: Decimal(string: daysLeft)), at: read)
         let today = school.startOfDay(for: now)
         func at(_ hour: Int, _ minute: Int, daysBack: Int) -> Date {
             let day = school.date(byAdding: .day, value: -daysBack, to: today) ?? today
@@ -93,7 +93,7 @@ public enum SampleData {
         func at(_ hour: Int, _ minute: Int, _ back: Int) -> Date {
             school.date(bySettingHour: hour, minute: minute, second: 0, of: day(back)) ?? day(back)
         }
-        let home = homeSnapshot(now: now, read: now, kwh: "0", dailyKWh: "0", school: school).activity.value?.records ?? []
+        let home = homeSnapshot(now: now, read: now, kwh: "0", daysLeft: "0", school: school).activity.value?.records ?? []
         var rows: [CardRecord] = []
         for back in days {
             if back < 3 {

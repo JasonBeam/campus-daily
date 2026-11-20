@@ -147,7 +147,7 @@ public struct EcyktClient: Sendable {
         return Meter(comAddress: address, name: name,
                      leftMoney: row["leftMoney"]?.text.flatMap(Money.init(yuanString:)),
                      remainingKWh: DecimalText.parse(row["remaining"]?.text),
-                     dailyUseKWh: DecimalText.parse(row["preUseDay"]?.text),
+                     estimatedDaysLeft: DecimalText.parse(row["preUseDay"]?.text),
                      price: DecimalText.parse(row["price"]?.text),
                      online: online,
                      switchState: row["meterStatus"]?.text,

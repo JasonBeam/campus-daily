@@ -338,12 +338,13 @@ enum ReminderKey {
         let parts = Calendar.current.dateComponents([.year, .month, .day], from:date)
         return "\(parts.year ?? 0)-\(parts.month ?? 0)-\(parts.day ?? 0)"
     }
-    /// 「只剩 8.6 度，大约能用到明晚。记得充电费。」 when yesterday's use gives 今晚/明晚, else the short form.
+    /// 「只剩 8.6 度，大约能用到明晚。记得充电费。」 when the school's days left end tonight or
+    /// tomorrow, else the short form.
     static func powerBody(_ meter: Meter, now: Date = Date(), calendar: Calendar = .current) -> String {
         let remaining = meter.remainingKWh ?? 0
         let left = Theme.kwh(remaining)
-        if let used = meter.dailyUseKWh, used > 0 {
-            let hours = NSDecimalNumber(decimal:remaining / used).doubleValue * 24
+        if let days = meter.usableDaysLeft {
+            let hours = NSDecimalNumber(decimal:days).doubleValue * 24
             let end = now.addingTimeInterval(hours * 3600)
             let word: String? = calendar.isDate(end, inSameDayAs:now) ? "今晚"
                 : calendar.date(byAdding:.day, value:1, to:now).map { calendar.isDate(end, inSameDayAs:$0) } == true ? "明晚" : nil

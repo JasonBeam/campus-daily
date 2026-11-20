@@ -11,11 +11,11 @@ final class HomeFiguresTests: XCTestCase {
     }
     var now: Date { date(10, 30, 9, 15) }
 
-    func snapshot(balance: String? = "86.50", kwh: Decimal? = 42.6, daily: Decimal? = 4.5,
+    func snapshot(balance: String? = "86.50", kwh: Decimal? = 42.6, days: Decimal? = 9.4,
                   readAt: Date? = nil, records: [CardRecord]? = nil) -> HomeSnapshot {
         var s = HomeSnapshot()
         if let balance { s.card.succeed(Money(yuanString: balance)!, at: readAt ?? now) }
-        s.power.succeed(Meter(comAddress: "M1", name: "3栋108", remainingKWh: kwh, dailyUseKWh: daily), at: readAt ?? now)
+        s.power.succeed(Meter(comAddress: "M1", name: "3栋108", remainingKWh: kwh, estimatedDaysLeft: days), at: readAt ?? now)
         if let records {
             s.activity.succeed(CardActivity(records: records, begin: "20261028", end: "20261030", complete: true), at: readAt ?? now)
         }
@@ -32,59 +32,110 @@ final class HomeFiguresTests: XCTestCase {
     // MARK: 电量
 
     func testPowerLastsDaysRoundedDown() {
-        let f = power(snapshot(kwh: 42.6, daily: 4.5))
+        let f = power(snapshot(kwh: 42.6, days: 9.4))
         XCTAssertEqual(f, HomeFigure(value: 42.6, low: false, subline: .lastsDays(9)))
         XCTAssertEqual(f.subline?.text, "够用约 9 天")
     }
 
-    func testPowerWithoutPreviousDayHidesTheSubline() {
-        XCTAssertEqual(power(snapshot(kwh: 42.6, daily: nil)), HomeFigure(value: 42.6, low: false, subline: nil))
-        XCTAssertEqual(power(snapshot(kwh: 42.6, daily: 0)), HomeFigure(value: 42.6, low: false, subline: nil))
+    /// 6: no estimate, or one that can't be right (0, negative, over a year): no line rather
+    /// than a wrong number.
+    func testPowerWithoutAUsableEstimateHidesTheSubline() {
+        for days: Decimal? in [nil, 0, -2, 365.1, 366, 9999] {
+            XCTAssertEqual(power(snapshot(kwh: 42.6, days: days)), HomeFigure(value: 42.6, low: false, subline: nil), "\(String(describing: days))")
+        }
+        XCTAssertEqual(power(snapshot(kwh: 400, days: 365)).subline, .lastsDays(365))
     }
 
     func testPowerUnderTheLineIsLowEvenWithManyDays() {
-        let f = power(snapshot(kwh: 9.9, daily: 0.5))
+        let f = power(snapshot(kwh: 9.9, days: 19.8))
         XCTAssertEqual(f, HomeFigure(value: 9.9, low: true, subline: .lastsDays(19)))
     }
 
     func testPowerUnderTheLineWithoutEstimateIsLowWithNoSubline() {
-        XCTAssertEqual(power(snapshot(kwh: 3, daily: nil)), HomeFigure(value: 3, low: true, subline: nil))
+        XCTAssertEqual(power(snapshot(kwh: 3, days: nil)), HomeFigure(value: 3, low: true, subline: nil))
     }
 
     func testPowerAtTheLineIsNotLow() {
-        XCTAssertFalse(power(snapshot(kwh: 10, daily: nil)).low)
+        XCTAssertFalse(power(snapshot(kwh: 10, days: nil)).low)
     }
 
     func testPowerOneDayLeftAboveTheLineIsLowUntilTomorrowNight() {
         // 09:15 + 1.5 days = tomorrow 21:15.
-        let f = power(snapshot(kwh: 30, daily: 20))
+        let f = power(snapshot(kwh: 30, days: 1.5))
         XCTAssertEqual(f, HomeFigure(value: 30, low: true, subline: .lastsUntil(.tomorrow)))
         XCTAssertEqual(f.subline?.text, "只够到明晚")
     }
 
     func testPowerRunningOutTodayIsTonight() {
-        let f = power(snapshot(kwh: 12, daily: 24))
+        let f = power(snapshot(kwh: 12, days: 0.5))
         XCTAssertEqual(f.subline, .lastsUntil(.tonight))
         XCTAssertEqual(f.subline?.text, "只够到今晚")
     }
 
     func testPowerEstimateCountsFromTheReading() {
         // Read two days ago with 1.9 days left: already past, tonight.
-        let old = snapshot(kwh: 19, daily: 10, readAt: date(10, 28, 9))
+        let old = snapshot(kwh: 19, days: 1.9, readAt: date(10, 28, 9))
         XCTAssertEqual(power(old).subline, .lastsUntil(.tonight))
     }
 
     /// Read two days ago with 3 days left: one day is left now, so it is red and says tomorrow
     /// night, not 「够用约 3 天」.
     func testPowerDaysLeftCountFromNow() {
-        let old = snapshot(kwh: 30, daily: 10, readAt: date(10, 28, 9, 15))
+        let old = snapshot(kwh: 30, days: 3, readAt: date(10, 28, 9, 15))
         XCTAssertEqual(power(old), HomeFigure(value: 30, low: true, subline: .lastsUntil(.tomorrow)))
-        let older = snapshot(kwh: 60, daily: 10, readAt: date(10, 28, 9, 15))
+        let older = snapshot(kwh: 60, days: 6, readAt: date(10, 28, 9, 15))
         XCTAssertEqual(power(older), HomeFigure(value: 60, low: false, subline: .lastsDays(4)))
     }
 
     func testPowerTwoDaysIsNotLow() {
-        XCTAssertEqual(power(snapshot(kwh: 40, daily: 20)), HomeFigure(value: 40, low: false, subline: .lastsDays(2)))
+        XCTAssertEqual(power(snapshot(kwh: 40, days: 2)), HomeFigure(value: 40, low: false, subline: .lastsDays(2)))
+    }
+
+    // MARK: 电量 from the school's estimate (feedback 988405a3)
+
+    /// 1: 13.6 度 the school says lasts 1.2 days, read now (09:15): out tomorrow ~14:00, red.
+    func testPowerLowReadingFromTheFeedbackLastsUntilTomorrowNight() {
+        let f = power(snapshot(kwh: 13.6, days: 1.2))
+        XCTAssertEqual(f, HomeFigure(value: 13.6, low: true, subline: .lastsUntil(.tomorrow)))
+        XCTAssertEqual(f.subline?.text, "只够到明晚")
+    }
+
+    /// 2: after the top-up, 182.5 度 for 16.1 days.
+    func testPowerToppedUpReadingFromTheFeedbackLastsSixteenDays() {
+        let f = power(snapshot(kwh: 182.5, days: 16.1))
+        XCTAssertEqual(f, HomeFigure(value: 182.5, low: false, subline: .lastsDays(16)))
+        XCTAssertEqual(f.subline?.text, "够用约 16 天")
+    }
+
+    /// 3: the same use (about 11.3 度 a day) before and after a top-up gives different days;
+    /// 「够用约 11 天」 at both was the bug.
+    func testPowerDaysFollowTheRemainingAtTheSameUse() {
+        let before = power(snapshot(kwh: 13.6, days: 1.2)).subline
+        let after = power(snapshot(kwh: 182.5, days: 16.1)).subline
+        XCTAssertNotEqual(before, after)
+        XCTAssertNotEqual(before, .lastsDays(11))
+        XCTAssertNotEqual(after, .lastsDays(11))
+    }
+
+    /// 4: 0.3 days from 09:15 ends at about 16:30 today.
+    func testPowerAFewHoursLeftIsTonight() {
+        XCTAssertEqual(power(snapshot(kwh: 12, days: 0.3)), HomeFigure(value: 12, low: true, subline: .lastsUntil(.tonight)))
+    }
+
+    /// 5: the school's 3 days counted from a reading two days old: one day left, red.
+    func testPowerEstimateFromAnOldReadingCountsFromTheReading() {
+        let old = snapshot(kwh: 34, days: 3.0, readAt: date(10, 28, 9, 15))
+        XCTAssertEqual(power(old), HomeFigure(value: 34, low: true, subline: .lastsUntil(.tomorrow)))
+    }
+
+    /// 7: nothing left and no estimate: red under the line, no days line.
+    func testPowerNothingLeftWithoutEstimateIsLowWithNoSubline() {
+        XCTAssertEqual(power(snapshot(kwh: 0, days: 0)), HomeFigure(value: 0, low: true, subline: nil))
+    }
+
+    /// 8: under the line with many days left: red, and the days still say how long.
+    func testPowerUnderTheLineKeepsTheSchoolsDays() {
+        XCTAssertEqual(power(snapshot(kwh: 9.9, days: 19)), HomeFigure(value: 9.9, low: true, subline: .lastsDays(19)))
     }
 
     func testPowerNotReadIsADashWithNoLine() {

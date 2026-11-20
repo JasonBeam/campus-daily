@@ -185,18 +185,36 @@ public struct Meter: Sendable, Equatable, Codable {
     public var name: String
     public var leftMoney: Money?
     public var remainingKWh: Decimal?
-    public var dailyUseKWh: Decimal?
+    /// `preUseDay`: the school's estimate of how many days `remaining` lasts (not a day's use:
+    /// it grows and shrinks with `remaining` at the same use, a top-up multiplies it).
+    public var estimatedDaysLeft: Decimal?
     public var price: Decimal?
     public var online: Bool?
     public var switchState: String?
     public var updatedAt: String?
 
     public init(comAddress: String, name: String, leftMoney: Money? = nil, remainingKWh: Decimal? = nil,
-                dailyUseKWh: Decimal? = nil, price: Decimal? = nil, online: Bool? = nil,
+                estimatedDaysLeft: Decimal? = nil, price: Decimal? = nil, online: Bool? = nil,
                 switchState: String? = nil, updatedAt: String? = nil) {
         self.comAddress = comAddress; self.name = name; self.leftMoney = leftMoney
-        self.remainingKWh = remainingKWh; self.dailyUseKWh = dailyUseKWh; self.price = price
+        self.remainingKWh = remainingKWh; self.estimatedDaysLeft = estimatedDaysLeft; self.price = price
         self.online = online; self.switchState = switchState; self.updatedAt = updatedAt
+    }
+
+    /// Builds before 0.11.1 kept `preUseDay` under `dailyUseKWh`; the key stays so either build
+    /// reads the other's cache, and it was always the days.
+    private enum CodingKeys: String, CodingKey {
+        case comAddress, name, leftMoney, remainingKWh, price, online, switchState, updatedAt
+        case estimatedDaysLeft = "dailyUseKWh"
+    }
+
+    /// Longer estimates than this are not believed.
+    public static let maxEstimatedDays: Decimal = 365
+
+    /// `estimatedDaysLeft` when it can be shown: above 0 and at most `maxEstimatedDays`.
+    public var usableDaysLeft: Decimal? {
+        guard let days = estimatedDaysLeft, days > 0, days <= Self.maxEstimatedDays else { return nil }
+        return days
     }
 }
 

@@ -10,7 +10,7 @@ final class SampleDataTests: XCTestCase {
         let s = SampleData.homeSnapshot(now: now)
         XCTAssertEqual(s.card.value, Money(yuanString: "86.50"))
         XCTAssertEqual(s.power.value?.remainingKWh, Decimal(string: "42.6"))
-        XCTAssertEqual(s.power.value?.dailyUseKWh, Decimal(string: "4.6"))
+        XCTAssertEqual(s.power.value?.estimatedDaysLeft, Decimal(string: "9.26"))
         XCTAssertEqual(s.roomLabel, "3栋108")
         XCTAssertFalse(s.activity.value?.records.isEmpty ?? true)
     }

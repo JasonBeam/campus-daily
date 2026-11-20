@@ -201,7 +201,7 @@ struct SamplePowerPage: View {
             Section {
                 row("宿舍", data.meterLocation ?? data.dorm ?? "")
                 row("剩余电量", meter?.remainingKWh.map { Theme.kwh($0) + " 度" } ?? "—")
-                row("每天约用", meter?.dailyUseKWh.map { Theme.kwh($0) + " 度" } ?? "—")
+                row("每天约用", meter?.estimatedDaysLeft.map { Theme.kwh($0) + " 度" } ?? "—")
                 if let subline = figure.subline { row("预计", subline.text) }
             } footer: {
                 if let read = data.snapshot.power.fetchedAt {
