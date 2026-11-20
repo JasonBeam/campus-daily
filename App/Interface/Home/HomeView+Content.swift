@@ -65,7 +65,9 @@ extension HomeView {
         .accessibilityElement(children:.ignore)
         .accessibilityLabel([dateTitle, SchoolCalendar.weekday(Date(), calendar:data.calendar), data.dorm].compactMap { $0 }.joined(separator:"，"))
         .accessibilityAddTraits(.isHeader)
-        .onGeometryChange(for:Bool.self) { $0.frame(in:.global).maxY < 64 } action: { scrolledPastDate = $0 }
+        // Under the bar once its bottom passes the bar's top edge (`barTop`): measured, so a bar
+        // above the page (the sample's) is counted.
+        .onGeometryChange(for:Bool.self) { [barTop] in $0.frame(in:.global).maxY < barTop } action: { scrolledPastDate = $0 }
     }
 
     // MARK: Shower
