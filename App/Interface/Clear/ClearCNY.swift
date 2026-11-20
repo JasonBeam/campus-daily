@@ -1,9 +1,9 @@
 import Foundation
 
-/// 清爽's amounts on the laundry page, its sheets' neighbours and the 订单 tab: the system
-/// currency format for CNY in the user's locale (「CN¥4.00」 outside mainland China's region).
+import Core
+
+/// 清爽's amounts on the laundry page, its sheets' neighbours and the 订单 tab: 「¥4.00」 whatever
+/// the phone's region (`ClearBalanceText.currency`; never 「CN¥4.00」).
 enum ClearCNY {
-    static func text(_ value: Decimal, locale: Locale = .current) -> String {
-        value.formatted(.currency(code:"CNY").locale(locale))
-    }
+    static func text(_ value: Decimal) -> String { ClearBalanceText.currency(value) }
 }

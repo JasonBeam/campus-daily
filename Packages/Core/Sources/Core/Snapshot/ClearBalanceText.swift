@@ -51,16 +51,14 @@ public enum ClearBalanceText {
     }
 
     /// The electricity column's time: 「查询 7:01」, 「上次 7:01」 once stale; nil before any read.
-    public static func powerStamp(_ tile: Tile<Meter>, now: Date, locale: Locale = .autoupdatingCurrent,
-                                  timeZone: TimeZone = .autoupdatingCurrent) -> String? {
+    public static func powerStamp(_ tile: Tile<Meter>, now: Date, timeZone: TimeZone = .autoupdatingCurrent) -> String? {
         guard let at = tile.fetchedAt else { return nil }
-        return (isStale(tile, now: now) ? "上次 " : "查询 ") + clock(at, locale: locale, timeZone: timeZone)
+        return (isStale(tile, now: now) ? "上次 " : "查询 ") + clock(at, timeZone: timeZone)
     }
 
     /// The card column's time: always 「查询 7:01」; nil before any read.
-    public static func cardStamp(_ tile: Tile<Money>, locale: Locale = .autoupdatingCurrent,
-                                 timeZone: TimeZone = .autoupdatingCurrent) -> String? {
-        tile.fetchedAt.map { "查询 " + clock($0, locale: locale, timeZone: timeZone) }
+    public static func cardStamp(_ tile: Tile<Money>, timeZone: TimeZone = .autoupdatingCurrent) -> String? {
+        tile.fetchedAt.map { "查询 " + clock($0, timeZone: timeZone) }
     }
 
     /// The card column's second small line: 「更新中」, 「已更新」, 「上次余额」, 「暂未获取」 or
@@ -80,24 +78,30 @@ public enum ClearBalanceText {
         return lines
     }
 
-    /// 「7:01」 in the reader's own clock style (「早上7:01」 in Chinese).
-    public static func clock(_ date: Date, locale: Locale = .autoupdatingCurrent,
-                             timeZone: TimeZone = .autoupdatingCurrent) -> String {
-        var style = Date.FormatStyle(date: .omitted, time: .shortened, locale: locale)
-        style.timeZone = timeZone
+    /// 「07:01」, 「18:46」 (「18:46:09」 with `seconds`): 24-hour whatever the phone's region or
+    /// its 12/24-hour setting, as 暖橙's times (never 「下午6:46」 or 「6:46 PM」).
+    public static func clock(_ date: Date, seconds: Bool = false, timeZone: TimeZone = .autoupdatingCurrent) -> String {
+        let style = seconds
+            ? Date.VerbatimFormatStyle(format: "\(hour: .twoDigits(clock: .twentyFourHour, hourCycle: .zeroBased)):\(minute: .twoDigits):\(second: .twoDigits)",
+                                       timeZone: timeZone, calendar: gregorian)
+            : Date.VerbatimFormatStyle(format: "\(hour: .twoDigits(clock: .twentyFourHour, hourCycle: .zeroBased)):\(minute: .twoDigits)",
+                                       timeZone: timeZone, calendar: gregorian)
         return date.formatted(style)
     }
 
-    /// 「¥1.32」 as the system writes yuan for the reader (「CN¥1.32」 outside China's region).
-    public static func currency(_ yuan: Decimal, locale: Locale = .autoupdatingCurrent) -> String {
-        yuan.formatted(.currency(code: "CNY").locale(locale))
+    /// 「¥1.32」, 「¥1,234.50」: always the 「¥」 sign and two places, whatever the phone's region
+    /// (the system's CNY style would write 「CN¥1.32」 outside China's).
+    public static func currency(_ yuan: Decimal) -> String {
+        (yuan < 0 ? "-¥" : "¥") + number(yuan < 0 ? -yuan : yuan)
     }
 
-    /// 「2026年11月9日 上午11:02」: when the last shower was settled.
-    public static func dateTime(_ date: Date, locale: Locale = .autoupdatingCurrent,
-                                timeZone: TimeZone = .autoupdatingCurrent) -> String {
-        var style = Date.FormatStyle(date: .abbreviated, time: .shortened, locale: locale)
-        style.timeZone = timeZone
-        return date.formatted(style)
+    /// 「2026年11月9日 18:46」: when the last shower was settled, in the same words whatever the
+    /// phone's region, with a 24-hour time.
+    public static func dateTime(_ date: Date, timeZone: TimeZone = .autoupdatingCurrent) -> String {
+        let day = Date.VerbatimFormatStyle(format: "\(year: .defaultDigits)年\(month: .defaultDigits)月\(day: .defaultDigits)日",
+                                           timeZone: timeZone, calendar: gregorian)
+        return date.formatted(day) + " " + clock(date, timeZone: timeZone)
     }
+
+    private static var gregorian: Calendar { Calendar(identifier: .gregorian) }
 }

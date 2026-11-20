@@ -176,7 +176,7 @@ struct SamplePowerPage: View {
                 if let subline = figure.subline { row("预计", subline.text) }
             } footer: {
                 if let read = data.snapshot.power.fetchedAt {
-                    Text("读取于 " + read.formatted(date:.abbreviated, time:.shortened))
+                    Text("读取于 " + ClearBalanceText.dateTime(read))
                 }
             }
             .listRowBackground(Theme.group)

@@ -47,21 +47,21 @@ final class ClearBalanceTextTests: XCTestCase {
 
     func testEachColumnHasItsOwnReadTime() {
         var power = Tile<Meter>()
-        XCTAssertNil(ClearBalanceText.powerStamp(power, now: now, locale: posix, timeZone: zone))
+        XCTAssertNil(ClearBalanceText.powerStamp(power, now: now, timeZone: zone))
         power.succeed(meter(), at: now.addingTimeInterval(-60))
-        let clock = ClearBalanceText.clock(now.addingTimeInterval(-60), locale: posix, timeZone: zone)
-        XCTAssertEqual(ClearBalanceText.powerStamp(power, now: now, locale: posix, timeZone: zone), "查询 " + clock)
+        let clock = ClearBalanceText.clock(now.addingTimeInterval(-60), timeZone: zone)
+        XCTAssertEqual(ClearBalanceText.powerStamp(power, now: now, timeZone: zone), "查询 " + clock)
         // Older than 20 minutes, or a failed read after it: 「上次」.
-        XCTAssertEqual(ClearBalanceText.powerStamp(power, now: now.addingTimeInterval(20 * 60 + 1), locale: posix, timeZone: zone),
+        XCTAssertEqual(ClearBalanceText.powerStamp(power, now: now.addingTimeInterval(20 * 60 + 1), timeZone: zone),
                        "上次 " + clock)
         power.fail(.offline, at: now)
-        XCTAssertEqual(ClearBalanceText.powerStamp(power, now: now, locale: posix, timeZone: zone), "上次 " + clock)
+        XCTAssertEqual(ClearBalanceText.powerStamp(power, now: now, timeZone: zone), "上次 " + clock)
 
         var card = Tile<Money>()
-        XCTAssertNil(ClearBalanceText.cardStamp(card, locale: posix, timeZone: zone))
+        XCTAssertNil(ClearBalanceText.cardStamp(card, timeZone: zone))
         card.succeed(Money(fen: 8650), at: now)
-        XCTAssertEqual(ClearBalanceText.cardStamp(card, locale: posix, timeZone: zone),
-                       "查询 " + ClearBalanceText.clock(now, locale: posix, timeZone: zone))
+        XCTAssertEqual(ClearBalanceText.cardStamp(card, timeZone: zone),
+                       "查询 " + ClearBalanceText.clock(now, timeZone: zone))
     }
 
     func testCardFreshness() {
@@ -86,8 +86,22 @@ final class ClearBalanceTextTests: XCTestCase {
         XCTAssertEqual(ClearBalanceText.issues(s, signedIn: false, meterBound: true), [])
     }
 
-    func testCurrencyFollowsTheSystem() {
-        XCTAssertEqual(ClearBalanceText.currency(Decimal(string: "1.32")!, locale: Locale(identifier: "zh_CN")), "¥1.32")
-        XCTAssertEqual(ClearBalanceText.currency(Decimal(string: "1.32")!, locale: Locale(identifier: "en_US")), "CN¥1.32")
+    /// 「¥1.32」 whatever the phone's region: never 「CN¥1.32」.
+    func testCurrencyIsAlwaysYuanSign() {
+        XCTAssertEqual(ClearBalanceText.currency(Decimal(string: "1.32")!), "¥1.32")
+        XCTAssertEqual(ClearBalanceText.currency(Decimal(string: "4")!), "¥4.00")
+        XCTAssertEqual(ClearBalanceText.currency(Decimal(string: "1234.5")!), "¥1,234.50")
+        XCTAssertEqual(ClearBalanceText.currency(Decimal(string: "-1.32")!), "-¥1.32")
+    }
+
+    /// 24-hour times whatever the phone's region or its 12/24-hour setting: never 「下午6:46」 or 「6:46 PM」.
+    func testTimesAreAlways24Hour() {
+        // 1_800_000_000 is 2027-01-15 16:00:00 in Shanghai.
+        let evening = now.addingTimeInterval(2 * 3600 + 46 * 60 + 9)
+        XCTAssertEqual(ClearBalanceText.clock(evening, timeZone: zone), "18:46")
+        XCTAssertEqual(ClearBalanceText.clock(evening, seconds: true, timeZone: zone), "18:46:09")
+        XCTAssertEqual(ClearBalanceText.clock(now.addingTimeInterval(-9 * 3600 + 60), timeZone: zone), "07:01")
+        XCTAssertEqual(ClearBalanceText.dateTime(evening, timeZone: zone), "2027年1月15日 18:46")
+        XCTAssertEqual(ClearBalanceText.cardStamp(Tile(value: Money(fen: 1), fetchedAt: evening), timeZone: zone), "查询 18:46")
     }
 }

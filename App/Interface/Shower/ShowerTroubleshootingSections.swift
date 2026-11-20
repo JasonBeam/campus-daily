@@ -32,7 +32,7 @@ struct ShowerTroubleshootingSections: View {
                         VStack(alignment:.leading, spacing:4) {
                             Text("水控标识 " + String(device.id.prefix(8)) + "…")
                             Text("发现 \(device.nearbyCount) 台同名水控，已按宿舍水控编号匹配。")
-                            Text("核对于 " + device.verifiedAt.formatted(date:.omitted, time:.standard))
+                            Text("核对于 " + ClearBalanceText.clock(device.verifiedAt, seconds:true))
                         }.font(.caption).foregroundStyle(Theme.ink2)
                     }
                 } else {

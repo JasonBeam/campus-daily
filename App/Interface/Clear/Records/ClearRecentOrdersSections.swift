@@ -41,7 +41,7 @@ struct ClearRecentOrdersSections: View {
                     HStack {
                         VStack(alignment:.leading, spacing:6) {
                             Text(ClearRecentOrders.settled).foregroundStyle(Color.primary)
-                            Text(settled.date.formatted(date:.abbreviated, time:.shortened))
+                            Text(ClearBalanceText.dateTime(settled.date))
                                 .font(.caption).foregroundStyle(Color.secondary)
                         }
                         Spacer(minLength:8)

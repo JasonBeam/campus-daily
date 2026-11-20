@@ -110,9 +110,17 @@ final class ClearLaundryPageCopyTests: XCTestCase {
         XCTAssertNil(ClearLaundryCopy.finished(LaundryDemo.make(.run, now:now).facts, now:now))
     }
 
-    func testMoneyIsCurrencyFormatted() {
-        let us = Locale(identifier:"en_US")
-        XCTAssertEqual(ClearCNY.text(Decimal(string:"4")!, locale:us), "CN¥4.00")
-        XCTAssertEqual(ClearCNY.text(Decimal(string:"1.32")!, locale:us), "CN¥1.32")
+    /// 「¥4.00」 whatever the phone's region (never 「CN¥4.00」).
+    func testMoneyIsAlwaysYuanSign() {
+        XCTAssertEqual(ClearCNY.text(Decimal(string:"4")!), "¥4.00")
+        XCTAssertEqual(ClearCNY.text(Decimal(string:"1.32")!), "¥1.32")
+    }
+
+    /// 「查询于 18:46:09」: 24-hour whatever the phone's region.
+    func testQueriedIs24Hour() {
+        var parts = DateComponents(); parts.year = 2026; parts.month = 11; parts.day = 20
+        parts.hour = 18; parts.minute = 46; parts.second = 9
+        let date = Calendar.current.date(from:parts)!
+        XCTAssertEqual(ClearLaundryCopy.queried(date), "查询于 18:46:09")
     }
 }

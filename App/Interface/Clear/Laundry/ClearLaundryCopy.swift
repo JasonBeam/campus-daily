@@ -43,9 +43,9 @@ enum ClearLaundryCopy {
         return facts.issue != nil || now.timeIntervalSince(snapshot.fetchedAt) >= 60 ? "上次查询" : "已更新"
     }
 
-    /// 「查询于 早上7:06:09」.
+    /// 「查询于 07:06:09」: 24-hour whatever the phone's region.
     static func queried(_ date: Date) -> String {
-        "查询于 " + date.formatted(date:.omitted, time:.standard)
+        "查询于 " + ClearBalanceText.clock(date, seconds:true)
     }
 
     /// The device card's state: the open order's, otherwise the machine's (「上次」 before it

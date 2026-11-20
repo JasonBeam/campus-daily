@@ -11,6 +11,8 @@ struct ShowerDetail: View {
     @EnvironmentObject private var campus: CampusModel
     @State private var confirmClear = false
     @Environment(\.showerCardRecords) private var cardRecords
+    /// The days 最近一次用水's 「今天」/「昨天」 count in, as home's 「最近」.
+    @Environment(\.schoolCalendar) private var calendar
     @State private var recordsOpen = false
     /// The app is still loading what a start needs, for longer than `ShowerStartBlock.spinnerDelay`.
     @State private var launchSpinner = false
@@ -59,7 +61,7 @@ struct ShowerDetail: View {
                         HStack {
                             VStack(alignment:.leading,spacing:6) {
                                 Text("已结算").font(.subheadline)
-                                Text(ended.formatted(date:.abbreviated,time:.shortened)).font(.caption).foregroundStyle(.secondary)
+                                Text(ShowerLastUse.when(ended, now:Date(), calendar:calendar)).font(.caption).foregroundStyle(.secondary)
                             }
                             Spacer()
                             if let cost = lastCost { Text(Theme.yuan(cost)).font(.subheadline).monospacedDigit() }
