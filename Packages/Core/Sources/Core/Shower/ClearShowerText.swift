@@ -10,6 +10,9 @@ public enum ClearShowerText {
     public static let busyTitle = "正在处理"
     public static let busyButton = "正在处理…"
     public static let startingBody = "正在连接并申请授权…"
+    /// The line while starting, right after the first check passed (`ShowerPageFlow.afterCheck`):
+    /// the controller is connected already.
+    public static let authorizingBody = "正在申请授权…"
     public static let endingBody = "正在结束并结算…"
     public static let runningTitle = "热水已授权"
     public static let runningBody = "已授权，请按设备出水键"
@@ -62,10 +65,12 @@ public enum ClearShowerText {
     /// `inUse`: refused because the controller is in use (or found so before the next shower).
     /// `unsure`: why the outcome is not known (`ShowerPage.unsure`): the stopped face's line, and
     /// the timer's while the controller did not confirm the start.
-    public static func face(_ phase: ShowerPagePhase?, inUse: Bool = false, unsure: ShowerUnsureReason? = nil) -> (title: String, body: String, problem: Bool) {
+    /// `afterCheck`: the start passed its first check (`ShowerPageFlow.afterCheck`).
+    public static func face(_ phase: ShowerPagePhase?, inUse: Bool = false, unsure: ShowerUnsureReason? = nil,
+                            afterCheck: Bool = false) -> (title: String, body: String, problem: Bool) {
         switch phase {
         case nil: return (readyTitle, readyBody, false)
-        case .connecting?: return (busyTitle, startingBody, false)
+        case .connecting?: return (busyTitle, afterCheck ? authorizingBody : startingBody, false)
         case .running?: return (runningTitle, unsure == .startUnconfirmed ? ShowerUnsureText.clear(.startUnconfirmed) : runningBody, false)
         case .settling?: return (busyTitle, endingBody, false)
         case .done?: return (doneTitle, doneBody, false)

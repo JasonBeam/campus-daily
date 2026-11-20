@@ -158,7 +158,7 @@ struct ClearShowerPage: View {
 
     private func announcement(_ phase: ShowerPagePhase) -> String {
         let inUse = phase == .denied ? flow.page?.denial == .inUse : phase == .stopped && flow.foundInUse
-        let face = ClearShowerText.face(phase, inUse:inUse, unsure:flow.page?.unsure)
+        let face = ClearShowerText.face(phase, inUse:inUse, unsure:flow.page?.unsure, afterCheck:flow.afterCheck)
         return face.problem ? face.title + "。" + face.body : face.title
     }
 }

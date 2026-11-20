@@ -248,7 +248,7 @@ extension ShowerModel {
         if startSlot?.demo == true { startSlot = nil }
         checkToastShown = false
         guard let name else { return }
-        if name == "sh-first-passed" { checkToastShown = true; return }
+        if name == "sh-first-passed" { checkToastShown = true; page.afterCheck = true; return }
         let prefix = "sh-detail-first-"
         guard name.hasPrefix(prefix) else { return }
         let state = String(name.dropFirst(prefix.count))

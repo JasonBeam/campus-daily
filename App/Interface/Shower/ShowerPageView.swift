@@ -5,6 +5,10 @@ import Core
 enum ShowerPageText {
     static let steps = ["连接", "出水", "结算"]
     static let connecting = "正在连接水控…"
+    /// The connecting face's title right after the first check passed (`ShowerPageFlow.afterCheck`):
+    /// the controller is connected already.
+    static let opening = "正在打开水控…"
+    static func connecting(afterCheck: Bool) -> String { afterCheck ? opening : connecting }
     static let connectingBody = "站近一点，蓝牙别关。"
     static let runningLabel = "正在洗澡"
     static let runningBody = "按水控上的出水键就有热水。洗完点「结束并结算」，或者直接在水控上按停。"
@@ -228,7 +232,7 @@ struct ShowerPageView: View {
             case .connecting:
                 ProgressView().controlSize(.large).tint(Theme.ink2).frame(height:34).padding(.bottom,18)
                     .accessibilityHidden(true)
-                title(ShowerPageText.connecting)
+                title(ShowerPageText.connecting(afterCheck:flow.afterCheck))
                 bodyText(ShowerPageText.connectingBody)
             case .running:
                 runningLabel.padding(.bottom,10)
@@ -440,7 +444,7 @@ struct ShowerPageView: View {
 
     private func announcement(_ phase: ShowerPagePhase) -> String {
         switch phase {
-        case .connecting: return ShowerPageText.connecting
+        case .connecting: return ShowerPageText.connecting(afterCheck:flow.afterCheck)
         case .running: return ShowerPageText.runningLabel
         case .settling: return ShowerPageText.settling
         case .done: return ShowerPageText.doneLabel
