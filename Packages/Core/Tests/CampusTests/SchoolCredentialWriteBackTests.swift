@@ -2,7 +2,7 @@ import XCTest
 @testable import Core
 import CoreTestSupport
 
-/// Recharge and the hot-water hand-off read the card session, wait on the network and then
+/// The hot-water hand-off reads the card session, wait on the network and then
 /// write the live session back. Meanwhile the widget may have stored a newer session: the
 /// late write must not put the older one back over it.
 final class SchoolCredentialWriteBackTests: XCTestCase {
@@ -13,23 +13,6 @@ final class SchoolCredentialWriteBackTests: XCTestCase {
 
     func session(_ h: Harness, _ hold: Hold) -> SchoolSession {
         SchoolSession(portal: PortalClient(http: hold), ecykt: EcyktClient(http: hold), vault: h.vault, now: h.clock.function)
-    }
-
-    func testRechargePreparationKeepsANewerSessionStoredMeanwhile() async throws {
-        let h = Harness()
-        try h.signedIn()
-        try h.server.serve("ecykt/getSysBindCustInfo-ok")
-        try h.server.serve("ecykt/loginBySysId-mintSeries1")
-        let hold = Hold(h, self, suffix: "/loginBySysId")
-        let session = session(h, hold)
-        async let result = session.rechargeSession(.card, owning: .unchecked)
-        await fulfillment(of: [hold.reached], timeout: 5)
-        try h.vault.saveEcyktSession(Self.newer)
-        hold.release()
-        _ = try await result
-        let stored = try XCTUnwrap(try h.vault.ecyktSession())
-        XCTAssertEqual(stored.token, "NEWER-TOKEN", "the older session is not written over the newer one")
-        XCTAssertEqual(stored.syscustid, "NEWER-SYSCUSTID")
     }
 
     func testShowerHandoffKeepsANewerSessionStoredMeanwhile() async throws {
@@ -52,44 +35,39 @@ final class SchoolCredentialWriteBackTests: XCTestCase {
     /// The app was suspended past the lease while its call was out, and the widget took the
     /// lease: whatever the widget does next, the app's late copy is not written back.
     func testACallThatLostTheLeaseWritesNothingBack() async throws {
-        for handoff in [false, true] {
-            let h = Harness()
-            try h.signedIn()
-            try h.server.serve("ecykt/getSysBindCustInfo-ok")
-            try h.server.serve(handoff ? "ecykt/getSignData-ok" : "ecykt/loginBySysId-mintSeries1")
-            let before = try XCTUnwrap(try h.vault.ecyktSession())
-            let hold = Hold(h, self, suffix: handoff ? "/getSysBindCustInfo" : "/loginBySysId")
-            let session = session(h, hold)
-            let app = SnapshotRefresher(school: session, store: h.snapshots,
-                                        lease: RefreshLease(file: h.store.leaseFile, owner: "app-1", now: h.clock.function),
-                                        leaseWait: 3, sleep: { _ in try? await Task.sleep(nanoseconds: 1_000_000) },
-                                        renewInterval: 3600)
-            async let result: Void = app.holdingLease { owning in
-                if handoff { _ = try await session.showerHandoff(owning: owning) }
-                else { _ = try await session.rechargeSession(.card, owning: owning) }
-            }
-            await fulfillment(of: [hold.reached], timeout: 5)
-            h.clock.advance(RefreshLease.defaultDuration + 1)
-            let widget = RefreshLease(file: h.store.leaseFile, owner: "widget-1", now: h.clock.function)
-            XCTAssertTrue(widget.acquire(), "the app's lease ran out")
-            hold.release()
-            try await result
-            XCTAssertEqual(try h.vault.ecyktSession(), before, "nothing written without the lease")
-            XCTAssertEqual(h.store.leaseFile.storedOwner(), "widget-1")
-        }
+        let h = Harness()
+        try h.signedIn()
+        try h.server.serve("ecykt/getSysBindCustInfo-ok")
+        try h.server.serve("ecykt/getSignData-ok")
+        let before = try XCTUnwrap(try h.vault.ecyktSession())
+        let hold = Hold(h, self, suffix: "/getSysBindCustInfo")
+        let session = session(h, hold)
+        let app = SnapshotRefresher(school: session, store: h.snapshots,
+                                    lease: RefreshLease(file: h.store.leaseFile, owner: "app-1", now: h.clock.function),
+                                    leaseWait: 3, sleep: { _ in try? await Task.sleep(nanoseconds: 1_000_000) },
+                                    renewInterval: 3600)
+        async let result: Void = app.holdingLease { owning in _ = try await session.showerHandoff(owning: owning) }
+        await fulfillment(of: [hold.reached], timeout: 5)
+        h.clock.advance(RefreshLease.defaultDuration + 1)
+        let widget = RefreshLease(file: h.store.leaseFile, owner: "widget-1", now: h.clock.function)
+        XCTAssertTrue(widget.acquire(), "the app's lease ran out")
+        hold.release()
+        try await result
+        XCTAssertEqual(try h.vault.ecyktSession(), before, "nothing written without the lease")
+        XCTAssertEqual(h.store.leaseFile.storedOwner(), "widget-1")
     }
 
     /// The app's lease runs out right after it was found still held, and the widget tries to
     /// take it right then, just before the write-back lands. The check and the write are one
     /// locked step: the widget can't take the lease until the app's write is done, so an app
-    /// copy is never written over a lease the widget holds. Recharge, the hot-water hand-off
-    /// and a refresh (its card session and its snapshot).
+    /// copy is never written over a lease the widget holds. The hot-water hand-off and a refresh
+    /// (its card session and its snapshot).
     func testNoTakeoverBetweenTheLeaseCheckAndTheWriteBack() async throws {
-        for path in ["recharge", "handoff", "refresh-session", "refresh-snapshot"] {
+        for path in ["handoff", "refresh-session", "refresh-snapshot"] {
             let h = Harness()
             try h.signedIn()
             try h.server.serve("ecykt/getSysBindCustInfo-ok")
-            try h.server.serve(path == "handoff" ? "ecykt/getSignData-ok" : "ecykt/loginBySysId-mintSeries1")
+            if path == "handoff" { try h.server.serve("ecykt/getSignData-ok") }
             try h.server.serve("ecykt/getUserBalance-ok")
             let session = h.session()
             let app = SnapshotRefresher(school: session, store: h.snapshots,
@@ -103,7 +81,6 @@ final class SchoolCredentialWriteBackTests: XCTestCase {
                 if widget.tryAcquire() { took.append("widget") }
             }
             switch path {
-            case "recharge": _ = try await app.holdingLease { owning in try await session.rechargeSession(.card, owning: owning) }
             case "handoff": _ = try await app.holdingLease { owning in try await session.showerHandoff(owning: owning) }
             default: _ = await app.refresh(inBackground: false)
             }
@@ -112,16 +89,19 @@ final class SchoolCredentialWriteBackTests: XCTestCase {
         }
     }
 
-    /// Nothing changed meanwhile: the latest ciphertexts are still kept for next time.
-    func testRechargePreparationStillSavesTheLatestCiphertext() async throws {
+    /// Nothing changed meanwhile: the hand-off keeps the latest card ciphertext for next time.
+    func testShowerHandoffStillSavesTheLatestCardCiphertext() async throws {
         let h = Harness()
         try h.signedIn()
         try h.server.serve("ecykt/getSysBindCustInfo-ok")
-        try h.server.serve("ecykt/loginBySysId-mintSeries1")
+        try h.server.serve("ecykt/getSignData-ok")
         let before = try XCTUnwrap(try h.vault.ecyktSession())
-        _ = try await h.session().rechargeSession(.card, owning: .unchecked)
+        _ = try await h.session().showerHandoff(owning: .unchecked)
         let stored = try XCTUnwrap(try h.vault.ecyktSession())
         XCTAssertEqual(stored.token, before.token)
-        XCTAssertNotEqual(stored.syscustid, before.syscustid, "the fresh syscustid is kept")
+        XCTAssertEqual(stored.syscustid, before.syscustid)
+        XCTAssertNotEqual(before.custid, "TESTid00000000000000000000000002")
+        XCTAssertEqual(stored.custid, "TESTid00000000000000000000000002", "the bound card's latest custid is kept")
+        XCTAssertEqual(stored.cardUnionID, "TESTid00000000000000000000000001")
     }
 }

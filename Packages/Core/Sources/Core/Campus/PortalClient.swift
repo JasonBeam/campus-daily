@@ -15,7 +15,6 @@ public enum SchoolEndpoints {
         c.queryItems = [URLQueryItem(name: "service", value: casService)]
         return c.url!
     }
-    public static let rechargePage = URL(string: "https://ecykt.gdbtu.edu.cn/ykt-view/recharge?isbind=1")!
     /// Values the official ecykt web app sends.
     public static let ecyktVersion = "v1.1.55"
     public static let ecyktAppID = "wx7077a0b57d156efe"

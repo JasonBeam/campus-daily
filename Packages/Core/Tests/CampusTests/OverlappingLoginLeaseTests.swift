@@ -3,7 +3,7 @@ import XCTest
 import CoreTestSupport
 
 /// Two app operations under the lease at once (the login sheet closed and submitted again, a
-/// recharge while a sign-in runs): each has its own lease owner, so the second waits for the
+/// hot-water hand-off while a sign-in runs): each has its own lease owner, so the second waits for the
 /// first, and the first giving the lease back never releases the second's.
 final class OverlappingLoginLeaseTests: XCTestCase {
     func testTheFirstLoginToFinishDoesNotReleaseTheSecondsLease() async throws {

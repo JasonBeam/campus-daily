@@ -114,24 +114,4 @@ final class SchoolSignOutRaceTests: XCTestCase {
         XCTAssertNil(try h.vault.ecyktSession())
         XCTAssertTrue(h.server.requests(path: "/getSignData").isEmpty, "no hand-off for a signed-out account")
     }
-
-    func testSignOutDuringRechargeSessionWritesNoSession() async throws {
-        let h = Harness()
-        try h.signedIn()
-        try h.server.serve("ecykt/getSysBindCustInfo-ok")
-        try h.server.serve("ecykt/loginBySysId-mintSeries1")
-        let hold = Hold(h, self, suffix: "/loginBySysId")
-        let session = h.session()
-        async let result = session.rechargeSession(.card, owning: .unchecked)
-        await fulfillment(of: [hold.reached], timeout: 5)
-        try await session.signOut()
-        hold.release.signal()
-        do {
-            _ = try await result
-            XCTFail("expected a sign-out error")
-        } catch {
-            XCTAssertEqual(error as? ServiceError, .sessionExpired(.ecykt))
-        }
-        XCTAssertNil(try h.vault.ecyktSession(), "the minted login is not saved for a signed-out account")
-    }
 }

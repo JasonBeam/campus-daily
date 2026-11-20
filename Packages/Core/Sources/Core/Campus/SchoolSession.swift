@@ -1,7 +1,7 @@
 import Foundation
 
 /// Runs the school session: liveness, silent re-exchange, refresh, electricity resolution,
-/// recharge web sessions. Persists credentials through `SchoolVault`; it never writes the home
+/// the hot-water hand-off. Persists credentials through `SchoolVault`; it never writes the home
 /// snapshot (that is the snapshot refresher's job).
 public actor SchoolSession {
     let portal: PortalClient
@@ -24,7 +24,7 @@ public actor SchoolSession {
     /// Keychain, so a sign-out in the middle is never undone by a late write.
     var signOutGeneration = 0
     /// Bumped by `signOut()` and by every sign-in that is not known to be the same person.
-    /// Sign-in, the dorm and meter, the hot-water hand-off and recharge check it before writing,
+    /// Sign-in, the dorm and meter, and the hot-water hand-off check it before writing,
     /// so the previous person's late answer never lands in the next person's account.
     var personGeneration = 0
     /// How long the card records may take after the numbers were handed over.

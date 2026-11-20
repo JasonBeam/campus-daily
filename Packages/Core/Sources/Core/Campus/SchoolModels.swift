@@ -146,8 +146,8 @@ public struct EcyktLogin: Sendable, Equatable, CustomStringConvertible {
     public var description: String { "EcyktLogin(<redacted>, isbind: \(isbind))" }
 }
 
-/// One card from `getSysBindCustInfo`. `raw` is the server object (needed verbatim for the
-/// recharge page's `custInfo`).
+/// One card from `getSysBindCustInfo`. `raw` is the server object as it came
+/// (the official page's `custInfo`).
 public struct BoundCard: Sendable, Equatable, Codable, CustomStringConvertible {
     public var custid: String
     public var unionID: String?

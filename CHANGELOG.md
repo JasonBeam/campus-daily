@@ -2,6 +2,12 @@
 
 版本记录采用 Keep a Changelog 格式。源码仓库不保存个人签名证书或个人配置；iPhone 版通过 TestFlight 公开链接分发，Android 安装包通过 GitHub Release 分发。
 
+## [0.11.1]
+
+### Removed
+
+- Remove the unused code of the old signed-in school web top-up: its session builder, its page allow-list and the `loginBySysId` call that minted a fresh school token for it. 校园充值 still copies the name of the school's WeChat service and opens WeChat; nothing changes on screen, and the school sign-in page keeps the same allow-list.
+
 ## [0.11.0]
 
 ### Added

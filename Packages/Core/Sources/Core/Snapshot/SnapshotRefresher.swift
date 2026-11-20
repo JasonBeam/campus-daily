@@ -203,7 +203,7 @@ public actor SnapshotRefresher {
     }
 
     /// A login from the app's form or Settings (password login, saving a password, the web
-    /// sign-in), recharge and the hot-water hand-off under the lease, so none of them runs beside
+    /// sign-in) and the hot-water hand-off under the lease, so none of them runs beside
     /// the other process's automatic login. Waits up to `leaseWait` for a read in either
     /// process; still held then, nothing is sent and `SchoolLoginFailure.busy` is thrown. The
     /// lease is kept alive while `body` runs and given back after it. Every credential `body`
@@ -216,7 +216,7 @@ public actor SnapshotRefresher {
     public nonisolated func holdingLease<T: Sendable>(_ body: @Sendable (_ owning: LeaseOwnership) async throws -> T) async throws -> T {
         guard let shared = lease, shared.isAvailable else { return try await body(.unchecked) }
         // Its own owner, one per call: neither the lease this process's refresh holds nor one
-        // another login, recharge or hand-off here holds is "ours" to reuse, so a second one waits
+        // another login or hand-off here holds is "ours" to reuse, so a second one waits
         // for the first, and the first giving its lease back never releases the second's.
         let lease = shared.with(owner: shared.owner + "-login-" + UUID().uuidString)
         var waited: TimeInterval = 0

@@ -34,7 +34,7 @@ public struct RefreshLease: Sendable {
     /// The app's lease file: the shared one, or, in a build without the App Group, one in the
     /// app's own container (`ownContainer`, Application Support; created when missing). The widget
     /// can't open that one, so it never reads (`sharedFile` is nil there too), while the app's own
-    /// reads, logins, recharge and hand-off still take turns: `flock` on separate descriptors
+    /// reads, logins and hand-off still take turns: `flock` on separate descriptors
     /// excludes within one process as well. That file is created here and excluded from backup
     /// (a restore must not bring a lease back). nil only when neither can be used.
     public static func appFile(appGroup: String? = AppIdentity.usableAppGroup,

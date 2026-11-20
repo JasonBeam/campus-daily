@@ -1,35 +1,21 @@
 import XCTest
 @testable import Core
 
-/// Frames inside the recharge and school-login pages go through the same host allow-list as
-/// the page itself.
+/// Frames inside the school-login page go through the same host allow-list as the page itself.
 final class WebFrameAllowListTests: XCTestCase {
     private func url(_ s: String) -> URL { URL(string: s)! }
-    private let ecykt = "ecykt.gdbtu.edu.cn"
-
-    func testRechargeFrameOnSchoolHostLoads() {
-        XCTAssertEqual(RechargeNavigation.decide(url("https://ecykt.gdbtu.edu.cn/ykt-view/frame"), isUserTap: false, sourceHost: ecykt, isMainFrame: false), .allow)
-        XCTAssertEqual(RechargeNavigation.decide(url("https://cas.gdbtu.edu.cn/cas/x"), isUserTap: false, sourceHost: ecykt, isMainFrame: false), .allow)
-    }
-
-    func testRechargeFrameFromAnotherHostIsCancelled() {
-        XCTAssertEqual(RechargeNavigation.decide(url("https://pay.example.invalid/h5"), isUserTap: false, sourceHost: ecykt, isMainFrame: false), .cancel)
-        XCTAssertEqual(RechargeNavigation.decide(url("http://ecykt.gdbtu.edu.cn/"), isUserTap: false, sourceHost: ecykt, isMainFrame: false), .cancel)
-        XCTAssertEqual(RechargeNavigation.decide(url("data:text/html,x"), isUserTap: false, sourceHost: ecykt, isMainFrame: false), .cancel)
-    }
-
-    func testRechargeFrameNeverOpensAPayApp() {
-        XCTAssertEqual(RechargeNavigation.decide(url("alipays://platformapi/startapp"), isUserTap: true, sourceHost: ecykt, isMainFrame: false), .cancel)
-        XCTAssertEqual(RechargeNavigation.decide(url("weixin://wap/pay"), isUserTap: true, sourceHost: ecykt, isMainFrame: false), .cancel)
-        XCTAssertEqual(RechargeNavigation.decide(url("alipays://platformapi/startapp"), isUserTap: true, sourceHost: ecykt, isMainFrame: true), .openExternal)
-    }
 
     func testEmptyAndInlineFramesLoad() {
-        XCTAssertEqual(RechargeNavigation.decide(url("about:blank"), isUserTap: false, sourceHost: ecykt, isMainFrame: false), .allow)
-        XCTAssertEqual(RechargeNavigation.decide(url("about:srcdoc"), isUserTap: false, sourceHost: ecykt, isMainFrame: false), .allow)
         XCTAssertTrue(SchoolLoginNavigation.allows(url("about:blank"), isMainFrame: false))
         XCTAssertTrue(SchoolLoginNavigation.allows(url("about:srcdoc"), isMainFrame: false))
         XCTAssertFalse(SchoolLoginNavigation.allows(url("about:blank"), isMainFrame: true))
+    }
+
+    func testLoginFrameFromAnotherHostOrSchemeIsCancelled() {
+        XCTAssertFalse(SchoolLoginNavigation.allows(url("https://pay.example.invalid/h5"), isMainFrame: false))
+        XCTAssertFalse(SchoolLoginNavigation.allows(url("data:text/html,x"), isMainFrame: false))
+        XCTAssertFalse(SchoolLoginNavigation.allows(url("weixin://wap/pay"), isMainFrame: true))
+        XCTAssertFalse(SchoolLoginNavigation.allows(url("alipays://platformapi/startapp"), isMainFrame: false))
     }
 
     func testLoginPageAndFramesStayOnSchoolHosts() {
