@@ -13,6 +13,8 @@
 
 - 电量's 「够用约 N 天」 stayed the same however much electricity was left (13.6 度 and 182.5 度 both read 「够用约 11 天」), so running low never turned it red or said 只够到今晚／明晚. The school's `preUseDay` is how many days what is left lasts, not a day's use; the app divided by it as if it were. Home now counts those days from the reading (13.6 度 lasting 1.2 days reads 「只够到明晚」 in red), and the low-electricity notification names 今晚／明晚 from them. With no estimate, or one of 0, below 0 or over 365 days, the line is hidden rather than wrong.
 - Where the app showed that number as a day's use, it now shows the daily average behind the school's estimate (what is left ÷ the days): 暖橙's medium widget 「每天约用 X 度」 (was 「昨天用了 X 度」), 清爽's 双余额 card 「日均约 X 度」 (was 「昨日」; 「日均 未返回」 without one), 清爽's small widget 「约 X 度 … 日均」 (was 「X 度 … 昨日用电」; 「未返回 … 日均」 without one), and the sample's 电量 page 「每天约用」.
+- The low-electricity notification counts its 今晚／明晚 from when the meter was read, not from when it is sent: a reading from yesterday 09:15 lasting 1.2 days no longer says 「大约能用到明晚」 while home says 「只够到今晚」. Without a reading time, or once the estimated end has passed, it says only 「只剩 X 度了，记得充电费。」.
+- With 0 度 left (or less) and the school still giving days, home shows the red number with no 「够用约 N 天」 line and the notification names no night, only 「只剩 0.0 度了，记得充电费。」.
 
 ### Removed
 
