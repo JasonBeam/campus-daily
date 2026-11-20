@@ -44,7 +44,7 @@ struct WidgetPreview: View {
             case 1:
                 // The four states, small and medium.
                 HStack(spacing:24) {
-                    tile(model(), caption:"正常")
+                    tile(model(extras:true), caption:"正常 · 有日均")
                     tile(model(.stale), caption:"没存密码 · 过期")
                 }
                 HStack(spacing:24) {
