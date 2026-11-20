@@ -209,16 +209,19 @@ enum ShowerProfileFiles {
 
     /// Debt allowed on this phone, kept in the Keychain. Turned on only once it is stored;
     /// turned off here at once, also when the Keychain refuses.
-    func setAllowsDebt(_ value: Bool) {
+    /// Returns whether it was stored. Red-phase stub: a turn-off always says so.
+    @discardableResult
+    func setAllowsDebt(_ value: Bool) -> Bool {
         let store = ShowerStartOverrideStore(store:services.secureStore)
         if value {
-            guard (try? store.set(true)) != nil else { return }
+            guard (try? store.set(true)) != nil else { return false }
         } else {
             try? store.set(false)
         }
         let before = balanceBlocks
         allowsDebt = value
         if !before, balanceBlocks { revokeUnsentStart() }
+        return true
     }
 
     /// The phrase typed after the five taps on the version: allows debt when it matches,

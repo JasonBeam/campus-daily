@@ -344,6 +344,43 @@ final class ShowerBalanceGateModelTests: XCTestCase {
         XCTAssertTrue(shower.balanceBlocks)
     }
 
+    /// Debt allowed and stored; turning it off can't be stored (the Keychain refuses). It is off
+    /// here at once and a −0.50 start reading the controller is taken back, and the caller is
+    /// told it wasn't stored. Once the Keychain works again, turning it off sticks across a relaunch.
+    func testATurnOffThatIsNotStoredSaysSo() async throws {
+        link.holdExchange = true
+        let shower = try await model(allowsDebt:true)
+        XCTAssertTrue(ShowerStartOverrideStore(store:store).isOn)
+        shower.noteBalance(Self.owed)
+        XCTAssertEqual(shower.tapStart(.page), .started(firstCheck:false))
+        await waitUntil { self.link.isHolding }
+        let permit = shower.startSlot?.permit
+        store.refusing = [.showerStartMode]
+        XCTAssertFalse(shower.setAllowsDebt(false), "the caller hears it wasn't stored")
+        XCTAssertFalse(shower.allowsDebt, "off here at once")
+        XCTAssertEqual(permit?.isOpen, false, "the start is taken back in the same step")
+        link.release(FakeFramesApp.idle)
+        await settle(shower)
+        XCTAssertEqual(http.sent, 0, "no authorize request")
+        store.refusing = []
+        XCTAssertTrue(shower.setAllowsDebt(false), "stored on the retry")
+        let relaunched = try await model()
+        XCTAssertFalse(relaunched.allowsDebt, "off after a relaunch")
+    }
+
+    /// A reset that can't delete the item (it reports the failure): the running model is back
+    /// to the default all the same; it doesn't read the old "allowed" back.
+    func testAResetThatCantDeleteTheItemStillTurnsItOff() async throws {
+        let shower = try await model(allowsDebt:true)
+        store.refusing = [.showerStartMode]
+        XCTAssertThrowsError(try AppReset.clear(store:store, preferences:SampleDefaults(), preferencesDomain:"debt-reset-fail",
+                                                shared:nil, files:[]), "the reset reports it")
+        await shower.reloadAfterReset()
+        XCTAssertFalse(shower.allowsDebt)
+        shower.noteBalance(Self.owed)
+        XCTAssertTrue(shower.balanceBlocks)
+    }
+
     // MARK: Allowed
 
     /// Zero, a positive balance and no balance start as today.

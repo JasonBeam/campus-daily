@@ -16,13 +16,22 @@ final class ShowerBalanceAccountTests: XCTestCase {
         private var _yuan: Double
         private var _card = "SYNTHETIC-CARD-A"
         private var _hold = false
+        private var _failBalance = false
+        private var _holdRecords = false
         private var _asked = 0
         private var waiting: CheckedContinuation<Void, Never>?
+        private var recordsWaiting: CheckedContinuation<Void, Never>?
         init(yuan: Double) { _yuan = yuan }
         var yuan: Double { get { lock.withLock { _yuan } } set { lock.withLock { _yuan = newValue } } }
         /// The card the card check answers with (another one is someone else's login).
         var card: String { get { lock.withLock { _card } } set { lock.withLock { _card = newValue } } }
         var hold: Bool { get { lock.withLock { _hold } } set { lock.withLock { _hold = newValue } } }
+        /// The balance request fails (no answer): the read goes on without it.
+        var failBalance: Bool { get { lock.withLock { _failBalance } } set { lock.withLock { _failBalance = newValue } } }
+        /// The card-records request (账单) is held until `releaseRecords`, then ends offline.
+        var holdRecords: Bool { get { lock.withLock { _holdRecords } } set { lock.withLock { _holdRecords = newValue } } }
+        var isHoldingRecords: Bool { lock.withLock { recordsWaiting != nil } }
+        func releaseRecords() { lock.withLock { let w = recordsWaiting; recordsWaiting = nil; _holdRecords = false; return w }?.resume() }
         var balanceAsked: Int { lock.withLock { _asked } }
         var isHolding: Bool { lock.withLock { waiting != nil } }
         func release() { lock.withLock { let w = waiting; waiting = nil; _hold = false; return w }?.resume() }
@@ -32,9 +41,14 @@ final class ShowerBalanceAccountTests: XCTestCase {
             if path.hasSuffix("/getSysBindCustInfo") {
                 return Self.json(#"{"code":0,"msg":"获取成功","data":[{"custid":"SYNTHETIC-CUST","custunionid":"\#(card)","custname":"测试员"}]}"#)
             }
+            if path.hasSuffix("/getRecordList") {
+                if holdRecords { await withCheckedContinuation { c in lock.withLock { recordsWaiting = c } } }
+                throw ServiceError.offline
+            }
             if path.hasSuffix("/getUserBalance") {
                 let held = lock.withLock { _asked += 1; return _hold }
                 if held { await withCheckedContinuation { c in lock.withLock { waiting = c } } }
+                if failBalance { throw ServiceError.offline }
                 return Self.json(#"{"code":0,"msg":"获取成功","data":\#(yuan)}"#)
             }
             throw ServiceError.offline
@@ -49,6 +63,8 @@ final class ShowerBalanceAccountTests: XCTestCase {
     var http: CountingShowerHTTP!
     var access: FakeBluetoothAccess!
     var store: ScriptedStore!
+    /// The refresh lease's file (another process's sign-out can remove the lease).
+    var leaseURL: URL!
 
     override func setUp() async throws {
         school = School(yuan:-0.5)
@@ -69,7 +85,8 @@ final class ShowerBalanceAccountTests: XCTestCase {
         binding.matchedAt = Date(timeIntervalSince1970:1_800_000_000)
         binding.peripheralID = "P"
         try StoredShowerVault(store:store).saveBinding(binding)
-        let lease = LeaseFile(url:FileManager.default.temporaryDirectory.appendingPathComponent("debt-lease-\(UUID().uuidString)"))
+        leaseURL = FileManager.default.temporaryDirectory.appendingPathComponent("debt-lease-\(UUID().uuidString)")
+        let lease = LeaseFile(url:leaseURL)
         let services = CampusServices(kind:.live, secureStore:store, defaults:SampleDefaults(), sharedPreferences:nil,
                                       schoolHTTP:school, showerHTTP:http, laundryHTTP:SampleHTTPClient(),
                                       feedbackHTTP:nil, showerTransport:link, leaseFile:lease,
@@ -346,5 +363,118 @@ final class ShowerBalanceAccountTests: XCTestCase {
             await refresh.value
             XCTAssertEqual(shower.balance, next, "\(yuan): B's value stays")
         }
+    }
+
+    // MARK: Refresh rounds
+
+    /// No start, by the page, home or Siri, and nothing sent; 开始下一次洗澡 isn't offered either.
+    func assertRefused(_ shower: ShowerModel, _ label: String, file: StaticString = #filePath, line: UInt = #line) async {
+        XCTAssertFalse(shower.mayStart, label, file:file, line:line)
+        XCTAssertFalse(shower.mayStartNext, label, file:file, line:line)
+        for entry in [ShowerStartIntent.Entry.page, .home] {
+            let tap = shower.tapStart(entry)
+            XCTAssertNotEqual(tap, .started(firstCheck:false), "\(label): \(entry)", file:file, line:line)
+            XCTAssertNotEqual(tap, .started(firstCheck:true), "\(label): \(entry)", file:file, line:line)
+        }
+        let siri = await shortcutRefusal(shower)
+        XCTAssertNotNil(siri, "\(label): Siri", file:file, line:line)
+        await settle(shower)
+        XCTAssertEqual(http.sent, 0, "\(label): no authorize request", file:file, line:line)
+        XCTAssertEqual(link.connects, 0, "\(label): no connect", file:file, line:line)
+    }
+
+    /// An earlier refresh (+12.50, or its balance request failed) waits at its last await while
+    /// a newer one hands over −0.50; the earlier one then lands. The newer read stands: home,
+    /// the page, Siri and the next start stay refused and nothing is sent.
+    func testAnEarlierRoundNeverReplacesANewerNegativeRead() async throws {
+        for old in ["+12.50", "failed"] {
+            try await setUp()
+            if old == "failed" { school.failBalance = true } else { school.yuan = 12.5 }
+            let (campus, shower) = try await models()
+            let gate = Gate()
+            var hookRan = false
+            campus.beforeBalanceStamp = {
+                campus.beforeBalanceStamp = nil
+                hookRan = true
+                await gate.wait()
+            }
+            let earlier = Task { await campus.refresh(force:true) }
+            await waitUntil { hookRan }
+            XCTAssertTrue(hookRan, "\(old): the earlier round is at its last await")
+            school.failBalance = false
+            school.yuan = -0.5
+            await campus.refresh(force:true)
+            XCTAssertEqual(shower.balance?.amount, Money(fen:-50), "\(old): the newer round's read")
+            gate.open()
+            await earlier.value
+            XCTAssertEqual(shower.balance?.amount, Money(fen:-50), "\(old): the earlier round is dropped")
+            XCTAssertTrue(shower.balanceBlocks, old)
+            await assertRefused(shower, old)
+        }
+    }
+
+    /// The other way round: an earlier −0.50 never locks again over a newer +12.50 (after a top-up).
+    func testAnEarlierNegativeRoundNeverReplacesANewerGoodRead() async throws {
+        let (campus, shower) = try await models()
+        let gate = Gate()
+        var hookRan = false
+        campus.beforeBalanceStamp = {
+            campus.beforeBalanceStamp = nil
+            hookRan = true
+            await gate.wait()
+        }
+        let earlier = Task { await campus.refresh(force:true) }
+        await waitUntil { hookRan }
+        school.yuan = 12.5
+        await campus.refresh(force:true)
+        XCTAssertEqual(shower.balance?.amount, Money(fen:1250))
+        gate.open()
+        await earlier.value
+        XCTAssertEqual(shower.balance?.amount, Money(fen:1250), "the earlier −0.50 is dropped")
+        XCTAssertFalse(shower.balanceBlocks)
+        XCTAssertTrue(shower.mayStart)
+    }
+
+    /// The read got −0.50, then lost the lease while the card records (账单) were still on their
+    /// way (another process's sign-out removed it): its last write is skipped, and the −0.50 it
+    /// read is not what a start goes by.
+    func testAReadThatLostTheLeaseIsNotTheBalance() async throws {
+        let (campus, shower) = try await models()
+        school.holdRecords = true
+        let refresh = Task { await campus.refresh(force:true) }
+        await waitUntil { self.school.isHoldingRecords }
+        XCTAssertTrue(school.isHoldingRecords, "the records are on their way")
+        try RefreshLease(file:LeaseFile(url:leaseURL), owner:"widget-synthetic").clear()
+        school.releaseRecords()
+        await refresh.value
+        XCTAssertNil(shower.balance, "a read whose last write was skipped is no balance")
+        XCTAssertFalse(shower.balanceBlocks)
+    }
+
+    // MARK: A fallback card is no proof of who signed in
+
+    /// A is signed in; a read finds only B's card on the account and falls back to it (shown on
+    /// home); then B signs in on the web page. Nothing says it was A all along: the old binding
+    /// gets no new start, by the page or Siri, whatever B's own balance.
+    func testAFallbackCardIsNotTheSamePersonAtLogin() async throws {
+        school.yuan = 12.5
+        let (campus, shower) = try await models()
+        school.card = "SYNTHETIC-CARD-B"
+        await campus.refresh(force:true)
+        XCTAssertNil(shower.balance, "a fallback card's balance is unknown")
+        try await campus.adoptWebState(Self.webLogin(card:"SYNTHETIC-CARD-B"))
+        await campus.refresh(force:true)
+        await settle(shower)
+        XCTAssertEqual(shower.balance?.amount, Money(fen:1250), "B's own balance is read")
+        XCTAssertNotNil(campus.switchNotice, "taken as a possible switch")
+        XCTAssertFalse(shower.mayStart, "A's binding starts nothing")
+        let tap = shower.tapStart(.page)
+        XCTAssertNotEqual(tap, .started(firstCheck:false))
+        XCTAssertNotEqual(tap, .started(firstCheck:true))
+        let siri = await shortcutRefusal(shower)
+        XCTAssertNotNil(siri, "Siri is refused")
+        await settle(shower)
+        XCTAssertEqual(http.sent, 0, "no authorize request")
+        XCTAssertEqual(link.connects, 0, "no connect")
     }
 }
