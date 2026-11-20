@@ -207,21 +207,26 @@ enum ShowerProfileFiles {
         if !before, balanceBlocks { revokeUnsentStart() }
     }
 
-    /// Debt allowed on this phone, kept in the Keychain. Turned on only once it is stored;
-    /// turned off here at once, also when the Keychain refuses.
-    /// Returns whether it was stored. Red-phase stub: a turn-off always says so.
+    /// Debt allowed on this phone, kept in the Keychain. Turned on only once it is stored.
+    /// Turned off here at once (a start that would now be refused is taken back), also when the
+    /// Keychain refuses. Returns whether it was stored: false for a turn-off means the item still
+    /// says "allowed" and a relaunch would read it back, so the caller must not show it as off
+    /// for good (and may try again).
     @discardableResult
     func setAllowsDebt(_ value: Bool) -> Bool {
         let store = ShowerStartOverrideStore(store:services.secureStore)
-        if value {
-            guard (try? store.set(true)) != nil else { return false }
-        } else {
-            try? store.set(false)
-        }
+        let stored = (try? store.set(value)) != nil
+        if value, !stored { return false }
+        applyAllowsDebt(value)
+        return stored
+    }
+
+    /// The running model's value; a flip to refused takes back a start that hasn't sent its
+    /// authorize request.
+    private func applyAllowsDebt(_ value: Bool) {
         let before = balanceBlocks
         allowsDebt = value
         if !before, balanceBlocks { revokeUnsentStart() }
-        return true
     }
 
     /// The phrase typed after the five taps on the version: allows debt when it matches,
@@ -460,7 +465,9 @@ enum ShowerProfileFiles {
 
     /// After a reset cleared the stores: no binding, no record, bundled profile only.
     func reloadAfterReset() async {
-        allowsDebt = ShowerStartOverrideStore(store:services.secureStore).isOn
+        // Back to the default in the running model whatever the Keychain still holds: a reset
+        // that couldn't delete the item has reported it, and never turns debt back on here.
+        applyAllowsDebt(false)
         balance = nil
         binding = (try? services.showerVault.binding()) ?? nil
         residenceReviewRequired = services.defaults.bool(forKey:PreferenceKey.showerNeedsResidenceReview)
