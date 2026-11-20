@@ -523,7 +523,7 @@ extension Fixture {
 
 /// The card's recent records are read with the balance, in the same refresh.
 final class CardActivityRefreshTests: XCTestCase {
-    func testRecordsOfThreeSchoolDaysAreStoredWithTheBalance() async throws {
+    func testRecordsOfSevenSchoolDaysAreStoredWithTheBalance() async throws {
         let h = Harness()
         try h.signedIn()
         try h.server.serve("ecykt/getSysBindCustInfo-ok")
@@ -536,7 +536,7 @@ final class CardActivityRefreshTests: XCTestCase {
         XCTAssertEqual(activity.records.first?.title, "蓝牙热水(中卡)(蓝牙热水(中卡))热水POS01(中卡)")
         XCTAssertFalse(activity.complete, "36 records, 5 came back")
         let request = try XCTUnwrap(h.server.requests(path: "/card/getRecordList").first)
-        XCTAssertEqual(request.bodyField("begin"), "20261028", "the school's day: 02:53 on the 30th")
+        XCTAssertEqual(request.bodyField("begin"), "20261024", "the school's day: 02:53 on the 30th")
         XCTAssertEqual(request.bodyField("end"), "20261030")
         XCTAssertEqual(request.bodyField("pageSize"), String(CardActivity.pageSize))
         XCTAssertEqual(h.server.requests(path: "/card/getRecordList").count, 1)

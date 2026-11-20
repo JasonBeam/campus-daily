@@ -42,14 +42,22 @@ public struct CardActivity: Sendable, Equatable, Codable {
         self.records = records; self.begin = begin; self.end = end; self.complete = complete
     }
 
-    /// Records asked for per refresh: the day before yesterday through today, one page.
-    public static let days = 3
+    /// Records asked for per refresh: the last seven school days, today included, one page (home's
+    /// 「最近」 shows as many of them as fit).
+    public static let days = 7
     public static let pageSize = 50
     /// The records are asked for together with the balance and the meter, and given up this
     /// long after that request starts (not after the numbers are stored): the widget has about
     /// 20 s in all, and the balance and the meter are stored without waiting for them. On a
     /// network slow enough to miss it, 昨天花了 stays hidden.
     public static let timeout: TimeInterval = 6
+
+    /// Every record of `day` (`yyyyMMdd`) is here: the page held them all, or it reached a day
+    /// before it. The school lists newest first, so a page cut short still holds every day newer
+    /// than its oldest one.
+    public func holdsAll(of day: String) -> Bool {
+        complete || records.contains { CardHistory.trimmed($0.date) < day }
+    }
 
     /// `begin`/`end` for a read at `now`.
     public static func range(at now: Date, calendar: Calendar = SchoolCalendar.shanghai) -> (begin: String, end: String) {

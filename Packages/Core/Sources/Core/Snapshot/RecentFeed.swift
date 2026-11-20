@@ -163,16 +163,17 @@ public enum RecentFeed {
 /// 「昨天花了 ¥12.00」 / 「昨天没花钱」: the school calendar's yesterday, money out only.
 public enum CardSpending {
     /// Nil when the records can't say: never read, read before today began (yesterday was not
-    /// over yet), a range without yesterday, a page that did not hold every record, or a
+    /// over yet), a range without yesterday, a page that may miss some of yesterday's records
+    /// (`CardActivity.holdsAll`), or a
     /// record of yesterday that may be money in or out. Money in (top-ups, refunds, grants)
     /// is left out; a payment's amount counts with its sign.
     public static func yesterday(_ activity: Tile<CardActivity>?, now: Date,
                                  calendar: Calendar = SchoolCalendar.shanghai) -> Money? {
-        guard let activity, let read = activity.value, read.complete, let fetchedAt = activity.fetchedAt,
+        guard let activity, let read = activity.value, let fetchedAt = activity.fetchedAt,
               fetchedAt >= calendar.startOfDay(for: now),
               let yesterdayDate = calendar.date(byAdding: .day, value: -1, to: now) else { return nil }
         let yesterday = SchoolCalendar.dayString(yesterdayDate, calendar: calendar)
-        guard read.begin <= yesterday, yesterday <= read.end else { return nil }
+        guard read.begin <= yesterday, yesterday <= read.end, read.holdsAll(of: yesterday) else { return nil }
         // No payment yesterday is 「昨天没花钱」.
         return CardDays.spending(on: yesterday, read.records, calendar: calendar)?.total
     }
