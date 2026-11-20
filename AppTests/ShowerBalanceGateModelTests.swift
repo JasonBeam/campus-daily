@@ -369,6 +369,50 @@ final class ShowerBalanceGateModelTests: XCTestCase {
         XCTAssertFalse(relaunched.allowsDebt, "off after a relaunch")
     }
 
+    /// The page side of a switch-off the Keychain refused (`DebtShowerPending`): leaving the page
+    /// or switching theme (a new visit) keeps the switch off with the line and its retry; a
+    /// stored retry clears it, the next visit hasn't the group, and a relaunch reads it off.
+    func testAnUnstoredSwitchOffSurvivesANewVisitUntilARetryIsStored() async throws {
+        let shower = try await model(allowsDebt:true)
+        let pending = DebtShowerPending()
+        var visit = DebtShowerVisit()
+        visit.appeared(on:shower.allowsDebt, pending:pending.unstored)
+        store.refusing = [.showerStartMode]
+        pending.turnOff(shower)
+        XCTAssertTrue(pending.unstored)
+        XCTAssertTrue(ShowerStartOverrideStore(store:store).isOn, "the item still says on")
+        for page in ["re-entered", "other theme"] {
+            var again = DebtShowerVisit()
+            again.appeared(on:shower.allowsDebt, pending:pending.unstored)
+            XCTAssertFalse(shower.allowsDebt, page)
+            XCTAssertTrue(again.shows(pending:pending.unstored), "\(page): the group, with the line and retry")
+            XCTAssertTrue(pending.unstored, page)
+        }
+        pending.turnOff(shower)
+        XCTAssertTrue(pending.unstored, "a retry still refused")
+        store.refusing = []
+        pending.turnOff(shower)
+        XCTAssertFalse(pending.unstored, "stored on the retry")
+        var next = DebtShowerVisit()
+        next.appeared(on:shower.allowsDebt, pending:pending.unstored)
+        XCTAssertFalse(next.shows(pending:pending.unstored), "next visit: hidden")
+        let relaunched = try await model()
+        XCTAssertFalse(relaunched.allowsDebt, "off after a relaunch")
+    }
+
+    /// Turning it back on clears a pending switch-off.
+    func testTurningBackOnClearsAPendingSwitchOff() async throws {
+        let shower = try await model(allowsDebt:true)
+        let pending = DebtShowerPending()
+        store.refusing = [.showerStartMode]
+        pending.turnOff(shower)
+        XCTAssertTrue(pending.unstored)
+        store.refusing = []
+        XCTAssertTrue(shower.setAllowsDebt(true))
+        pending.turnedOn()
+        XCTAssertFalse(pending.unstored)
+    }
+
     /// A reset that can't delete the item (it reports the failure): the running model is back
     /// to the default all the same; it doesn't read the old "allowed" back.
     func testAResetThatCantDeleteTheItemStillTurnsItOff() async throws {

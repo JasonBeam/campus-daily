@@ -11,9 +11,10 @@ struct DebtShowerSection<Below: View>: View {
     @ViewBuilder var below: () -> Below
     @EnvironmentObject private var shower: ShowerModel
     @Environment(SampleMode.self) private var sample
+    var pending = DebtShowerPending.shared
 
     var body: some View {
-        if visit.rowShown && !sample.isActive {
+        if visit.shows(pending:pending.unstored) && !sample.isActive {
             Section {
                 Toggle(isOn:Binding(get:{ shower.allowsDebt }, set:set)) {
                     SettingsRow(symbol:DebtShowerText.symbol, title:DebtShowerText.title(clear:clear))
@@ -31,17 +32,19 @@ struct DebtShowerSection<Below: View>: View {
     }
 
     @ViewBuilder private var footer: some View {
-        if visit.unstored {
+        if pending.unstored {
             VStack(alignment:.leading, spacing:0) {
                 Label(DebtShowerText.unstored(clear:clear), systemImage:"exclamationmark.circle")
                     .foregroundStyle(clear ? NativeTheme.notice : Theme.notice)
                     .fixedSize(horizontal:false, vertical:true)
                     .accessibilityIdentifier("debtShowerUnstored")
+                // Styled as 去充值 / 前往校园充值 under a greyed-out 开始洗澡: 15pt accent with the
+                // chevron, at least 44pt tall.
                 Button { turnOff() } label: {
-                    Text(DebtShowerText.retry(clear:clear)).foregroundStyle(Theme.accentText)
-                        .frame(minHeight:44, alignment:.leading).contentShape(Rectangle())
+                    ShowerStartReasonLinkLabel(text:DebtShowerText.retry(clear:clear), clear:clear)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(RowPressStyle())
+                .padding(.top, 6)
                 .accessibilityIdentifier("debtShowerRetry")
             }
         } else {
@@ -58,13 +61,7 @@ struct DebtShowerSection<Below: View>: View {
         }
     }
 
-    private func turnOff() {
-        var stored = shower.setAllowsDebt(false)
-        #if DEBUG
-        if DebtShowerVisit.demoTurnOffUnstored { stored = false }
-        #endif
-        visit.turnedOff(stored:stored)
-    }
+    private func turnOff() { pending.turnOff(shower) }
 }
 
 extension View {
@@ -82,8 +79,11 @@ private struct DebtShowerUnlock: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .onAppear { visit.appeared(on:shower.allowsDebt) }
-            .onChange(of:shower.allowsDebt) { _, on in visit.changed(on:on) }
+            .onAppear { visit.appeared(on:shower.allowsDebt, pending:DebtShowerPending.shared.unstored) }
+            .onChange(of:shower.allowsDebt) { _, on in
+                visit.changed(on:on)
+                if on { DebtShowerPending.shared.turnedOn() }
+            }
             .sensoryFeedback(.success, trigger:visit.unlocked)
             .background {
                 // The system tint, as 学校账号's alerts: on iOS 27 an alert fills its main button

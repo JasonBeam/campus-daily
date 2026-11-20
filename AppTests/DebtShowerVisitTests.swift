@@ -40,7 +40,7 @@ final class DebtShowerVisitTests: XCTestCase {
 
     func testARightPhraseShowsTheGroupAndAHaptic() {
         var visit = DebtShowerVisit()
-        visit.appeared(on:false)
+        visit.appeared(on:false, pending:false)
         XCTAssertFalse(visit.rowShown)
         visit.typed = "WRONG"
         visit.confirmed(on:false)
@@ -55,32 +55,28 @@ final class DebtShowerVisitTests: XCTestCase {
     /// Switched off, the group stays until the page is left; the next visit hasn't it.
     func testOffStaysUntilThePageIsLeft() {
         var visit = DebtShowerVisit()
-        visit.appeared(on:true)
+        visit.appeared(on:true, pending:false)
         XCTAssertTrue(visit.rowShown)
         visit.changed(on:false)
-        visit.turnedOff(stored:true)
         XCTAssertTrue(visit.rowShown, "still here, switched off")
-        XCTAssertFalse(visit.unstored)
         visit.changed(on:true)
         XCTAssertTrue(visit.rowShown, "on again in the same visit")
         visit.changed(on:false)
-        visit.appeared(on:false)
+        visit.appeared(on:false, pending:false)
         XCTAssertFalse(visit.rowShown, "gone next visit")
     }
 
-    /// A turn-off not stored: the footer says so until a retry is stored.
-    func testAnUnstoredTurnOffUntilARetryIsStored() {
+    /// A switch-off waiting to be stored keeps the group on every later visit, though the
+    /// setting reads off; once nothing is pending, the next visit hasn't it.
+    func testAPendingSwitchOffKeepsTheGroupOnLaterVisits() {
         var visit = DebtShowerVisit()
-        visit.appeared(on:true)
-        visit.turnedOff(stored:false)
-        XCTAssertTrue(visit.unstored)
-        visit.turnedOff(stored:false)
-        XCTAssertTrue(visit.unstored, "the retry failed too")
-        visit.turnedOff(stored:true)
-        XCTAssertFalse(visit.unstored)
-        visit.turnedOff(stored:false)
-        visit.changed(on:true)
-        XCTAssertFalse(visit.unstored, "on again: nothing to say")
+        visit.appeared(on:false, pending:true)
+        XCTAssertTrue(visit.rowShown)
+        XCTAssertTrue(visit.shows(pending:true))
+        var next = DebtShowerVisit()
+        next.appeared(on:false, pending:false)
+        XCTAssertFalse(next.shows(pending:false))
+        XCTAssertTrue(next.shows(pending:true), "pending set while on the page: still shown")
     }
 
     func testTheWords() {

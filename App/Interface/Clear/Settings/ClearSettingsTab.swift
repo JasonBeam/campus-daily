@@ -92,7 +92,7 @@ struct ClearSettingsTab: View {
     /// On demo data: the two machines its 常用洗衣机 shows.
     private func washerCount(_ data: HomeData) -> Int { preview != nil ? (data.laundryBound ? 2 : 0) : laundry.savedMachines.count }
 
-    private var debtShown: Bool { debtVisit.rowShown && !sample.isActive }
+    private var debtShown: Bool { debtVisit.shows(pending:DebtShowerPending.shared.unstored) && !sample.isActive }
 
     /// 「校日常 0.9.0 (53)」 and that it is not the school's app. Five taps on the version, each
     /// within a second of the last, ask for the debt start setting's phrase.
