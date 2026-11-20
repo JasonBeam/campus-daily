@@ -91,6 +91,7 @@ public actor SchoolSession {
         do { found = try vault.ecyktSession() } catch { return unreadableSession(error) }
         guard let stored = found else { return SchoolReading(outcome: .notSignedIn, checkedAt: now()) }
         let started = signOutGeneration
+        let person = personGeneration
 
         var base = stored
         var live: (BoundCard, EcyktSession)
@@ -178,6 +179,9 @@ public actor SchoolSession {
         var reading = SchoolReading(outcome: .ok, checkedAt: checkedAt, balance: b, meter: m,
                                     roomLabel: m == nil ? nil : binding?.label, readAt: now(),
                                     noMeter: binding?.nodeIsRoom != true)
+        if case .success(let amount) = b, person == personGeneration, Self.isBoundCard(card, of: stored) {
+            reading.ownBalance = CardBalanceRead(amount: amount, readAt: reading.readAt ?? checkedAt, person: person)
+        }
         await numbers(reading)
         let a = await withTaskCancellationHandler { await records.value } onCancel: { records.cancel() }
         guard started == signOutGeneration else { return SchoolReading(outcome: .notSignedIn, checkedAt: now()) }

@@ -141,7 +141,9 @@ extension SchoolSession {
         let areacode = URLComponents(url: url, resolvingAgainstBaseURL: false)?
             .queryItems?.first { $0.name == "areacode" }?.value ?? previous?.areacode ?? EcyktSession.defaultAreacode
         let login = try await ecykt.exchange(ticket: ticket, areacode: areacode, userAgent: userAgent)
-        return EcyktSession(token: login.token, syscustid: login.syscustid, custid: previous?.custid,
-                            cardUnionID: previous?.cardUnionID, areacode: areacode, userAgent: userAgent, obtainedAt: now())
+        var session = EcyktSession(token: login.token, syscustid: login.syscustid, custid: previous?.custid,
+                                   cardUnionID: previous?.cardUnionID, areacode: areacode, userAgent: userAgent, obtainedAt: now())
+        session.cardIsFallback = previous?.cardIsFallback
+        return session
     }
 }

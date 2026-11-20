@@ -33,8 +33,8 @@ public struct RefreshReport: Sendable, Equatable {
     /// while holding it): nothing was read here. `snapshot` is the stored one, and the app
     /// shows it without an error.
     public var leaseBusy: Bool
-    /// This refresh's own `SchoolReading.ownBalance` (never a stored or joined-in value from
-    /// another process). Red-phase stub: never set.
+    /// This refresh's own `SchoolReading.ownBalance` (never a stored value or one from the
+    /// other process); nil when signed out meanwhile.
     public var ownBalance: CardBalanceRead? = nil
 
     public init(outcome: Outcome, snapshot: HomeSnapshot, snapshotSaved: Bool, leaseBusy: Bool = false) {
@@ -277,7 +277,8 @@ public actor SnapshotRefresher {
                                            numbers: { [weak self] partial in
                                                _ = await self?.write(partial, started: started, lease: lease)
                                            })
-        let report = await write(reading, started: started, lease: lease)
+        var report = await write(reading, started: started, lease: lease)
+        if started == generation, report.outcome == .ok { report.ownBalance = reading.ownBalance }
         // The heartbeat has stopped before the lease is given back: a renewal still running
         // would otherwise bring it back and hold the other process off for a whole lease.
         heartbeat?.cancel()

@@ -15,8 +15,7 @@ public struct CardBalanceRead: Sendable, Equatable {
     }
 
     /// Still the signed-in person's.
-    // Red-phase stub: never counts.
     public func counts(forPerson current: Int, signedIn: Bool) -> Bool {
-        false
+        signedIn && person == current
     }
 }
