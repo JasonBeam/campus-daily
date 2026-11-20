@@ -34,8 +34,15 @@ public struct RefreshReport: Sendable, Equatable {
     /// shows it without an error.
     public var leaseBusy: Bool
     /// This refresh's own `SchoolReading.ownBalance` (never a stored value or one from the
-    /// other process); nil when signed out meanwhile.
+    /// other process); nil when signed out meanwhile, or when its last write was skipped (the
+    /// lease lost, a newer reading stored by the other process): such a read is no balance.
     public var ownBalance: CardBalanceRead? = nil
+    /// The round (run) that produced this report: rounds start in this order, and every caller
+    /// that joined one gets the same number. 0 = not from a round.
+    public var round: Int = 0
+    /// The `tag` the caller that started the round passed (a caller that joined later gets the
+    /// starter's, never its own).
+    public var roundTag: Int = 0
 
     public init(outcome: Outcome, snapshot: HomeSnapshot, snapshotSaved: Bool, leaseBusy: Bool = false) {
         self.outcome = outcome; self.snapshot = snapshot; self.snapshotSaved = snapshotSaved
@@ -78,6 +85,7 @@ public actor SnapshotRefresher {
         let task: Task<RefreshReport, Never>
         let inBackground: Bool
         let changes: Int
+        let tag: Int
         var waiters = 0
         var cancelled = 0
     }
@@ -125,8 +133,9 @@ public actor SnapshotRefresher {
     /// with `includingChanges` will not join a read that started before this.
     public func noteChange() { changes += 1 }
 
-    /// Runs a refresh, or joins the one already running (see the type's rules).
-    public func refresh(inBackground: Bool, includingChanges: Bool = false) async -> RefreshReport {
+    /// Runs a refresh, or joins the one already running (see the type's rules). `tag`: kept with
+    /// a round this call starts and handed back in its report (`roundTag`).
+    public func refresh(inBackground: Bool, includingChanges: Bool = false, tag: Int = 0) async -> RefreshReport {
         while includingChanges, let run = current, run.changes != changes {
             changeWaitCount += 1
             _ = await wait(for: run.id, run.task)
@@ -138,11 +147,13 @@ public actor SnapshotRefresher {
         nextRunID += 1
         let id = nextRunID
         let task = Task { () -> RefreshReport in
-            let report = await self.run(inBackground: inBackground)
+            var report = await self.run(inBackground: inBackground)
+            report.round = id
+            report.roundTag = tag
             self.finished(id)
             return report
         }
-        current = Run(id: id, task: task, inBackground: inBackground, changes: changes)
+        current = Run(id: id, task: task, inBackground: inBackground, changes: changes, tag: tag)
         return await wait(for: id, task)
     }
 
@@ -277,8 +288,11 @@ public actor SnapshotRefresher {
                                            numbers: { [weak self] partial in
                                                _ = await self?.write(partial, started: started, lease: lease)
                                            })
-        var report = await write(reading, started: started, lease: lease)
-        if started == generation, report.outcome == .ok { report.ownBalance = reading.ownBalance }
+        let (written, stored) = await write(reading, started: started, lease: lease)
+        var report = written
+        // Only a read this round actually stored as the newest one (whether or not the local save
+        // then failed): one whose write was skipped is no balance.
+        if stored, started == generation, report.outcome == .ok { report.ownBalance = reading.ownBalance }
         // The heartbeat has stopped before the lease is given back: a renewal still running
         // would otherwise bring it back and hold the other process off for a whole lease.
         heartbeat?.cancel()
@@ -298,10 +312,13 @@ public actor SnapshotRefresher {
     /// revoke the lease for a sign-out in between. A sign-out right after the save is caught
     /// once more: nobody signed in any more and the lease gone, the snapshot is cleared again;
     /// still signed in with the lease only taken over, the save stays.
-    private func write(_ reading: SchoolReading, started: Int, lease: RefreshLease?) async -> RefreshReport {
+    /// `stored`: this reading went into the snapshot as the newest one (its save attempted under
+    /// the lease, and not lost to a sign-out right after); false when it was skipped.
+    @discardableResult
+    private func write(_ reading: SchoolReading, started: Int, lease: RefreshLease?) async -> (report: RefreshReport, stored: Bool) {
         guard started == generation, !Task.isCancelled else {
             let outcome: RefreshReport.Outcome = started == generation ? reading.outcome : .notSignedIn
-            return RefreshReport(outcome: outcome, snapshot: latest(), snapshotSaved: false)
+            return (RefreshReport(outcome: outcome, snapshot: latest(), snapshotSaved: false), false)
         }
         enum Step { case older(HomeSnapshot), stored(HomeSnapshot, saved: Bool) }
         let store = store, diagnostic = diagnostic
@@ -320,7 +337,7 @@ public actor SnapshotRefresher {
         case nil, .older?:
             let stored: HomeSnapshot
             if case .older(let s)? = step { stored = s } else { stored = latest() }
-            return RefreshReport(outcome: reading.outcome, snapshot: stored, snapshotSaved: false)
+            return (RefreshReport(outcome: reading.outcome, snapshot: stored, snapshotSaved: false), false)
         case .stored(let s, let ok)?:
             snapshot = s; saved = ok
         }
@@ -334,9 +351,9 @@ public actor SnapshotRefresher {
                 guard latest() == snapshot else { return }
                 try? store.saveSnapshot(SchoolSnapshotReducer.reduce(snapshot, .signedOut))
             }
-            if lost != nil { return RefreshReport(outcome: .notSignedIn, snapshot: latest(), snapshotSaved: false) }
+            if lost != nil { return (RefreshReport(outcome: .notSignedIn, snapshot: latest(), snapshotSaved: false), false) }
         }
-        return RefreshReport(outcome: reading.outcome, snapshot: snapshot, snapshotSaved: saved)
+        return (RefreshReport(outcome: reading.outcome, snapshot: snapshot, snapshotSaved: saved), true)
     }
 
     /// Renews `lease` every `interval` until cancelled or lost.

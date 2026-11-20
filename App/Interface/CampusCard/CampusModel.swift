@@ -61,6 +61,9 @@ struct PowerChoice: Identifiable, Equatable {
     /// Bumped by a sign-out, a reset, the start of a login and an account switch's clean-up: a
     /// balance read before one of them never reaches hot water (`feedBalance`).
     private(set) var accountGeneration = 0
+    /// The latest refresh round whose balance reached hot water: an earlier round never does
+    /// after it (`feedBalance`).
+    private var balanceRound = 0
     let services: CampusServices
     private let session: SchoolSession
     /// The school session these models read (校园卡记录's pages).
@@ -174,8 +177,8 @@ struct PowerChoice: Identifiable, Equatable {
         refreshesRunning += 1; loading = true
         defer { refreshesRunning -= 1; loading = refreshesRunning > 0 }
         let started = signOutGeneration
-        let accountStarted = accountGeneration
-        let report = await refresher.refresh(inBackground:inBackground, includingChanges:force)
+        // The round keeps the account generation of the call that started it (`roundTag`).
+        let report = await refresher.refresh(inBackground:inBackground, includingChanges:force, tag:accountGeneration)
         lastReadCard = report.outcome == .ok
         guard started == signOutGeneration else { return }
         snapshot = report.snapshot
@@ -186,7 +189,8 @@ struct PowerChoice: Identifiable, Equatable {
         // The widget held the lease all along (reading, or suspended while holding it): its
         // numbers, if any, are in the snapshot above. Nothing failed here, so no issue; the next
         // pull tries again.
-        guard !report.leaseBusy else { return }
+        // Nothing of this person's balance read here either: unknown, not an earlier value kept.
+        guard !report.leaseBusy else { await feedBalance(report, started:started); return }
         // The saved password changed while this read ran (or the Keychain refused a write):
         // nothing to report, the numbers stay, and the next refresh is not held off. The same when
         // this read lost the lease (back from a long suspension, say): nothing failed. Several
@@ -194,6 +198,7 @@ struct PowerChoice: Identifiable, Equatable {
         notSaving = interruptions.record(report.outcome)
         guard report.outcome != .interrupted, report.outcome != .leaseLost else {
             issue = nil
+            await feedBalance(report, started:started)
             return
         }
         lastRefresh = Date()
@@ -209,20 +214,26 @@ struct PowerChoice: Identifiable, Equatable {
         if report.outcome == .ok {
             reminders.campusRead(snapshot)
         }
-        await feedBalance(report.ownBalance, account:accountStarted, started:started)
+        await feedBalance(report, started:started)
     }
 
-    /// Hands this refresh's own balance read to hot water (nil: the read failed or can't be
-    /// trusted, a start goes), last, after its last await: dropped as a whole when a sign-out,
-    /// reset, login or account switch came since the refresh began, the refresh was cancelled,
-    /// or the read was not for whoever is signed in now. Never a snapshot's value.
-    private func feedBalance(_ read: CardBalanceRead?, account: Int, started: Int) async {
+    /// Hands this refresh round's own balance read to hot water (nil: the read failed, was
+    /// skipped or can't be trusted; a start goes), last, after its last await. Dropped as a
+    /// whole when a sign-out, reset, login or account switch came since the round began (its
+    /// `roundTag`, not this caller's), when a later round already handed over its result, when
+    /// the refresh was cancelled, or when the read was not for whoever is signed in now (nil
+    /// then). Never a snapshot's value.
+    private func feedBalance(_ report: RefreshReport, started: Int) async {
         #if DEBUG
         await beforeBalanceStamp?()
         #endif
         let person = await session.personStamp()
-        guard started == signOutGeneration, account == accountGeneration, !Task.isCancelled else { return }
-        let own = read.flatMap { $0.counts(forPerson:person, signedIn:configured) ? ShowerBalance(amount:$0.amount, readAt:$0.readAt) : nil }
+        guard started == signOutGeneration, report.roundTag == accountGeneration, report.round > balanceRound,
+              !Task.isCancelled else { return }
+        balanceRound = report.round
+        let own = report.ownBalance.flatMap {
+            $0.counts(forPerson:person, signedIn:configured) ? ShowerBalance(amount:$0.amount, readAt:$0.readAt) : nil
+        }
         hotWater()?.noteBalance(own)
     }
 
