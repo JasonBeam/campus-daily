@@ -2,7 +2,7 @@
 //  make-caption.swift
 //  XiaoRiChang
 //
-//  Created by @Zach677 on 2026/11/04.
+//  Created by @JasonBeam on 2026/10/23.
 //
 
 import AppKit
