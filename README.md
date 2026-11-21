@@ -46,12 +46,14 @@ Android 有版本检查和更新提醒；iPhone 版由 TestFlight 更新。
 需要 macOS、Xcode 26（Swift 6）、[mise](https://mise.jdx.dev) 和 node（`mise install` 按 `mise.toml` 装好）。
 
 ```sh
-mise setup        # 拉取支付宝 SDK 和热水平台参数，放在 Git 忽略的目录
+mise setup        # 拉取支付宝 SDK 和热水平台参数，放在 Git 忽略的目录，并启用 Git 钩子
 open XiaoRiChang.xcworkspace
 mise test         # Core 包测试，不联网、不碰蓝牙
 mise build        # 模拟器构建 App 和小组件
 mise run check-public  # 提交前跑：构建、测试、隐私扫描
 ```
+
+提交时，新加的 Swift 文件会自动加上文件头，署名用你的 GitHub 用户名：先 `git config user.github <GitHub 用户名>`，钩子要 swiftformat（`mise install` 会装）。只想启用钩子用 `mise hooks`。
 
 用自己的团队签名：新建 `Configuration/Developer.xcconfig`（不提交），写入 `DEVELOPMENT_TEAM = …`，需要时再写 `APP_BUNDLE_IDENTIFIER = …`。缺少热水平台参数时 Debug 构建只给警告，热水连不上。其他命令用 `mise tasks` 查看。
 
