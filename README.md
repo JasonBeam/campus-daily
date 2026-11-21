@@ -1,4 +1,8 @@
-# 校日常 | Campus Daily
+<p align="center">
+  <img src="docs/site/app-icon.png" width="96" height="96" alt="校日常 App 图标">
+</p>
+
+<h1 align="center">校日常 | Campus Daily</h1>
 
 校日常是面向广东工商职业技术大学的非官方校园生活 App，支持 iPhone 和 Android。校园卡余额、宿舍电费、热水和 U 净洗衣放在一起，日常使用时少切换几个入口。
 
@@ -10,7 +14,7 @@
 
 ## 功能介绍
 
-以下介绍 iPhone 0.10.0 的功能，通过 TestFlight 安装和更新；Android 以当前安装版本为准，充值等部分功能和 iPhone 不同。
+以下介绍 iPhone 最新 TestFlight 测试版功能，具体变动见[版本记录](CHANGELOG.md)；Android 以当前安装版本为准，充值等部分功能和 iPhone 不同。
 
 - 校园卡：登录学校账号后查看余额、消费记录和登记宿舍。
 - 宿舍电费：按校区、公寓、楼栋、楼层、房间一层层匹配电表；有同名公寓时，按提示选是哪一间。
@@ -35,7 +39,7 @@ Android 有版本检查和更新提醒；iPhone 版由 TestFlight 更新。
 ## 注意事项
 
 - 校日常由个人开发，不代表学校或相关服务平台，当前围绕广东工商职业技术大学环境制作。
-- 两个平台都还是测试版。iPhone 这轮新增或重写的热水关水、结算与异常核对，立刻洗衣的整笔实付流程（包括留在支付宝时启动、返回后订单跟进和提醒时机），以及换账号后的热水设置、小组件刷新、校园卡扣费匹配、折叠屏显示，还没有完整的真机验收。Android 新增功能也还没真机验收。热水操作会产生费用，请在现场核对设备，费用以校园卡记录为准。
+- 两个平台目前均为测试版，部分新功能（如热水结算、立刻洗衣等）仍在真机验证中。热水和洗衣操作会产生费用，请在现场核对设备，费用以校园卡或交易记录为准。
 - 请使用本人账号，不要公开密码、验证码、校园令牌、学号、宿舍信息、设备二维码或交易链接。
 - 安装包里带着热水平台给所有人共用的同一组平台参数，任何人都能从安装包里取出来。这是平台的鉴权风险，客户端无法单方面修好。安装包不含作者的个人账号、宿舍、设备或交易记录。存了什么、发给了谁，见[隐私说明](docs/privacy.md)。
 
@@ -56,6 +60,16 @@ mise run check-public  # 提交前跑：构建、测试、隐私扫描
 提交时，新加的 Swift 文件会自动加上文件头，署名用你的 GitHub 用户名：先 `git config user.github <GitHub 用户名>`，钩子要 swiftformat（`mise install` 会装）。只想启用钩子用 `mise hooks`。
 
 用自己的团队签名：新建 `Configuration/Developer.xcconfig`（不提交），写入 `DEVELOPMENT_TEAM = …`，需要时再写 `APP_BUNDLE_IDENTIFIER = …`。缺少热水平台参数时 Debug 构建只给警告，热水连不上。其他命令用 `mise tasks` 查看。
+
+### 从源码运行（Android）
+
+需要 JDK 21 和 Android SDK（与 `platforms/android/` 配置一致）。先运行 `mise setup` 拉取热水平台参数，再在仓库根目录执行：
+
+```sh
+mise android      # 编译 Debug APK，并运行单元测试与 Lint
+```
+
+更多兼容性、签名与构建细节见 [platforms/android/README.md](platforms/android/README.md)。
 
 ### 仓库结构
 
