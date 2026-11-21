@@ -1,3 +1,10 @@
+//
+//  ClearPalette.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import SwiftUI
 
 /// The 清爽 colours (light / dark), one copy for the app's `Theme`, the widget and the Live

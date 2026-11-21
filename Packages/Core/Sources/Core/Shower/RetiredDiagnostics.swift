@@ -1,3 +1,10 @@
+//
+//  RetiredDiagnostics.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import Foundation
 
 /// The diagnostics older builds kept (nothing writes them any more; today's 导出热水诊断 is

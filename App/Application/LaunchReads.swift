@@ -1,3 +1,10 @@
+//
+//  LaunchReads.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/10.
+//
+
 import Core
 
 /// What the live app reads when the user launches it (the scene's launch `.task`), in order.

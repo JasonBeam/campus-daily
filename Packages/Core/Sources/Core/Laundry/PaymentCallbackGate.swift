@@ -1,3 +1,10 @@
+//
+//  PaymentCallbackGate.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/18.
+//
+
 import Foundation
 
 /// One Alipay payment attempt at a time (`AlipayBridge`). Each `pay` or checkout link begins a

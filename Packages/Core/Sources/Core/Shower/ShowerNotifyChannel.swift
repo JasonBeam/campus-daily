@@ -1,3 +1,10 @@
+//
+//  ShowerNotifyChannel.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import Foundation
 
 /// What the controller notifies on the kept link, decided without CoreBluetooth. Only a reply

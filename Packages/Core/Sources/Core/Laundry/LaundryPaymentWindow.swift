@@ -1,3 +1,10 @@
+//
+//  LaundryPaymentWindow.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/18.
+//
+
 import Foundation
 
 /// 立刻洗衣's short window after the Alipay launch, in which the app may read the order and

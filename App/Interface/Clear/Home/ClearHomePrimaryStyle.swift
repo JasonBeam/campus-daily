@@ -1,3 +1,10 @@
+//
+//  ClearHomePrimaryStyle.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import SwiftUI
 
 /// 清爽's primary button on home's sheets: accent fill in both modes, white 17 semibold, radius

@@ -1,3 +1,10 @@
+//
+//  WasherSetupGuide.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import Foundation
 
 /// The card at the top of the common-washer page: what to do first. Gone once signed in with a

@@ -1,3 +1,10 @@
+//
+//  SampleCopy.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/05.
+//
+
 import Foundation
 
 /// The sample mode's copy: its entry on the login step, the bar over every page while it is on,

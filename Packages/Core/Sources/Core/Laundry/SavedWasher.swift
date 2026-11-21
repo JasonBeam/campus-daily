@@ -1,3 +1,10 @@
+//
+//  SavedWasher.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import Foundation
 
 /// A washer the user saved by scanning its code (UI preference, not a credential).

@@ -1,3 +1,10 @@
+//
+//  SettingsRow.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import SwiftUI
 
 /// Icon (`RowIcon`, 20pt in a 26pt column) · title · value in ink2.

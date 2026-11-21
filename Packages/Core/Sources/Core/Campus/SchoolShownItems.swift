@@ -1,3 +1,10 @@
+//
+//  SchoolShownItems.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/01.
+//
+
 import Foundation
 
 /// What the app shows of the stored school items: signed in or not, the dorm and meter, the

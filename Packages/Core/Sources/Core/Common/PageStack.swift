@@ -1,3 +1,10 @@
+//
+//  PageStack.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import Foundation
 
 /// Opening a page on a navigation stack that may already hold pages, without losing what the

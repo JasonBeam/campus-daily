@@ -1,3 +1,10 @@
+//
+//  SchoolVault.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/01.
+//
+
 import Foundation
 
 /// Persistence the school engine needs. Implemented by `StoredSchoolVault` (SchoolStores.swift) and by

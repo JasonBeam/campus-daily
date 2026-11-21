@@ -1,3 +1,10 @@
+//
+//  ClearLaundryButtonLabel.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import SwiftUI
 
 /// The primary button's row: text, then a trailing symbol or a spinner while busy.

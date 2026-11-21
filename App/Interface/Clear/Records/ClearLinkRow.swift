@@ -1,3 +1,10 @@
+//
+//  ClearLinkRow.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import SwiftUI
 
 /// A list row that opens a page on another tab: drawn as a NavigationLink row (its chevron), since

@@ -1,3 +1,10 @@
+//
+//  MascotShape.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/10/29.
+//
+
 import SwiftUI
 
 /// The orange droplet mascot, drawn in a 64×64 box and scaled to the frame.

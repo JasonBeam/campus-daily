@@ -1,3 +1,10 @@
+//
+//  LaundryReminderText.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/10.
+//
+
 import Foundation
 
 /// Copy of 清爽's 洗衣提醒 page: the 洗衣结束提醒 switch, the line under it, 测试提醒（10 秒） and

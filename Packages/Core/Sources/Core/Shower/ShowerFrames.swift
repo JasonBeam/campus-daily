@@ -1,3 +1,10 @@
+//
+//  ShowerFrames.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/01.
+//
+
 import Foundation
 
 /// The hot-water controller's BLE protocol (ported as-is from the existing iOS/Android code;

@@ -1,3 +1,10 @@
+//
+//  ShowerSyncGate.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/01.
+//
+
 import Foundation
 
 /// When the Live Activity and the 「还没结束洗澡？」 reminder follow the shower state the engine

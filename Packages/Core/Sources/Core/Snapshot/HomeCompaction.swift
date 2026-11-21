@@ -1,3 +1,10 @@
+//
+//  HomeCompaction.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import Foundation
 
 /// How far 清爽 home compresses itself on a short screen so it never scrolls below the

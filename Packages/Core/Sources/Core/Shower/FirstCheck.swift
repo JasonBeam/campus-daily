@@ -1,3 +1,10 @@
+//
+//  FirstCheck.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/19.
+//
+
 import Foundation
 
 /// Why the first 开始洗澡 on a dorm's controller stopped before anything was asked of the school

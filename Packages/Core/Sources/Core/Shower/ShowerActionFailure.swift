@@ -1,3 +1,10 @@
+//
+//  ShowerActionFailure.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import Foundation
 
 /// Why a start or an end did not go through, in words the system shows (Siri, Shortcuts, the

@@ -1,3 +1,10 @@
+//
+//  ShowerRetainedSummary.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/16.
+//
+
 import Foundation
 
 /// The showers a next use kept for the user's check (`ShowerVault.retainedShowersForBinding`:

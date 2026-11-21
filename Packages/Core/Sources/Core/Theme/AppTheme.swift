@@ -1,3 +1,10 @@
+//
+//  AppTheme.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import Foundation
 
 /// The app's look, chosen in Settings › 外观 › 主题. Each theme has its own pages (暖橙's feature

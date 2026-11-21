@@ -1,3 +1,10 @@
+//
+//  ClearNoticeText.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import SwiftUI
 
 /// A problem's words in 清爽: in `notice` while they fit on one line (a short error), in the

@@ -1,3 +1,10 @@
+//
+//  WasherPhotoCodes.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import Foundation
 
 /// The QR codes found in a photo picked on the common-washer page.

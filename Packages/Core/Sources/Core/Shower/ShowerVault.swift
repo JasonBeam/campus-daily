@@ -1,3 +1,10 @@
+//
+//  ShowerVault.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/01.
+//
+
 import Foundation
 
 /// Hot-water persistence (Keychain `water.binding`, `water.session`). Session writes fail

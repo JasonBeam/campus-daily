@@ -1,3 +1,10 @@
+//
+//  ShowerBalanceGate.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/20.
+//
+
 import Foundation
 
 /// 开始洗澡 below a zero balance. No balance (not read by this app for the person signed in

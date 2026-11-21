@@ -1,3 +1,10 @@
+//
+//  SettingsLink.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 /// A settings row that opens a page. Each theme's settings page turns it into its own link
 /// (暖橙: a pushed view; 清爽: a `ClearRoute`).
 enum SettingsLink: Hashable {

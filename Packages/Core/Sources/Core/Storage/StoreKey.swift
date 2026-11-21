@@ -1,3 +1,10 @@
+//
+//  StoreKey.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/01.
+//
+
 import Foundation
 
 /// Keychain item names (architecture §4.1). Service = `org.zaxh.xiaorichang.<name>.v1`,

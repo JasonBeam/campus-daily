@@ -1,3 +1,10 @@
+//
+//  SchoolWebLoginLink.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/17.
+//
+
 import SwiftUI
 import Core
 

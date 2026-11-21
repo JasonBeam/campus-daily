@@ -1,3 +1,10 @@
+//
+//  LaundryCheckout.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/01.
+//
+
 import Foundation
 
 // Laundry order state machine (architecture §3.2). Pure: `LaundryEngine` persists the state a

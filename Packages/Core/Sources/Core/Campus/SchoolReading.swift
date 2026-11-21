@@ -1,3 +1,10 @@
+//
+//  SchoolReading.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import Foundation
 
 /// What one school read found. Campus only reports; the snapshot refresher turns this into

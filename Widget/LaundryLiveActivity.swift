@@ -1,3 +1,10 @@
+//
+//  LaundryLiveActivity.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/10/29.
+//
+
 import SwiftUI
 import WidgetKit
 import ActivityKit

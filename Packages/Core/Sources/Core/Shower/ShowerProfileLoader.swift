@@ -1,3 +1,10 @@
+//
+//  ShowerProfileLoader.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/01.
+//
+
 import Foundation
 
 /// `.waterconfig` import (and the bundled profile staged by `Scripts/stage-water-profile.py`):

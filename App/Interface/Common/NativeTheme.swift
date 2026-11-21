@@ -1,3 +1,10 @@
+//
+//  NativeTheme.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import SwiftUI
 
 /// The system grouped-list look of the web and form pages (充值, 电费, 洗衣机, 学校登录, 热水详情).

@@ -1,3 +1,10 @@
+//
+//  ShowerPageFlow+Pushed.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import Foundation
 
 /// The shower page as a page pushed on a navigation stack (清爽) rather than a cover: it stays

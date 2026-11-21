@@ -1,3 +1,10 @@
+//
+//  RecentFeed.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/01.
+//
+
 import Foundation
 
 /// A shower or laundry order the app itself recorded, for 最近. The app maps its own records

@@ -1,3 +1,10 @@
+//
+//  CampusTopUp.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/05.
+//
+
 import Foundation
 
 /// 校园充值: the school's own top-up in WeChat. The app never handles money: it copies the name of

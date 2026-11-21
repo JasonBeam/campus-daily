@@ -1,3 +1,10 @@
+//
+//  StorageError.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/01.
+//
+
 import Foundation
 
 /// Storage failure. Session stores fail closed: the side effect after a failed write does not run.

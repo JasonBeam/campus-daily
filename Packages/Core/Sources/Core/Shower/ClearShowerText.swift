@@ -1,3 +1,10 @@
+//
+//  ClearShowerText.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/10.
+//
+
 import Foundation
 
 /// 清爽's 热水洗澡 page: a short headline and one plain line for each face, the button's words

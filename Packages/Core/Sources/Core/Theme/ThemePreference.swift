@@ -1,3 +1,10 @@
+//
+//  ThemePreference.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import Foundation
 
 /// The chosen theme, kept in the App Group's preferences so the widget and the Live Activities

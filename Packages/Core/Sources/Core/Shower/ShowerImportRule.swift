@@ -1,3 +1,10 @@
+//
+//  ShowerImportRule.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/01.
+//
+
 import Foundation
 
 /// When Settings may replace the dorm binding or the hot-water platform profile.

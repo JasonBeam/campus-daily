@@ -1,3 +1,10 @@
+//
+//  NotificationRoute.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import Foundation
 
 /// Where a tapped reminder opens: the laundry page for a finished wash, home for the rest.

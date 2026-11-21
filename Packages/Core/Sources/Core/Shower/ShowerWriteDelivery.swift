@@ -1,3 +1,10 @@
+//
+//  ShowerWriteDelivery.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/01.
+//
+
 import Foundation
 
 /// Whether a BLE write that did not complete may have reached the controller. Decided here from

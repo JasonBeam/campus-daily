@@ -1,3 +1,10 @@
+//
+//  AccountSwitch.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/01.
+//
+
 import Foundation
 
 /// What the app clears when someone else signs in on this iPhone: the previous person's numbers

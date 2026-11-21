@@ -1,3 +1,10 @@
+//
+//  ClearTileStatusLine.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import SwiftUI
 
 /// A tile's status on one line and never cut off: the first of `forms` (longest first) that fits

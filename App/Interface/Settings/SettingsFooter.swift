@@ -1,3 +1,10 @@
+//
+//  SettingsFooter.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import SwiftUI
 
 /// Under the last settings group: 「校日常 · 非学校官方应用」.

@@ -1,3 +1,10 @@
+//
+//  RowIcon.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/01.
+//
+
 import SwiftUI
 
 /// The line symbol at the start of a row (rows, 最近, settings): monochrome, outline,

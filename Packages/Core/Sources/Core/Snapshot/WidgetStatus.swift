@@ -1,3 +1,10 @@
+//
+//  WidgetStatus.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/01.
+//
+
 import Foundation
 
 /// Which of the four widget states the stored data is in. Decided here from what

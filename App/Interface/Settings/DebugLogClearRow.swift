@@ -1,3 +1,10 @@
+//
+//  DebugLogClearRow.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/05.
+//
+
 import Core
 
 /// 高级 › 清空调试记录 (TestFlight only): what the row says and whether it can be tapped. Read

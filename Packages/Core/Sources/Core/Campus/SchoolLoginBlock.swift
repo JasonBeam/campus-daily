@@ -1,3 +1,10 @@
+//
+//  SchoolLoginBlock.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/17.
+//
+
 import Foundation
 
 /// Why the school would not take a password login it did not call wrong, as far as the page or

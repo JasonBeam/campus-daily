@@ -1,3 +1,10 @@
+//
+//  CrashReportsLaunch.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/10.
+//
+
 import Foundation
 
 /// What `AirCrashReports` starts with: the feedback form's public key (`FeedbackAppKey`) and the

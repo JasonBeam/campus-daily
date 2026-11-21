@@ -1,3 +1,10 @@
+//
+//  HomeSetupCard.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import Foundation
 
 /// 清爽 home's 「继续设置」 card: shown until the school account and the dorm are set (the washer is

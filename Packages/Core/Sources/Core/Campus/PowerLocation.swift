@@ -1,3 +1,10 @@
+//
+//  PowerLocation.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/01.
+//
+
 import Foundation
 
 /// Full dorm and meter locations, 「校区 · 公寓 · 楼栋 · 房间」. Same-named

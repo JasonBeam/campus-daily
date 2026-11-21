@@ -1,3 +1,10 @@
+//
+//  HTTPReplyNote.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/17.
+//
+
 import Foundation
 
 /// What kind of refusal a reply was, for the request log: one fixed word, never the server's or

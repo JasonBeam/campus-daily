@@ -1,3 +1,10 @@
+//
+//  ShowerStartOverrideStore.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/20.
+//
+
 import Foundation
 
 /// Whether a start below zero is allowed on this phone: one Keychain item that never leaves

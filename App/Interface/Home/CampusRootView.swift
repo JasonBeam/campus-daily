@@ -1,3 +1,10 @@
+//
+//  CampusRootView.swift
+//  XiaoRiChang
+//
+//  Created by @JasonBeam on 2026/10/28.
+//
+
 import SwiftUI
 
 /// Each theme has its own page tree: 暖橙's is one home screen (`HomeView`, settings a sheet from

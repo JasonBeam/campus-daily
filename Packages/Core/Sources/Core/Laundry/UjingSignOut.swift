@@ -1,3 +1,10 @@
+//
+//  UjingSignOut.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import Foundation
 
 /// 退出 U净: the login and its number go; the install's mobile id, the saved machines and the

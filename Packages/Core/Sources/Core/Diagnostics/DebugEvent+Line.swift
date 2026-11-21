@@ -1,3 +1,10 @@
+//
+//  DebugEvent+Line.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/05.
+//
+
 import Foundation
 
 /// How an event reads in the log: its name and `key=value` fields, every value a fixed word, a

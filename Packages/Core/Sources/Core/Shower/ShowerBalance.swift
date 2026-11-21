@@ -1,3 +1,10 @@
+//
+//  ShowerBalance.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/20.
+//
+
 import Foundation
 
 /// The campus card's balance as hot water sees it (hot water is charged to the card): the

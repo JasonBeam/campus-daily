@@ -1,3 +1,10 @@
+//
+//  Mascot.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/10/29.
+//
+
 import SwiftUI
 
 /// The orange droplet mascot with its one-time hop; the shape lives in Shared/MascotShape.swift.

@@ -1,3 +1,10 @@
+//
+//  Money.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/01.
+//
+
 import Foundation
 
 /// An amount in fen (1/100 yuan). Integer storage, so equality and sums are exact.

@@ -1,3 +1,10 @@
+//
+//  ShortcutsFooter.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/10.
+//
+
 import SwiftUI
 
 /// How to find 校日常's actions in the Shortcuts app.

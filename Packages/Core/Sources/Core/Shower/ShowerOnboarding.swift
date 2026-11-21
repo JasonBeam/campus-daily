@@ -1,3 +1,10 @@
+//
+//  ShowerOnboarding.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/01.
+//
+
 import Foundation
 
 /// Onboarding: portal dorm address → area path (campus → building → floor → room) → controller.

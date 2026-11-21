@@ -1,3 +1,10 @@
+//
+//  ClearSetupTextButton.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import SwiftUI
 
 /// A plain text button under the primary one, full width, 44 pt.

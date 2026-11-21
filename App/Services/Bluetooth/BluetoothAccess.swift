@@ -1,3 +1,10 @@
+//
+//  BluetoothAccess.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/19.
+//
+
 import Foundation
 @preconcurrency import CoreBluetooth
 import Core

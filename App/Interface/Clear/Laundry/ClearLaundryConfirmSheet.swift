@@ -1,3 +1,10 @@
+//
+//  ClearLaundryConfirmSheet.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import SwiftUI
 
 /// 3.7 and the clearing of an order U净 never showed: a question, the order, what it means, one

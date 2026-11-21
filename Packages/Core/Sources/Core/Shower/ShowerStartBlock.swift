@@ -1,3 +1,10 @@
+//
+//  ShowerStartBlock.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/19.
+//
+
 import Foundation
 
 /// Why 开始洗澡 is greyed out on the hot-water page, said in the line under the button (both

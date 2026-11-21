@@ -1,3 +1,10 @@
+//
+//  SchoolRefreshStack.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/01.
+//
+
 import Foundation
 
 /// The school session and the snapshot refresher, built the same way in the app and in the

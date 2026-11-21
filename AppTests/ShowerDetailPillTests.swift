@@ -1,3 +1,10 @@
+//
+//  ShowerDetailPillTests.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/20.
+//
+
 import SwiftUI
 import XCTest
 @testable import XiaoRiChang

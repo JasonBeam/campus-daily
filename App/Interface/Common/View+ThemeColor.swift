@@ -1,3 +1,10 @@
+//
+//  View+ThemeColor.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import SwiftUI
 
 /// The modifiers SwiftUI hands to UIKit (a control's tint, a list row's or a sheet's background)

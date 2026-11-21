@@ -1,3 +1,10 @@
+//
+//  ThemeLock.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import Foundation
 
 /// Why the theme options are greyed out: a shower or laundry run is going on, and the screens

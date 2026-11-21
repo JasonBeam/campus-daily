@@ -1,3 +1,10 @@
+//
+//  JSONValue.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/01.
+//
+
 import Foundation
 
 /// A Sendable JSON tree. Integers stay exact (`int`), other numbers are `double`.

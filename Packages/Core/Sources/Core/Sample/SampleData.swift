@@ -1,3 +1,10 @@
+//
+//  SampleData.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/05.
+//
+
 import Foundation
 
 /// The synthetic data both the DEBUG demos (campusdaily://demo/…) and the Release sample mode

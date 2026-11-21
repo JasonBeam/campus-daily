@@ -1,3 +1,10 @@
+//
+//  Logging.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/01.
+//
+
 import Foundation
 #if canImport(os)
 import os

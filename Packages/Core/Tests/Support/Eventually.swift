@@ -1,3 +1,10 @@
+//
+//  Eventually.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/01.
+//
+
 import XCTest
 
 /// Polls `condition` every 5 ms until it holds. After `seconds` (2 by default) the test fails

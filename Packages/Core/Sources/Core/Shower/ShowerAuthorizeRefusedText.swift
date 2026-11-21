@@ -1,3 +1,10 @@
+//
+//  ShowerAuthorizeRefusedText.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import Foundation
 
 /// The platform definitely turned the authorize down (`authorizeRefused`: 4002, -301, or before

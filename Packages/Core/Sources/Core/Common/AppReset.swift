@@ -1,3 +1,10 @@
+//
+//  AppReset.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/01.
+//
+
 import Foundation
 
 /// Settings › 高级 › 重置校日常: everything this app stored, back to a fresh install.

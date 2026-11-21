@@ -1,3 +1,10 @@
+//
+//  ClearShortcutsPage.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/10.
+//
+
 import SwiftUI
 
 /// 清爽's 快捷使用: how to add 校日常's actions, and a row that opens the Shortcuts app.

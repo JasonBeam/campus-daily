@@ -1,3 +1,10 @@
+//
+//  ClearSetupRow.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import Core
 
 /// A row of 清爽's 首次设置 checklist, in order: `account`, `dorm`

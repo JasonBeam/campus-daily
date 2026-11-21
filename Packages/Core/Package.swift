@@ -1,3 +1,10 @@
+//
+//  Package.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/01.
+//
+
 // swift-tools-version: 6.0
 import PackageDescription
 

@@ -1,3 +1,10 @@
+//
+//  ShowerAutoReview.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/16.
+//
+
 import Foundation
 
 /// The automatic check of the controller while the app is in front: a read-only `AA` probe over a

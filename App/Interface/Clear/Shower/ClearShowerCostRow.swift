@@ -1,3 +1,10 @@
+//
+//  ClearShowerCostRow.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import SwiftUI
 
 /// One row of the 本次费用 card: label on the left, value on the right; stacked when they don't

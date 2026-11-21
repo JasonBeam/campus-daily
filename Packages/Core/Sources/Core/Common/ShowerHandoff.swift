@@ -1,3 +1,10 @@
+//
+//  ShowerHandoff.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/01.
+//
+
 import Foundation
 
 /// `getSignData.appdata`, the school's signed hand-off to the hot-water platform.

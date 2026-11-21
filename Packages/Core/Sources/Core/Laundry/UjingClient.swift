@@ -1,3 +1,10 @@
+//
+//  UjingClient.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/01.
+//
+
 import Foundation
 
 /// The U净 calls `LaundryEngine` needs (implemented by `UjingClient`, faked in tests).

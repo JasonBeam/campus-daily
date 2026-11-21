@@ -1,3 +1,10 @@
+//
+//  BluetoothTransport.swift
+//  XiaoRiChang
+//
+//  Created by @JasonBeam on 2026/10/22.
+//
+
 import Foundation
 @preconcurrency import CoreBluetooth
 import Core

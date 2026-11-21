@@ -1,3 +1,10 @@
+//
+//  ShortcutsSection.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import SwiftUI
 
 /// 「快捷指令 ›」 (opens the Shortcuts app) and how to find 校日常's actions there, as 高级 shows it.

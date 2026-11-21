@@ -1,3 +1,10 @@
+//
+//  ClearMeterPageText.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/10.
+//
+
 import Foundation
 
 /// 清爽's meter page, 绑定宿舍电表: the chosen levels (or the prompt) over one note, 「选择位置」

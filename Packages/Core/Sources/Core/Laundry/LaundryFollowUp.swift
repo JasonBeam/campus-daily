@@ -1,3 +1,10 @@
+//
+//  LaundryFollowUp.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/01.
+//
+
 import Foundation
 
 /// A paid order that is not washing with a known end yet (paid and waiting to start, starting,

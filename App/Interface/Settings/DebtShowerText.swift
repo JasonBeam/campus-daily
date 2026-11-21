@@ -1,3 +1,10 @@
+//
+//  DebtShowerText.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/20.
+//
+
 /// The words of the debt start setting (copy v2 §2, §3, §5): the system alert after five taps
 /// on the version, and its group while it is on.
 enum DebtShowerText {

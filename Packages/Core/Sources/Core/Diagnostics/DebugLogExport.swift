@@ -1,3 +1,10 @@
+//
+//  DebugLogExport.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/10.
+//
+
 import Foundation
 
 /// 高级 › 导出调试记录: the whole TestFlight log as one UTF-8 text file, alone in a folder of its

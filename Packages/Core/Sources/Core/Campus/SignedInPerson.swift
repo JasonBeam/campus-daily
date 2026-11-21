@@ -1,3 +1,10 @@
+//
+//  SignedInPerson.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import Foundation
 
 /// Who is signed in: the card's stable `custunionid` and, after a form login, the account.

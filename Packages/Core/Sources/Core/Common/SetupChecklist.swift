@@ -1,3 +1,10 @@
+//
+//  SetupChecklist.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import Foundation
 
 /// 清爽's 首次配置 checklist: which rows it shows, which are done, how many of the needed ones

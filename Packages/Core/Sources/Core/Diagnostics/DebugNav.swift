@@ -1,3 +1,10 @@
+//
+//  DebugNav.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/05.
+//
+
 import Foundation
 
 /// `nav.open` lines. Whatever routes (a tap that goes through code, a widget link, a

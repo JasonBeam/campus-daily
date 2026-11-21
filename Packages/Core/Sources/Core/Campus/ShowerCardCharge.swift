@@ -1,3 +1,10 @@
+//
+//  ShowerCardCharge.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/18.
+//
+
 import Foundation
 
 /// A shower's charge as the campus card's records show it, for display only. The school books

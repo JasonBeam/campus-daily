@@ -1,3 +1,10 @@
+//
+//  CardBalanceRead.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/20.
+//
+
 import Foundation
 
 /// A campus-card balance the school answered for the card this login is bound to, in one

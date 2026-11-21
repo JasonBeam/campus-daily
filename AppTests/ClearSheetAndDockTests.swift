@@ -1,3 +1,10 @@
+//
+//  ClearSheetAndDockTests.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/16.
+//
+
 import XCTest
 import SwiftUI
 import Core

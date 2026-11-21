@@ -1,3 +1,10 @@
+//
+//  WebNavigationPolicySignatureTests.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/01.
+//
+
 import XCTest
 
 /// The school login web view keeps its host allow-list in WebKit's optional

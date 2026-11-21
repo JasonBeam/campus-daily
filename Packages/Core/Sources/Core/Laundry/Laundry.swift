@@ -1,3 +1,10 @@
+//
+//  Laundry.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/01.
+//
+
 import Foundation
 
 // U净 laundry models (architecture §2.3, A.5). Values only; the client decodes them, the

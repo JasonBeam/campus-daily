@@ -1,3 +1,10 @@
+//
+//  ShowerUnsureText.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/18.
+//
+
 import Foundation
 
 /// The words for each `ShowerUnsureReason`, in each theme: first what happened, then where to
