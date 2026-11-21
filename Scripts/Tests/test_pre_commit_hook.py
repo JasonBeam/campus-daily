@@ -63,10 +63,13 @@ class PreCommitHookTests(unittest.TestCase):
         fake.chmod(fake.stat().st_mode | stat.S_IXUSR)
 
     def env(self):
-        # Only system tools and the fake: the hook's own PATH additions must not find a real one.
-        env = dict(os.environ, FAKE_SWIFTFORMAT_LOG=str(self.log), HOME=self.tmp.name)
-        env['PATH'] = f'{self.bin}:/usr/bin:/bin'
-        return env
+        # Clean environment so tests never inherit host git/shell wrappers or a real swiftformat.
+        return {
+            'PATH': f'{self.bin}:/usr/bin:/bin',
+            'HOME': self.tmp.name,
+            'FAKE_SWIFTFORMAT_LOG': str(self.log),
+            'PRE_COMMIT_KEEP_PATH': '1',
+        }
 
     def git(self, *args):
         return subprocess.run(['git', '-C', str(self.repo), *args], check=True,

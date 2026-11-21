@@ -17,7 +17,9 @@ repo_root="$(git rev-parse --show-toplevel)"
 cd "$repo_root"
 
 # Ensure common tool locations are reachable from GUI git clients.
-export PATH="$PATH:/opt/homebrew/bin:/usr/local/bin:$HOME/.local/share/mise/shims"
+if [ -z "${PRE_COMMIT_KEEP_PATH:-}" ]; then
+    export PATH="$PATH:/opt/homebrew/bin:/usr/local/bin:$HOME/.local/share/mise/shims"
+fi
 
 project="XiaoRiChang"
 
@@ -33,6 +35,9 @@ find_swiftformat() {
     if candidate="$(command -v swiftformat 2>/dev/null)" && "$candidate" --version >/dev/null 2>&1; then
         printf '%s\n' "$candidate"
         return 0
+    fi
+    if [ -n "${PRE_COMMIT_KEEP_PATH:-}" ]; then
+        return 1
     fi
     for candidate in \
         "/opt/homebrew/bin/swiftformat" \
@@ -51,7 +56,7 @@ clean_files=()
 partial_files=()
 while IFS= read -r -d '' file; do
     case "$file" in
-        Vendor/*|Android/*|*/.build/*|.build/*|.build-tests/*|.DerivedData/*) continue ;;
+        Vendor/*|Android/*|*/.build/*|.build/*|.build-tests/*|.DerivedData/*|.airbuild/*) continue ;;
     esac
     name="${file##*/}"
     if git show ":$file" | has_header "$name"; then
