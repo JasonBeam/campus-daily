@@ -1,3 +1,10 @@
+//
+//  ShowerActionOutcome.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import Foundation
 
 /// What 开始洗澡 / 结束并结算 came to, for the callers that speak instead of showing the page:

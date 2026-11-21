@@ -1,3 +1,10 @@
+//
+//  FirstResult.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import Foundation
 
 /// The first value offered wins; `value()` waits for it.

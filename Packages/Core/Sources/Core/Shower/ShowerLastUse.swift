@@ -1,3 +1,10 @@
+//
+//  ShowerLastUse.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import Foundation
 
 /// 「最近一次用水」 on 清爽's 热水 page: the last settled shower, from what home's 热水 tile shows

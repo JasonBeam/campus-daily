@@ -1,3 +1,10 @@
+//
+//  WidgetDrawChoice.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/18.
+//
+
 import Foundation
 
 /// What the widget draws from one read of the Keychain (`WidgetStoredData.read`). Numbers come

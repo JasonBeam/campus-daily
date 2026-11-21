@@ -1,3 +1,10 @@
+//
+//  WasherSetupExit.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import Foundation
 
 /// Where the common-washer page goes once a machine is saved or switched.

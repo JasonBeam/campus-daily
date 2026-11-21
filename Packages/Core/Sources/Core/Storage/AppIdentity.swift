@@ -1,3 +1,10 @@
+//
+//  AppIdentity.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import Foundation
 
 /// The identifiers this build is signed for: the App Group both targets share and the keychain

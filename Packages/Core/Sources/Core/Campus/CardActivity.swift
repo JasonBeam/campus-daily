@@ -1,3 +1,10 @@
+//
+//  CardActivity.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/01.
+//
+
 import Foundation
 
 /// The school's calendar: card records carry Beijing-time dates and times without a zone, and

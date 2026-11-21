@@ -1,3 +1,10 @@
+//
+//  HomeFigures.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/01.
+//
+
 import Foundation
 
 /// One of the two big numbers on the home screen (校园卡, 电量): the value, whether it is low

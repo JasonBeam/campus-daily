@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+# Adds the file header to newly added Swift files:
+#
+#   //
+#   //  Name.swift
+#   //  XiaoRiChang
+#   //
+#   //  Created by @<git config user.github> on yyyy/MM/dd.
+#   //
+#
+# Files that already have a header, and files that are only modified, are left
+# alone, so every file keeps the author who first added it.
+# Enable once per clone: `mise hooks` or `git config core.hooksPath .githooks`.
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+# Ensure common tool locations are reachable from GUI git clients.
+export PATH="$PATH:/opt/homebrew/bin:/usr/local/bin:$HOME/.local/share/mise/shims"
+
+project="XiaoRiChang"
+
+has_header() { # stdin: file content, $1: file name
+    local first second
+    IFS= read -r first || return 1
+    IFS= read -r second || return 1
+    [ "$first" = "//" ] && [ "$second" = "//  $1" ]
+}
+
+find_swiftformat() {
+    local candidate
+    if candidate="$(command -v swiftformat 2>/dev/null)" && "$candidate" --version >/dev/null 2>&1; then
+        printf '%s\n' "$candidate"
+        return 0
+    fi
+    for candidate in \
+        "/opt/homebrew/bin/swiftformat" \
+        "/usr/local/bin/swiftformat" \
+        "$HOME/.local/share/mise/shims/swiftformat"
+    do
+        if [ -x "$candidate" ] && "$candidate" --version >/dev/null 2>&1; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
+
+clean_files=()
+partial_files=()
+while IFS= read -r -d '' file; do
+    case "$file" in
+        Vendor/*|Android/*|*/.build/*|.build/*|.build-tests/*|.DerivedData/*) continue ;;
+    esac
+    name="${file##*/}"
+    if git show ":$file" | has_header "$name"; then
+        continue
+    fi
+    if git diff --quiet -- "$file"; then
+        clean_files+=("$file")
+    else
+        partial_files+=("$file")
+    fi
+done < <(git diff --cached --name-only --diff-filter=A -z -- '*.swift')
+
+if [ "${#partial_files[@]}" -gt 0 ]; then
+    echo "pre-commit: these new Swift files have unstaged changes and no file header:" >&2
+    printf '  %s\n' "${partial_files[@]}" >&2
+    echo "Stage the whole file (git add) so the hook can add the header, or add it yourself." >&2
+    exit 1
+fi
+
+if [ "${#clean_files[@]}" -eq 0 ]; then
+    exit 0
+fi
+
+handle="$(git config user.github || true)"
+handle="${handle#@}"
+if [ -z "$handle" ]; then
+    echo "pre-commit: new Swift files need a file header signed with your GitHub user name." >&2
+    echo "Set it once: git config user.github <your GitHub user name>" >&2
+    exit 1
+fi
+
+if ! swiftformat_bin="$(find_swiftformat)"; then
+    echo "pre-commit: swiftformat not found (install via mise or brew, or bypass with --no-verify)." >&2
+    exit 1
+fi
+
+"$swiftformat_bin" --config .swiftformat --quiet \
+    --header "\n {file}\n $project\n\n Created by @$handle on {created}.\n" \
+    "${clean_files[@]}"
+git add -- "${clean_files[@]}"

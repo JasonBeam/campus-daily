@@ -1,3 +1,10 @@
+//
+//  SchoolSession+SavedPassword.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import Foundation
 
 /// The saved-password login a refresh falls back to, the hold written before the password goes

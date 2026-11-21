@@ -1,3 +1,10 @@
+//
+//  ClearLaundryDonePanel.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import SwiftUI
 
 /// 衣服洗好了, the sheet the root shows once per finished laundry order (`navigator.panel`; the

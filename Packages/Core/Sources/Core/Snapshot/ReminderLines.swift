@@ -1,3 +1,10 @@
+//
+//  ReminderLines.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/01.
+//
+
 import Foundation
 
 /// The user's 「电量低于 N 度」/「校园卡低于 N 元」 lines, shared with the widget through the

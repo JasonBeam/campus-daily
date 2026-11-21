@@ -1,3 +1,10 @@
+//
+//  ShowerUnsureReason.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/18.
+//
+
 import Foundation
 
 /// Why a shower's outcome is not known, as far as the saved record can tell (it survives a

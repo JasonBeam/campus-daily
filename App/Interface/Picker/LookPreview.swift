@@ -1,3 +1,10 @@
+//
+//  LookPreview.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/19.
+//
+
 import SwiftUI
 import Core
 

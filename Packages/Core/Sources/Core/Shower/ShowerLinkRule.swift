@@ -1,3 +1,10 @@
+//
+//  ShowerLinkRule.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/01.
+//
+
 import Foundation
 
 /// Starting a shower and the read-only controller check (核对宿舍的水控) share the one Bluetooth

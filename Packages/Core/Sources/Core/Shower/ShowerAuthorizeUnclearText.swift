@@ -1,3 +1,10 @@
+//
+//  ShowerAuthorizeUnclearText.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import Foundation
 
 /// An authorize the platform answered in a way the app can't read (`authorizeUncertain`), or

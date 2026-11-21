@@ -1,3 +1,10 @@
+//
+//  SharedLock.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import Foundation
 
 /// The lock around state the app shares with its extensions (the App Group's preferences, its

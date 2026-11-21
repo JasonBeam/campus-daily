@@ -1,3 +1,10 @@
+//
+//  EcyktClient.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/01.
+//
+
 import Foundation
 
 /// ecykt.gdbtu.edu.cn `/ykt-mini`. Every call is a JSON POST with `acc_token` in the header

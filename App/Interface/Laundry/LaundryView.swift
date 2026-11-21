@@ -1,3 +1,10 @@
+//
+//  LaundryView.swift
+//  XiaoRiChang
+//
+//  Created by @JasonBeam on 2026/10/22.
+//
+
 import SwiftUI
 import Core
 

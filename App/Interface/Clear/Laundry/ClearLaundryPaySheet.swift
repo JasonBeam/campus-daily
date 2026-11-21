@@ -1,3 +1,10 @@
+//
+//  ClearLaundryPaySheet.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import SwiftUI
 
 /// The one confirmation before an order or a payment request. A new order is reviewed (「核对订单」:

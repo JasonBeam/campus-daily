@@ -1,3 +1,10 @@
+//
+//  ShowerHomeStatus.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/01.
+//
+
 import Foundation
 
 /// Where hot water stands, as the home shower button shows it.

@@ -1,3 +1,10 @@
+//
+//  MeterLookupGate.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/01.
+//
+
 import Foundation
 
 /// When the automatic meter lookup (`SchoolSession.matchElectricity`) starts, and what it left on

@@ -1,3 +1,10 @@
+//
+//  PreferenceStorage.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/01.
+//
+
 import Foundation
 
 /// Key/value preferences (UserDefaults in the app, a dictionary in tests).

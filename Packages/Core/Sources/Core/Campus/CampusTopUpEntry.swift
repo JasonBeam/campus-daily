@@ -1,3 +1,10 @@
+//
+//  CampusTopUpEntry.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/05.
+//
+
 import Foundation
 
 /// Where a balance on home goes (both themes, the same conditions as before 校园充值).

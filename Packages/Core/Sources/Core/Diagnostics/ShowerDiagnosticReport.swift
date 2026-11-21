@@ -1,3 +1,10 @@
+//
+//  ShowerDiagnosticReport.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/10.
+//
+
 import Foundation
 
 /// 故障排查 › 导出热水诊断: a short text file for the share sheet with the app version, the time,

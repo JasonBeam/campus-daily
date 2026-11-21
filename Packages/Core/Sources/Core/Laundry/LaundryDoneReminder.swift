@@ -1,3 +1,10 @@
+//
+//  LaundryDoneReminder.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/01.
+//
+
 import Foundation
 
 /// When the 「衣服洗好了」 reminder goes off for the open order. Pure: the app schedules what

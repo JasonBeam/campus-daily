@@ -1,3 +1,10 @@
+//
+//  ShowerDetailPill.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/20.
+//
+
 import SwiftUI
 
 /// 暖橙 热水洗澡's button, home's pill: a capsule 56 tall, the title centred after its symbol,

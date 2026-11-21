@@ -1,3 +1,10 @@
+//
+//  MeterPageText.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/01.
+//
+
 import Foundation
 
 /// Words on the meter page (home 电量 › 电表, Settings). Only there: the same failures read as

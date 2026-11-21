@@ -1,3 +1,10 @@
+//
+//  FeedbackDraft.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/04.
+//
+
 import Foundation
 
 /// Settings › 反馈问题: what the feedback service takes. Text may be empty only with a screenshot.

@@ -1,3 +1,10 @@
+//
+//  ShowerRetiredWordsTests.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/05.
+//
+
 import XCTest
 
 /// The check face is gone, and so is any way to resolve or settle again

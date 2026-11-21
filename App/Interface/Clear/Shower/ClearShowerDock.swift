@@ -1,3 +1,10 @@
+//
+//  ClearShowerDock.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import SwiftUI
 import Core
 

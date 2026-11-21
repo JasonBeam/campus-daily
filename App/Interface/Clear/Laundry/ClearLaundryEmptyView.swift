@@ -1,3 +1,10 @@
+//
+//  ClearLaundryEmptyView.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import SwiftUI
 
 /// 3.5: no washer saved, or none read yet — what to do, and 「扫洗衣机」.

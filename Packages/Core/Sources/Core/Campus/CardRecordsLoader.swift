@@ -1,3 +1,10 @@
+//
+//  CardRecordsLoader.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/01.
+//
+
 import Foundation
 
 /// Where 校园卡记录 reads its pages: the school session, or synthetic pages in a demo.

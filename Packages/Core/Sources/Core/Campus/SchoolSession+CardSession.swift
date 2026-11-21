@@ -1,3 +1,10 @@
+//
+//  SchoolSession+CardSession.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import Foundation
 
 /// The card session: liveness, writing it back, and the steps that run on it (the hot-water

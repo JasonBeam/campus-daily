@@ -1,3 +1,10 @@
+//
+//  ClearRecordsSignedOut.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import SwiftUI
 
 /// 订单 while signed out: 「登录后显示」 with 「登录学校账号」, which opens the first-run checklist

@@ -1,3 +1,10 @@
+//
+//  ShowerImportFolder.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import Foundation
 
 /// `Application Support/Water/`, where an imported `.waterconfig` is written. It holds the

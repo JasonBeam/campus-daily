@@ -1,3 +1,10 @@
+//
+//  CampusLoginProgress.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/01.
+//
+
 import Foundation
 
 /// What the school sign-in sheet shows while its web view is hidden (pure; the sheet feeds it page

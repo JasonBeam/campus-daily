@@ -1,3 +1,10 @@
+//
+//  SchoolModels.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/01.
+//
+
 import Foundation
 
 // MARK: - Credentials (descriptions never show secret values)

@@ -1,3 +1,10 @@
+//
+//  ShowerReminderStart.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/01.
+//
+
 import Foundation
 
 /// When the 「还在计时」 reminder counts from. Normally the water start (`ShowerState.startedAt`).

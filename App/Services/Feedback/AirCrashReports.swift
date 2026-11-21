@@ -1,3 +1,10 @@
+//
+//  AirCrashReports.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/10.
+//
+
 // AirCrashReports.swift — app crashes for AirFeedback. MetricKit hands each
 // crash to a later launch of the app (usually the next one); this file turns
 // it into one report and posts it to the app's AirFeedback with the public App

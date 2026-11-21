@@ -1,3 +1,10 @@
+//
+//  ShowerPage.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/01.
+//
+
 import Foundation
 
 /// The full-screen shower page: one of seven faces, read from the session record. The record

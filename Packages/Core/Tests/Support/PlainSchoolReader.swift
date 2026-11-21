@@ -1,3 +1,10 @@
+//
+//  PlainSchoolReader.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/01.
+//
+
 import Core
 
 /// A fake school read that never writes a credential back, so it has no use for the lease

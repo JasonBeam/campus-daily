@@ -1,3 +1,10 @@
+//
+//  ClearHomeOrderCard.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/10.
+//
+
 import SwiftUI
 
 /// 洗衣订单 on home while an order is open: its status, and the way to the laundry page.

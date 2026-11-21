@@ -13,18 +13,24 @@
 
 [tools]
 node = "lts"
+swiftformat = "0.64.7"  # file headers in the pre-commit hook
 
 [task_config]
 dir = "{{config_root}}"
 
 [tasks.setup]
-description = "Fetch the pinned Alipay SDK and the shared hot-water profile (both Git-ignored)"
+description = "Fetch the pinned Alipay SDK and the shared hot-water profile (both Git-ignored), and enable the Git hooks"
 run = '''
 #!/usr/bin/env bash
 set -euo pipefail
 [ -d Vendor/AlipaySDK-15.8.30/AlipaySDK.xcframework ] || python3 Scripts/fetch-alipay-sdk.py
 [ -f private/distribution/WaterPlatformProfile.json ] || python3 Scripts/stage-water-profile.py fetch
+git config core.hooksPath .githooks
 '''
+
+[tasks.hooks]
+description = "Enable the repo's Git hooks (new Swift files get a file header on commit)"
+run = "git config core.hooksPath .githooks"
 
 [tasks.build]
 description = "Build App and Widget for iOS Simulator, Debug and Release"

@@ -1,3 +1,10 @@
+//
+//  CampusTopUpTicketScanTests.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/17.
+//
+
 import XCTest
 
 /// WeChat's ticket links for the school's service work for one user only: the next person is told

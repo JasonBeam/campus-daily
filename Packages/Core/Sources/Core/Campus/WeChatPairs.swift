@@ -1,3 +1,10 @@
+//
+//  WeChatPairs.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/01.
+//
+
 import Foundation
 
 /// A canteen meal paid with WeChat reaches `card/getRecordList` as two records with the same

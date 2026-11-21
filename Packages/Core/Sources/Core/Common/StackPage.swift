@@ -1,3 +1,10 @@
+//
+//  StackPage.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import Foundation
 
 /// A page on one of 清爽's tab stacks, as the stack rules (`PageStack`) need to know it: which is

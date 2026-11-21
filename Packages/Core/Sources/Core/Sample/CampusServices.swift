@@ -1,3 +1,10 @@
+//
+//  CampusServices.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/05.
+//
+
 import Foundation
 
 /// The stores and services one graph of the app's models runs on. The live app has one (the

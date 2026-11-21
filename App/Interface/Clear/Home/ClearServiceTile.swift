@@ -1,3 +1,10 @@
+//
+//  ClearServiceTile.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import SwiftUI
 
 /// A home tile (热水洗澡, 洗衣): symbol, title, detail, and a status line with ↗. The whole tile

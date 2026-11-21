@@ -1,3 +1,10 @@
+//
+//  TapStreak.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/20.
+//
+
 import Foundation
 
 /// `count` taps in a row, each within `gap` of the one before; a longer pause starts over.

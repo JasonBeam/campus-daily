@@ -1,3 +1,10 @@
+//
+//  VersionText.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import Foundation
 
 /// Settings › 版本: 「0.8.0 Beta（48）」 on TestFlight and development builds, 「0.8.0（48）」 from

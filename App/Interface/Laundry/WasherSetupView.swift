@@ -1,3 +1,10 @@
+//
+//  WasherSetupView.swift
+//  XiaoRiChang
+//
+//  Created by @JasonBeam on 2026/10/23.
+//
+
 import SwiftUI
 import PhotosUI
 import Vision

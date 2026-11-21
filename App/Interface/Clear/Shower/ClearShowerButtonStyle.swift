@@ -1,3 +1,10 @@
+//
+//  ClearShowerButtonStyle.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import SwiftUI
 
 /// The 热水 page's primary button in 清爽: the blue fill and white label of his

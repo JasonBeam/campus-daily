@@ -1,3 +1,10 @@
+//
+//  LaundryStart.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/05.
+//
+
 import Foundation
 
 // 立刻洗衣: after the user paid, the app asks U净 once to start the machine (`control/start`),

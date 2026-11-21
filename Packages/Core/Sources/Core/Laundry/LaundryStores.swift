@@ -1,3 +1,10 @@
+//
+//  LaundryStores.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/01.
+//
+
 import Foundation
 
 /// `LaundryVault` over a `SecureStore`: `laundry.account` (mobile id + login) and

@@ -1,3 +1,10 @@
+//
+//  MeterWalk.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/01.
+//
+
 import Foundation
 
 /// A level of the electricity directory, as the picker walks it.

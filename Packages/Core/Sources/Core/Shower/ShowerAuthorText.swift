@@ -1,3 +1,10 @@
+//
+//  ShowerAuthorText.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/05.
+//
+
 import Foundation
 
 /// The product copy for a shower that is over without a settlement in the app (stopped on the

@@ -1,3 +1,10 @@
+//
+//  SampleDefaults.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/05.
+//
+
 import Foundation
 
 /// UserDefaults that keep everything in memory: the sample's preferences and its `@AppStorage`.

@@ -1,3 +1,10 @@
+//
+//  SettingsItem.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/10.
+//
+
 /// A row of the settings page. `SettingsLayout` puts them in groups for each theme.
 enum SettingsItem: String, CaseIterable, Hashable {
     /// 清爽's 设置向导 (the 首次配置 checklist).

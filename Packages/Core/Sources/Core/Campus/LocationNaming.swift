@@ -1,3 +1,10 @@
+//
+//  LocationNaming.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/01.
+//
+
 import Foundation
 
 /// How same-named places are told apart in a list: each row is titled by the first level of

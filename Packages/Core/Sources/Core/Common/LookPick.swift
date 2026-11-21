@@ -1,3 +1,10 @@
+//
+//  LookPick.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/19.
+//
+
 import Foundation
 
 /// 「选一个样子」: before a new user's first-run setup, both themes' homes side by side to pick

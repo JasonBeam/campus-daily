@@ -1,3 +1,10 @@
+//
+//  ShowerTileStatus.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import Foundation
 
 /// The status line of 清爽 home's 热水 tile: one short word for the state, and how the tile behaves.

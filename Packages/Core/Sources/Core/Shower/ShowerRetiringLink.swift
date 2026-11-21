@@ -1,3 +1,10 @@
+//
+//  ShowerRetiringLink.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import Foundation
 
 /// A link being let go stays `retiring` until its disconnect arrives. That callback is the link

@@ -1,3 +1,10 @@
+//
+//  WasherSetupRefusal.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import Foundation
 
 /// Why choosing or saving a common washer did not go ahead, each with its own text.

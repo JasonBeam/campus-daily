@@ -1,3 +1,10 @@
+//
+//  FeedbackText.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/04.
+//
+
 import Foundation
 
 /// The feedback form's fixed lines. The service's own words are never shown.

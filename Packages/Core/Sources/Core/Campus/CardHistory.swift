@@ -1,3 +1,10 @@
+//
+//  CardHistory.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/01.
+//
+
 import Foundation
 
 /// One read of `card/getRecordList` for 校园卡记录: a range of whole school days (`yyyyMMdd`)

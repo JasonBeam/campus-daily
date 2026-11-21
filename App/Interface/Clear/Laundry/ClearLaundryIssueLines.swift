@@ -1,3 +1,10 @@
+//
+//  ClearLaundryIssueLines.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import SwiftUI
 
 /// Error lines under the page's content: the icon in `notice`, the words too while they are one

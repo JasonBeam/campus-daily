@@ -1,3 +1,10 @@
+//
+//  ShowerRetainedText.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/16.
+//
+
 import Foundation
 
 /// The words for the kept showers (`ShowerRetainedSummary`) in each theme: the one line that

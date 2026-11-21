@@ -1,3 +1,10 @@
+//
+//  ShowerInspection.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/01.
+//
+
 import Foundation
 
 /// The read-only controller check behind 核对宿舍的水控: connect, ask the identity (`AA`),

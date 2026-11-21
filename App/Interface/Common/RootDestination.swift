@@ -1,3 +1,10 @@
+//
+//  RootDestination.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/05.
+//
+
 import Foundation
 
 /// Where a root was last asked to go: a widget link, or the login step after the sample. Some

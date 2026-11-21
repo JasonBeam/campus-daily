@@ -1,3 +1,10 @@
+//
+//  InterruptionStreak.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/01.
+//
+
 import Foundation
 
 /// Refreshes that ended `interrupted` one after another. One alone is nothing to show (the

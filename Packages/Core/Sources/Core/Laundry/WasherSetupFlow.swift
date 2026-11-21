@@ -1,3 +1,10 @@
+//
+//  WasherSetupFlow.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import Foundation
 
 /// 「扫描机身二维码」 and 「从照片识别」 on the common-washer page. Signed out of U净 they still

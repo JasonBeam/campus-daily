@@ -1,3 +1,10 @@
+//
+//  ClearSetupStep.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import SwiftUI
 
 /// A step page of the first-run checklist: heading and body, the step's content, and its

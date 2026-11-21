@@ -1,3 +1,10 @@
+//
+//  SnapshotStore.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/01.
+//
+
 import Foundation
 
 /// Where the home snapshot is shared with the widget.

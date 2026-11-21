@@ -1,3 +1,10 @@
+//
+//  FeedbackPhotoFailures.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/04.
+//
+
 /// Settings › 反馈问题: how many picked photos could not be added (a download or decode that
 /// failed), so the form says so instead of sending without them.
 public struct FeedbackPhotoFailures: Equatable, Sendable {

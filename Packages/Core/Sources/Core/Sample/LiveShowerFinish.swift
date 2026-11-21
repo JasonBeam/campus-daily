@@ -1,3 +1,10 @@
+//
+//  LiveShowerFinish.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/05.
+//
+
 import Foundation
 
 /// The end of a real shower from outside the app's pages: the Live Activity's button and

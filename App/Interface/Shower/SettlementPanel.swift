@@ -1,3 +1,10 @@
+//
+//  SettlementPanel.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/10/29.
+//
+
 import SwiftUI
 
 /// Laundry result panel: custom bottom panel over a 0.2 dim.

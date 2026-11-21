@@ -1,3 +1,10 @@
+//
+//  ResetSetupDue.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import Foundation
 
 /// After 重置校日常: the first-run setup still to open, once, by the root that stays. A reset

@@ -1,3 +1,10 @@
+//
+//  ResetMarker.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/01.
+//
+
 import Foundation
 
 /// 「正在重置」: written before a reset looks at anything, removed once it cleared everything or

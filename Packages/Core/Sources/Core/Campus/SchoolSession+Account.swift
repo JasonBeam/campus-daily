@@ -1,3 +1,10 @@
+//
+//  SchoolSession+Account.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import Foundation
 
 /// Account storage: the app's own sign-in, 保存密码 on and off, the web sign-in, sign-out, and

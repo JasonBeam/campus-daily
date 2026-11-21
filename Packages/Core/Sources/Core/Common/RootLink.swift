@@ -1,3 +1,10 @@
+//
+//  RootLink.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import Foundation
 
 /// The links the widget opens: campusdaily://home back to the home screen, campusdaily://login

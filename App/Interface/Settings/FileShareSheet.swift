@@ -1,3 +1,10 @@
+//
+//  FileShareSheet.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/10.
+//
+
 import UIKit
 
 /// The system share sheet for one file, straight from a tap, over whatever is on screen (高级 can

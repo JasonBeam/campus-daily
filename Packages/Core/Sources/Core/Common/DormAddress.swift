@@ -1,3 +1,10 @@
+//
+//  DormAddress.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/01.
+//
+
 import Foundation
 
 /// The dorm address the portal registers (`getMyInfo.gydz`), e.g. "示例校区99栋9号1层991房".

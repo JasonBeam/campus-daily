@@ -1,3 +1,10 @@
+//
+//  SchoolSignOut.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/01.
+//
+
 import Foundation
 
 /// 退出登录 and the reset's sign-out, in order: the refresh lease first (a read in the other

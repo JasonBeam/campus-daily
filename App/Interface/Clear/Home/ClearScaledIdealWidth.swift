@@ -1,3 +1,10 @@
+//
+//  ClearScaledIdealWidth.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import SwiftUI
 
 /// Reports its content's ideal width times `scale`, so a one-line text that may shrink to that

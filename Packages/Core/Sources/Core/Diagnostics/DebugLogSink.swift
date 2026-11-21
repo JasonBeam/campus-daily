@@ -1,3 +1,10 @@
+//
+//  DebugLogSink.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/05.
+//
+
 import Foundation
 
 /// Where `DebugEvent`s go. The app runs on a `LaunchDebugLog` (`DebugLogLaunch`), which becomes

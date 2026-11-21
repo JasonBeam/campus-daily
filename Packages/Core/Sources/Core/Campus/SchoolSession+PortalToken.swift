@@ -1,3 +1,10 @@
+//
+//  SchoolSession+PortalToken.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import Foundation
 
 /// The portal token: exchanging it for a card session when the card session is dead, and

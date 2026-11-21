@@ -1,3 +1,10 @@
+//
+//  SettingsLayout.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/10.
+//
+
 /// A titled group of settings rows.
 struct SettingsGroup: Equatable {
     let title: String

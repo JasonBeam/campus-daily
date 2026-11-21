@@ -1,3 +1,10 @@
+//
+//  WidgetLink.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/01.
+//
+
 import Foundation
 
 /// The widget's links (campusdaily://home, ://login, ://settings/account) close whatever page is

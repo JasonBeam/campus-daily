@@ -1,3 +1,10 @@
+//
+//  RecentCardFit.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import Foundation
 
 /// 清爽 home's 「最近」: a header over a card of rows, last on a page laid out in one column at

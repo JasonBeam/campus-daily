@@ -1,3 +1,10 @@
+//
+//  FeedbackSender.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/04.
+//
+
 import Foundation
 
 /// The feedback service: its endpoint and public ingestion key (`workers app-key`).

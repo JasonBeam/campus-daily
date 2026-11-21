@@ -1,3 +1,10 @@
+//
+//  ClearBalanceText.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/10.
+//
+
 import Foundation
 
 /// Words and numbers of 清爽 home's 双余额 card and the rest of its page: two decimals, 「电费」 and

@@ -1,3 +1,10 @@
+//
+//  UjingAccountText.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import Foundation
 
 /// Copy and display rules for the 「U净 账号」 section and an expired U净 login.

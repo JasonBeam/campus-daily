@@ -1,3 +1,10 @@
+//
+//  CardSessionRenewal.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import Foundation
 
 /// The hot-water hand-off on a card session that expired: it is renewed once the

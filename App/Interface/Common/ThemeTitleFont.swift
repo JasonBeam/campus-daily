@@ -1,3 +1,10 @@
+//
+//  ThemeTitleFont.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/03.
+//
+
 import SwiftUI
 
 /// The home date title: 24 serif semibold in 暖橙, 28 bold in 清爽.

@@ -1,3 +1,10 @@
+//
+//  WidgetStoredData.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/01.
+//
+
 import Foundation
 
 /// What the widget draws from: the shared snapshot and the saved account, read together.

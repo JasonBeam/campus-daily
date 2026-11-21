@@ -1,3 +1,10 @@
+//
+//  AccentChevronLabel.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/18.
+//
+
 import SwiftUI
 
 /// 暖橙's small accent text link with a chevron, as home's 「全部 ›」 draws it: medium text and a

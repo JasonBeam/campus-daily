@@ -1,3 +1,10 @@
+//
+//  QuickSetupSeen.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/05.
+//
+
 import Foundation
 
 /// The first-run setup (暖橙's guide, 清爽's checklist) has been seen: it does not open by itself

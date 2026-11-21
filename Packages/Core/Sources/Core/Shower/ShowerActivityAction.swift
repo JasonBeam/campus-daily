@@ -1,3 +1,10 @@
+//
+//  ShowerActivityAction.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/01.
+//
+
 import Foundation
 
 /// What the shower's Live Activity does for a record: the app's controller carries it out

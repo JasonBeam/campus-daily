@@ -1,3 +1,10 @@
+//
+//  MeterQuestion.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/01.
+//
+
 import Foundation
 
 /// The lookup stopped with rooms of the dorm's name in several apartments (or campuses): the

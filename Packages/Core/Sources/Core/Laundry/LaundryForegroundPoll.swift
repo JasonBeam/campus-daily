@@ -1,3 +1,10 @@
+//
+//  LaundryForegroundPoll.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/16.
+//
+
 import Foundation
 
 /// When the app reads the open laundry order while it is in front (the scene's polling task).

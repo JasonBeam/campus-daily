@@ -1,3 +1,10 @@
+//
+//  ShowerIdentityFailure.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/17.
+//
+
 import Foundation
 
 /// Why setup could not read the hot-water account, as it tells the user: the campus-card

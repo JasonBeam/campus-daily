@@ -1,0 +1,9 @@
+# Only the file header rule. The header itself is not set here: each file
+# keeps the author who first added it, so the pre-commit hook passes
+# `--header` with the committer's GitHub name (`git config user.github`) and
+# only for newly added files. Running `swiftformat .` on its own changes nothing.
+--swiftversion 6.0
+--rules fileHeader
+--date-format yyyy/MM/dd
+--timezone Asia/Shanghai
+--exclude Vendor,Android,.build,.build-tests,.DerivedData,Packages/Core/.build,.airbuild

@@ -1,3 +1,10 @@
+//
+//  SchoolLaundryPreference.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/01.
+//
+
 import Foundation
 
 /// 「学校洗衣机」: whether the dorm uses the school's U净 washers. Off hides laundry everywhere
