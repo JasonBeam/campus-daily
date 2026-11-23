@@ -22,10 +22,13 @@ public struct ThemePreference {
     /// Stores `theme` unless it is already stored, inside `lock`. A lock that can't be taken
     /// throws and nothing is written.
     public func set(_ theme: AppTheme, under lock: any SharedLock) throws {
-        try lock.locked {
-            guard storage.object(forKey: Self.key) as? String != theme.rawValue else { return }
-            storage.set(theme.rawValue, forKey: Self.key)
-        }
+        try lock.locked { store(theme) }
+    }
+
+    /// The compare and write `set` runs inside the lock.
+    private func store(_ theme: AppTheme) {
+        guard storage.object(forKey: Self.key) as? String != theme.rawValue else { return }
+        storage.set(theme.rawValue, forKey: Self.key)
     }
 
     /// 主题's choice over `current` (the theme shown): nothing while `lock` says a shower or laundry
@@ -35,6 +38,24 @@ public struct ThemePreference {
                        under lock: any SharedLock) throws -> Bool {
         guard theme != current, themeLock == nil else { return false }
         try set(theme, under: lock)
+        return true
+    }
+
+    /// `select` that never waits for `lock` (the main thread): taken right now, it throws at
+    /// once (`SharedLock.lockedIfFree`) and nothing is written.
+    public func selectIfFree(_ theme: AppTheme, current: AppTheme, lock themeLock: ThemeLock?,
+                             under lock: any SharedLock) throws -> Bool {
+        guard theme != current, themeLock == nil else { return false }
+        try lock.lockedIfFree { store(theme) }
+        return true
+    }
+
+    /// `select` for async callers: the wait for `lock` suspends (`SharedLock.lockedWhenFree`)
+    /// and holds no thread, so it may run on the main actor.
+    public func selectWhenFree(_ theme: AppTheme, current: AppTheme, lock themeLock: ThemeLock?, under lock: any SharedLock,
+                               isolation: isolated (any Actor)? = #isolation) async throws -> Bool {
+        guard theme != current, themeLock == nil else { return false }
+        try await lock.lockedWhenFree(isolation: isolation) { store(theme) }
         return true
     }
 

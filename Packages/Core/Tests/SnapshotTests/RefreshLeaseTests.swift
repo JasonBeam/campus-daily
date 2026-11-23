@@ -147,11 +147,12 @@ final class RefreshLeaseTests: XCTestCase {
         let before = locks.now
         let wrote = try await Task { () throws -> Int? in
             withUnsafeCurrentTask { $0?.cancel() }
-            return try LeaseOwnership(widget).write { 1 }
+            return try await LeaseOwnership(widget).write { 1 }
         }.value
         XCTAssertNil(wrote, "nothing written once cancelled")
         XCTAssertEqual(locks.now, before, "the lock was not taken")
-        XCTAssertEqual(try LeaseOwnership(widget).write { 2 }, 2, "not cancelled, it writes")
+        let later = try await LeaseOwnership(widget).write { 2 }
+        XCTAssertEqual(later, 2, "not cancelled, it writes")
     }
 
     /// A holder that died leaves its lease to run out; then the next process takes it.

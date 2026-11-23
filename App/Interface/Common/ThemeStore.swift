@@ -25,6 +25,8 @@ import Core
     @ObservationIgnored private let themeLock: @MainActor () -> ThemeLock?
     /// The choice was stored: the widget draws again (nothing for a sample's).
     @ObservationIgnored private let didChange: @Sendable () -> Void
+    /// A choice waiting for the shared lock (`select`); a newer choice cancels it.
+    @ObservationIgnored private var pending: Task<Void, Never>?
 
     @MainActor init(preference: ThemePreference, lock: any SharedLock, didChange: @escaping @Sendable () -> Void,
                     themeLock: @escaping @MainActor () -> ThemeLock?) {
@@ -40,11 +42,33 @@ import Core
     /// Saves the choice where the widget and the Live Activities read it, and has the widget
     /// draw again. Nothing changes while a run locks the theme (`ThemeLock`, whoever asks; 主题
     /// greys its options out too), or when the shared lock can't be taken (the container locked
-    /// before the first unlock): the option stays unselected.
+    /// before the first unlock): the option stays unselected. The main thread never waits for
+    /// the shared lock: taken right now (the widget's step, or one stuck there), the choice is
+    /// tried again by a task whose wait suspends (`selectWhenFree`) and shows once stored.
     @MainActor func select(_ theme: AppTheme) {
+        pending?.cancel()
+        pending = nil
         do {
-            guard try preference.select(theme, current:stored, lock:themeLock(), under:lock) else { return }
-        } catch { return }
+            guard try preference.selectIfFree(theme, current:stored, lock:themeLock(), under:lock) else { return }
+        } catch {
+            pending = Task { @MainActor [weak self] in await self?.selectWhenFree(theme) }
+            return
+        }
+        show(theme)
+    }
+
+    /// The choice `select` could not store at once. A newer choice cancels it before it writes.
+    @MainActor private func selectWhenFree(_ theme: AppTheme) async {
+        guard !Task.isCancelled else { return }
+        let changed = (try? await preference.selectWhenFree(theme, current:stored, lock:themeLock(), under:lock)) ?? false
+        guard changed else { return }
+        show(theme)
+    }
+
+    /// Waits for a choice still trying for the shared lock (tests).
+    @MainActor func settled() async { await pending?.value }
+
+    @MainActor private func show(_ theme: AppTheme) {
         stored = theme
         didChange()
     }

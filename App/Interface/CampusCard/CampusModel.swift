@@ -120,13 +120,16 @@ struct PowerChoice: Identifiable, Equatable {
     }
 
     /// The previous person's snapshot still stored under the stale mark: replaced by the empty
-    /// one without the network (`SnapshotRefresher.finishPendingClear`, off the main thread: it
-    /// may wait for the lease file's lock), then the Keychain is read again. Launch and foreground.
+    /// one without the network (`SnapshotRefresher.finishPendingClear(lockWait:)`: its wait for
+    /// the lease file's lock suspends and holds no thread, the main one included), then the Keychain
+    /// is read again. Launch and foreground. A call while one is still running starts no other
+    /// and waits for that one (`SingleFlight`), so returns to the foreground can't pile them up.
     func finishPendingClear() async {
         let refresher = refresher
-        await Task.detached(priority:.userInitiated) { refresher.finishPendingClear() }.value
+        guard await pendingClear.run({ await refresher.finishPendingClear(lockWait:LeaseFile.defaultLockWait) }) else { return }
         reload()
     }
+    private let pendingClear = SingleFlight()
 
     /// Only the saved account: a refresh in this or the widget's process may have paused or
     /// held the password since the last `reload()`.

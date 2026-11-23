@@ -36,9 +36,13 @@ enum AppEnvironment {
     }
 
     /// The same stack the widget builds for its own reads; the two take turns through the lease.
+    /// A snapshot write runs inside the lease file's lock: the widget's reload is asked for
+    /// after that step, on the main queue, not while the lock is held.
     private static let schoolStack = SchoolRefreshStack(store:store, http:schoolHTTP, role:"app",
                                                         leaseWait:SchoolRefreshStack.appLeaseWait, leaseFile:RefreshLease.appFile(),
-                                                        didWriteSnapshot:{ WidgetCenter.shared.reloadTimelines(ofKind:SharedSnapshotStore.widgetKind) },
+                                                        didWriteSnapshot:{
+                                                            DispatchQueue.main.async { WidgetCenter.shared.reloadTimelines(ofKind:SharedSnapshotStore.widgetKind) }
+                                                        },
                                                         debugLog:debugLog)
 
     /// The live app's stores and services. The school stack on them is `schoolStack` (one per process).

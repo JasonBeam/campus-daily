@@ -18,6 +18,9 @@ public struct SchoolRefreshStack: Sendable {
     /// widget has only a few seconds before it must draw.
     public static let appLeaseWait: TimeInterval = 15
     public static let widgetLeaseWait: TimeInterval = 5
+    /// The widget's wait for the lease file's lock before it finishes a pending clear: short,
+    /// it comes before the read's own wait (`widgetLeaseWait`).
+    public static let widgetPendingClearWait: TimeInterval = 0.5
 
     /// `leaseFile`: `RefreshLease.appFile()` in the app, `RefreshLease.sharedFile()` in the
     /// widget. Signed without the App Group, the app's is in its own container, so the app's

@@ -31,7 +31,7 @@ extension SchoolSession {
                 // no longer shows automatic sign-in as held and the password is the way back
                 // in again when this portal token dies.
                 if let saved = (try? vault.account()) ?? nil, saved.unansweredAt != nil {
-                    _ = updateSavedAccount(saved, since: started, owning: owning) { $0.unansweredAt = nil }
+                    _ = await updateSavedAccount(saved, since: started, owning: owning) { $0.unansweredAt = nil }
                 }
                 return .renewed(found)
             } catch let e2 as ServiceError where e2.isSessionExpired {

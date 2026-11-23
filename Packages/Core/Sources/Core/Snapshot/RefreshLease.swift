@@ -21,6 +21,15 @@ import Glibc
 /// the next one's. The lock is held only for that step, never across an `await`: iOS ends a
 /// suspended process that still holds a file lock in a shared container.
 ///
+/// A step waits at most `LeaseFile.defaultLockWait` for the lock (a lock held longer is stuck:
+/// the other process suspended inside a step) and then counts as a lock it could not get: no
+/// lease, nothing written. Async callers (every step of the app's and the widget's refresh,
+/// login and write-backs) wait by suspending between `LOCK_NB` tries (`acquire(waitingAtMost:)`,
+/// `withOwnership(waitingAtMost:retaking:_:)` and the rest): no thread is held while the lock
+/// is taken elsewhere, neither one of Swift concurrency's pool nor the main thread. The
+/// synchronous steps (`acquire()`, `locked(_:)`, ...) park their thread for up to that bound;
+/// only tests and `AppReset`'s synchronous clean-up still call them.
+///
 /// A holder that dies leaves its lease to expire after `duration`; the next process takes it.
 /// Without the shared container (a build signed without the App Group) the app keeps the lease
 /// in its own container (`appFile`), so its own reads and logins still take turns; the widget's
@@ -85,6 +94,14 @@ public struct RefreshLease: Sendable {
 
     /// False when there is no shared file to lock: nobody can take the lease.
     public var isAvailable: Bool { file != nil }
+
+    /// How long a step waits for the file's lock (`LeaseFile.lockWait`).
+    public var lockWait: TimeInterval { file?.lockWait ?? LeaseFile.defaultLockWait }
+
+    /// How long a sign-out's removal of the lease waits for the file's lock: far longer than
+    /// any step holds it, so only a stuck lock (the other process suspended inside a step) runs
+    /// it out. The sign-out then goes on without the removal (`SnapshotRefresher.revokeLease`).
+    public static let signOutLockWait: TimeInterval = 10
 
     /// Takes the lease when nobody holds it, or when the holder's lease has run out (an
     /// owner whose own lease ran out takes it afresh like anyone else). False while another
@@ -189,10 +206,12 @@ public struct RefreshLease: Sendable {
         update { current in (current, current?.owner == owner) } ?? false
     }
 
-    /// Sign-out and reset: the lease goes, whoever holds it.
+    /// The lease goes, whoever holds it, waiting for the lock however long another step holds
+    /// it and parking the calling thread meanwhile (tests). The app's sign-out and reset use
+    /// `clear(waitingAtMost:)` (`SnapshotRefresher.revokeLease`), whose wait suspends.
     public func clear() throws {
         guard let file else { return }
-        _ = try file.update { _ in (nil, ()) }
+        _ = try file.update(wait: .unbounded) { _ in (nil, ()) }
     }
 
     /// Gives the lease back if it is still ours.
@@ -220,104 +239,157 @@ public struct RefreshLease: Sendable {
     }
 }
 
+// MARK: - Steps for async callers
+
+extension RefreshLease {
+    /// One locked step that waits by suspending (`LeaseFile.update(waitingAtMost:)`).
+    enum Step<T> {
+        case done(T)
+        /// The lock stayed held by another step for the whole wait (stuck, most likely).
+        case lockTimeout
+        /// No file, one that can't be opened, read or written, or the task was cancelled.
+        case unusable
+    }
+
+    private func step<T>(isolation: isolated (any Actor)? = #isolation, waitingAtMost wait: TimeInterval,
+                         untilCancelled: Bool = true, _ body: (Record?) -> (Record?, T)) async -> Step<T> {
+        guard let file else { return .unusable }
+        do {
+            return .done(try await file.update(waitingAtMost: wait, untilCancelled: untilCancelled, body))
+        } catch let failure as LeaseFile.Failure where failure.isLockTimeout {
+            return .lockTimeout
+        } catch {
+            return .unusable
+        }
+    }
+
+    /// What `acquire(waitingAtMost:)` found.
+    public enum Acquisition: Sendable, Equatable {
+        case taken
+        /// Another owner holds a live lease.
+        case held
+        /// The file's lock stayed held for the whole wait: another step is stuck inside it.
+        case lockTimeout
+        /// No usable file (before the first unlock), or the task was cancelled.
+        case unusable
+    }
+
+    /// `acquire()` for async callers: waits up to `wait` for the file's lock by suspending.
+    public func acquire(waitingAtMost wait: TimeInterval) async -> Acquisition {
+        let result: Step<Bool> = await step(waitingAtMost: wait) { current in
+            if let holder = current, holder.owner != owner, !isStale(holder) { return (current, false) }
+            return (Record(owner: owner, expiresAt: now().addingTimeInterval(duration)), true)
+        }
+        switch result {
+        case .done(let took): return took ? .taken : .held
+        case .lockTimeout: return .lockTimeout
+        case .unusable: return .unusable
+        }
+    }
+
+    /// `renew()` for async callers: false also when the lock can't be had within `wait`.
+    public func renew(waitingAtMost wait: TimeInterval) async -> Bool {
+        let result: Step<Bool> = await step(waitingAtMost: wait) { current in
+            guard let holder = current, holder.owner == owner, holder.expiresAt > now() else { return (current, false) }
+            return (Record(owner: owner, expiresAt: now().addingTimeInterval(duration)), true)
+        }
+        if case .done(let renewed) = result { return renewed }
+        return false
+    }
+
+    /// `release()` for async callers. A lock that stays held leaves the lease to run out. A
+    /// cancelled read (the widget past its deadline) still gives its lease back.
+    public func release(waitingAtMost wait: TimeInterval) async {
+        let _: Step<Void> = await step(waitingAtMost: wait, untilCancelled: false) { current in
+            current?.owner == owner ? (nil, ()) : (current, ())
+        }
+    }
+
+    /// `clear()` for async callers (sign-out, reset), waiting up to `wait` by suspending.
+    /// Throws `LeaseFile.Failure` when the lease could not be removed (`isLockTimeout`: the
+    /// lock stayed held).
+    public func clear(waitingAtMost wait: TimeInterval) async throws {
+        guard let file else { return }
+        _ = try await file.update(waitingAtMost: wait, untilCancelled: false) { _ in (nil, ()) }
+    }
+
+    /// What a write under the lease came to (`withOwnership(waitingAtMost:retaking:_:)`).
+    public enum Owned<T> {
+        case ran(T)
+        /// Not ours any more (ran out, taken, removed by a sign-out), no usable file, or the
+        /// task was cancelled: `body` did not run.
+        case lost
+        /// The file's lock stayed held for the whole wait: nothing is known about the lease,
+        /// and `body` did not run.
+        case lockTimeout
+    }
+
+    /// `withOwnership` (or, `retaking`, `withOwnershipRetaking`) for async callers: the same
+    /// one locked step, waiting up to `wait` for the lock by suspending. `body` runs in the
+    /// caller's isolation, inside the lock; what it throws is rethrown.
+    func withOwnership<T>(isolation: isolated (any Actor)? = #isolation, waitingAtMost wait: TimeInterval, retaking: Bool,
+                          _ body: () throws -> T) async throws -> Owned<T> {
+        var ran: Result<T, Error>?
+        let result: Step<Void> = await step(waitingAtMost: wait) { current -> (Record?, Void) in
+            guard let holder = current, holder.owner == owner, retaking || holder.expiresAt > now() else { return (current, ()) }
+            ran = Result { try body() }
+            return (Record(owner: owner, expiresAt: now().addingTimeInterval(duration)), ())
+        }
+        if let ran { return .ran(try ran.get()) }
+        if case .lockTimeout = result { return .lockTimeout }
+        return .lost
+    }
+
+    /// `afterLosing` for async callers; nil also when the lock can't be had within `wait`.
+    func afterLosing<T>(isolation: isolated (any Actor)? = #isolation, waitingAtMost wait: TimeInterval,
+                        _ body: () -> T) async -> T? {
+        let result: Step<T?> = await step(waitingAtMost: wait) { current in
+            (current, current?.owner == owner ? nil : body())
+        }
+        if case .done(let value) = result { return value }
+        return nil
+    }
+
+    /// `locked` for async callers: waits up to `lockWait` for the lock by suspending.
+    public func lockedWhenFree<T>(isolation: isolated (any Actor)?, _ body: () throws -> T) async throws -> T {
+        try await locked(waitingAtMost: lockWait, body)
+    }
+
+    /// `locked` for async callers, waiting up to `wait` for the lock by suspending.
+    func locked<T>(isolation: isolated (any Actor)? = #isolation, waitingAtMost wait: TimeInterval,
+                   _ body: () throws -> T) async throws -> T {
+        guard let file else { return try body() }
+        var ran: Result<T, Error>?
+        do {
+            _ = try await file.update(waitingAtMost: wait) { current -> (RefreshLease.Record?, Void) in
+                ran = Result { try body() }
+                return (current, ())
+            }
+        } catch {
+            guard ran != nil else { throw error }
+        }
+        guard let ran else { throw LeaseFile.Failure(step: "lock", code: EIO) }
+        return try ran.get()
+    }
+
+    /// `locked` without waiting at all: throws at once while another step holds the lock
+    /// (the main thread: `ThemeStore.select`).
+    public func lockedIfFree<T>(_ body: () throws -> T) throws -> T {
+        guard let file else { return try body() }
+        var ran: Result<T, Error>?
+        do {
+            _ = try file.update(wait: .no) { current -> (RefreshLease.Record?, Void) in
+                ran = Result { try body() }
+                return (current, ())
+            }
+        } catch {
+            guard ran != nil else { throw error }
+        }
+        guard let ran else { throw LeaseFile.Failure(step: "lock", code: EIO) }
+        return try ran.get()
+    }
+}
+
 /// The lease file's lock guards the other shared state too (the App Group's preferences):
 /// `locked` runs a step whoever holds the lease.
 extension RefreshLease: SharedLock {}
-
-/// The lease's file: `update` reads the record, lets the caller decide, and writes the
-/// decision back, all under one exclusive `flock`. An empty file is "no lease"; an unreadable
-/// one counts as long expired, so it can't block refreshes forever.
-public struct LeaseFile: Sendable {
-    public let url: URL
-    /// Runs inside the lock right after the record was read (tests use it to let the other
-    /// "process" try at exactly that moment).
-    let insideLock: (@Sendable () -> Void)?
-    /// Every changed record fails to be written (tests: a full or broken container).
-    let failsWrites: Bool
-
-    public init(url: URL) { self.init(url: url, insideLock: nil) }
-
-    init(url: URL, insideLock: (@Sendable () -> Void)?, failsWrites: Bool = false) {
-        self.url = url; self.insideLock = insideLock; self.failsWrites = failsWrites
-    }
-
-    struct Failure: Error { let step: String; let code: Int32 }
-
-    /// The stored owner, run out or not (nil = no lease). Read by the tests only.
-    func storedOwner() -> String? { ((try? update { ($0, $0?.owner) }) ?? nil) }
-
-    func update<T>(waiting: Bool = true, _ body: (RefreshLease.Record?) -> (RefreshLease.Record?, T)) throws -> T {
-        let fd = open(url.path, O_RDWR | O_CREAT | O_CLOEXEC, 0o600)
-        guard fd >= 0 else { throw Failure(step: "open", code: errno) }
-        defer { close(fd) }
-        while flock(fd, waiting ? LOCK_EX : LOCK_EX | LOCK_NB) != 0 {
-            guard errno == EINTR else { throw Failure(step: "lock", code: errno) }
-        }
-        defer { flock(fd, LOCK_UN) }
-        let before = try readAll(fd)
-        let current: RefreshLease.Record? = before.isEmpty ? nil
-            : (try? JSONDecoder().decode(RefreshLease.Record.self, from: before)) ?? RefreshLease.Record(owner: "", expiresAt: .distantPast)
-        insideLock?()
-        let (next, result) = body(current)
-        let after = try next.map { try JSONEncoder().encode($0) } ?? Data()
-        if after != before {
-            if failsWrites { throw Failure(step: "write", code: EIO) }
-            try writeAll(fd, after)
-        }
-        return result
-    }
-
-    private func readAll(_ fd: Int32) throws -> Data {
-        guard lseek(fd, 0, SEEK_SET) == 0 else { throw Failure(step: "seek", code: errno) }
-        var data = Data()
-        var buffer = [UInt8](repeating: 0, count: 512)
-        while true {
-            let n = read(fd, &buffer, buffer.count)
-            if n < 0 { if errno == EINTR { continue }; throw Failure(step: "read", code: errno) }
-            if n == 0 { return data }
-            data.append(buffer, count: n)
-        }
-    }
-
-    private func writeAll(_ fd: Int32, _ data: Data) throws {
-        guard ftruncate(fd, 0) == 0 else { throw Failure(step: "truncate", code: errno) }
-        let bytes = [UInt8](data)
-        var offset = 0
-        while offset < bytes.count {
-            let n = bytes[offset...].withUnsafeBytes { pwrite(fd, $0.baseAddress, $0.count, off_t(offset)) }
-            if n < 0 { if errno == EINTR { continue }; throw Failure(step: "write", code: errno) }
-            offset += n
-        }
-    }
-}
-
-/// Handed to a credential or snapshot write-back that runs under the refresh lease: the write
-/// happens in one locked step with the check that the lease is still ours
-/// (`RefreshLease.withOwnership`). Without a lease (tests, previews, an app with no container
-/// for its lease file) it just runs.
-public struct LeaseOwnership: Sendable {
-    let lease: RefreshLease?
-
-    public init(_ lease: RefreshLease?) { self.lease = lease }
-
-    public static let unchecked = LeaseOwnership(nil)
-
-    /// nil = the lease is not ours any more, or the task was cancelled (the widget past its
-    /// deadline, about to be suspended: it must not take the file lock now); `body` did not run.
-    public func write<T>(_ body: () throws -> T) throws -> T? {
-        guard let lease else { return try body() }
-        guard !Task.isCancelled else { return nil }
-        return try lease.withOwnership(body)
-    }
-
-    /// `write` for a password login's accepted portal token and the saved account's hold and
-    /// pause only: the lease may have run out
-    /// while this owner is still the stored one (`RefreshLease.withOwnershipRetaking`). The owner
-    /// check stays, and so does the cancellation check: a cancelled task (the widget past its
-    /// deadline, about to be suspended) must not take the file lock, so nothing is written.
-    func writeRetaking<T>(_ body: () throws -> T) throws -> T? {
-        guard let lease else { return try body() }
-        guard !Task.isCancelled else { return nil }
-        return try lease.withOwnershipRetaking(body)
-    }
-}

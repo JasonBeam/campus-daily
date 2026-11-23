@@ -48,7 +48,7 @@ struct CampusTimeline: TimelineProvider {
         let done = Completion(call:completion)
         Task {
             let now = Date()
-            Self.school.refresher.finishPendingClear()
+            await Self.school.refresher.finishPendingClear(lockWait:SchoolRefreshStack.widgetPendingClearWait)
             let choice = WidgetDrawChoice.choose(Self.stored())
             var drawn: HomeSnapshot?
             if case .draw = choice {
