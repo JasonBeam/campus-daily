@@ -10,7 +10,8 @@ import SwiftUI
 import Core
 
 /// 反馈问题: a sheet with the text, up to four screenshots the person picks (none by default),
-/// 取消 and 发送. A failed send shows one fixed line, never the service's words.
+/// 取消 and 发送. A failed send shows one fixed line, never the service's words. A slow send says
+/// so after a few seconds; 取消 while sending stops it and closes the form.
 struct FeedbackView: View {
     let endpoint: FeedbackEndpoint
     let http: HTTPClient
@@ -24,9 +25,8 @@ struct FeedbackView: View {
     @State private var loadingImages = false
     /// Picked photos that failed to download or decode, said under 添加截图.
     @State private var photoFailures = FeedbackPhotoFailures()
-    @State private var sending = false
-    @State private var failure: String?
-    @State private var sent = false
+    @StateObject private var send = FeedbackSending()
+    private var sending: Bool { send.sending }
 
     private var issue: FeedbackDraft.Issue? { FeedbackDraft.issue(message:message, imageCount:images.count) }
     private var canSend: Bool {
@@ -68,9 +68,20 @@ struct FeedbackView: View {
                         Text("最多 4 张。会附上 App 版本、手机型号和系统版本，不带账号和余额。")
                     }
                 }
-                if let failure {
+                if let failure = send.failure {
                     Section {
                         failureLine(failure).accessibilityIdentifier("feedbackFailure")
+                    }
+                }
+                if send.slow {
+                    Section {
+                        HStack(spacing:8) {
+                            ProgressView().controlSize(.mini).tint(Theme.ink2)
+                                .accessibilityHidden(true)
+                            Text(FeedbackText.slow(clear:appTheme == .clear))
+                                .font(.footnote).foregroundStyle(.secondary)
+                                .accessibilityIdentifier("feedbackSlow")
+                        }
                     }
                 }
             }
@@ -79,10 +90,13 @@ struct FeedbackView: View {
             .navigationTitle("反馈问题").navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement:.cancellationAction) {
-                    Button("取消") { dismiss() }.disabled(sending)
+                    Button("取消") {
+                        send.cancel()
+                        dismiss()
+                    }
                 }
                 ToolbarItem(placement:.confirmationAction) {
-                    Button(sending ? "正在发送…" : "发送") { send() }
+                    Button(sending ? "正在发送…" : "发送") { start() }
                         .fontWeight(.semibold)
                         .disabled(!canSend)
                         .accessibilityIdentifier("feedbackSend")
@@ -93,7 +107,17 @@ struct FeedbackView: View {
                 if !items.isEmpty { loadingImages = true }
                 Task { await load(items) }
             }
-            .alert("发出去了", isPresented:$sent) {
+            // `slow` turns true once per send (`FeedbackSending`), so this is said once per send.
+            .onChange(of:send.slow) { _, slow in
+                if slow { AccessibilityNotification.Announcement(FeedbackText.slow(clear:appTheme == .clear)).post() }
+            }
+            // `failure` is cleared when a send starts and set at most once when it fails (the
+            // error or the deadline, whichever ends it), so each failure is said once.
+            .onChange(of:send.failure) { _, failure in
+                if let failure { AccessibilityNotification.Announcement(failure).post() }
+            }
+            .onDisappear { send.cancel() }
+            .alert("发出去了", isPresented:$send.sent) {
                 Button("好") { dismiss() }
             } message: {
                 Text("谢谢反馈。")
@@ -157,20 +181,13 @@ struct FeedbackView: View {
         pickerItems = []
     }
 
-    private func send() {
+    private func start() {
         guard canSend else { return }
         // The sample sends nothing: the form stays as it is.
         guard !sample.isActive else { sample.perform(.sendFeedback) {}; return }
-        sending = true
-        failure = nil
-        Task {
-            do {
-                try await FeedbackReporter.send(message:message, images:images, to:endpoint, http:http)
-                sent = true
-            } catch {
-                failure = FeedbackText.failure(error)
-            }
-            sending = false
+        let message = message, images = images, endpoint = endpoint, http = http
+        send.start(withScreenshots:!images.isEmpty, clear:appTheme == .clear) {
+            try await FeedbackReporter.send(message:message, images:images, to:endpoint, http:http)
         }
     }
 }
