@@ -44,7 +44,8 @@ import Core
     /// greys its options out too), or when the shared lock can't be taken (the container locked
     /// before the first unlock): the option stays unselected. The main thread never waits for
     /// the shared lock: taken right now (the widget's step, or one stuck there), the choice is
-    /// tried again by a task whose wait suspends (`selectWhenFree`) and shows once stored.
+    /// tried again by a task whose wait suspends (`selectWhenFree`), until stored, and shows
+    /// once stored.
     @MainActor func select(_ theme: AppTheme) {
         pending?.cancel()
         pending = nil
@@ -57,12 +58,24 @@ import Core
         show(theme)
     }
 
-    /// The choice `select` could not store at once. A newer choice cancels it before it writes.
+    /// How long a choice waiting for the shared lock pauses between its waits.
+    static let retryPause: Duration = .milliseconds(500)
+
+    /// The choice `select` could not store at once, tried until stored: a lock still held after
+    /// a wait (the widget stuck in a step) is waited for again after `retryPause`, the run lock
+    /// (`ThemeLock`) checked again each time. A newer choice cancels it before it writes.
     @MainActor private func selectWhenFree(_ theme: AppTheme) async {
-        guard !Task.isCancelled else { return }
-        let changed = (try? await preference.selectWhenFree(theme, current:stored, lock:themeLock(), under:lock)) ?? false
-        guard changed else { return }
-        show(theme)
+        while !Task.isCancelled {
+            do {
+                guard try await preference.selectWhenFree(theme, current:stored, lock:themeLock(), under:lock) else { return }
+                show(theme)
+                return
+            } catch is CancellationError {
+                return
+            } catch {
+                guard (try? await Task.sleep(for:Self.retryPause)) != nil else { return }
+            }
+        }
     }
 
     /// Waits for a choice still trying for the shared lock (tests).

@@ -71,6 +71,52 @@ final class ThemeStoreLockTests: XCTestCase {
         XCTAssertEqual(ThemePreference(storage:defaults).theme, .clear)
     }
 
+    /// A lock that stays taken through a whole wait (`failures` waits), then is free.
+    private final class BusyLock: SharedLock, @unchecked Sendable {
+        private let state = NSLock()
+        private var failures: Int
+        private(set) var waits = 0
+        init(failures: Int) { self.failures = failures }
+        func locked<T>(_ body: () throws -> T) throws -> T {
+            let busy = state.withLock { () -> Bool in
+                waits += 1
+                guard failures > 0 else { return false }
+                failures -= 1
+                return true
+            }
+            if busy { throw CocoaError(.fileLocking) }
+            return try body()
+        }
+    }
+
+    /// The lock held past a whole wait is not the end of the choice: it is tried again until
+    /// stored.
+    func testAChoiceIsKeptTryingUntilStored() async {
+        let defaults = SampleDefaults()
+        let lock = BusyLock(failures:3)
+        let theme = ThemeStore(preference:ThemePreference(storage:defaults), lock:lock, didChange:{}) { nil }
+        theme.select(.clear)
+        await theme.settled()
+        XCTAssertEqual(theme.theme, .clear)
+        XCTAssertEqual(ThemePreference(storage:defaults).theme, .clear)
+        XCTAssertEqual(lock.waits, 4, "the first try, two failed waits, then stored")
+    }
+
+    /// A run that locks the theme meanwhile stops the waiting choice: checked at each try.
+    func testARunLockingTheThemeMeanwhileStopsTheChoice() async {
+        let defaults = SampleDefaults()
+        let lock = BusyLock(failures:2)
+        var locked = false
+        let theme = ThemeStore(preference:ThemePreference(storage:defaults), lock:lock, didChange:{}) {
+            locked ? .shower : nil
+        }
+        theme.select(.clear)
+        locked = true
+        await theme.settled()
+        XCTAssertEqual(theme.theme, .warm)
+        XCTAssertEqual(ThemePreference(storage:defaults).theme, .warm)
+    }
+
     func testAFreeLockStoresAtOnce() {
         let defaults = SampleDefaults()
         let theme = store(defaults)
