@@ -268,16 +268,20 @@ struct PowerChoice: Identifiable, Equatable {
         let session = session, state = login.state
         let hold = holdHotWaterForLogin()
         defer { hotWater()?.releaseLoginHold(hold) }
+        // The person this sign-in leaves signed in: once someone else signs in after it, nothing
+        // of it is cleared or written back.
+        var person = personChanges
         // Under the lease like the password sign-in: never beside the widget's own login.
         // A sign-in that throws after its writes began has changed the person too.
         _ = try await SchoolSession.signingIn(on:session, {
             try await refresher.holdingLease { owning in
                 try await session.adoptWebState(state, owning:owning)
             }
-        }, changed:{ personChanges += 1 }, cleanUp:{ await previousPersonCleared(unconfirmed:$0, dormAndMeterCleared:$1, since:started) })
+        }, changed:{ personChanges += 1; person = personChanges },
+           cleanUp:{ await previousPersonCleared(unconfirmed:$0, dormAndMeterCleared:$1, since:started, person:person) })
         await refresher.noteChange()
-        // Signed out (or reset) while that ran: the dorm must not be written back.
-        guard started == signOutGeneration else { return }
+        // Signed out (or reset), or someone else signed in, while that ran: the dorm must not be written back.
+        guard started == signOutGeneration, person == personChanges else { return }
         let raw = login.dormAddress.trimmingCharacters(in:.whitespacesAndNewlines)
         if !raw.isEmpty {
             var stored = (try? schoolVault.profile()) ?? nil ?? SchoolProfile()
@@ -320,12 +324,14 @@ struct PowerChoice: Identifiable, Equatable {
         let session = session
         let hold = holdHotWaterForLogin()
         defer { hotWater()?.releaseLoginHold(hold) }
+        var person = personChanges
         // A sign-in that throws after its writes began has changed the person too.
         _ = try await SchoolSession.signingIn(on:session, {
             try await refresher.holdingLease { owning in
                 try await session.signIn(account:account, password:password, savePassword:savePassword, owning:owning)
             }
-        }, changed:{ personChanges += 1 }, cleanUp:{ await previousPersonCleared(unconfirmed:$0, dormAndMeterCleared:$1, since:started) })
+        }, changed:{ personChanges += 1; person = personChanges },
+           cleanUp:{ await previousPersonCleared(unconfirmed:$0, dormAndMeterCleared:$1, since:started, person:person) })
         await refresher.noteChange()
         reload(); issue = nil; lastRefresh = nil
         lookup.clear(); powerMatchIssue = nil
@@ -350,9 +356,12 @@ struct PowerChoice: Identifiable, Equatable {
     /// clear that fails is logged; the mark keeps it hidden), a request for the widget to draw
     /// again, the hot-water binding made with their identity, and the one-time alert.
     /// Laundry (U净) is its own login and stays. Nothing is cleared once a sign-out came after
-    /// the sign-in started (`started`): what is stored now is whoever signed in after it.
-    func previousPersonCleared(unconfirmed: Bool, dormAndMeterCleared: Bool, since started: Int) async {
-        guard started == signOutGeneration else { return }
+    /// the sign-in started (`started`), or someone else signed in after it (`person`: the
+    /// `personChanges` it left; nil = now): what is stored now is whoever signed in after it,
+    /// and their own sign-in clears what was before them.
+    func previousPersonCleared(unconfirmed: Bool, dormAndMeterCleared: Bool, since started: Int, person: Int? = nil) async {
+        let person = person ?? personChanges
+        guard started == signOutGeneration, person == personChanges else { return }
         // Before any wait: the previous person's binding no longer starts anything (a start that
         // hasn't sent its authorize request is taken back), and their balance goes.
         accountGeneration += 1
@@ -380,10 +389,10 @@ struct PowerChoice: Identifiable, Equatable {
             redrawWidget:{ redraw() },
             hotWater:{ [hotWater] in
                 // Again after the snapshot's wait, right before the binding goes.
-                guard started == signOutGeneration else { return AccountSwitch.HotWater.none }
+                guard started == signOutGeneration, person == personChanges else { return AccountSwitch.HotWater.none }
                 return hotWater()?.clearBindingForAccountSwitch() ?? AccountSwitch.HotWater.none
             })
-        guard started == signOutGeneration else { return }
+        guard started == signOutGeneration, person == personChanges else { return }
         snapshot = .empty
         switchNotice = AccountSwitchNotice(previousPersonUnconfirmed:unconfirmed, dormAndMeterCleared:dormAndMeterCleared,
                                            hotWaterCleared:hotWater.noticed)

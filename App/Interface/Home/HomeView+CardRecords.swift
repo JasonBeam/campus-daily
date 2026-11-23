@@ -19,7 +19,7 @@ extension HomeView {
         let page = ShowerCardRecords.Page(app:recordsDemo?.app() ?? data.recentActivities,
                                           source:recordsDemo?.source ?? (demo != nil ? RecordsDemo.list.source : .school(campus)))
         return ShowerCardRecords(page:page, openFromCover:{ openCardRecordsFromShowerPage() },
-                                 records:data.snapshot.activity.value?.records, calendar:data.calendar)
+                                 activity:data.snapshot.activity.value, calendar:data.calendar)
     }
 
     /// The shower page is a cover: it goes down first, then 校园卡记录 is pushed over the pages
