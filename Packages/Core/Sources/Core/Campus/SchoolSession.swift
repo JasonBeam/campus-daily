@@ -180,6 +180,10 @@ public actor SchoolSession {
             records.cancel()
             return SchoolReading(outcome: .notSignedIn, checkedAt: now())
         }
+        if case .success(let meter?)? = m {
+            let role: DebugMeterRead.Role = !createsLoginDeviceID ? .widget : inBackground ? .background : .app
+            debugLog.record(.meterRead(DebugMeterRead(meter, role: role)))
+        }
         if case .success(let meter?)? = m, let binding, meter.comAddress != binding.comAddress {
             await followReplacedMeter(binding, to: meter.comAddress, owning: owning)
         }

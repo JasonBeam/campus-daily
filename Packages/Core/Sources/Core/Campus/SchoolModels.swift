@@ -202,19 +202,21 @@ public struct Meter: Sendable, Equatable, Codable {
     public var online: Bool?
     public var switchState: String?
     public var updatedAt: String?
+    /// `meterData`: the meter's own reading (kWh on its register). Only the TestFlight log reads it.
+    public var meterData: Decimal?
 
     public init(comAddress: String, name: String, leftMoney: Money? = nil, remainingKWh: Decimal? = nil,
                 estimatedDaysLeft: Decimal? = nil, price: Decimal? = nil, online: Bool? = nil,
-                switchState: String? = nil, updatedAt: String? = nil) {
+                switchState: String? = nil, updatedAt: String? = nil, meterData: Decimal? = nil) {
         self.comAddress = comAddress; self.name = name; self.leftMoney = leftMoney
         self.remainingKWh = remainingKWh; self.estimatedDaysLeft = estimatedDaysLeft; self.price = price
-        self.online = online; self.switchState = switchState; self.updatedAt = updatedAt
+        self.online = online; self.switchState = switchState; self.updatedAt = updatedAt; self.meterData = meterData
     }
 
     /// Builds before 0.11.1 kept `preUseDay` under `dailyUseKWh`; the key stays so either build
     /// reads the other's cache, and it was always the days.
     private enum CodingKeys: String, CodingKey {
-        case comAddress, name, leftMoney, remainingKWh, price, online, switchState, updatedAt
+        case comAddress, name, leftMoney, remainingKWh, price, online, switchState, updatedAt, meterData
         case estimatedDaysLeft = "dailyUseKWh"
     }
 

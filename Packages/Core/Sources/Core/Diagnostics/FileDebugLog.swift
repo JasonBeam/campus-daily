@@ -16,6 +16,11 @@ import CryptoKit
 /// of their own: `record` only queues the line and never waits on the disk; `flush` waits for
 /// what was queued (the export, the 高级 rows, tests). `lines`, `clear` and `tag` run after
 /// every line queued before them. A write that fails is dropped and never reaches the caller.
+///
+/// `shared` (the App Group's `DebugLog` folder, `WidgetDebugLog`): the salt is copied there, so
+/// the widget tags with the same salt and writes its own lines only while it is there;
+/// `lines` takes the widget's lines in by time, and `clear` empties them too and copies the
+/// new salt over.
 public final class FileDebugLog: DebugLogSink, @unchecked Sendable {
     // @unchecked: every field below `queue` is touched only on `queue`.
     public static let folderName = "DebugLog"
@@ -28,6 +33,8 @@ public final class FileDebugLog: DebugLogSink, @unchecked Sendable {
     }
 
     public let directory: URL
+    /// The App Group's `DebugLog` folder the widget writes to; nil without the group (tests).
+    public let shared: URL?
     public var eventsFile: URL { directory.appendingPathComponent("events.log") }
     public var saltFile: URL { directory.appendingPathComponent("salt") }
 
@@ -44,11 +51,13 @@ public final class FileDebugLog: DebugLogSink, @unchecked Sendable {
     private var bytes = 0
     private var salt: SymmetricKey?
     private var dropped = 0
+    /// The salt in memory is also in `shared`.
+    private var saltShared = false
 
-    public init(directory: URL, now: @escaping @Sendable () -> Date = Date.init, timeZone: TimeZone = .current,
+    public init(directory: URL, shared: URL? = nil, now: @escaping @Sendable () -> Date = Date.init, timeZone: TimeZone = .current,
                 maxLines: Int = FileDebugLog.maxLines, maxBytes: Int = FileDebugLog.maxBytes, maxAge: TimeInterval = FileDebugLog.maxAge,
                 queue: DispatchQueue = DispatchQueue(label: "org.zaxh.xiaorichang.debuglog")) {
-        self.directory = directory; self.now = now; self.queue = queue
+        self.directory = directory; self.shared = shared; self.now = now; self.queue = queue
         self.maxLines = maxLines; self.maxBytes = maxBytes; self.maxAge = maxAge
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
@@ -77,7 +86,12 @@ public final class FileDebugLog: DebugLogSink, @unchecked Sendable {
 
     public func lines() -> [String] {
         queue.sync {
-            load().map { "\(formatter.string(from: Date(timeIntervalSince1970: $0.t))) \($0.e)" }
+            // The widget's week-old lines are left out even before its next write drops them.
+            let cutoff = now().timeIntervalSince1970 - maxAge
+            let widget = shared.map { WidgetDebugLog.entries(in: $0, after: cutoff).map { Entry(t: $0.t, e: $0.e) } } ?? []
+            let all = widget.isEmpty ? load() : (load() + widget).enumerated()
+                .sorted { ($0.element.t, $0.offset) < ($1.element.t, $1.offset) }.map(\.element)
+            return all.map { "\(formatter.string(from: Date(timeIntervalSince1970: $0.t))) \($0.e)" }
         }
     }
 
@@ -89,8 +103,22 @@ public final class FileDebugLog: DebugLogSink, @unchecked Sendable {
             entries = []
             bytes = 0
             salt = nil
+            saltShared = false
+        }
+        guard let shared else { return }
+        // The widget's part waits for its lock (a write in flight), so on the queue, not the
+        // caller's thread; still before any line or tag queued after this.
+        queue.async { [self] in
+            WidgetDebugLog.remove(.linesAndSalt, in: shared)
+            // A new salt at once, so the widget goes on writing (with it) after a sign-out.
+            saltShared = false
+            _ = saltKey()
         }
     }
+
+    /// Copies the salt to `shared` (made first if needed): from then on the widget writes its
+    /// lines (`LaunchDebugLog`, once the install is known to be TestFlight).
+    public func shareSalt() { queue.async { [self] in _ = saltKey() } }
 
     /// Waits until every line recorded before it is written.
     public func flush() { queue.sync {} }
@@ -115,14 +143,24 @@ public final class FileDebugLog: DebugLogSink, @unchecked Sendable {
 
     // MARK: On the queue
 
-    private func tagOnQueue(_ t: DebugTag) -> String {
-        let key = saltKey()
+    private func tagOnQueue(_ t: DebugTag) -> String { Self.tag(t, key: saltKey()) }
+
+    /// `kind:` plus the first 6 hex of HMAC-SHA256(key, value).
+    static func tag(_ t: DebugTag, key: SymmetricKey) -> String {
         let mac = HMAC<SHA256>.authenticationCode(for: Data(t.value.utf8), using: key)
         let hex = mac.prefix(3).map { String(format: "%02x", $0) }.joined()
         return "\(t.kind.rawValue):\(hex)"
     }
 
     private func saltKey() -> SymmetricKey {
+        let key = ownSaltKey()
+        if !saltShared, let shared {
+            saltShared = WidgetDebugLog.share(salt: key.withUnsafeBytes { Data($0) }, in: shared)
+        }
+        return key
+    }
+
+    private func ownSaltKey() -> SymmetricKey {
         if let salt { return salt }
         if let data = try? Data(contentsOf: saltFile), data.count == 32 {
             salt = SymmetricKey(data: data)

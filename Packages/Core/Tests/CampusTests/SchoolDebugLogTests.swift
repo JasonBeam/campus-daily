@@ -106,4 +106,60 @@ final class SchoolDebugLogTests: XCTestCase {
         _ = await signOuts.start().value
         XCTAssertEqual(log.clears, 1)
     }
+
+    // MARK: The meter's readings
+
+    /// Each successful refresh logs the bound meter's numbers once, named by the process that read
+    /// it, with the meter only as a salted tag: no address, room, token or card id.
+    func testEachMeterReadIsLoggedWithItsRoleAndNoIds() async throws {
+        for (background, widget, role) in [(false, false, DebugMeterRead.Role.app), (true, false, .background), (false, true, .widget)] {
+            let log = RecordingDebugLog()
+            var h = Harness()
+            h.debugLog = log
+            h.createsLoginDeviceID = !widget
+            try h.signedIn(meter: Harness.roomBinding)
+            try h.server.serve("ecykt/getSysBindCustInfo-ok")
+            try h.server.serve("ecykt/getUserBalance-ok")
+            try h.server.serve("ecykt/electric-getMeterStatus-room", matchBody: ["server", "buildingID"])
+            try h.server.serve("ecykt/card-getRecordList-ok")
+            let reading = await h.session().refresh(inBackground: background, owning: .unchecked)
+            XCTAssertEqual(reading.outcome, .ok)
+            let reads = log.events.compactMap { if case .meterRead(let m) = $0 { return m }; return nil }
+            XCTAssertEqual(reads.count, 1, "\(role)")
+            let read = try XCTUnwrap(reads.first)
+            XCTAssertEqual(read.role, role)
+            XCTAssertEqual(read.meter, DebugTag(.meter, "000000000991"))
+            XCTAssertEqual(read.reading, Decimal(string: "1234.56"))
+            XCTAssertEqual(read.schoolTime?.text, "10-30T08:10:22")
+            XCTAssertEqual(read.remainingKWh, Decimal(string: "52.00"))
+            XCTAssertEqual(read.leftMoneyFen, 3692)
+            XCTAssertEqual(read.price, Decimal(string: "0.71"))
+            XCTAssertEqual(read.daysLeft, Decimal(string: "3.2"))
+            XCTAssertEqual(log.lines().first { $0.hasPrefix("school.meter") },
+                           "school.meter role=\(role.rawValue) meter=e:tag reading=1234.56 at=10-30T08:10:22 kwh=52 fen=3692 price=0.71 days=3.2")
+            let ids = secrets + ["000000000991", "991001001000109000001003", "REDACTED_TOKEN_2", T.syscustid, T.custid,
+                                 "TESTid00000000000000000000000001", "99栋"]
+            XCTAssertEqual(DebugLogTesting.leaks(ids, in: log.lines().joined(separator: "\n")), [])
+        }
+    }
+
+    /// Through the TestFlight log itself: the meter's address is written as a short salted tag.
+    func testTheMeterAddressIsWrittenAsATag() throws {
+        let dir = DebugLogTesting.temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let log = FileDebugLog(directory: FileDebugLog.directory(in: dir))
+        let meter = Meter(comAddress: "000000000991", name: "99栋991", remainingKWh: Decimal(string: "52.00"),
+                          updatedAt: "2026-10-30 08:10:22", meterData: Decimal(string: "1234.5600"))
+        log.record(.meterRead(DebugMeterRead(meter, role: .app)))
+        log.record(.meterRead(DebugMeterRead(meter, role: .app)))
+        log.flush()
+        let lines = log.lines()
+        XCTAssertEqual(lines.count, 2)
+        let line = try XCTUnwrap(lines.first)
+        XCTAssertNotNil(line.range(of: #"school\.meter role=app meter=e:[0-9a-f]{6} reading=1234\.56 at=10-30T08:10:22 kwh=52$"#,
+                                   options: .regularExpression), line)
+        XCTAssertEqual(lines[0].split(separator: " ").last { $0.hasPrefix("meter=") },
+                       lines[1].split(separator: " ").last { $0.hasPrefix("meter=") }, "the same meter, the same tag")
+        XCTAssertEqual(DebugLogTesting.leaks(["000000000991", "99栋991"], in: lines.joined(separator: "\n")), [])
+    }
 }

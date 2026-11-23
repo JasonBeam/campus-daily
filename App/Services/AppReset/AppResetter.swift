@@ -127,7 +127,8 @@ import Core
 
     /// The main thread never waits for the shared lock here (`AppReset.clearWithoutBlocking`).
     private func clear() async throws {
-        // The log's lines and salt in memory too, not only its folder (below).
+        // The log's lines and salt in memory too, not only its folder (below). The widget's part
+        // in the App Group goes here too, inside the widget's lock (`WidgetDebugLog.remove`).
         services.debugLog.clear()
         try await AppReset.clearWithoutBlocking(store:services.secureStore, preferences:services.defaults,
                                                 preferencesDomain:Bundle.main.bundleIdentifier ?? "",

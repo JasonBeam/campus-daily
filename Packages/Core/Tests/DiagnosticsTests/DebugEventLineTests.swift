@@ -138,12 +138,34 @@ final class DebugEventLineTests: XCTestCase {
         XCTAssertEqual(line(.navOpen(.feedback, from: .settings)), "page=feedback from=settings")
     }
 
+    /// A meter read: the numbers and the school's time; the meter only as a tag, never its
+    /// address, the room's name or anything of the account.
+    func testAMeterReadKeepsTheNumbersAndTagsTheMeter() {
+        let meter = Meter(comAddress: "000000000991", name: "99栋991", leftMoney: Money(fen: 3692), remainingKWh: Decimal(string: "52.00"),
+                          estimatedDaysLeft: Decimal(string: "3.2"), price: Decimal(string: "0.7100"), online: true,
+                          switchState: "合闸-", updatedAt: "2026-10-30 08:10:22", meterData: Decimal(string: "1234.5600"))
+        let text = line(.meterRead(DebugMeterRead(meter, role: .background)))
+        XCTAssertEqual(text, "role=background meter=e:tag reading=1234.56 at=10-30T08:10:22 kwh=52 fen=3692 price=0.71 days=3.2")
+        XCTAssertEqual(DebugEvent.meterRead(DebugMeterRead(meter, role: .app)).name, "school.meter")
+        XCTAssertTrue(DebugLogScreen.isSafe(text))
+        XCTAssertTrue(DebugLogTesting.leaks(["000000000991", "99栋991", "991"], in: text).isEmpty, text)
+        let bare = line(.meterRead(DebugMeterRead(Meter(comAddress: "000000000991", name: "99栋991", updatedAt: "昨天 8点"), role: .widget)))
+        XCTAssertEqual(bare, "role=widget meter=e:tag", "a time not in the school's form is left out")
+    }
+
     /// A credential write given up on a held lock: which credential and which process, no value.
     func testALeaseLockTimeoutLineNamesTheWriteAndTheProcess() {
         XCTAssertEqual(DebugEvent.leaseLockTimeout(DebugLeaseLockTimeout(.portalToken, role: .widget)).name, "school.leaseLockTimeout")
         XCTAssertEqual(line(.leaseLockTimeout(DebugLeaseLockTimeout(.portalToken, role: .widget))), "write=portalToken role=widget")
         XCTAssertEqual(line(.leaseLockTimeout(DebugLeaseLockTimeout(.cardSession, role: .app))), "write=cardSession role=app")
         XCTAssertTrue(DebugLogScreen.isSafe("school.leaseLockTimeout write=portalToken role=widget"), "kept by the log's screen")
+    }
+
+    func testTheSchoolTimeIsKeptOnlyInItsOwnForm() {
+        XCTAssertEqual(DebugSchoolTime("2026-10-30 08:10:22")?.text, "10-30T08:10:22")
+        for text in ["", "2026-10-30", "2026-13-30 08:10:22", "2026-10-30 08:10:+2", "26-10-30 08:10:22", "2026-10-30 25:10:22", "token=1"] {
+            XCTAssertNil(DebugSchoolTime(text), text)
+        }
     }
 }
 
