@@ -45,6 +45,21 @@ public struct FeedbackSender: Sendable {
     /// The feedback client's wait for each request: the first connection of an app run to the
     /// feedback host can take longer than the clients' usual 15 s to set up.
     public static let requestTimeout: TimeInterval = 30
+    /// Text alone is small: it gives up after this long in all, waiting and sending together.
+    public static let textOnlyLimit: TimeInterval = 15
+
+    /// How long one send may take: `request` is the wait for each request, `total` the whole send.
+    public struct Limits: Equatable, Sendable {
+        public var request: TimeInterval
+        public var total: TimeInterval
+        public init(request: TimeInterval, total: TimeInterval) { self.request = request; self.total = total }
+    }
+
+    /// Text alone ends after 15 s; with screenshots, the feedback client's own 30 s and 60 s.
+    public static func limits(imageCount: Int) -> Limits {
+        imageCount == 0 ? Limits(request: textOnlyLimit, total: textOnlyLimit)
+                        : Limits(request: requestTimeout, total: resourceTimeout)
+    }
 
     /// The feedback client's session configuration (`AppEnvironment.feedbackHTTP`).
     public static func configuration(protocolClasses: [AnyClass]? = nil) -> URLSessionConfiguration {
@@ -56,19 +71,46 @@ public struct FeedbackSender: Sendable {
 
     private let endpoint: FeedbackEndpoint
     private let http: HTTPClient
+    private let sleep: @Sendable (TimeInterval) async throws -> Void
 
-    public init(endpoint: FeedbackEndpoint, http: HTTPClient) { self.endpoint = endpoint; self.http = http }
+    /// `sleep` times the whole send (`Limits.total`); tests pass their own.
+    public init(endpoint: FeedbackEndpoint, http: HTTPClient,
+                sleep: @escaping @Sendable (TimeInterval) async throws -> Void = { try await Task.sleep(for: .seconds($0)) }) {
+        self.endpoint = endpoint; self.http = http; self.sleep = sleep
+    }
 
-    /// Throws `FeedbackFailure` for a draft the service would refuse, an error or a non-2xx answer.
+    /// Throws `FeedbackFailure` for a draft the service would refuse, an error, a non-2xx answer
+    /// or a send past its `limits`; `CancellationError` when the calling task was cancelled
+    /// (the request is cancelled with it).
     public func send(message: String, images: [Data], metadata: FeedbackMetadata) async throws {
         guard FeedbackDraft.issue(message: message, imageCount: images.count) == nil else { throw FeedbackFailure() }
-        let request = HTTPRequest.postJSON(service: .feedback, url: endpoint.url,
+        let limits = Self.limits(imageCount: images.count)
+        var request = HTTPRequest.postJSON(service: .feedback, url: endpoint.url,
                                            headers: ["Authorization": "Bearer \(endpoint.appKey)"],
                                            json: body(message: message, images: images, metadata: metadata),
                                            isStateChanging: true, logName: "feedback")
+        request.timeout = limits.request
         let response: HTTPResponse
-        do { response = try await http.send(request) } catch { throw FeedbackFailure() }
+        do {
+            response = try await within(limits.total) { [http, request] in try await http.send(request) }
+        } catch {
+            if error is CancellationError || Task.isCancelled { throw CancellationError() }
+            throw FeedbackFailure()
+        }
         guard (200 ..< 300).contains(response.status) else { throw FeedbackFailure() }
+    }
+
+    /// `work`, cancelled and `ServiceError.timedOut` once `seconds` have passed.
+    private func within(_ seconds: TimeInterval,
+                        _ work: @escaping @Sendable () async throws -> HTTPResponse) async throws -> HTTPResponse {
+        let sleep = self.sleep
+        return try await withThrowingTaskGroup(of: HTTPResponse?.self) { group in
+            group.addTask { try await work() }
+            group.addTask { try await sleep(seconds); return nil }
+            defer { group.cancelAll() }
+            guard let first = try await group.next(), let response = first else { throw ServiceError.timedOut }
+            return response
+        }
     }
 
     private func body(message: String, images: [Data], metadata: FeedbackMetadata) -> [String: JSONValue] {

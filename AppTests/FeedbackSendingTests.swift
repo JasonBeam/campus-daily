@@ -48,6 +48,13 @@ final class FeedbackSendingTests: XCTestCase {
         }
     }
 
+    /// The main-queue deadlines asked for, run when the test says so.
+    private final class Deadlines {
+        private(set) var asked: [(seconds: TimeInterval, item: DispatchWorkItem)] = []
+        var schedule: (TimeInterval, DispatchWorkItem) -> Void { { [self] in asked.append(($0, $1)) } }
+        func fire() { asked.forEach { $0.item.perform() } }
+    }
+
     private func waitUntil(_ condition: () -> Bool, file: StaticString = #filePath, line: UInt = #line) async throws {
         var tries = 0
         while !condition(), tries < 2000 {
@@ -154,6 +161,63 @@ final class FeedbackSendingTests: XCTestCase {
         model.start(withScreenshots:false, clear:false) {}
         XCTAssertNil(model.failure)
         try await waitUntil { model.sent }
+    }
+
+    // MARK: The main-queue deadline
+
+    func testTheDeadlineIsTheSendsLimitPlusTwoSeconds() {
+        XCTAssertEqual(FeedbackSending.deadline(withScreenshots:false), 17)
+        XCTAssertEqual(FeedbackSending.deadline(withScreenshots:true), 62)
+        let deadlines = Deadlines()
+        let model = FeedbackSending(sleep:Clock().sleep, schedule:deadlines.schedule)
+        model.start(withScreenshots:true, clear:false, Hanging().send)
+        XCTAssertEqual(deadlines.asked.map(\.seconds), [62])
+        model.cancel()
+        XCTAssertTrue(deadlines.asked[0].item.isCancelled, "cancelled with the send")
+    }
+
+    /// A send that never returns (nothing in Swift concurrency's pool runs for it): the deadline
+    /// on the main queue stops it and shows the failure line for its screenshots and theme.
+    func testTheDeadlineEndsASendThatNeverReturns() async throws {
+        for (screenshots, clear, line) in [(false, false, FeedbackText.failureText),
+                                           (true, false, "没发出去。网络慢的话，少带几张截图再试。"),
+                                           (true, true, "发送失败；网络较慢时可减少截图后重试")] {
+            let deadlines = Deadlines(), hanging = Hanging()
+            let model = FeedbackSending(sleep:Clock().sleep, schedule:deadlines.schedule)
+            model.start(withScreenshots:screenshots, clear:clear, hanging.send)
+            try await waitUntil { hanging.started }
+            deadlines.fire()
+            XCTAssertFalse(model.sending)
+            XCTAssertFalse(model.slow)
+            XCTAssertEqual(model.failure, line, "\(screenshots) \(clear)")
+            try await waitUntil { hanging.cancelled }
+            try await Task.sleep(for:.milliseconds(50))
+            XCTAssertEqual(model.failure, line, "the cancelled send's own end changes nothing")
+            XCTAssertFalse(model.sent)
+        }
+    }
+
+    /// The real main-queue timer, with the send's task never even started: fires on its own.
+    func testTheDeadlineFiresOnTheMainQueue() async throws {
+        let model = FeedbackSending(sleep:Clock().sleep, schedule:{ _, item in
+            DispatchQueue.main.asyncAfter(deadline:.now() + 0.05, execute:item)
+        })
+        model.start(withScreenshots:false, clear:true, Hanging().send)
+        try await waitUntil { model.failure != nil }
+        XCTAssertEqual(model.failure, FeedbackText.failureText)
+        XCTAssertFalse(model.sending)
+    }
+
+    /// A send that ended before the deadline: the deadline does nothing.
+    func testTheDeadlineAfterTheSendEndedChangesNothing() async throws {
+        let deadlines = Deadlines()
+        let model = FeedbackSending(sleep:Clock().sleep, schedule:deadlines.schedule)
+        model.start(withScreenshots:false, clear:false) {}
+        try await waitUntil { model.sent }
+        XCTAssertTrue(deadlines.asked[0].item.isCancelled)
+        deadlines.fire()
+        XCTAssertNil(model.failure)
+        XCTAssertTrue(model.sent)
     }
 
     // MARK: Screenshots
