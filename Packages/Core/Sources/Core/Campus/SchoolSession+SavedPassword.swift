@@ -134,7 +134,7 @@ extension SchoolSession {
         guard started == signOutGeneration else { return .unavailable }
         enum TokenSave { case written, gone, changed }
         let vault = vault, fresh = stamped(token)
-        let saveStep = (try? await owning.writeRetaking { () -> TokenSave in
+        let saveStep = await writeCredential(.portalToken, retaking: true, owning: owning) { () -> TokenSave in
             let still: SchoolAccount?
             do { still = try vault.account() } catch { return .changed }
             guard let still else { return .gone }
@@ -143,9 +143,10 @@ extension SchoolSession {
             guard still.account == saved.account, portal?.value == seenPortalToken else { return .changed }
             guard (try? vault.savePortalToken(fresh)) != nil else { return .changed }
             return .written
-        }) ?? nil
+        }
         switch saveStep {
         // Lost to a sign-out (it removes the lease first, then the items): reported as one.
+        // A lock that stayed held through the retry (logged) counts as a lost lease: the hold stays.
         case nil: return accountGone ? .signedOut : .lostLease
         case .gone?: return .signedOut
         case .changed?: return .retryLater

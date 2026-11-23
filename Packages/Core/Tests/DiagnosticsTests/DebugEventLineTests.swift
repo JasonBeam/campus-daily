@@ -137,6 +137,14 @@ final class DebugEventLineTests: XCTestCase {
         XCTAssertEqual(DebugEvent.navOpen(.feedback, from: .settings).name, "nav.open")
         XCTAssertEqual(line(.navOpen(.feedback, from: .settings)), "page=feedback from=settings")
     }
+
+    /// A credential write given up on a held lock: which credential and which process, no value.
+    func testALeaseLockTimeoutLineNamesTheWriteAndTheProcess() {
+        XCTAssertEqual(DebugEvent.leaseLockTimeout(DebugLeaseLockTimeout(.portalToken, role: .widget)).name, "school.leaseLockTimeout")
+        XCTAssertEqual(line(.leaseLockTimeout(DebugLeaseLockTimeout(.portalToken, role: .widget))), "write=portalToken role=widget")
+        XCTAssertEqual(line(.leaseLockTimeout(DebugLeaseLockTimeout(.cardSession, role: .app))), "write=cardSession role=app")
+        XCTAssertTrue(DebugLogScreen.isSafe("school.leaseLockTimeout write=portalToken role=widget"), "kept by the log's screen")
+    }
 }
 
 /// `nav.open`: the page, and the entry it was opened from when that was said just before.

@@ -34,12 +34,27 @@ extension SchoolSession {
         if let early = compare() { return early }
         // Compared again and saved in one step with the lease check: the other process can't
         // take the lease (and store its own session) between the check and the save.
-        let outcome = (try? await owning.write { () -> WriteBack in
+        let outcome = await writeCredential(.cardSession, owning: owning) { () -> WriteBack in
             if let changed = compare() { return changed }
             try? vault.saveEcyktSession(session)
             return .written
-        }) ?? nil
+        }
         return outcome ?? .lostLease
+    }
+
+    /// A credential the school gave, written under `owning` in one locked step; a lock that
+    /// stayed held is tried once more and, still held, logged as `leaseLockTimeout` (which
+    /// credential, which process). nil: not written (the lease lost, the lock held, cancelled).
+    /// `retaking`: as `LeaseOwnership.writeRetaking`.
+    func writeCredential<T>(_ write: DebugLeaseLockTimeout.Write, retaking: Bool = false, owning: LeaseOwnership,
+                            _ body: () -> T) async -> T? {
+        switch try? await owning.writeRetryingLockTimeout(retaking: retaking, body) {
+        case .ran(let value)?: return value
+        case .lockTimeout?:
+            debugLog.record(.leaseLockTimeout(DebugLeaseLockTimeout(write, role: createsLoginDeviceID ? .app : .widget)))
+            return nil
+        case .lost?, nil: return nil
+        }
     }
 
     /// Liveness check, then `getSignData` for the bound card (hot-water onboarding only). The app
@@ -73,7 +88,7 @@ extension SchoolSession {
     /// in one step with the lease check (`owning`, from `holdingLease`): lost, nothing is written.
     private func saveIfUnchanged(_ live: EcyktSession, over base: EcyktSession, owning: LeaseOwnership) async {
         let vault = vault
-        _ = try? await owning.write {
+        _ = await writeCredential(.cardSession, owning: owning) {
             guard let current = (try? vault.ecyktSession()) ?? nil,
                   current.token == base.token, current.syscustid == base.syscustid else { return }
             try? vault.saveEcyktSession(live)

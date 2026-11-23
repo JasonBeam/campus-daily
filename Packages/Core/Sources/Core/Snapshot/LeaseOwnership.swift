@@ -38,6 +38,22 @@ public struct LeaseOwnership: Sendable {
         return nil
     }
 
+    /// How long a credential write whose lock wait ran out pauses before its one more try.
+    static let lockRetryPause: TimeInterval = 0.5
+
+    /// `write` (`retaking`: `writeRetaking`) for a credential the school already gave (the
+    /// portal token after the password, a rotated card session): dropping it costs a login, so a
+    /// lock that stayed held for the whole wait is tried once more after `lockRetryPause`
+    /// (suspended). `.lockTimeout` when it is still held then, or the task was cancelled during
+    /// the pause: the caller logs it. `.lost` as for `write`. Never written without the lease.
+    func writeRetryingLockTimeout<T>(isolation: isolated (any Actor)? = #isolation, retaking: Bool,
+                                     _ body: () throws -> T) async throws -> RefreshLease.Owned<T> {
+        let first = try await attempt(retaking: retaking, body)
+        guard case .lockTimeout = first else { return first }
+        guard (try? await Task.sleep(nanoseconds: UInt64(Self.lockRetryPause * 1_000_000_000))) != nil else { return first }
+        return try await attempt(retaking: retaking, body)
+    }
+
     /// One try: `.lost` without the lease (or cancelled), `.lockTimeout` when the lock stayed
     /// held for the whole wait. Either way `body` did not run.
     func attempt<T>(isolation: isolated (any Actor)? = #isolation, retaking: Bool,

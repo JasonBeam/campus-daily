@@ -48,6 +48,9 @@ public enum DebugEvent: Sendable, Equatable {
     case schoolWebLogin(DebugWebLogin)
     /// The login form's account-and-password login did not sign in: the kind of failure only.
     case schoolDirectLogin(DebugDirectLogin)
+    /// A credential the school gave that was not stored: the lease file's lock stayed held
+    /// through the write's wait and its one retry. Which credential and which process only.
+    case leaseLockTimeout(DebugLeaseLockTimeout)
 
     // MARK: 校园充值
     /// 「打开微信」: whether WeChat opened. Never what was copied.
@@ -554,4 +557,15 @@ public enum DebugEntry: String, Sendable, CaseIterable {
     case updateLine
     /// 常用洗衣机 saved, on to 洗衣.
     case setupDone
+}
+
+/// A write under the lease given up on a lock that stayed held (the other process stuck inside
+/// a step), not on a lost lease: what was not written and where. Never the value.
+public struct DebugLeaseLockTimeout: Sendable, Equatable {
+    public enum Write: String, Sendable { case portalToken, cardSession }
+    public enum Role: String, Sendable { case app, widget }
+    public var write: Write
+    public var role: Role
+
+    public init(_ write: Write, role: Role) { self.write = write; self.role = role }
 }

@@ -20,7 +20,7 @@ final class DebugEventScreenTests: XCTestCase {
         case laundryPhase, laundryRequest, laundryOrder, laundryPayLaunch, laundryStart, laundryHistory
         case schoolRefresh, schoolCredentialExpired, schoolSavedLogin, schoolRenew, ujingLogin
         case topUpWeChat
-        case schoolWebLogin, schoolDirectLogin
+        case schoolWebLogin, schoolDirectLogin, leaseLockTimeout
         case http, navOpen
     }
 
@@ -50,6 +50,7 @@ final class DebugEventScreenTests: XCTestCase {
         case .topUpWeChat: return .topUpWeChat
         case .schoolWebLogin: return .schoolWebLogin
         case .schoolDirectLogin: return .schoolDirectLogin
+        case .leaseLockTimeout: return .leaseLockTimeout
         case .http: return .http
         case .navOpen: return .navOpen
         }
@@ -176,6 +177,9 @@ final class DebugEventScreenTests: XCTestCase {
         e += DebugWebLogin.allCases.map(DebugEvent.schoolWebLogin)
         e += ([DebugDirectLogin.locked, .unknown, .wrong, .noAnswer, .offline]
               + [SchoolLoginBlock.captcha, .mfa, .passwordChange].map(DebugDirectLogin.needsSchoolSite)).map(DebugEvent.schoolDirectLogin)
+        e += [DebugLeaseLockTimeout.Write.portalToken, .cardSession].flatMap { w in
+            [DebugLeaseLockTimeout.Role.app, .widget].map { DebugEvent.leaseLockTimeout(DebugLeaseLockTimeout(w, role: $0)) }
+        }
         e += https.map(DebugEvent.http)
         e += DebugPage.allCases.flatMap { page in DebugEntry.allCases.map { DebugEvent.navOpen(page, from: $0) } }
         e.append(.laundryOrder(status: DebugCode("20"), moduleType: 7, order: washer))

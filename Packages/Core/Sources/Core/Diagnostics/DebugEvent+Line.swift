@@ -35,6 +35,7 @@ extension DebugEvent {
         case .ujingLogin: return "ujing.login"
         case .schoolWebLogin: return "school.webLogin"
         case .schoolDirectLogin: return "school.directLogin"
+        case .leaseLockTimeout: return "school.leaseLockTimeout"
         case .topUpWeChat: return "topUp.weChat"
         case .http: return "http"
         case .navOpen: return "nav.open"
@@ -154,6 +155,9 @@ extension DebugEvent {
         case .navOpen(let page, let entry):
             f["page"] = page.rawValue
             f["from"] = entry.rawValue
+        case .leaseLockTimeout(let t):
+            f["write"] = t.write.rawValue
+            f["role"] = t.role.rawValue
         }
         return f.text
     }
