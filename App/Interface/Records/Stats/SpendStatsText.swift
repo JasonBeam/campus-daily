@@ -203,11 +203,59 @@ struct SpendStatsText {
         return value < 1 && fraction > 0 ? "<1%" : "\(value)%"
     }
 
-    /// 「食堂，86.40 元，占 70%」.
+    /// A category's capsule to VoiceOver: 「电费，40 元」, and its share of those counted when it
+    /// is counted: 「食堂，86.40 元，占 70%」.
     static func spokenShare(_ share: SpendShare) -> String {
+        let words = "\(share.kind.title)，\(spokenYuan(share.spent)) 元"
+        guard share.included else { return words }
         let value = Int((share.fraction * 100).rounded())
         let part = value < 1 && share.fraction > 0 ? "不到 1%" : "\(value)%"
-        return "\(share.kind.title)，\(share.spent.yuanText) 元，占 \(part)"
+        return words + "，占 \(part)"
+    }
+
+    /// Under the capsules, both themes.
+    static let categoryNote = "电费是整个宿舍一起交的，默认不算；点上面的分类可以加回来或拿掉。"
+
+    /// A capsule's VoiceOver value: counted or not.
+    static func categoryValue(_ share: SpendShare) -> String { share.included ? "算进统计" : "不算" }
+
+    /// A capsule's VoiceOver hint: the last one counted can't be turned off.
+    static func categoryHint(_ share: SpendShare, counted: Set<CardRecordKind>) -> String {
+        isLastCounted(share, counted:counted) ? "至少要留一类，这一类拿不掉" : "轻点两下，加进或拿出统计"
+    }
+
+    /// The only category counted of all kept (`counted`, listed in the span or not):
+    /// `CardRecordsModel.toggleCategory` refuses to turn it off.
+    static func isLastCounted(_ share: SpendShare, counted: Set<CardRecordKind>) -> Bool {
+        share.included && counted == [share.kind]
+    }
+
+    /// Spent in the span, but only on categories left out (those counted had nothing in it):
+    /// every capsule shown is off.
+    static func nothingCounted(_ stats: SpendStats) -> Bool {
+        stats.isEmpty && stats.shares.contains { !$0.included && $0.spent > .zero }
+    }
+
+    /// In the chart's place when `nothingCounted`, both themes; the capsules are under it.
+    static let nothingCountedNote = "这段时间里，算进统计的分类都没花钱；点下面的分类加进来。"
+
+    /// Read out after a capsule is switched: the new total, as the label says it — 「7 天花了 383 元」
+    /// / 「合计 383 元」; with nothing counted spent, the ¥0 total and then the chart's words; the
+    /// empty words when nothing at all was spent.
+    func spokenTotal(_ stats: SpendStats) -> String {
+        if Self.nothingCounted(stats) { return spokenAmount(stats) + "。" + Self.nothingCountedNote }
+        if stats.isEmpty { return empty(stats.span) }
+        return spokenAmount(stats)
+    }
+
+    /// The total alone, as the label says it: 「7 天花了 383 元」 / 「合计 383 元」.
+    func spokenAmount(_ stats: SpendStats) -> String {
+        (warm ? totalLabel(stats.span) + " " : "合计 ") + Self.spokenYuan(stats.total) + " 元"
+    }
+
+    /// 「40」, 「40.50」: whole yuan without the fen when there are none.
+    static func spokenYuan(_ money: Money) -> String {
+        money.fen % 100 == 0 ? String(money.fen / 100) : money.yuanText
     }
 
     // MARK: Amounts

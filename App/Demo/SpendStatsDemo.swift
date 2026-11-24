@@ -14,15 +14,31 @@ import Core
 /// - `s7` / `s30` / `sem`: the sample records' own stats on 7 天, 30 天, 本学期 (the span is
 ///   kept, as a tap on it would);
 /// - `day`: the sample's 7 天, looking at its biggest day, as while pressing the bars;
+/// - `s30-on`: the sample's 30 天 with 电费 counted too (the others leave it out, as by default);
+/// - `s30-one`: the sample's 30 天 counting 食堂 only, the last capsule that can't be turned off;
+/// - `s7-zero`: the sample's 7 天 counting 电费 only, which it has none of: every capsule off;
 /// made up rather than worked out (synthetic amounts, today's dates), the span switch working
 /// on them and 改开学日 changing nothing:
 /// - `load`: 本学期 still reading; `empty`: 7 天 with nothing spent; `failed`: the read failed;
 /// - `notes`: 30 天 with two unsure days and the school's records starting late.
 enum SpendStatsDemo: String {
     case s7, day, s30, sem, load, empty, failed, notes
+    case s30On = "s30-on"
+    case s30One = "s30-one"
+    case s7Zero = "s7-zero"
 
     /// Its stats are made up, not the sample records' own.
-    var madeUp: Bool { ![.s7, .day, .s30, .sem].contains(self) }
+    var madeUp: Bool { ![.s7, .day, .s30, .s30On, .s30One, .s7Zero, .sem].contains(self) }
+
+    /// The categories the sample's stats count (set on the sample's preferences when it opens).
+    var categories: Set<CardRecordKind> {
+        switch self {
+        case .s30On: return Set(SpendCategories.all)
+        case .s30One: return [.canteen]
+        case .s7Zero: return [.electricity]
+        default: return SpendCategories.defaultIncluded
+        }
+    }
 
     /// The one a link last asked for; nil once an ordinary records demo opens.
     @MainActor static var current: SpendStatsDemo?
@@ -36,8 +52,8 @@ enum SpendStatsDemo: String {
 
     var span: SpendSpan {
         switch self {
-        case .s7, .day, .empty, .failed: return .week
-        case .s30, .notes: return .month
+        case .s7, .day, .s7Zero, .empty, .failed: return .week
+        case .s30, .s30On, .s30One, .notes: return .month
         case .sem, .load: return .term
         }
     }
@@ -80,17 +96,18 @@ enum SpendStatsDemo: String {
         let average = Money(fen:Int((Double(total.fen) / Double(max(days, 1))).rounded()))
         let versus: Money? = empty || span == .term ? nil : Money(fen:span == .week ? 1230 : -2160)
         return SpendStats(span:span, total:total, dailyAverage:average, versusPrevious:versus, bars:bars,
-                          shares:shares(total, term:span == .term), unsureDays:notes ? 2 : 0,
+                          shares:shares(total, span:span), unsureDays:notes ? 2 : 0,
                           coveredFrom:notes ? bars.first?.id : nil,
                           termStart:span == .term ? SchoolCalendar.dayString(termStart(now:now), calendar:SchoolCalendar.shanghai) : nil)
     }
 
-    /// 食堂 70%, 热水 18%, 电费 8%, (洗衣 on the term), 其他 the rest.
-    private static func shares(_ total: Money, term: Bool) -> [SpendShare] {
-        guard total.fen > 0 else { return [] }
-        let parts: [(CardRecordKind, Double)] = term
-            ? [(.canteen, 0.6725), (.shower, 0.178), (.electricity, 0.0797), (.laundry, 0.0053)]
-            : [(.canteen, 0.7), (.shower, 0.178), (.electricity, 0.081)]
+    /// 食堂 76%, 热水 19%, (洗衣 on the term), 其他 the rest; 电费 left out, as by default: ¥120 in
+    /// 30 天 (in its place by amount), ¥300 this term, none in 7 天 (still listed, at ¥0).
+    private static func shares(_ total: Money, span: SpendSpan) -> [SpendShare] {
+        guard total.fen > 0 else { return [SpendShare(kind:.electricity, spent:.zero, fraction:0, included:false)] }
+        let parts: [(CardRecordKind, Double)] = span == .term
+            ? [(.canteen, 0.7305), (.shower, 0.1934), (.laundry, 0.0058)]
+            : [(.canteen, 0.7617), (.shower, 0.1937)]
         var shares: [SpendShare] = []
         var left = total.fen
         for (kind, fraction) in parts {
@@ -99,7 +116,24 @@ enum SpendStatsDemo: String {
             shares.append(SpendShare(kind:kind, spent:Money(fen:fen), fraction:Double(fen) / Double(total.fen)))
         }
         shares.append(SpendShare(kind:.other, spent:Money(fen:left), fraction:Double(left) / Double(total.fen)))
+        let electricity = SpendShare(kind:.electricity, spent:Money(fen:span == .week ? 0 : span == .month ? 12000 : 30000),
+                                     fraction:0, included:false)
+        let at = shares.dropLast().firstIndex { $0.spent < electricity.spent } ?? shares.count - 1
+        shares.insert(electricity, at:at)
         return shares
+    }
+}
+
+extension CardRecordsModel {
+    /// Counts exactly `kinds` (a demo's `categories`): those to count turned on first, so the
+    /// last one is never refused.
+    func countOnly(_ kinds: Set<CardRecordKind>) {
+        for kind in SpendCategories.all where kinds.contains(kind) && !includedCategories.contains(kind) {
+            toggleCategory(kind)
+        }
+        for kind in SpendCategories.all where !kinds.contains(kind) && includedCategories.contains(kind) {
+            toggleCategory(kind)
+        }
     }
 }
 #endif

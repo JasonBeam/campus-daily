@@ -30,6 +30,7 @@ struct CardRecordsStats: View {
                 .task {
                     try? await Task.sleep(for:.milliseconds(300))
                     model.statsSpan = demo.span
+                    model.countOnly(demo.categories)
                 }
         } else {
             live(pinned:nil)
@@ -46,7 +47,8 @@ struct CardRecordsStats: View {
                        setTermStart:{ day in
                            if let day { model.setTermStart(day) } else { model.resetTermStart() }
                        },
-                       pinned:pinned, calendar:model.calendar)
+                       pinned:pinned, comparing:model.comparisonLoading,
+                       toggleCategory:{ model.toggleCategory($0) }, counted:model.includedCategories, calendar:model.calendar)
     }
 
     private var phase: SpendStatsView.Phase {

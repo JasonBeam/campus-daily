@@ -8,34 +8,127 @@
 import SwiftUI
 import Core
 
-/// The span's categories as one line of small words that wraps: a dot, the name in ink and the
-/// whole-yuan amount in ink2. The dots go from the chart accent (`Theme.mark`) to its lighter shades, biggest first;
-/// 「其他」 is ink3. VoiceOver reads each with the full amount and its share.
+/// The span's categories as small capsules that wrap: those spent on and those left out (at ¥0
+/// too, so they can come back), in the stats' fixed order. Counted: a filled capsule, a solid dot
+/// from the chart accent (`Theme.mark`) down its lighter shades in the order of those counted
+/// (「其他」 ink3), the name in ink. Left out: an outline, a ring, the name in ink2. A tap counts a
+/// category or leaves it out (`toggle`); the last one counted is refused with a warning and a blink.
+/// Without `toggle` (made-up demos) they only show.
 struct SpendShareFlow: View {
     let shares: [SpendShare]
+    /// Every category counted, listed or not (`CardRecordsModel.includedCategories`): the last
+    /// one can't be turned off.
+    let counted: Set<CardRecordKind>
+    /// Switches a category; false when refused.
+    var toggle: ((CardRecordKind) -> Bool)?
+
+    @State private var switched = 0
+    @State private var refused = 0
+    @State private var blinks: [CardRecordKind: Int] = [:]
+    @Environment(\.appTheme) private var theme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        FlowRow(spacing:16, lineSpacing:6) {
-            ForEach(Array(shares.enumerated()), id:\.element.id) { index, share in
-                HStack(spacing:5) {
-                    Circle().fill(Self.color(share.kind, at:index)).frame(width:8, height:8)
-                    Text(share.kind.title).foregroundStyle(Theme.ink)
-                    Text(SpendStatsText.wholeYuan(share.spent)).monospacedDigit().foregroundStyle(Theme.ink2)
-                }
-                .scaledFont(13, relativeTo:.footnote)
-                .fixedSize()
-                .accessibilityElement(children:.ignore)
-                .accessibilityLabel(SpendStatsText.spokenShare(share))
+        let shades = Self.shades(shares)
+        FlowRow(spacing:8, lineSpacing:6) {
+            ForEach(shares) { share in
+                capsule(share, shade:shades[share.kind])
             }
         }
         .frame(maxWidth:.infinity, alignment:.leading)
+        .sensoryFeedback(.selection, trigger:switched)
+        .sensoryFeedback(.warning, trigger:refused)
     }
 
-    /// Accent at 100 / 62 / 38 / 22% in order; 「其他」 always ink3.
+    @ViewBuilder private func capsule(_ share: SpendShare, shade: ThemeColor?) -> some View {
+        let face = CategoryCapsule(share:share, shade:shade)
+            .keyframeAnimator(initialValue:1.0, trigger:blinks[share.kind, default:0]) { content, opacity in
+                content.opacity(opacity)
+            } keyframes: { _ in
+                LinearKeyframe(0.5, duration:0.075)
+                LinearKeyframe(1.0, duration:0.075)
+            }
+            .frame(minHeight:44)
+            .contentShape(Rectangle())
+        if let toggle {
+            Button { tap(share.kind, toggle:toggle) } label: { face }
+                .buttonStyle(.plain)
+                .accessibilityElement(children:.ignore)
+                .accessibilityLabel(SpendStatsText.spokenShare(share))
+                .accessibilityValue(SpendStatsText.categoryValue(share))
+                .accessibilityHint(SpendStatsText.categoryHint(share, counted:counted))
+                .accessibilityAddTraits([.isButton, .isToggle])
+                .accessibilityIdentifier("spendCategory-\(share.kind.rawValue)")
+        } else {
+            face
+                .accessibilityElement(children:.ignore)
+                .accessibilityLabel(SpendStatsText.spokenShare(share))
+                .accessibilityValue(SpendStatsText.categoryValue(share))
+        }
+    }
+
+    private func tap(_ kind: CardRecordKind, toggle: (CardRecordKind) -> Bool) {
+        let done = withAnimation(reduceMotion ? nil : .easeInOut(duration:0.25)) { toggle(kind) }
+        if done {
+            switched += 1
+        } else {
+            refused += 1
+            if !reduceMotion { blinks[kind, default:0] += 1 }
+        }
+    }
+
+    /// Accent at 100 / 62 / 38 / 22% down those counted, in order; 「其他」 always ink3. Those
+    /// left out get none (a ring).
+    static func shades(_ shares: [SpendShare]) -> [CardRecordKind: ThemeColor] {
+        var shades: [CardRecordKind: ThemeColor] = [:]
+        for (index, share) in shares.filter(\.included).enumerated() { shades[share.kind] = color(share.kind, at:index) }
+        return shades
+    }
+
     static func color(_ kind: CardRecordKind, at index: Int) -> ThemeColor {
         guard kind != .other else { return Theme.ink3 }
         let steps = [1, 0.62, 0.38, 0.22]
         return Theme.mark.opacity(steps[min(index, steps.count - 1)])
+    }
+}
+
+/// One capsule's face: 32 high (taller with the text), the dot, the name and the whole-yuan
+/// amount kept on one line.
+private struct CategoryCapsule: View {
+    let share: SpendShare
+    /// The counted dot's colour; nil for a ring.
+    let shade: ThemeColor?
+    @Environment(\.appTheme) private var theme
+
+    var body: some View {
+        HStack(spacing:0) {
+            dot.padding(.trailing,6)
+            Text(share.kind.title).foregroundStyle(share.included ? Theme.ink : Theme.ink2)
+                .padding(.trailing,4)
+            Text(SpendStatsText.wholeYuan(share.spent)).monospacedDigit().foregroundStyle(Theme.ink2)
+        }
+        .scaledFont(13, relativeTo:.footnote)
+        .lineLimit(1)
+        .padding(.horizontal,10).padding(.vertical,6)
+        .frame(minHeight:32)
+        .background {
+            if share.included { Capsule().fill(theme == .clear ? AnyShapeStyle(NativeTheme.surface) : AnyShapeStyle(Theme.group)) }
+        }
+        .overlay {
+            if !share.included {
+                Capsule().strokeBorder(theme == .clear ? AnyShapeStyle(Color(uiColor:.separator)) : AnyShapeStyle(Theme.ink3),
+                                       lineWidth:1)
+            }
+        }
+        .fixedSize()
+    }
+
+    @ViewBuilder private var dot: some View {
+        if let shade {
+            Circle().fill(shade).frame(width:8, height:8)
+        } else {
+            Circle().strokeBorder(Theme.ink2, lineWidth:1.5).frame(width:8, height:8)
+        }
     }
 }
 

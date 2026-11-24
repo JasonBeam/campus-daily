@@ -90,6 +90,68 @@ final class SpendStatsTextTests: XCTestCase {
         XCTAssertEqual(SpendStatsText.spokenShare(SpendShare(kind:.canteen, spent:Money(fen:8640), fraction:0.7)), "食堂，86.40 元，占 70%")
     }
 
+    // MARK: Category capsules
+
+    func testACapsuleSaysItsAmountAndItsShareOnlyWhenCounted() {
+        XCTAssertEqual(SpendStatsText.spokenShare(SpendShare(kind:.canteen, spent:Money(fen:8600), fraction:0.7)), "食堂，86 元，占 70%")
+        let electricity = SpendShare(kind:.electricity, spent:Money(fen:4000), fraction:0, included:false)
+        XCTAssertEqual(SpendStatsText.spokenShare(electricity), "电费，40 元")
+        XCTAssertEqual(SpendStatsText.spokenShare(SpendShare(kind:.electricity, spent:Money(fen:4050), fraction:0.12)), "电费，40.50 元，占 12%")
+        XCTAssertEqual(SpendStatsText.spokenShare(SpendShare(kind:.electricity, spent:.zero, fraction:0, included:false)), "电费，0 元")
+        XCTAssertEqual(SpendStatsText.categoryValue(electricity), "不算")
+        XCTAssertEqual(SpendStatsText.categoryValue(SpendShare(kind:.canteen, spent:Money(fen:8600), fraction:0.7)), "算进统计")
+    }
+
+    func testTheLastCapsuleCountedSaysItCantBeTurnedOff() {
+        let canteen = SpendShare(kind:.canteen, spent:Money(fen:8600), fraction:1)
+        let shower = SpendShare(kind:.shower, spent:Money(fen:2000), fraction:0, included:false)
+        let electricity = SpendShare(kind:.electricity, spent:Money(fen:12000), fraction:0, included:false)
+        XCTAssertTrue(SpendStatsText.isLastCounted(canteen, counted:[.canteen]))
+        XCTAssertEqual(SpendStatsText.categoryHint(canteen, counted:[.canteen]), "至少要留一类，这一类拿不掉")
+        XCTAssertEqual(SpendStatsText.categoryHint(shower, counted:[.canteen]), "轻点两下，加进或拿出统计")
+        XCTAssertEqual(SpendStatsText.categoryHint(electricity, counted:[.canteen]), "轻点两下，加进或拿出统计")
+        // 洗衣 is counted too, with nothing spent in the span (not listed): 食堂 can go.
+        XCTAssertFalse(SpendStatsText.isLastCounted(canteen, counted:[.canteen, .laundry]))
+        XCTAssertEqual(SpendStatsText.categoryHint(canteen, counted:[.canteen, .laundry]), "轻点两下，加进或拿出统计")
+    }
+
+    /// Spent only on categories left out: the chart's words, and what is read out.
+    func testNothingCountedSpentButSomethingLeftOutWas() {
+        var none = stats(total:0)
+        none.shares = [SpendShare(kind:.canteen, spent:Money(fen:8600), fraction:0, included:false),
+                       SpendShare(kind:.shower, spent:Money(fen:1200), fraction:0, included:false)]
+        XCTAssertTrue(SpendStatsText.nothingCounted(none))
+        XCTAssertEqual(warm.spokenTotal(none), "7 天花了 0 元。这段时间里，算进统计的分类都没花钱；点下面的分类加进来。")
+        XCTAssertEqual(clear.spokenTotal(none), "合计 0 元。这段时间里，算进统计的分类都没花钱；点下面的分类加进来。")
+        XCTAssertEqual(warm.spokenAmount(none), "7 天花了 0 元")
+        var nothing = stats(total:0)
+        nothing.shares = [SpendShare(kind:.electricity, spent:.zero, fraction:0, included:false)]
+        XCTAssertFalse(SpendStatsText.nothingCounted(nothing), "nothing spent at all")
+        XCTAssertEqual(clear.spokenTotal(nothing), "本期无支出")
+        XCTAssertFalse(SpendStatsText.nothingCounted(stats()))
+    }
+
+    func testTheNewTotalReadOutAfterASwitch() {
+        XCTAssertEqual(warm.spokenTotal(stats(total:38300)), "7 天花了 383 元")
+        XCTAssertEqual(clear.spokenTotal(stats(total:38300)), "合计 383 元")
+        XCTAssertEqual(warm.spokenTotal(stats(.month, total:38350)), "30 天花了 383.50 元")
+        XCTAssertEqual(warm.spokenTotal(stats(total:0)), "这 7 天没用校园卡花钱。")
+        XCTAssertEqual(SpendStatsText.categoryNote, "电费是整个宿舍一起交的，默认不算；点上面的分类可以加回来或拿掉。")
+    }
+
+    /// The capsules' dots go down the accent over those counted only; those left out get a ring.
+    func testOnlyCountedCapsulesTakeAShade() {
+        let shares = [SpendShare(kind:.canteen, spent:Money(fen:30000), fraction:0.8),
+                      SpendShare(kind:.electricity, spent:Money(fen:12000), fraction:0, included:false),
+                      SpendShare(kind:.shower, spent:Money(fen:6000), fraction:0.16),
+                      SpendShare(kind:.other, spent:Money(fen:1500), fraction:0.04)]
+        let shades = SpendShareFlow.shades(shares)
+        XCTAssertNil(shades[.electricity])
+        XCTAssertEqual(shades[.canteen], Theme.mark)
+        XCTAssertEqual(shades[.shower], Theme.mark.opacity(0.62))
+        XCTAssertEqual(shades[.other], Theme.ink3)
+    }
+
     func testStatesAndNotes() {
         XCTAssertEqual(warm.totalLabel(.week), "7 天花了")
         XCTAssertEqual(warm.totalLabel(.term), "本学期花了")

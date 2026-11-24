@@ -100,6 +100,7 @@ struct SpendBarsChart: View {
                     Text(amount(bar))
                         .scaledFont(11, .semibold, relativeTo:.caption2, cap:15)
                         .monospacedDigit()
+                        .contentTransition(reduceMotion ? .identity : .numericText(value:Double(bar.spent.fen)))
                         .foregroundStyle(Theme.accentText)
                         .fixedSize()
                 }
@@ -120,7 +121,8 @@ struct SpendBarsChart: View {
         .simultaneousGesture(scrub)
         .onChange(of:touchedID) { _, new in selected = new }
         .sensoryFeedback(.selection, trigger:touchedID) { _, new in new != nil }
-        .animation(reduceMotion ? nil : .easeOut(duration:0.3), value:bars)
+        // New amounts (another span, a category counted or left out): the bars move, at once with Reduce Motion.
+        .animation(reduceMotion ? nil : .easeInOut(duration:0.25), value:bars)
         .animation(reduceMotion ? nil : .easeOut(duration:0.3), value:look)
         .onAppear { grow() }
     }

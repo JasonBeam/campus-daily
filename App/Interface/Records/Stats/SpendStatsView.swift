@@ -9,9 +9,10 @@ import SwiftUI
 import Core
 
 /// The records page's spending stats on the page itself (no card): 「7 天 · 30 天 · 本学期」,
-/// the total with the daily average, a bar a day (a week for this term), the categories, this
-/// term's start day and what is counted. Pressing along the bars shows one day in the total's
-/// place until let go. The host sets the side margins (暖橙 24, 清爽 the list's).
+/// the total with the daily average, a bar a day (a week for this term), the categories (capsules
+/// that count one or leave it out), this term's start day and what is counted. Pressing along
+/// the bars shows one day in the total's place until let go. The host sets the side margins
+/// (暖橙 24, 清爽 the list's).
 struct SpendStatsView: View {
     enum Phase: Equatable {
         case loading
@@ -29,27 +30,42 @@ struct SpendStatsView: View {
     var setTermStart: (Date?) -> Void = { _ in }
     /// The bar looked at when the view appears (screenshots).
     var pinned: String?
+    /// The period before the span is still read: the comparison is left out until it comes, its
+    /// room kept.
+    var comparing = false
+    /// Counts a category or leaves it out (`CardRecordsModel.toggleCategory`); false when refused.
+    /// Nil: the capsules only show.
+    var toggleCategory: ((CardRecordKind) -> Bool)?
+    /// Every category counted (`CardRecordsModel.includedCategories`); nil: those counted on the list.
+    var counted: Set<CardRecordKind>?
     /// The records' calendar (`CardRecordsModel.calendar`): days are named and picked in it.
     let calendar: Calendar
 
     @State private var selected: String?
     @State private var termSheet = false
+    /// A capsule was switched: the new total is read out once the stats come back.
+    @State private var announcing = false
     @Environment(\.appTheme) private var theme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(phase: Phase, span: Binding<SpendSpan>, placeholder: [SpendBar] = [], term: TermStartSheet.Term? = nil,
-         setTermStart: @escaping (Date?) -> Void = { _ in }, pinned: String? = nil, calendar: Calendar) {
+         setTermStart: @escaping (Date?) -> Void = { _ in }, pinned: String? = nil, comparing: Bool = false,
+         toggleCategory: ((CardRecordKind) -> Bool)? = nil, counted: Set<CardRecordKind>? = nil, calendar: Calendar) {
         self.phase = phase; _span = span; self.placeholder = placeholder; self.term = term
-        self.setTermStart = setTermStart; self.pinned = pinned; self.calendar = calendar
+        self.setTermStart = setTermStart; self.pinned = pinned; self.comparing = comparing
+        self.toggleCategory = toggleCategory; self.counted = counted; self.calendar = calendar
         _selected = State(initialValue:pinned)
     }
 
     private var text: SpendStatsText { SpendStatsText(theme:theme, calendar:calendar) }
     private var stats: SpendStats? { if case .loaded(let stats) = phase, stats.span == span { return stats }; return nil }
     private var loading: Bool { phase == .loading || (stats == nil && phase != .failed) }
-    private var empty: Bool { stats?.isEmpty == true }
-    /// The categories counted: until the category switches come, the ones left out are not listed.
-    private var countedShares: [SpendShare] { stats?.shares.filter(\.included) ?? [] }
+    /// Nothing spent in the span on the categories counted, nor on those left out.
+    private var empty: Bool { stats.map { $0.isEmpty && !nothingCounted } ?? false }
+    /// Spent only on categories left out: the chart says so, over the capsules.
+    private var nothingCounted: Bool { stats.map(SpendStatsText.nothingCounted) ?? false }
+    /// The capsules: shown with nothing counted spent too, so a category left out can come back.
+    private var shares: [SpendShare] { stats?.shares ?? [] }
     private var selectedBar: SpendBar? { selected.flatMap { id in stats?.bars.first { $0.id == id } } }
 
     var body: some View {
@@ -60,8 +76,15 @@ struct SpendStatsView: View {
             } else {
                 headline.padding(.top,10)
                 chart.padding(.top,20)
-                if let stats, !stats.isEmpty, !countedShares.isEmpty {
-                    SpendShareFlow(shares:countedShares).padding(.top,18)
+                if !shares.isEmpty {
+                    // The capsules' 44pt rows put the first one's face 18 under the chart.
+                    SpendShareFlow(shares:shares, counted:counted ?? Set(shares.filter(\.included).map(\.kind)),
+                                   toggle:toggleCategory.map { switching($0) })
+                        .padding(.top,12)
+                    Text(SpendStatsText.categoryNote)
+                        .scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
+                        .fixedSize(horizontal:false, vertical:true)
+                        .padding(.top,2)
                 }
             }
             if span == .term, let term { termRow(term).padding(.top,8) }
@@ -69,13 +92,34 @@ struct SpendStatsView: View {
             Text(text.footnote)
                 .scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
                 .fixedSize(horizontal:false, vertical:true)
-                .padding(.top,span == .term && term != nil ? 4 : 14)
+                .padding(.top,footnoteGap)
         }
         .frame(maxWidth:.infinity, alignment:.leading)
         .onChange(of:span) { _, _ in selected = nil }
+        .onChange(of:stats) { _, new in
+            guard announcing else { return }
+            announcing = false
+            if let new { AccessibilityNotification.Announcement(text.spokenTotal(new)).post() }
+        }
         .onChange(of:pinned) { _, new in selected = new }
         .sheet(isPresented:$termSheet) {
             if let term { TermStartSheet(term:term, calendar:calendar, onDone:setTermStart) }
+        }
+    }
+
+    /// Under the term's row, or straight under the category note: one paragraph with it.
+    private var footnoteGap: CGFloat {
+        if span == .term && term != nil { return 4 }
+        let noted = stats.map { $0.coveredFrom != nil || $0.unsureDays > 0 } ?? false
+        return !shares.isEmpty && phase != .failed && !noted ? 4 : 14
+    }
+
+    /// A capsule's tap: the host's switch, and the new total read out once it is worked out.
+    private func switching(_ toggle: @escaping (CardRecordKind) -> Bool) -> (CardRecordKind) -> Bool {
+        { kind in
+            let done = toggle(kind)
+            if done { announcing = true }
+            return done
         }
     }
 
@@ -144,15 +188,18 @@ struct SpendStatsView: View {
     private var line: some View {
         var parts: [SpendStatsText.Part]?
         if let stats {
-            if let bar = selectedBar { parts = text.barLine(bar, average:stats.dailyAverage) } else { parts = text.averageLine(stats) }
+            if let bar = selectedBar { parts = text.barLine(bar, average:stats.dailyAverage) }
+            else if !nothingCounted { parts = text.averageLine(stats) }
         }
-        return Group {
+        return ZStack(alignment:.topLeading) {
+            // While the comparison is read, a stand-in for it keeps its room, so nothing moves when it comes.
+            if comparing, selectedBar == nil, !nothingCounted, let room = comparisonRoom {
+                Self.join(room).hidden().accessibilityHidden(true)
+            }
             if let parts {
-                parts.reduce(Text(verbatim:"")) { line, part in
-                    let run = part.strong ? Text(part.text).fontWeight(.semibold).foregroundStyle(Theme.ink)
-                                          : Text(part.text).foregroundStyle(Theme.ink2)
-                    return Text("\(line)\(run)")
-                }
+                Self.join(parts)
+                    .contentTransition(reduceMotion ? .identity : .numericText())
+                    .animation(reduceMotion ? nil : .easeInOut(duration:0.25), value:parts)
             } else {
                 Text(" ").accessibilityHidden(true)
             }
@@ -162,10 +209,27 @@ struct SpendStatsView: View {
         .fixedSize(horizontal:false, vertical:true)
     }
 
+    private static func join(_ parts: [SpendStatsText.Part]) -> Text {
+        parts.reduce(Text(verbatim:"")) { line, part in
+            let run = part.strong ? Text(part.text).fontWeight(.semibold).foregroundStyle(Theme.ink)
+                                  : Text(part.text).foregroundStyle(Theme.ink2)
+            return Text("\(line)\(run)")
+        }
+    }
+
+    /// The average line with a comparison as long as the total, the widest it is likely to be.
+    private var comparisonRoom: [SpendStatsText.Part]? {
+        guard var stats, stats.span != .term, stats.versusPrevious == nil else { return nil }
+        stats.versusPrevious = Money(fen:max(stats.total.fen, 10000))
+        return text.averageLine(stats)
+    }
+
     private var spokenHeadline: String {
         if loading { return text.totalLabel(span) + "，" + text.loading(span) }
         guard let stats else { return "" }
-        if stats.isEmpty { return text.empty(stats.span) }
+        if empty { return text.empty(stats.span) }
+        // The chart's words are read next, on their own.
+        if nothingCounted { return text.spokenAmount(stats) }
         if let bar = selectedBar {
             var words = bar.spent == .zero ? text.barLabel(bar) + "，" + text.nothingSpent
                                            : text.barLabel(bar) + " " + bar.spent.yuanText + " 元"
@@ -178,7 +242,24 @@ struct SpendStatsView: View {
     // MARK: Chart
 
     @ViewBuilder private var chart: some View {
-        if let stats {
+        if let stats, nothingCounted {
+            // The words in the chart's place, as tall as it (an unseen chart holds the room, so the
+            // page doesn't jump); taller only when large text needs it. Theme.ink2 is 清爽's
+            // secondaryLabel.
+            ZStack {
+                SpendBarsChart(bars:stats.bars, span:span, look:.empty, average:nil, selected:.constant(nil), text:text)
+                    .hidden()
+                    .accessibilityHidden(true)
+                Text(SpendStatsText.nothingCountedNote)
+                    .scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.ink2)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal:false, vertical:true)
+                    .frame(maxWidth:.infinity)
+                    .padding(.horizontal,24)
+                    .accessibilityAddTraits(.isStaticText)
+                    .accessibilityIdentifier("spendNothingCounted")
+            }
+        } else if let stats {
             SpendBarsChart(bars:stats.bars, span:span, look:stats.isEmpty ? .empty : .live,
                            average:average(stats), selected:$selected, text:text, coveredFrom:stats.coveredFrom)
         } else {
