@@ -30,7 +30,8 @@ struct SpendShareFlow: View {
 
     var body: some View {
         let shades = Self.shades(shares)
-        FlowRow(spacing:8, lineSpacing:6) {
+        // The rows' 44pt targets touch: the faces sit 12 apart.
+        FlowRow(spacing:8, lineSpacing:0) {
             ForEach(shares) { share in
                 capsule(share, shade:shades[share.kind])
             }
