@@ -96,20 +96,27 @@ import Core
         XCTAssertEqual(m.includedCategories, [.electricity])
     }
 
-    /// Counted but with nothing spent in the span, a category is not on the list: it does not
-    /// keep the last one listed on.
-    func testACategoryNotOnTheListDoesNotCountAsLeftOn() async throws {
+    /// The last one is judged on all the categories kept, not the span's list: counted with
+    /// nothing spent in the span (so not listed), a category still counts as left on, and the
+    /// span may then have none of its listed categories counted.
+    func testACategoryNotOnTheListStillCountsAsLeftOn() async throws {
         let defaults = SampleDefaults()
         SpendCategoryStore(preferences:defaults).set([.canteen, .electricity])
         let m = model(defaults)
         await m.reload()
         try await settled(m)
         XCTAssertFalse(try XCTUnwrap(m.stats).shares.contains { $0.kind == .electricity }, "no electricity paid in the week")
-        XCTAssertFalse(m.toggleCategory(.canteen))
-        XCTAssertEqual(m.includedCategories, [.canteen, .electricity])
+        XCTAssertTrue(m.toggleCategory(.canteen))
+        XCTAssertEqual(m.includedCategories, [.electricity])
+        let none = try XCTUnwrap(m.stats)
+        XCTAssertTrue(none.isEmpty)
+        XCTAssertFalse(none.shares.isEmpty)
+        XCTAssertTrue(none.shares.allSatisfy { !$0.included }, "every capsule shown is off")
+        XCTAssertFalse(m.toggleCategory(.electricity), "the last one kept, though not on the list")
+        XCTAssertEqual(m.includedCategories, [.electricity])
 
         let unread = model(SampleDefaults())
         for kind in [CardRecordKind.shower, .laundry, .other] { XCTAssertTrue(unread.toggleCategory(kind)) }
-        XCTAssertFalse(unread.toggleCategory(.canteen), "before the stats, every category is on the list")
+        XCTAssertFalse(unread.toggleCategory(.canteen), "the last one kept, before the stats too")
     }
 }

@@ -140,16 +140,17 @@ extension CardRecordsSource {
 
     /// Counts `kind` in the stats, or stops counting it; kept, and the stats worked out again
     /// from the records read (nothing is read). The last category counted is not turned off:
-    /// one that would leave no category counted on the list (`stats.shares`, or all of them
-    /// while there are no stats) is refused, and false comes back. Top-ups are never counted.
+    /// turning off the only one of all the categories still counted (`includedCategories`,
+    /// whether or not the span has spending in it) is refused, and false comes back. A span can
+    /// so have none of its listed categories counted (the others had no spending in it): the
+    /// page says so. Top-ups are never counted.
     @discardableResult
     func toggleCategory(_ kind: CardRecordKind) -> Bool {
         guard SpendCategories.all.contains(kind) else { return false }
         var next = includedCategories
         if next.contains(kind) {
             next.remove(kind)
-            let listed = stats.map { $0.shares.map(\.kind) } ?? SpendCategories.all
-            guard listed.contains(where:next.contains) else { return false }
+            guard SpendCategories.all.contains(where:next.contains) else { return false }
         } else {
             next.insert(kind)
         }
