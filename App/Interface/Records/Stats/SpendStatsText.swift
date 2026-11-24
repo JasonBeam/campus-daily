@@ -221,8 +221,11 @@ struct SpendStatsText {
 
     /// A capsule's VoiceOver hint: the last one counted can't be turned off.
     static func categoryHint(_ share: SpendShare, counted: Set<CardRecordKind>) -> String {
-        isLastCounted(share, counted:counted) ? "至少要留一类，这一类拿不掉" : "轻点两下，加进或拿出统计"
+        isLastCounted(share, counted:counted) ? lastCategoryNote : "轻点两下，加进或拿出统计"
     }
+
+    /// The last category counted was tapped: read out, and for a while in the category note's place.
+    static let lastCategoryNote = "至少要留一类，这一类拿不掉"
 
     /// The only category counted of all kept (`counted`, listed in the span or not):
     /// `CardRecordsModel.toggleCategory` refuses to turn it off.

@@ -110,6 +110,7 @@ final class SpendStatsTextTests: XCTestCase {
         let electricity = SpendShare(kind:.electricity, spent:Money(fen:12000), fraction:0, included:false)
         XCTAssertTrue(SpendStatsText.isLastCounted(canteen, counted:[.canteen]))
         XCTAssertEqual(SpendStatsText.categoryHint(canteen, counted:[.canteen]), "至少要留一类，这一类拿不掉")
+        XCTAssertEqual(SpendStatsText.lastCategoryNote, "至少要留一类，这一类拿不掉", "said on screen and read out on a refusal")
         XCTAssertEqual(SpendStatsText.categoryHint(shower, counted:[.canteen]), "轻点两下，加进或拿出统计")
         XCTAssertEqual(SpendStatsText.categoryHint(electricity, counted:[.canteen]), "轻点两下，加进或拿出统计")
         // 洗衣 is counted too, with nothing spent in the span (not listed): 食堂 can go.

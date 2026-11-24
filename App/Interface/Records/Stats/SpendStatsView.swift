@@ -45,6 +45,10 @@ struct SpendStatsView: View {
     @State private var termSheet = false
     /// A capsule was switched: the new total is read out once the stats come back.
     @State private var announcing = false
+    /// The last category's refusal shows in the category note's place for a while (`refusalNote`).
+    @State private var refusing = false
+    /// Bumped with each refusal: only the latest puts the note back.
+    @State private var refusals = 0
     @Environment(\.appTheme) private var theme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -81,10 +85,7 @@ struct SpendStatsView: View {
                     SpendShareFlow(shares:shares, counted:counted ?? Set(shares.filter(\.included).map(\.kind)),
                                    toggle:toggleCategory.map { switching($0) })
                         .padding(.top,12)
-                    Text(SpendStatsText.categoryNote)
-                        .scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
-                        .fixedSize(horizontal:false, vertical:true)
-                        .padding(.top,2)
+                    categoryNote.padding(.top,2)
                 }
             }
             if span == .term, let term { termRow(term).padding(.top,8) }
@@ -114,13 +115,45 @@ struct SpendStatsView: View {
         return !shares.isEmpty && phase != .failed && !noted ? 4 : 14
     }
 
-    /// A capsule's tap: the host's switch, and the new total read out once it is worked out.
+    /// A capsule's tap: the host's switch, and the new total read out once it is worked out; a
+    /// refusal is said on screen and read out.
     private func switching(_ toggle: @escaping (CardRecordKind) -> Bool) -> (CardRecordKind) -> Bool {
         { kind in
             let done = toggle(kind)
-            if done { announcing = true }
+            if done { announcing = true } else { refused() }
             return done
         }
+    }
+
+    /// The last category can't go: the note under the capsules says why for 2 s, crossfading
+    /// (at once with Reduce Motion), and VoiceOver reads it out.
+    private func refused() {
+        refusals += 1
+        let mine = refusals
+        withAnimation(reduceMotion ? nil : .easeInOut(duration:0.2)) { refusing = true }
+        AccessibilityNotification.Announcement(SpendStatsText.lastCategoryNote).post()
+        Task { @MainActor in
+            try? await Task.sleep(for:.seconds(2))
+            guard mine == refusals else { return }
+            withAnimation(reduceMotion ? nil : .easeInOut(duration:0.2)) { refusing = false }
+        }
+    }
+
+    /// The 电费 sentence, or for a while the refusal's in its place: both laid out, so the room is
+    /// the taller one's and nothing below moves.
+    private var categoryNote: some View {
+        ZStack(alignment:.topLeading) {
+            Text(SpendStatsText.categoryNote)
+                .opacity(refusing ? 0 : 1)
+                .accessibilityHidden(refusing)
+            Text(SpendStatsText.lastCategoryNote)
+                .opacity(refusing ? 1 : 0)
+                .accessibilityHidden(!refusing)
+                .accessibilityIdentifier("spendRefusalNote")
+        }
+        .scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
+        .fixedSize(horizontal:false, vertical:true)
+        .frame(maxWidth:.infinity, alignment:.leading)
     }
 
     // MARK: Headline
