@@ -20,7 +20,7 @@ final class DebugEventScreenTests: XCTestCase {
         case laundryPhase, laundryRequest, laundryOrder, laundryPayLaunch, laundryStart, laundryHistory
         case schoolRefresh, schoolCredentialExpired, schoolSavedLogin, schoolRenew, ujingLogin
         case topUpWeChat
-        case schoolWebLogin, schoolDirectLogin
+        case schoolWebLogin, schoolDirectLogin, meterRead, leaseLockTimeout
         case http, navOpen
     }
 
@@ -50,6 +50,8 @@ final class DebugEventScreenTests: XCTestCase {
         case .topUpWeChat: return .topUpWeChat
         case .schoolWebLogin: return .schoolWebLogin
         case .schoolDirectLogin: return .schoolDirectLogin
+        case .meterRead: return .meterRead
+        case .leaseLockTimeout: return .leaseLockTimeout
         case .http: return .http
         case .navOpen: return .navOpen
         }
@@ -176,6 +178,14 @@ final class DebugEventScreenTests: XCTestCase {
         e += DebugWebLogin.allCases.map(DebugEvent.schoolWebLogin)
         e += ([DebugDirectLogin.locked, .unknown, .wrong, .noAnswer, .offline]
               + [SchoolLoginBlock.captcha, .mfa, .passwordChange].map(DebugDirectLogin.needsSchoolSite)).map(DebugEvent.schoolDirectLogin)
+        let meters = [Meter(comAddress: "000000000991", name: "99栋991", leftMoney: Money(fen: 3692), remainingKWh: Decimal(string: "52.00"),
+                            estimatedDaysLeft: Decimal(string: "3.2"), price: Decimal(string: "0.7100"), online: true,
+                            switchState: "合闸-", updatedAt: "2026-10-30 08:10:22", meterData: Decimal(string: "1234.5600")),
+                      Meter(comAddress: "000000000991", name: "99栋991", updatedAt: "昨天")]
+        e += meters.flatMap { m in [DebugMeterRead.Role.app, .background, .widget].map { DebugEvent.meterRead(DebugMeterRead(m, role: $0)) } }
+        e += [DebugLeaseLockTimeout.Write.portalToken, .cardSession].flatMap { w in
+            [DebugLeaseLockTimeout.Role.app, .widget].map { DebugEvent.leaseLockTimeout(DebugLeaseLockTimeout(w, role: $0)) }
+        }
         e += https.map(DebugEvent.http)
         e += DebugPage.allCases.flatMap { page in DebugEntry.allCases.map { DebugEvent.navOpen(page, from: $0) } }
         e.append(.laundryOrder(status: DebugCode("20"), moduleType: 7, order: washer))

@@ -62,15 +62,101 @@ final class FeedbackSenderTests: XCTestCase {
         XCTAssertEqual(FeedbackSender.resourceTimeout, 60, "four screenshots outlast the usual 20 s")
     }
 
-    /// The feedback request waits the feedback client's own time, not the other clients' 15 s.
+    /// With screenshots the request waits the feedback client's own time, not the other clients'
+    /// 15 s; text alone waits 15 s.
     func testTheFeedbackRequestWaitsTheFeedbackClientsTime() async throws {
         let server = StubServer()
         server.respond("POST", endpoint.url.absoluteString, status: 201, body: Data("{}".utf8))
         let http = server.makeClient(allowedHosts: endpoint.allowedHosts, configuration: FeedbackSender.configuration())
+        try await FeedbackSender(endpoint: endpoint, http: http).send(message: "反馈", images: [Data([0xFF, 0xD8])], metadata: metadata)
         try await FeedbackSender(endpoint: endpoint, http: http).send(message: "反馈", images: [], metadata: metadata)
-        XCTAssertEqual(server.requests.map(\.timeout), [FeedbackSender.requestTimeout])
+        XCTAssertEqual(server.requests.map(\.timeout), [FeedbackSender.requestTimeout, FeedbackSender.textOnlyLimit])
         XCTAssertGreaterThan(FeedbackSender.requestTimeout, URLSessionHTTPClient.requestTimeout)
         XCTAssertTrue(server.unmatched.isEmpty)
+    }
+
+    func testTextAloneGivesUpSoonerThanScreenshots() {
+        XCTAssertEqual(FeedbackSender.limits(imageCount: 0), FeedbackSender.Limits(request: 15, total: 15))
+        for count in 1 ... 4 {
+            XCTAssertEqual(FeedbackSender.limits(imageCount: count), FeedbackSender.Limits(request: 30, total: 60), "\(count)")
+        }
+    }
+
+    /// The whole send ends at its limit even while the request is still going (a trickle that
+    /// never trips the per-request wait): the request is cancelled and the failure shown.
+    func testTheSendEndsAtItsTotalLimit() async {
+        for (images, limit) in [([Data](), 15.0), ([Data([0xFF, 0xD8])], 60.0)] {
+            let http = HangingHTTP()
+            let waits = Waits()
+            let sender = FeedbackSender(endpoint: endpoint, http: http) { seconds in
+                waits.append(seconds)
+                // The limit passes only once the request is in flight.
+                while http.started == 0 { try await Task.sleep(for: .milliseconds(1)) }
+            }
+            do {
+                try await sender.send(message: "反馈", images: images, metadata: metadata)
+                XCTFail("sent")
+            } catch {
+                XCTAssertEqual(error as? FeedbackFailure, FeedbackFailure(), "\(images.count)")
+                XCTAssertEqual((error as? LocalizedError)?.errorDescription, FeedbackText.failureText)
+            }
+            XCTAssertEqual(waits.all, [limit], "\(images.count) screenshots")
+            XCTAssertEqual(http.cancelled, 1, "the request is cancelled at the limit")
+        }
+    }
+
+    func testAnAnswerBeforeTheLimitIsKept() async throws {
+        let http = RecordingHTTP(reply: .success(HTTPResponse(status: 201)))
+        let sender = FeedbackSender(endpoint: endpoint, http: http) { _ in try await Task.sleep(for: .seconds(3600)) }
+        try await sender.send(message: "反馈", images: [], metadata: metadata)
+        XCTAssertEqual(http.requests.count, 1)
+    }
+
+    /// 取消 while sending: the caller's task is cancelled, the request with it, and the send
+    /// ends as a cancellation, not a failure.
+    func testCancellingTheSendCancelsTheRequest() async throws {
+        let http = HangingHTTP()
+        let sender = FeedbackSender(endpoint: endpoint, http: http)
+        let metadata = metadata
+        let send = Task { try await sender.send(message: "反馈", images: [], metadata: metadata) }
+        try await waitUntil { http.started == 1 }
+        send.cancel()
+        do {
+            try await send.value
+            XCTFail("sent")
+        } catch {
+            XCTAssertTrue(error is CancellationError, "\(error)")
+        }
+        XCTAssertEqual(http.cancelled, 1)
+    }
+
+    /// Through the real client: cancelling the task stops the URLSession request itself.
+    func testCancellingStopsTheURLSessionRequest() async throws {
+        HangingURLProtocol.reset()
+        let http = URLSessionHTTPClient(allowedHosts: endpoint.allowedHosts,
+                                        configuration: FeedbackSender.configuration(protocolClasses: [HangingURLProtocol.self]),
+                                        log: RecordingLogSink())
+        let sender = FeedbackSender(endpoint: endpoint, http: http)
+        let metadata = metadata
+        let send = Task { try await sender.send(message: "反馈", images: [Data([0xFF, 0xD8])], metadata: metadata) }
+        try await waitUntil { HangingURLProtocol.started == 1 }
+        send.cancel()
+        do {
+            try await send.value
+            XCTFail("sent")
+        } catch {
+            XCTAssertTrue(error is CancellationError, "\(error)")
+        }
+        try await waitUntil { HangingURLProtocol.stopped == 1 }
+    }
+
+    private func waitUntil(_ condition: @Sendable () -> Bool, file: StaticString = #filePath, line: UInt = #line) async throws {
+        var tries = 0
+        while !condition(), tries < 2000 {
+            tries += 1
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        XCTAssertTrue(condition(), "timed out", file: file, line: line)
     }
 
     func testTheReportIsSentOnceAsAWrite() async throws {
@@ -154,4 +240,47 @@ private final class RecordingHTTP: HTTPClient, @unchecked Sendable {
         lock.withLock { sent.append(request) }
         return try reply.get()
     }
+}
+
+/// Never answers: holds each request until its task is cancelled.
+private final class HangingHTTP: HTTPClient, @unchecked Sendable {
+    // @unchecked: the counts are guarded by `lock`.
+    private let lock = NSLock()
+    private var _started = 0
+    private var _cancelled = 0
+    var started: Int { lock.withLock { _started } }
+    var cancelled: Int { lock.withLock { _cancelled } }
+    func send(_ request: HTTPRequest) async throws -> HTTPResponse {
+        lock.withLock { _started += 1 }
+        do {
+            try await Task.sleep(for: .seconds(3600))
+        } catch {
+            lock.withLock { _cancelled += 1 }
+            throw CancellationError()
+        }
+        return HTTPResponse(status: 201)
+    }
+}
+
+/// The waits a sender asked its clock for.
+private final class Waits: @unchecked Sendable {
+    // @unchecked: guarded by `lock`.
+    private let lock = NSLock()
+    private var waits: [TimeInterval] = []
+    func append(_ seconds: TimeInterval) { lock.withLock { waits.append(seconds) } }
+    var all: [TimeInterval] { lock.withLock { waits } }
+}
+
+/// A URLSession request that never gets an answer, and whether the session stopped it.
+private final class HangingURLProtocol: URLProtocol, @unchecked Sendable {
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var counts = (started: 0, stopped: 0)
+    static var started: Int { lock.withLock { counts.started } }
+    static var stopped: Int { lock.withLock { counts.stopped } }
+    static func reset() { lock.withLock { counts = (0, 0) } }
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() { Self.lock.withLock { Self.counts.started += 1 } }
+    override func stopLoading() { Self.lock.withLock { Self.counts.stopped += 1 } }
 }

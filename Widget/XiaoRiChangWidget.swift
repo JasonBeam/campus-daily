@@ -18,9 +18,11 @@ struct CampusEntry: TimelineEntry {
 struct CampusTimeline: TimelineProvider {
     /// The widget's own school read: the same stack as the app (card session → portal token →
     /// saved password once → needs login), writing the same shared snapshot, one process at a
-    /// time through the lease. Built once per widget process.
+    /// time through the lease. Built once per widget process. Its steps go to the TestFlight
+    /// debug log's widget part (`WidgetDebugLog`: only once the app found it is TestFlight).
     static let school = SchoolRefreshStack(store:SharedKeychain.store, http:SchoolRefreshStack.schoolHTTP(), role:"widget",
-                                           leaseWait:SchoolRefreshStack.widgetLeaseWait, leaseFile:RefreshLease.sharedFile())
+                                           leaseWait:SchoolRefreshStack.widgetLeaseWait, leaseFile:RefreshLease.sharedFile(),
+                                           debugLog:WidgetDebugLog.shared())
     /// The read gives up after this; the stored numbers are drawn and the next timeline tries again.
     static let readDeadline: TimeInterval = 20
     static let interval: TimeInterval = 30 * 60
@@ -48,7 +50,7 @@ struct CampusTimeline: TimelineProvider {
         let done = Completion(call:completion)
         Task {
             let now = Date()
-            Self.school.refresher.finishPendingClear()
+            await Self.school.refresher.finishPendingClear(lockWait:SchoolRefreshStack.widgetPendingClearWait)
             let choice = WidgetDrawChoice.choose(Self.stored())
             var drawn: HomeSnapshot?
             if case .draw = choice {

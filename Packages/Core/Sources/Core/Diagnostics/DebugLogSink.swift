@@ -9,7 +9,7 @@ import Foundation
 
 /// Where `DebugEvent`s go. The app runs on a `LaunchDebugLog` (`DebugLogLaunch`), which becomes
 /// a `FileDebugLog` once StoreKit says the install is TestFlight and keeps nothing otherwise;
-/// `NoDebugLog` everywhere else (the sample, the widget). Recording never throws and never waits on the caller's work.
+/// the widget writes its part through `WidgetDebugLog`; `NoDebugLog` everywhere else (the sample). Recording never throws and never waits on the caller's work.
 public protocol DebugLogSink: Sendable {
     /// False: nothing is kept (and 高级 offers nothing to export or clear). Only for showing
     /// those rows: a writer records whatever this says, since the launch log is off until it

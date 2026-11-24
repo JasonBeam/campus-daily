@@ -48,6 +48,11 @@ public enum DebugEvent: Sendable, Equatable {
     case schoolWebLogin(DebugWebLogin)
     /// The login form's account-and-password login did not sign in: the kind of failure only.
     case schoolDirectLogin(DebugDirectLogin)
+    /// The bound meter read in a refresh: its numbers, the school's time and the meter's tag.
+    case meterRead(DebugMeterRead)
+    /// A credential the school gave that was not stored: the lease file's lock stayed held
+    /// through the write's wait and its one retry. Which credential and which process only.
+    case leaseLockTimeout(DebugLeaseLockTimeout)
 
     // MARK: 校园充值
     /// 「打开微信」: whether WeChat opened. Never what was copied.
@@ -470,6 +475,8 @@ public struct DebugTag: Sendable, Equatable {
         case washer = "w"
         /// A laundry order id.
         case order = "o"
+        /// An electricity meter's `comAddress`.
+        case meter = "e"
     }
     public let kind: Kind
     /// Only the sink reads it, to hash it. Upper-cased, so case variants hash the same.
@@ -554,4 +561,61 @@ public enum DebugEntry: String, Sendable, CaseIterable {
     case updateLine
     /// 常用洗衣机 saved, on to 洗衣.
     case setupDone
+}
+
+/// A write under the lease given up on a lock that stayed held (the other process stuck inside
+/// a step), not on a lost lease: what was not written and where. Never the value.
+public struct DebugLeaseLockTimeout: Sendable, Equatable {
+    public enum Write: String, Sendable { case portalToken, cardSession }
+    public enum Role: String, Sendable { case app, widget }
+    public var write: Write
+    public var role: Role
+
+    public init(_ write: Write, role: Role) { self.write = write; self.role = role }
+}
+
+/// One successful read of the bound meter (`getMeterStatus`): the numbers the school gave, its
+/// time for them and the meter's tag (a changed tag is a changed meter). No room, dorm or account.
+public struct DebugMeterRead: Sendable, Equatable {
+    /// Which process read it: the app in front, the app in the background, or the widget.
+    public enum Role: String, Sendable { case app, background, widget }
+    public var role: Role
+    public var meter: DebugTag
+    /// `meterData`, the meter's own register.
+    public var reading: Decimal?
+    /// `updateDateTime`.
+    public var schoolTime: DebugSchoolTime?
+    public var remainingKWh: Decimal?
+    public var leftMoneyFen: Int?
+    public var price: Decimal?
+    /// `preUseDay`.
+    public var daysLeft: Decimal?
+
+    public init(_ meter: Meter, role: Role) {
+        self.role = role
+        self.meter = DebugTag(.meter, meter.comAddress)
+        reading = meter.meterData
+        schoolTime = meter.updatedAt.flatMap(DebugSchoolTime.init)
+        remainingKWh = meter.remainingKWh
+        leftMoneyFen = meter.leftMoney?.fen
+        price = meter.price
+        daysLeft = meter.estimatedDaysLeft
+    }
+}
+
+/// The school's `yyyy-MM-dd HH:mm:ss`, kept as numbers: nil for anything else.
+public struct DebugSchoolTime: Sendable, Equatable {
+    public var month, day, hour, minute, second: Int
+
+    public init?(_ text: String) {
+        let parts = text.split(whereSeparator: { $0 == "-" || $0 == " " || $0 == ":" })
+        let widths = [4, 2, 2, 2, 2, 2]
+        guard parts.count == 6, zip(parts, widths).allSatisfy({ $0.count == $1 && $0.allSatisfy { $0.isASCII && $0.isNumber } }) else { return nil }
+        let n = parts.compactMap { Int($0) }
+        guard n.count == 6, (1 ... 12).contains(n[1]), (1 ... 31).contains(n[2]), n[3] < 24, n[4] < 60, n[5] < 61 else { return nil }
+        month = n[1]; day = n[2]; hour = n[3]; minute = n[4]; second = n[5]
+    }
+
+    /// 「10-30T08:10:22」
+    public var text: String { String(format: "%02d-%02dT%02d:%02d:%02d", month, day, hour, minute, second) }
 }

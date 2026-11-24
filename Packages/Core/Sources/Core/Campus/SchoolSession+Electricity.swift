@@ -25,7 +25,7 @@ extension SchoolSession {
             try ensureSignedIn(since: started)
             // Read again, inside the lock: a meter picked or moved meanwhile is kept.
             let vault = vault
-            profile = try profileLock.locked {
+            profile = try await profileLock.lockedWhenFree {
                 var current = try vault.profile() ?? SchoolProfile()
                 if current.residence?.address == nil {
                     current.residence = residence
@@ -44,7 +44,7 @@ extension SchoolSession {
         let walked = try await walk(session, address: address, since: started)
         // Settled and written in one locked step: only the meter is written, onto the profile
         // as it is then.
-        return try profileLock.locked {
+        return try await profileLock.lockedWhenFree {
             switch try settle(address, since: started) {
             case .bound(let b): return .alreadyBound(b)
             case .open(var current):
@@ -311,9 +311,9 @@ extension SchoolSession {
     /// The bound room's meter was replaced (`MeterMatcher.pick` read the new one): the binding
     /// follows it, in one locked step with the lease check, only while the stored binding is
     /// still the one this read used. Not written: the next refresh reads and tries again.
-    func followReplacedMeter(_ seen: MeterBinding, to comAddress: String, owning: LeaseOwnership) {
+    func followReplacedMeter(_ seen: MeterBinding, to comAddress: String, owning: LeaseOwnership) async {
         let vault = vault
-        _ = try? owning.write {
+        _ = try? await owning.write {
             guard let next = Self.withMeterMoved(try vault.profile(), seen: seen, to: comAddress) else { return }
             try vault.saveProfile(next)
         }
@@ -322,9 +322,9 @@ extension SchoolSession {
     /// Launch: a meter bound to the campus node (older builds) is dropped. True when one was.
     /// The dorm stays, so the launch lookup walks to the room's own meter. One locked
     /// compare-and-write: only the campus-node meter just read is removed.
-    public func dropCampusWideMeter() throws -> Bool {
+    public func dropCampusWideMeter() async throws -> Bool {
         let vault = vault
-        return try profileLock.locked {
+        return try await profileLock.lockedWhenFree {
             guard let seen = try vault.profile()?.meter, !seen.nodeIsRoom else { return false }
             guard let next = Self.withoutCampusWideMeter(try vault.profile(), seen: seen) else { return false }
             try vault.saveProfile(next)
@@ -336,10 +336,10 @@ extension SchoolSession {
     /// `path` = the directory names walked down to `nodeID`, kept as the full location.
     /// `stamp` = `personStamp()` when the picker opened: a pick made after someone else signed
     /// in is refused.
-    public func chooseMeter(nodeID: String, meter: Meter, path: [String] = [], since stamp: Int) throws {
+    public func chooseMeter(nodeID: String, meter: Meter, path: [String] = [], since stamp: Int) async throws {
         try ensureSignedIn(since: stamp)
         let vault = vault
-        try profileLock.locked {
+        try await profileLock.lockedWhenFree {
             var profile = try vault.profile() ?? SchoolProfile()
             profile.meter = MeterBinding(nodeID: nodeID, comAddress: meter.comAddress, label: meter.name, nodeIsRoom: true,
                                          location: path.isEmpty ? nil : PowerLocation.label(path))
@@ -354,7 +354,7 @@ extension SchoolSession {
         try ensureSignedIn(since: stamp)
         guard let room = candidate.room else { throw ServiceError.malformed(.ecykt, "room") }
         let vault = vault
-        try profileLock.locked {
+        try await profileLock.lockedWhenFree {
             var profile = try vault.profile() ?? SchoolProfile()
             guard let address = profile.residence?.address else { throw ServiceError.malformed(.portal, "data.gydz") }
             profile.meter = MeterBinding(nodeID: room.id, comAddress: candidate.meter.comAddress, label: address.roomLabel, nodeIsRoom: true,

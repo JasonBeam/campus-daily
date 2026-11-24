@@ -311,9 +311,15 @@ the bundle id the process runs under: `AppIdentity.usableAppGroup`, see 4.2):
   an exclusive `flock` on that file, so two processes never both find the same lease free and a
   holder whose lease ran out never writes over the next one's; the lock is held only for that
   step, never across an `await` (iOS ends a suspended process that holds a file lock in a shared
-  container). Only one process reads the school (and may mint) at a time; the other waits up to
-  15 s and then reads, by which time the session is fresh, or gives up and shows the stored
-  snapshot;
+  container). Async callers (every refresh, login and write-back step, the theme's retry) wait
+  for that lock by suspending between `LOCK_NB` tries, so no thread waits, the main thread and
+  Swift concurrency's pool included; `ThemeStore.select` on the main thread only tries once.
+  A step waits at most 2 s for the lock (`LeaseFile.defaultLockWait`): held longer, it is stuck
+  (the other process suspended inside a step). Only one process reads the school (and may mint)
+  at a time; the other waits up to 15 s (the widget 5 s), counted on the wall clock with the lock
+  waits included, and then reads, by which time the session is fresh, or gives up and shows the
+  stored snapshot; a lock stuck for one whole lock wait ends that wait at once (a login is
+  `busy`);
 - 180 s long (longer than the slowest chain: liveness, portal exchange, one password login and the
   exchange after it, each up to 20 s, plus the reads), renewed every 20 s while the read runs and
   checked again (renewed) before each step that mints, sends the saved password, saves the new
@@ -357,8 +363,10 @@ the bundle id the process runs under: `AppIdentity.usableAppGroup`, see 4.2):
   the owner check as a later run of the same process;
 - a cancelled read (the widget past its deadline) checks for cancellation before taking the lock
   and then writes nothing back, so a process about to be suspended never holds it;
-- sign-out and reset remove the lease first and wait for its file lock on a background thread,
-  never on the app's main thread, before the school items are deleted;
+- sign-out and reset remove the lease first, before the school items are deleted, waiting for
+  its file lock by suspending for up to 10 s (`RefreshLease.signOutLockWait`); a lock still
+  held then is stuck, and the sign-out goes on without the removal (logged
+  `lease.clearFailed lock=timeout`), as after a removal that failed;
 - snapshot writes are ordered: a reading whose `checkedAt` is older than the stored snapshot's is
   dropped (unless more than 30 minutes older: the clock moved back, and the reading is written), and a "nobody signed in" reading leaves an emptied snapshot empty.
 - signed without the App Group (no container), the app keeps the lease in its own container

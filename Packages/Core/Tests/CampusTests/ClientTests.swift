@@ -330,7 +330,8 @@ final class EcyktElectricityTests: XCTestCase {
         let room = try await c.meters(T.session(), nodeID: "991001001000109000001003")
         XCTAssertEqual(room, [Meter(comAddress: "000000000991", name: "99栋991", leftMoney: Money(fen: 3692),
                                     remainingKWh: DecimalText.parse("52.00"), estimatedDaysLeft: DecimalText.parse("3.2"),
-                                    price: DecimalText.parse("0.7100"), online: true, switchState: "合闸-", updatedAt: "2026-10-30 08:10:22")])
+                                    price: DecimalText.parse("0.7100"), online: true, switchState: "合闸-", updatedAt: "2026-10-30 08:10:22",
+                                    meterData: DecimalText.parse("1234.5600"))])
         // 11: `preUseDay` is the days 52 度 lasts, 16.25 度 a day.
         XCTAssertEqual(room.first?.estimatedDaysLeft, 3.2)
         XCTAssertEqual(room.first?.averageDailyKWh, 16.25)

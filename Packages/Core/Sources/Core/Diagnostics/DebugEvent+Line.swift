@@ -35,6 +35,8 @@ extension DebugEvent {
         case .ujingLogin: return "ujing.login"
         case .schoolWebLogin: return "school.webLogin"
         case .schoolDirectLogin: return "school.directLogin"
+        case .meterRead: return "school.meter"
+        case .leaseLockTimeout: return "school.leaseLockTimeout"
         case .topUpWeChat: return "topUp.weChat"
         case .http: return "http"
         case .navOpen: return "nav.open"
@@ -154,6 +156,18 @@ extension DebugEvent {
         case .navOpen(let page, let entry):
             f["page"] = page.rawValue
             f["from"] = entry.rawValue
+        case .meterRead(let m):
+            f["role"] = m.role.rawValue
+            f["meter"] = tag(m.meter)
+            f["reading"] = m.reading.map(DebugFields.number)
+            f["at"] = m.schoolTime?.text
+            f["kwh"] = m.remainingKWh.map(DebugFields.number)
+            f["fen"] = m.leftMoneyFen.map { String($0) }
+            f["price"] = m.price.map(DebugFields.number)
+            f["days"] = m.daysLeft.map(DebugFields.number)
+        case .leaseLockTimeout(let t):
+            f["write"] = t.write.rawValue
+            f["role"] = t.role.rawValue
         }
         return f.text
     }
@@ -165,6 +179,7 @@ struct DebugFields {
     var text: String { parts.joined(separator: " ") }
 
     mutating func word(_ w: String) { parts.append(w) }
+    static func number(_ value: Decimal) -> String { NSDecimalNumber(decimal: value).stringValue }
     subscript(key: String) -> String? {
         get { nil }
         set { if let newValue { parts.append("\(key)=\(newValue)") } }

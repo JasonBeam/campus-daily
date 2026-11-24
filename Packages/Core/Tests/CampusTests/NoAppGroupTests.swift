@@ -51,7 +51,7 @@ final class NoAppGroupTests: XCTestCase {
     }
 
     func testAppSignsInUnderItsOwnLease() async throws {
-        let value = try await stack(Harness(), role: "app").refresher.holdingLease { owning in try owning.write { 7 } }
+        let value = try await stack(Harness(), role: "app").refresher.holdingLease { owning in try await owning.write { 7 } }
         XCTAssertEqual(value, 7)
     }
 
@@ -126,7 +126,8 @@ final class NoAppGroupTests: XCTestCase {
                                           lease: RefreshLease(file: nil, owner: "app-1"), leaseWait: 5,
                                           sleep: { _ in XCTFail("nothing to wait for") })
         let value = try await refresher.holdingLease { owning -> Int in
-            XCTAssertEqual(try owning.write { 1 }, 1, "writes are not blocked")
+            let wrote = try await owning.write { 1 }
+            XCTAssertEqual(wrote, 1, "writes are not blocked")
             return 2
         }
         XCTAssertEqual(value, 2)

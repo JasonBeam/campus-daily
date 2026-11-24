@@ -35,16 +35,20 @@ enum FeedbackReporter {
             .send(message:message, images:images.compactMap(jpeg), metadata:metadata)
     }
 
-    /// At most 2048 px on the long side, JPEG.
-    private static func jpeg(_ image: UIImage) -> Data? {
+    /// Screenshots are scaled to at most this many pixels on the long side…
+    static let longestSide: CGFloat = 1280
+    /// …and saved as JPEG at this quality, small enough for a slow connection.
+    static let jpegQuality: CGFloat = 0.7
+
+    static func jpeg(_ image: UIImage) -> Data? {
         let longest = max(image.size.width, image.size.height)
-        let scale = min(1, 2048 / max(longest, 1))
-        let size = CGSize(width:image.size.width * scale, height:image.size.height * scale)
+        let scale = min(1, longestSide / max(longest, 1))
+        let size = CGSize(width:(image.size.width * scale).rounded(), height:(image.size.height * scale).rounded())
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1
         return UIGraphicsImageRenderer(size:size, format:format).image { _ in
             image.draw(in:CGRect(origin:.zero, size:size))
-        }.jpegData(compressionQuality:0.8)
+        }.jpegData(compressionQuality:jpegQuality)
     }
 
     /// The hardware identifier (`iPhone17,2`); `UIDevice.model` only says "iPhone".

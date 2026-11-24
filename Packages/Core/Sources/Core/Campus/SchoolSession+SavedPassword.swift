@@ -15,7 +15,7 @@ extension SchoolSession {
     func passwordLoginOnce(account: String, password: String, owning: LeaseOwnership) async throws -> PortalToken {
         guard let passwordLogin else { throw SchoolLoginFailure.cannotLoginDirectly(.unknown) }
         let visitorID: String
-        switch loginDeviceID(owning: owning) {
+        switch await loginDeviceID(owning: owning) {
         case .id(let id): visitorID = id
         case .notSaved: throw SchoolLoginFailure.cannotSave
         case .lostLease: throw SchoolLoginFailure.busy
@@ -29,11 +29,11 @@ extension SchoolSession {
     /// A new one is stored in one locked step under `owning`, only while none is stored (one
     /// the other process stored meanwhile is used instead). A new id that could not be stored
     /// (`notSaved`) is not sent: the school would see a new browser on every login.
-    private func loginDeviceID(owning: LeaseOwnership) -> LoginDeviceID {
+    private func loginDeviceID(owning: LeaseOwnership) async -> LoginDeviceID {
         if let id = (try? vault.loginDeviceID()) ?? nil, !id.isEmpty { return .id(id) }
         let fresh = (0..<16).map { _ in String(format: "%02x", UInt8.random(in: 0...255)) }.joined()
         let vault = vault
-        let step = (try? owning.write { () -> LoginDeviceID in
+        let step = (try? await owning.write { () -> LoginDeviceID in
             if let id = (try? vault.loginDeviceID()) ?? nil, !id.isEmpty { return .id(id) }
             guard (try? vault.saveLoginDeviceID(fresh)) != nil else { return .notSaved }
             return .id(fresh)
@@ -81,7 +81,7 @@ extension SchoolSession {
         }
         guard let passwordLogin else { return .notTried }
         let visitorID: String
-        switch loginDeviceID(owning: owning) {
+        switch await loginDeviceID(owning: owning) {
         case .id(let id): visitorID = id
         case .lostLease: return .lostLease
         case .notSaved:
@@ -95,7 +95,7 @@ extension SchoolSession {
         // Not written: signed out only when the account is really gone. Changed meanwhile (保存密码,
         // 重新输入密码) or a write that failed leave the user signed in, with nothing to report;
         // nothing is sent this time and the next refresh tries again.
-        switch updateSavedAccount(saved, since: started, owning: owning, { $0.unansweredAt = sentAt }) {
+        switch await updateSavedAccount(saved, since: started, owning: owning, { $0.unansweredAt = sentAt }) {
         case .written: break
         case .lostLease: return .lostLease
         case .changed: return accountGone ? .signedOut : .retryLater
@@ -108,15 +108,15 @@ extension SchoolSession {
             // The school may have counted this one: the hold written above stays.
             return .offline
         } catch SchoolLoginFailure.offline {
-            liftHold(saved, sentAt: sentAt, since: started, owning: owning)
+            await liftHold(saved, sentAt: sentAt, since: started, owning: owning)
             return .offline
         } catch is CancellationError {
             // Cancelled before the password was sent (after it, the login reports noAnswer).
-            liftHold(saved, sentAt: sentAt, since: started, owning: owning)
+            await liftHold(saved, sentAt: sentAt, since: started, owning: owning)
             return .unavailable
         } catch {
             // Only the password that was tried: one saved meanwhile (保存密码 / 重新输入密码) stays usable.
-            _ = updateSavedAccount(saved, since: started, owning: owning) { $0.paused = true; $0.unansweredAt = nil }
+            _ = await updateSavedAccount(saved, since: started, owning: owning) { $0.paused = true; $0.unansweredAt = nil }
             return .unavailable
         }
         // The school accepted the password: the portal token is kept at once, so neither this
@@ -134,7 +134,7 @@ extension SchoolSession {
         guard started == signOutGeneration else { return .unavailable }
         enum TokenSave { case written, gone, changed }
         let vault = vault, fresh = stamped(token)
-        let saveStep = (try? owning.writeRetaking { () -> TokenSave in
+        let saveStep = await writeCredential(.portalToken, retaking: true, owning: owning) { () -> TokenSave in
             let still: SchoolAccount?
             do { still = try vault.account() } catch { return .changed }
             guard let still else { return .gone }
@@ -143,9 +143,10 @@ extension SchoolSession {
             guard still.account == saved.account, portal?.value == seenPortalToken else { return .changed }
             guard (try? vault.savePortalToken(fresh)) != nil else { return .changed }
             return .written
-        }) ?? nil
+        }
         switch saveStep {
         // Lost to a sign-out (it removes the lease first, then the items): reported as one.
+        // A lock that stayed held through the retry (logged) counts as a lost lease: the hold stays.
         case nil: return accountGone ? .signedOut : .lostLease
         case .gone?: return .signedOut
         case .changed?: return .retryLater
@@ -155,7 +156,7 @@ extension SchoolSession {
         // failed, so it deleted the items without it): the token is taken back out, in one more locked step. A new sign-in there writes its token before its
         // account, so a token that is no longer this one is theirs and stays.
         if accountGone {
-            let removed = (try? owning.write { () -> Bool in
+            let removed = (try? await owning.write { () -> Bool in
                 guard ((try? vault.portalToken()) ?? nil)?.value == token.value else { return false }
                 return (try? vault.savePortalToken(nil)) != nil
             }) ?? nil
@@ -166,13 +167,13 @@ extension SchoolSession {
             let fresh = try await exchangeSession(portalToken: token, userAgent: previous.userAgent, previous: previous)
             let found = try await liveCard(fresh)
             guard started == signOutGeneration else { return .unavailable }
-            liftHold(saved, sentAt: sentAt, since: started, owning: owning)
+            await liftHold(saved, sentAt: sentAt, since: started, owning: owning)
             return .signedIn(found)
         } catch let e as ServiceError where Self.isDefiniteRefusal(e) {
             // The password worked but the school turned the card login after it down: paused as
             // before, so the next refresh does not log in again (the saved portal token is still
             // tried first).
-            _ = updateSavedAccount(saved, since: started, owning: owning) { $0.paused = true }
+            _ = await updateSavedAccount(saved, since: started, owning: owning) { $0.paused = true }
             return .unavailable
         } catch let e as ServiceError {
             // The password was accepted; the steps after it got no answer (no network, a timeout,
@@ -195,10 +196,10 @@ extension SchoolSession {
     /// that only ran out (nobody took it) is taken again in that step, so a hold or a pause is
     /// not skipped then.
     func updateSavedAccount(_ saved: SchoolAccount, since started: Int, owning: LeaseOwnership,
-                                    _ change: (inout SchoolAccount) -> Void) -> AccountUpdate {
+                                    _ change: (inout SchoolAccount) -> Void) async -> AccountUpdate {
         guard started == signOutGeneration else { return .changed }
         let vault = vault
-        let step = (try? owning.writeRetaking { () -> AccountUpdate in
+        let step = (try? await owning.writeRetaking { () -> AccountUpdate in
             guard var current = (try? vault.account()) ?? nil,
                   current.account == saved.account, current.password == saved.password else { return .changed }
             change(&current)
@@ -213,7 +214,7 @@ extension SchoolSession {
     }
 
     /// An answer came back (or the password never left): the hold written for this login goes.
-    private func liftHold(_ saved: SchoolAccount, sentAt: Date, since started: Int, owning: LeaseOwnership) {
-        _ = updateSavedAccount(saved, since: started, owning: owning) { if $0.unansweredAt == sentAt { $0.unansweredAt = nil } }
+    private func liftHold(_ saved: SchoolAccount, sentAt: Date, since started: Int, owning: LeaseOwnership) async {
+        _ = await updateSavedAccount(saved, since: started, owning: owning) { if $0.unansweredAt == sentAt { $0.unansweredAt = nil } }
     }
 }

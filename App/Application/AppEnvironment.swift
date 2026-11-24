@@ -21,8 +21,10 @@ enum AppEnvironment {
     private static let applicationSupport = FileManager.default.urls(for:.applicationSupportDirectory, in:.userDomainMask).first
 
     /// The TestFlight debug log: holds lines in memory until StoreKit says where the app came
-    /// from, then a `FileDebugLog` on TestFlight and nothing anywhere else (`DebugLogLaunch`).
-    static let debugLog: any DebugLogSink = DebugLogLaunch.start(applicationSupport:applicationSupport, source:StoreKitInstallSource())
+    /// from, then a `FileDebugLog` on TestFlight and nothing anywhere else (`DebugLogLaunch`). It
+    /// shares its salt with the widget there, and reads the widget's lines in (`WidgetDebugLog`).
+    static let debugLog: any DebugLogSink = DebugLogLaunch.start(applicationSupport:applicationSupport, shared:WidgetDebugLog.folder(),
+                                                                 source:StoreKitInstallSource())
     /// Each request line: the system log, and the TestFlight log as names, hosts and codes.
     private static var httpLog: HTTPLogSink { DebugHTTPLogSink(debugLog) }
 
@@ -36,9 +38,13 @@ enum AppEnvironment {
     }
 
     /// The same stack the widget builds for its own reads; the two take turns through the lease.
+    /// A snapshot write runs inside the lease file's lock: the widget's reload is asked for
+    /// after that step, on the main queue, not while the lock is held.
     private static let schoolStack = SchoolRefreshStack(store:store, http:schoolHTTP, role:"app",
                                                         leaseWait:SchoolRefreshStack.appLeaseWait, leaseFile:RefreshLease.appFile(),
-                                                        didWriteSnapshot:{ WidgetCenter.shared.reloadTimelines(ofKind:SharedSnapshotStore.widgetKind) },
+                                                        didWriteSnapshot:{
+                                                            DispatchQueue.main.async { WidgetCenter.shared.reloadTimelines(ofKind:SharedSnapshotStore.widgetKind) }
+                                                        },
                                                         debugLog:debugLog)
 
     /// The live app's stores and services. The school stack on them is `schoolStack` (one per process).

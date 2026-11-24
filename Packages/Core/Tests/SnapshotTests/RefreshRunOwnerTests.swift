@@ -25,7 +25,7 @@ final class RefreshRunOwnerTests: XCTestCase {
                 return owners.count > 1 ? owners[0] : nil
             }
             if let first {
-                let ran = (try? first.writeRetaking { true }) ?? nil
+                let ran = (try? await first.writeRetaking { true }) ?? nil
                 lock.withLock { lateWrite = ran ?? false }
             }
             return SchoolReading(outcome: .ok, checkedAt: Date(timeIntervalSince1970: 1_000))

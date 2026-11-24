@@ -158,7 +158,8 @@ public struct EcyktClient: Sendable {
                      price: DecimalText.parse(row["price"]?.text),
                      online: online,
                      switchState: row["meterStatus"]?.text,
-                     updatedAt: row["updateDateTime"]?.text)
+                     updatedAt: row["updateDateTime"]?.text,
+                     meterData: DecimalText.parse(row["meterData"]?.text))
     }
 
     // MARK: Plumbing

@@ -166,6 +166,37 @@ final class AppResetTests: XCTestCase {
         XCTAssertEqual(ThemePreference(storage: groupDefaults).theme, .clear)
     }
 
+    /// The app's reset runs on the main actor: with the shared lock held elsewhere (the widget's
+    /// step) its wait suspends, so the main actor goes on meanwhile; once the lock is free the
+    /// group's domain goes inside it, and the rest as before.
+    @MainActor func testTheAppsClearWaitsForTheSharedLockWithoutHoldingTheMainActor() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("reset-lock-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let fd = open(url.path, O_RDWR | O_CREAT | O_CLOEXEC, 0o600)
+        XCTAssertEqual(flock(fd, LOCK_EX | LOCK_NB), 0)
+        let group = "reset-group-" + UUID().uuidString, own = "reset-own-" + UUID().uuidString
+        let groupDefaults = try XCTUnwrap(UserDefaults(suiteName: group)), ownDefaults = try XCTUnwrap(UserDefaults(suiteName: own))
+        defer { groupDefaults.removePersistentDomain(forName: group); ownDefaults.removePersistentDomain(forName: own) }
+        try ThemePreference(storage: groupDefaults).set(.clear, under: UnsharedLock())
+        let store = InMemorySecureStore()
+        try ResetMarker(store: store).begin(at: Date())
+        let shared = AppReset.SharedPreferences(defaults: groupDefaults, domain: group,
+                                                lock: RefreshLease(file: LeaseFile(url: url, insideLock: nil, lockWait: 3), owner: "app-1"))
+
+        let clear = Task { @MainActor in
+            try await AppReset.clearWithoutBlocking(store: store, preferences: ownDefaults, preferencesDomain: own,
+                                                    shared: shared, files: [])
+        }
+        try await Task.sleep(for: .milliseconds(200))
+        XCTAssertEqual(ThemePreference(storage: groupDefaults).theme, .clear, "not removed without the lock")
+        XCTAssertNotNil(ResetMarker(store: store).startedAt(), "the marker stays until everything went")
+
+        flock(fd, LOCK_UN); close(fd)
+        try await clear.value
+        XCTAssertNil(groupDefaults.object(forKey: PreferenceKey.theme))
+        XCTAssertNil(ResetMarker(store: store).startedAt())
+    }
+
     func testFailedDeleteIsReportedAndTheRestStillCleared() throws {
         let store = InMemorySecureStore()
         for key in StoreKey.allCases { try store.write(Data("x".utf8), for: key) }

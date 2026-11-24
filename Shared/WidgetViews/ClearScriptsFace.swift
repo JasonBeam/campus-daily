@@ -26,6 +26,12 @@ struct ClearScriptsFace: View {
         return (ClearBalanceText.widgetDailyAveragePrefix + ClearBalanceText.number(value) + " 度", label)
     }
 
+    /// The header's time, 24-hour like the other widgets' 「8:10」 whatever the phone's 12/24-hour
+    /// setting or region; 「未更新」 before the first read.
+    static func headerTime(_ updated: Date?, calendar: Calendar = .current) -> String {
+        updated.map { UpdateTimeText.clock($0, calendar:calendar) } ?? "未更新"
+    }
+
     private func number(_ value: Decimal?) -> String {
         guard let value else { return "—" }
         return NSDecimalNumber(decimal:value).stringValue
@@ -57,7 +63,7 @@ struct ClearScriptsFace: View {
             }
             context.stroke(Path(ellipseIn:CGRect(x:14, y:18, width:6, height:6)), with:.color(ink), lineWidth:0.8)
             text("CAMPUS", 25, 17)
-            text(model.updated?.formatted(date:.omitted, time:.shortened) ?? "未更新", 156, 17, 10.67, false, true)
+            text(Self.headerTime(model.updated), 156, 17, 10.67, false, true)
             text("POWER", 14, 39); text("CARD", 101, 39)
             text(number(model.remainingKWh), 14, 60, 32, true, false, 65)
             text(number(model.balance), 101, 60, 32, true, false, 55)

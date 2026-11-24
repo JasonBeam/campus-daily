@@ -56,7 +56,7 @@ extension SchoolSession {
             exchanged = updated
         }
         let vault = vault, portalToken = stamped(token), saving = SchoolAccount(account: account, password: password)
-        try Self.commitLogin(owning, vault, from: start) {
+        try await Self.commitLogin(owning, vault, from: start) {
             if let exchanged { try vault.saveEcyktSession(exchanged) }
             try vault.savePortalToken(portalToken)
             try vault.saveAccount(saving)
@@ -69,13 +69,13 @@ extension SchoolSession {
     /// write-back then finds another password and leaves the account alone. Never waits for the
     /// lease itself, so a refresh running elsewhere doesn't make it fail. A lease file that
     /// can't be locked (before the first unlock) throws and leaves the password stored.
-    public func forgetPassword(lockingWith lease: RefreshLease?) throws {
+    public func forgetPassword(lockingWith lease: RefreshLease?) async throws {
         let vault = vault
         let forget = {
             guard let stored = try vault.account(), stored.password != nil else { return }
             try vault.saveAccount(SchoolAccount(account: stored.account))
         }
-        if let lease { try lease.locked(forget) } else { try forget() }
+        if let lease { try await lease.lockedWhenFree(forget) } else { try forget() }
     }
 
     /// The card a login's check found, as evidence of who signed in: not when it was a fallback
@@ -140,9 +140,9 @@ extension SchoolSession {
     /// started from, then `writes` runs. Otherwise the other process took over meanwhile (this
     /// process was suspended past the lease, say) and may have stored newer credentials: nothing
     /// is written and `SchoolLoginFailure.busy` is thrown, so the user tries again.
-    static func commitLogin<T>(_ owning: LeaseOwnership, _ vault: SchoolVault, from start: StoredCredentials,
-                               _ writes: () throws -> T) throws -> T {
-        let result = try owning.write { () throws -> T? in
+    static func commitLogin<T>(isolation: isolated (any Actor)? = #isolation, _ owning: LeaseOwnership, _ vault: SchoolVault,
+                               from start: StoredCredentials, _ writes: () throws -> T) async throws -> T {
+        let result = try await owning.write { () throws -> T? in
             guard (try? storedCredentials(vault)) == start else { return nil }
             return try writes()
         }
@@ -171,7 +171,7 @@ extension SchoolSession {
         var writing = false
         let old: SchoolProfile?, profile: SchoolProfile
         do {
-            (old, profile) = try Self.commitLogin(owning, vault, from: start) { () -> (SchoolProfile?, SchoolProfile) in
+            (old, profile) = try await Self.commitLogin(owning, vault, from: start) { () -> (SchoolProfile?, SchoolProfile) in
                 if match != .same { try vault.markSnapshotStale(since: at) }
                 writing = true
                 let old = (try? vault.profile()) ?? nil
@@ -231,7 +231,7 @@ extension SchoolSession {
         var writing = false
         let old: SchoolProfile?
         do {
-            old = try Self.commitLogin(owning, vault, from: start) { () -> SchoolProfile? in
+            old = try await Self.commitLogin(owning, vault, from: start) { () -> SchoolProfile? in
                 if match != .same { try vault.markSnapshotStale(since: at) }
                 writing = true
                 let old = (try? vault.profile()) ?? nil

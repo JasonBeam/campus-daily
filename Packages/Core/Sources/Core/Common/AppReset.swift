@@ -98,7 +98,7 @@ public enum AppReset {
     /// for them). A stop after the sign-out runs `resync` instead: the shower may be running, so
     /// its Live Activity and reminder are put back in step with the record, not removed.
     @MainActor public static func run(marker: ResetMarker, now: Date, clock: () -> Date = Date.init, lock: () -> Lock?,
-                                      signOut: () async -> Void, clear: () throws -> Void,
+                                      signOut: () async -> Void, clear: () async throws -> Void,
                                       reload: () async -> Void, resync: () async -> Void = {}) async throws -> Stop? {
         try marker.begin(at: now)
         if let found = lock() {
@@ -118,7 +118,7 @@ public enum AppReset {
             return Stop(found, signedOut: true)
         }
         var failure: Error?
-        do { try clear() } catch {
+        do { try await clear() } catch {
             failure = error
             // Already reporting the failure; a marker that can't be deleted either goes stale and
             // is then dropped by `resume` without clearing anything.
@@ -143,7 +143,7 @@ public enum AppReset {
     /// nothing is cleared: by then the user may have signed in and set things up again; that
     /// is `abandoned`, so the user learns the reset never finished. Nil when there is no marker.
     @MainActor public static func resume(marker: ResetMarker, now: Date, clock: () -> Date = Date.init, lock: () -> Lock?,
-                                         signOut: () async -> Void, clear: () throws -> Void,
+                                         signOut: () async -> Void, clear: () async throws -> Void,
                                          reload: () async -> Void, resync: () async -> Void = {}) async throws -> Resumed? {
         guard marker.startedAt() != nil else { return nil }
         guard marker.refusesStarts(at: now) else {
@@ -188,6 +188,9 @@ public enum AppReset {
         public init(defaults: UserDefaults, domain: String, lock: any SharedLock) {
             self.defaults = defaults; self.domain = domain; self.lock = lock
         }
+
+        /// The whole domain; run inside `lock`.
+        func removeAll() { defaults.removePersistentDomain(forName: domain) }
     }
 
     /// Deletes everything; keeps going after a failure and reports what could not be deleted.
@@ -200,6 +203,31 @@ public enum AppReset {
     /// inside its lock.
     public static func clear(store: SecureStore, preferences: UserDefaults, preferencesDomain: String,
                              shared: SharedPreferences?, files: [URL], fileManager: FileManager = .default) throws {
+        var failed = deleteStored(store: store, preferences: preferences, preferencesDomain: preferencesDomain)
+        if let shared {
+            do { try shared.lock.locked { shared.removeAll() } } catch { failed.append("preferences.shared") }
+        }
+        try finish(failed, files: files, fileManager: fileManager, store: store)
+    }
+
+    /// `clear` for the app's reset, on the main actor: the same steps, but the wait for the
+    /// shared lock suspends (`SharedLock.lockedWhenFree`) instead of holding the main thread
+    /// while the widget's step has the lock.
+    public static func clearWithoutBlocking(isolation: isolated (any Actor)? = #isolation, store: SecureStore,
+                                            preferences: UserDefaults, preferencesDomain: String,
+                                            shared: SharedPreferences?, files: [URL],
+                                            fileManager: FileManager = .default) async throws {
+        var failed = deleteStored(store: store, preferences: preferences, preferencesDomain: preferencesDomain)
+        if let shared {
+            do { try await shared.lock.lockedWhenFree(isolation: isolation) { shared.removeAll() } }
+            catch { failed.append("preferences.shared") }
+        }
+        try finish(failed, files: files, fileManager: fileManager, store: store)
+    }
+
+    /// The Keychain items but the reset marker, the stale mark only once the snapshot is gone,
+    /// and the app's own preferences. What could not be deleted.
+    private static func deleteStored(store: SecureStore, preferences: UserDefaults, preferencesDomain: String) -> [String] {
         var failed: [String] = []
         var snapshotGone = true
         for key in keychainItems where key != .sharedResetMarker && key != .sharedSnapshotStale {
@@ -212,10 +240,12 @@ public enum AppReset {
             do { try store.delete(.sharedSnapshotStale) } catch { failed.append(StoreKey.sharedSnapshotStale.rawValue) }
         }
         preferences.removePersistentDomain(forName: preferencesDomain)
-        if let shared {
-            do { try shared.lock.locked { shared.defaults.removePersistentDomain(forName: shared.domain) } }
-            catch { failed.append("preferences.shared") }
-        }
+        return failed
+    }
+
+    /// The files, then the reset marker when everything else went.
+    private static func finish(_ failedBefore: [String], files: [URL], fileManager: FileManager, store: SecureStore) throws {
+        var failed = failedBefore
         for url in files where fileManager.fileExists(atPath: url.path) {
             do { try fileManager.removeItem(at: url) } catch { failed.append(url.lastPathComponent) }
         }

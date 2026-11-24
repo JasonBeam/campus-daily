@@ -88,7 +88,8 @@ import Core
         let stopped = try await AppReset.run(marker:marker, now:Date(),
                                              lock:{ self.anyLock(shower:shower, laundry:laundry) },
                                              signOut:{ await campus.signOutForReset() },
-                                             clear:clear, reload:{ await self.reload(campus:campus, shower:shower, laundry:laundry, theme:theme) },
+                                             clear:{ try await self.clear() },
+                                             reload:{ await self.reload(campus:campus, shower:shower, laundry:laundry, theme:theme) },
                                              resync:{ self.resync(campus:campus, shower:shower) })
         if stopped == nil { finished() }
         return stopped
@@ -104,7 +105,8 @@ import Core
             resumed = try await AppReset.resume(marker:marker, now:Date(),
                                                 lock:{ self.anyLock(shower:shower, laundry:laundry) },
                                                 signOut:{ await campus.signOutForReset() },
-                                                clear:clear, reload:{ await self.reload(campus:campus, shower:shower, laundry:laundry, theme:theme) },
+                                                clear:{ try await self.clear() },
+                                                reload:{ await self.reload(campus:campus, shower:shower, laundry:laundry, theme:theme) },
                                                 resync:{ self.resync(campus:campus, shower:shower) })
         } catch {
             resumeFailed = AppErrorText.text(error)
@@ -123,12 +125,14 @@ import Core
         setupDue.resetFinished()
     }
 
-    private func clear() throws {
-        // The log's lines and salt in memory too, not only its folder (below).
+    /// The main thread never waits for the shared lock here (`AppReset.clearWithoutBlocking`).
+    private func clear() async throws {
+        // The log's lines and salt in memory too, not only its folder (below). The widget's part
+        // in the App Group goes here too, inside the widget's lock (`WidgetDebugLog.remove`).
         services.debugLog.clear()
-        try AppReset.clear(store:services.secureStore, preferences:services.defaults,
-                           preferencesDomain:Bundle.main.bundleIdentifier ?? "",
-                           shared:sharedPreferences, files:files)
+        try await AppReset.clearWithoutBlocking(store:services.secureStore, preferences:services.defaults,
+                                                preferencesDomain:Bundle.main.bundleIdentifier ?? "",
+                                                shared:sharedPreferences, files:files)
     }
 
     private func reload(campus: CampusModel, shower: ShowerModel, laundry: LaundryModel, theme: ThemeStore) async {

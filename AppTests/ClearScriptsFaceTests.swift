@@ -30,4 +30,20 @@ final class ClearScriptsFaceTests: XCTestCase {
         XCTAssertFalse(ClearScriptsFace.draws(model(.fresh, numbers: false), medium: false, theme: .clear), "first read")
         XCTAssertFalse(ClearScriptsFace.draws(.placeholderFace, medium: false, theme: .clear), "gallery placeholder")
     }
+
+    /// The header's time is 24-hour like every other widget's, never 「早上7:41」 or 「7:41 PM」.
+    func testHeaderTimeIsTwentyFourHour() {
+        for identifier in ["zh_CN", "en_US", "ja_JP"] {
+            var calendar = Calendar(identifier: .gregorian)
+            calendar.timeZone = TimeZone(identifier: "Asia/Shanghai")!
+            calendar.locale = Locale(identifier: identifier)
+            let morning = calendar.date(from: DateComponents(year: 2026, month: 11, day: 23, hour: 7, minute: 41))!
+            let evening = calendar.date(from: DateComponents(year: 2026, month: 11, day: 23, hour: 19, minute: 5))!
+            XCTAssertEqual(ClearScriptsFace.headerTime(morning, calendar: calendar), "7:41", identifier)
+            XCTAssertEqual(ClearScriptsFace.headerTime(evening, calendar: calendar), "19:05", identifier)
+            XCTAssertEqual(ClearScriptsFace.headerTime(evening, calendar: calendar),
+                           UpdateTimeText.clock(evening, calendar: calendar), "the other widgets' clock")
+        }
+        XCTAssertEqual(ClearScriptsFace.headerTime(nil), "未更新")
+    }
 }

@@ -152,7 +152,7 @@ public actor SchoolSession {
         let checkedAt = now()
         var alive = live.1
         alive.lastAliveAt = checkedAt
-        switch writeBack(alive, over: base, owning: owning) {
+        switch await writeBack(alive, over: base, owning: owning) {
         case .signedOut: return SchoolReading(outcome: .notSignedIn, checkedAt: now())
         case .lostLease: return SchoolReading(outcome: .leaseLost, checkedAt: now())
         case .written, .kept: break
@@ -180,8 +180,12 @@ public actor SchoolSession {
             records.cancel()
             return SchoolReading(outcome: .notSignedIn, checkedAt: now())
         }
+        if case .success(let meter?)? = m {
+            let role: DebugMeterRead.Role = !createsLoginDeviceID ? .widget : inBackground ? .background : .app
+            debugLog.record(.meterRead(DebugMeterRead(meter, role: role)))
+        }
         if case .success(let meter?)? = m, let binding, meter.comAddress != binding.comAddress {
-            followReplacedMeter(binding, to: meter.comAddress, owning: owning)
+            await followReplacedMeter(binding, to: meter.comAddress, owning: owning)
         }
         var reading = SchoolReading(outcome: .ok, checkedAt: checkedAt, balance: b, meter: m,
                                     roomLabel: m == nil ? nil : binding?.label, readAt: now(),
