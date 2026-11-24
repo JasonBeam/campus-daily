@@ -110,6 +110,12 @@ public struct CardRecordsState: Sendable, Equatable {
         await loadMore()
     }
 
+    /// Moves `target` to `day` without reading: a read running stops once the list holds it, and
+    /// later reads from today go back to it only. A span that needs fewer days than before.
+    public func setTarget(_ day: String?) {
+        target = day
+    }
+
     /// The list does not hold `target` yet.
     private func needsMore(_ history: CardHistory) -> Bool {
         guard let target else { return false }

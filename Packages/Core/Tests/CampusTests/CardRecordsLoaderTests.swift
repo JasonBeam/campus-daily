@@ -404,6 +404,43 @@ import XCTest
         XCTAssertTrue(loader.state.history?.hasRead(through: "20260901") ?? false)
     }
 
+    /// A nearer day (a shorter span): a pull reads today's range only, not back to the old day.
+    func testANearerTargetIsAllAPullReadsBackTo() async {
+        let school = School(today: [Self.record(Self.today, "090000")])
+        await school.set(older: [Self.record("20261001", "120000"), Self.record("20260901", "120000")])
+        let loader = makeLoader(school)
+        await loader.reload()
+        await loader.read(through: "20260901")
+        XCTAssertTrue(loader.state.history?.hasRead(through: "20260901") ?? false)
+        loader.setTarget("20261017")
+        XCTAssertEqual(loader.target, "20261017")
+        let older = await school.olderCalls()
+        await loader.reload()
+        await settle()
+        let after = await school.olderCalls()
+        XCTAssertEqual(after, older, "today's range holds 10月17日")
+        XCTAssertFalse(loader.state.loadingMore)
+        XCTAssertFalse(loader.state.history?.hasRead(through: "20261001") ?? true)
+    }
+
+    /// The day moved nearer while older pages are read: the read stops at the page it waits on.
+    func testAReadRunningStopsWhenTheTargetMovesNearer() async {
+        let school = School(today: [Self.record(Self.today, "090000")])
+        await school.set(older: [Self.record("20261010", "120000"), Self.record("20260901", "120000")])
+        let loader = makeLoader(school)
+        await loader.reload()
+        await school.hold("older")
+        let reading = Task { await loader.read(through: "20260901") }
+        await waitUntil(school, waitingOn: "older")
+        loader.setTarget("20261010")
+        await school.release("older")
+        await reading.value
+        let older = await school.olderCalls()
+        XCTAssertEqual(older, 1)
+        XCTAssertFalse(loader.state.loadingMore)
+        XCTAssertFalse(loader.state.history?.hasRead(through: "20260901") ?? true)
+    }
+
     /// Without a day to reach, 「load more」 stops at the first page with rows, as before.
     func testLoadMoreWithoutATargetStopsAtRows() async {
         let school = School(today: [Self.record(Self.today, "090000")])

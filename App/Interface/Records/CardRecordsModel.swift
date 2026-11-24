@@ -127,13 +127,17 @@ extension CardRecordsSource {
             let start = termStart
             let first = SpendStats.firstDayNeeded(span:statsSpan, today:now(), termStart:start, calendar:calendar)
             let made = SpendStats.make(span:statsSpan, history:history, termStart:start, calendar:calendar)
+            // Always the span's day, a nearer one too: a read running stops there, and a pull
+            // reads back to it only.
+            let moved = loader.target != first
+            loader.setTarget(first)
             if history.hasRead(through:first) || state.moreFailed {
                 set(stats:made, loading:false, failed:made == nil)
                 return
             }
             set(stats:nil, loading:true, failed:false)
-            if loader.target != first || (!state.loadingMore && !state.reloading) {
-                Task { [weak self] in await self?.loader.read(through:first) }
+            if moved || (!state.loadingMore && !state.reloading) {
+                Task { [weak self] in await self?.loader.loadMore() }
             }
         }
     }
