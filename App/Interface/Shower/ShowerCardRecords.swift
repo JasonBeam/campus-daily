@@ -24,12 +24,13 @@ struct ShowerCardRecords: Sendable {
     /// From the shower page, a cover over home: closes it and shows 校园卡记录 on home.
     var openFromCover: (@MainActor @Sendable () -> Void)?
     /// Home's last read of the card's recent records (nil while signed out or unread).
-    var records: [CardRecord]?
-    /// The calendar `records` are written in (`HomeData.calendar`).
+    var activity: CardActivity?
+    /// The calendar `activity` is written in (`HomeData.calendar`).
     var calendar = SchoolCalendar.shanghai
 
-    /// The card's charge for the shower started at `started`, when exactly one matched.
-    func charge(started: Date?) -> Money? { ShowerCardCharge.amount(started:started, records:records, calendar:calendar) }
+    /// The card's charge for the shower started at `started`, when exactly one matched in a read
+    /// holding that whole day.
+    func charge(started: Date?) -> Money? { ShowerCardCharge.amount(started:started, activity:activity, calendar:calendar) }
 }
 
 private struct ShowerCardRecordsKey: EnvironmentKey {
