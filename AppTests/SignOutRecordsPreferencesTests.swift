@@ -10,7 +10,7 @@ import Core
 @testable import XiaoRiChang
 
 /// 退出登录 and a sign-in as someone else forget the records page's span and term start: the next
-/// account starts from 7 天 and 3月1日 / 9月1日.
+/// account starts from 7 天 and 3月1日 / 9月1日. A sign-out that fails keeps them.
 @MainActor
 final class SignOutRecordsPreferencesTests: XCTestCase {
     private func campus(_ store: ScriptedStore = ScriptedStore(), defaults: SampleDefaults) -> CampusModel {
@@ -46,6 +46,23 @@ final class SignOutRecordsPreferencesTests: XCTestCase {
 
         XCTAssertFalse(campus.signOutFailed)
         assertForgotten(defaults)
+    }
+
+    /// Still signed in after a failed sign-out: their span and term start stay.
+    func testAFailedSignOutKeepsTheSpanAndTheTermStart() async throws {
+        let store = ScriptedStore()
+        try StoredSchoolVault(store:store).saveAccount(SchoolAccount(account:"99100991"))
+        let defaults = SampleDefaults()
+        let campus = campus(store, defaults:defaults)
+        setPreferences(defaults)
+        store.refusing = [.schoolPassword]
+
+        campus.signOut()
+        await campus.signOutsFinished()
+
+        XCTAssertTrue(campus.signOutFailed)
+        XCTAssertEqual(defaults.string(forKey:SpendSpan.storeKey), "term")
+        XCTAssertEqual(defaults.string(forKey:TermStartStore.key), "20261114")
     }
 
     /// Someone else signs in without signing out first: the clean-up forgets them too.

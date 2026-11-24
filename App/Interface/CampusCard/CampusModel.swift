@@ -457,10 +457,11 @@ struct PowerChoice: Identifiable, Equatable {
             // The next sign-in finds nobody stored to compare with: hot water goes as on an
             // account switch.
             _ = hotWater()?.clearBindingForAccountSwitch()
+            // Only once signed out: a failed sign-out leaves the person, and their settings.
+            forgetRecordsStatsPreferences()
         }
         configured = false; snapshot = .empty; profile = nil; issue = nil; account = nil
         lookup.clear(); powerMatchIssue = nil
-        forgetRecordsStatsPreferences()
     }
 
     /// The records page's span and term start were the person's who signed out or was switched
