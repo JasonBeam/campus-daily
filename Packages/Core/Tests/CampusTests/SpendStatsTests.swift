@@ -133,6 +133,37 @@ final class SpendStatsTests: XCTestCase {
         XCTAssertNil(s.versusPrevious, "11月15日 in the period before is unsure")
     }
 
+    func testOneUnsureDayBeforeSevenCertainDaysDropsOnlyTheComparison() throws {
+        let rows = [record("20261124", "6.00"), record("20261120", "8.00"), record("20261118", "7.00"),
+                    record("20261116", "5.00"), record("20261114", "4.00", voucher: false), record("20261111", "3.00")]
+        let s = try XCTUnwrap(stats(.week, rows))
+        XCTAssertNil(s.versusPrevious, "11月14日 in the 7 days before may repeat a record")
+        XCTAssertEqual(s.total, Money(fen: 2100))
+        XCTAssertEqual(s.dailyAverage, Money(fen: 300))
+        XCTAssertEqual(s.bars.map(\.spent.fen), [700, 0, 800, 0, 0, 0, 600])
+        XCTAssertEqual(s.bars.map(\.axisLabel), ["三", "四", "五", "六", "日", "一", "今天"])
+        XCTAssertTrue(s.bars.allSatisfy { !$0.unsure })
+        XCTAssertEqual(s.unsureDays, 0)
+        XCTAssertNil(s.coveredFrom)
+        XCTAssertEqual(s.shares.map(\.kind), [.canteen])
+    }
+
+    func testOneUnsureDayBeforeThirtyCertainDaysDropsOnlyTheComparison() throws {
+        let rows = [record("20261124", "10.00"), record("20261101", "20.00"), record("20261026", "30.00"),
+                    record("20261020", "9.00"), record("20261010", "4.00", voucher: false), record("20260926", "2.00")]
+        let s = try XCTUnwrap(stats(.month, rows))
+        XCTAssertNil(s.versusPrevious, "10月10日 in the 30 days before may repeat a record")
+        XCTAssertEqual(s.total, Money(fen: 6000))
+        XCTAssertEqual(s.dailyAverage, Money(fen: 200))
+        XCTAssertEqual(s.bars.count, 30)
+        XCTAssertEqual(s.bars.first?.spent, Money(fen: 3000))
+        XCTAssertEqual(s.bars.first { $0.id == "20261101" }?.spent, Money(fen: 2000))
+        XCTAssertEqual(s.bars.last?.spent, Money(fen: 1000))
+        XCTAssertTrue(s.bars.allSatisfy { !$0.unsure })
+        XCTAssertEqual(s.unsureDays, 0)
+        XCTAssertNil(s.coveredFrom)
+    }
+
     func testARecordInOrOutIsLeftOutAndItsDayUnsure() throws {
         let rows = [record("20261124", "5.00"), record("20261123", "-2.00", "示例", flag: nil)]
         let s = try XCTUnwrap(stats(.week, rows))

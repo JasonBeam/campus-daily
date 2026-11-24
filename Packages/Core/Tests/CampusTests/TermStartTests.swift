@@ -77,6 +77,42 @@ final class TermStartTests: XCTestCase {
         XCTAssertEqual(start(day(2027, 3, 1), custom: set), "20270301")
     }
 
+    // MARK: Boundaries
+
+    func testTheDefaultTurnsOverAtMidnightOnMarchFirstAndSeptemberFirst() {
+        let lastFebruary = cal.date(from: DateComponents(year: 2027, month: 2, day: 28, hour: 23, minute: 59))!
+        XCTAssertEqual(id(TermStart.defaultStart(today: lastFebruary, calendar: cal)), "20260901")
+        XCTAssertEqual(id(TermStart.defaultStart(today: day(2027, 3, 1), calendar: cal)), "20270301")
+        let lastAugust = cal.date(from: DateComponents(year: 2027, month: 8, day: 31, hour: 23, minute: 59))!
+        XCTAssertEqual(id(TermStart.defaultStart(today: lastAugust, calendar: cal)), "20270301")
+        XCTAssertEqual(id(TermStart.defaultStart(today: day(2027, 9, 1), calendar: cal)), "20270901")
+    }
+
+    func testFebruaryTwentiethBelongsToTheSpringTermThrough31August() {
+        let set = day(2027, 2, 20)
+        XCTAssertEqual(id(TermStart.term(of: set, calendar: cal)), "20270301")
+        for today in [day(2027, 2, 20), day(2027, 2, 28, hour: 23), day(2027, 3, 1), day(2027, 6, 1), day(2027, 8, 31, hour: 23)] {
+            XCTAssertTrue(TermStart.isActive(custom: set, today: today, calendar: cal), id(today))
+            XCTAssertEqual(start(today, custom: set), "20270220", id(today))
+        }
+        XCTAssertFalse(TermStart.isActive(custom: set, today: day(2027, 9, 1), calendar: cal))
+        XCTAssertEqual(start(day(2027, 9, 1), custom: set), "20270901")
+    }
+
+    func testLateAugustBelongsToTheAutumnTermThroughFebruary() {
+        for set in [day(2026, 8, 25), day(2026, 8, 31)] {
+            let setID = id(set)
+            XCTAssertEqual(id(TermStart.term(of: set, calendar: cal)), "20260901", setID)
+            // Active from its own day, though the default is still the spring term's.
+            for today in [set, day(2026, 8, 31, hour: 23), day(2026, 9, 1), day(2026, 12, 31), day(2027, 2, 28, hour: 23)] {
+                XCTAssertTrue(TermStart.isActive(custom: set, today: today, calendar: cal), "\(setID) \(id(today))")
+                XCTAssertEqual(start(today, custom: set), setID, id(today))
+            }
+            XCTAssertFalse(TermStart.isActive(custom: set, today: day(2027, 3, 1), calendar: cal), setID)
+            XCTAssertEqual(start(day(2027, 3, 1), custom: set), "20270301", setID)
+        }
+    }
+
     func testADayAfterTodayDoesNotCount() {
         XCTAssertEqual(start(day(2026, 11, 24), custom: day(2026, 11, 30)), "20260901")
     }
