@@ -131,7 +131,7 @@ struct SpendBarsChart: View {
         let style: ThemeColor = switch look {
         case .placeholder, .empty: Theme.fill
         case .live where stub: open(bar) ? Theme.ink3 : Theme.fill
-        case .live: lit ? Theme.accent : Theme.accent.opacity(0.32)
+        case .live: lit ? Theme.mark : Theme.mark.opacity(0.32)
         }
         return UnevenRoundedRectangle(topLeadingRadius:stub ? 0 : min(4, height / 2),
                                       topTrailingRadius:stub ? 0 : min(4, height / 2), style:.continuous)

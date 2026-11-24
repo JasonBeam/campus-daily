@@ -122,7 +122,7 @@ struct SpendStatsView: View {
         } else {
             let money = selectedBar?.spent ?? stats?.total ?? .zero
             HStack(alignment:.firstTextBaseline, spacing:3) {
-                Text("¥").scaledFont(17, .medium, relativeTo:.headline).foregroundStyle(Theme.ink2)
+                Text("¥").scaledFont(17, .medium, design:theme.numberDesign, relativeTo:.headline).foregroundStyle(Theme.ink2)
                 Text(SpendStatsText.number(money))
                     .scaledFont(theme.heroSize, .semibold, design:theme.numberDesign, relativeTo:.largeTitle)
                     .monospacedDigit()

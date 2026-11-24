@@ -9,7 +9,7 @@ import SwiftUI
 import Core
 
 /// The span's categories as one line of small words that wraps: a dot, the name in ink and the
-/// whole-yuan amount in ink2. The dots go from accent to its lighter shades, biggest first;
+/// whole-yuan amount in ink2. The dots go from the chart accent (`Theme.mark`) to its lighter shades, biggest first;
 /// 「其他」 is ink3. VoiceOver reads each with the full amount and its share.
 struct SpendShareFlow: View {
     let shares: [SpendShare]
@@ -35,7 +35,7 @@ struct SpendShareFlow: View {
     static func color(_ kind: CardRecordKind, at index: Int) -> ThemeColor {
         guard kind != .other else { return Theme.ink3 }
         let steps = [1, 0.62, 0.38, 0.22]
-        return Theme.accent.opacity(steps[min(index, steps.count - 1)])
+        return Theme.mark.opacity(steps[min(index, steps.count - 1)])
     }
 }
 

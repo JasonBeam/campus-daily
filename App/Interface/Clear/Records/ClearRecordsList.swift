@@ -50,7 +50,15 @@ struct ClearRecordsList: View {
                 Section {
                     ForEach(day.items) { row($0) }
                 } header: {
-                    header(day)
+                    // Under the stats, the records start with their own heading.
+                    if day.id == days.first?.id {
+                        VStack(alignment:.leading, spacing:14) {
+                            Text("校园卡记录").accessibilityAddTraits(.isHeader)
+                            header(day)
+                        }
+                    } else {
+                        header(day)
+                    }
                 }
             }
             footer(empty:days.isEmpty)

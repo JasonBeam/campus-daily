@@ -43,7 +43,7 @@ struct SpendSpanSwitch: View {
                 .padding(.bottom,8)
                 .overlay(alignment:.bottom) {
                     if chosen {
-                        RoundedRectangle(cornerRadius:1).fill(Theme.accent).frame(height:2)
+                        RoundedRectangle(cornerRadius:1).fill(Theme.mark).frame(height:2)
                             .matchedGeometryEffect(id:"underline", in:underline)
                     }
                 }
