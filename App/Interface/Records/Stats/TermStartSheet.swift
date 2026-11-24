@@ -19,6 +19,8 @@ struct TermStartSheet: View {
         var defaultStart: Date
         /// `start` was set by hand.
         var custom: Bool
+        /// The days it can be set to (`CardRecordsModel.termStartRange`): every one counts.
+        var range: ClosedRange<Date>
     }
 
     let term: Term
@@ -39,17 +41,6 @@ struct TermStartSheet: View {
 
     private var text: SpendStatsText { SpendStatsText(theme:theme, calendar:calendar) }
 
-    private var range: ClosedRange<Date> {
-        Self.range(now:now, calendar:calendar)
-    }
-
-    /// A year ago … today, in the records' calendar.
-    static func range(now: Date, calendar: Calendar) -> ClosedRange<Date> {
-        let today = calendar.startOfDay(for:now)
-        let yearAgo = calendar.date(byAdding:.year, value:-1, to:today) ?? today
-        return yearAgo...now
-    }
-
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -57,7 +48,7 @@ struct TermStartSheet: View {
                     Text(text.termPickerTitle)
                         .scaledFont(15, .medium, relativeTo:.subheadline)
                         .foregroundStyle(Theme.ink)
-                    DatePicker(text.termPickerTitle, selection:$picked, in:range, displayedComponents:.date)
+                    DatePicker(text.termPickerTitle, selection:$picked, in:term.range, displayedComponents:.date)
                         .datePickerStyle(.wheel)
                         .labelsHidden()
                         .environment(\.timeZone, calendar.timeZone)

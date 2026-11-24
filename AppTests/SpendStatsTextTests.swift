@@ -135,10 +135,6 @@ final class SpendStatsTextTests: XCTestCase {
         let start = tokyo.date(from:DateComponents(year:2026, month:9, day:1))!
         XCTAssertEqual(SpendStatsText(theme:.warm, calendar:SchoolCalendar.shanghai).termRange(start).text, "8月31日起 · ")
         XCTAssertEqual(SpendStatsText(theme:.warm, calendar:tokyo).termRange(start).text, "9月1日起 · ")
-        let now = tokyo.date(from:DateComponents(year:2026, month:11, day:24, hour:8))!
-        let range = TermStartSheet.range(now:now, calendar:tokyo)
-        XCTAssertEqual(range.lowerBound, tokyo.date(from:DateComponents(year:2025, month:11, day:24)))
-        XCTAssertEqual(range.upperBound, now)
     }
 
     func testAWeekBarCanBeLookedAtOnceAnyOfItsDaysIsCovered() {

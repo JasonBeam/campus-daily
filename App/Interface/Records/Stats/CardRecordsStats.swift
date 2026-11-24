@@ -21,7 +21,8 @@ struct CardRecordsStats: View {
         #if DEBUG
         if let demo, demo.madeUp {
             SpendStatsView(phase:demo.phase(demoSpan), span:$demoSpan,
-                           term:TermStartSheet.Term(start:SpendStatsDemo.termStart(), defaultStart:SpendStatsDemo.termStart(), custom:false),
+                           term:TermStartSheet.Term(start:SpendStatsDemo.termStart(), defaultStart:SpendStatsDemo.termStart(), custom:false,
+                                                    range:TermStart.pickerRange(today:Date(), calendar:SchoolCalendar.shanghai)),
                            calendar:SchoolCalendar.shanghai)
         } else if let demo {
             // The sample records' own stats, on the demo's span (and its biggest bar for `day`).
@@ -41,7 +42,7 @@ struct CardRecordsStats: View {
     private func live(pinned: String?) -> some View {
         SpendStatsView(phase:phase, span:$model.statsSpan,
                        term:TermStartSheet.Term(start:model.termStart, defaultStart:model.defaultTermStart,
-                                                custom:model.termStartIsCustom),
+                                                custom:model.termStartIsCustom, range:model.termStartRange),
                        setTermStart:{ day in
                            if let day { model.setTermStart(day) } else { model.resetTermStart() }
                        },
