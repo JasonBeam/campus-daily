@@ -27,6 +27,7 @@ struct SpendShareFlow: View {
     @State private var blinks: [CardRecordKind: Int] = [:]
     @Environment(\.appTheme) private var theme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         let shades = Self.shades(shares)
@@ -49,6 +50,8 @@ struct SpendShareFlow: View {
                 LinearKeyframe(0.5, duration:0.075)
                 LinearKeyframe(1.0, duration:0.075)
             }
+            // Faces taller than the 44pt target (accessibility sizes) keep 12 between rows too.
+            .padding(.vertical,typeSize.isAccessibilitySize ? 6 : 0)
             .frame(minHeight:44)
             .contentShape(Rectangle())
         if let toggle {
@@ -94,46 +97,78 @@ struct SpendShareFlow: View {
 }
 
 /// One capsule's face: 32 high (taller with the text), the dot, the name and the whole-yuan
-/// amount kept on one line.
+/// amount kept on one line. At accessibility sizes the amount may go under the name, the face a
+/// rounded rectangle then (corner 16), the dot beside the first line. The dot grows with the text.
 private struct CategoryCapsule: View {
     let share: SpendShare
     /// The counted dot's colour; nil for a ring.
     let shade: ThemeColor?
+    @ScaledMetric(relativeTo:.footnote) private var dotSize: CGFloat = 8
+    @ScaledMetric(relativeTo:.footnote) private var textSize: CGFloat = 13
     @Environment(\.appTheme) private var theme
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
-        HStack(spacing:0) {
-            dot.padding(.trailing,6)
-            Text(share.kind.title).foregroundStyle(share.included ? Theme.ink : Theme.ink2)
-                .padding(.trailing,4)
-            Text(SpendStatsText.wholeYuan(share.spent)).monospacedDigit().foregroundStyle(Theme.ink2)
-        }
-        .scaledFont(13, relativeTo:.footnote)
-        .lineLimit(1)
-        .padding(.horizontal,10).padding(.vertical,6)
-        .frame(minHeight:32)
-        .background {
-            if share.included { Capsule().fill(theme == .clear ? AnyShapeStyle(NativeTheme.surface) : AnyShapeStyle(Theme.group)) }
-        }
-        .overlay {
-            if !share.included {
-                Capsule().strokeBorder(theme == .clear ? AnyShapeStyle(Color(uiColor:.separator)) : AnyShapeStyle(Theme.ink3),
-                                       lineWidth:1)
+        if typeSize.isAccessibilitySize {
+            face(RoundedRectangle(cornerRadius:16, style:.continuous)) {
+                ViewThatFits(in:.horizontal) {
+                    HStack(alignment:.firstTextBaseline, spacing:0) { dotted; name.padding(.trailing,4); amount }
+                    HStack(alignment:.firstTextBaseline, spacing:0) {
+                        dotted
+                        VStack(alignment:.leading, spacing:0) { name; amount }
+                    }
+                }
             }
+        } else {
+            face(Capsule()) {
+                HStack(spacing:0) { dot.padding(.trailing,6); name.padding(.trailing,4); amount }
+                    .lineLimit(1)
+            }
+            .fixedSize()
         }
-        .fixedSize()
+    }
+
+    private var name: some View {
+        Text(share.kind.title).foregroundStyle(share.included ? Theme.ink : Theme.ink2).lineLimit(1)
+    }
+
+    private var amount: some View {
+        Text(SpendStatsText.wholeYuan(share.spent)).monospacedDigit().foregroundStyle(Theme.ink2).lineLimit(1)
+    }
+
+    /// The dot on the first line's middle (about a third of the text size above its baseline).
+    private var dotted: some View {
+        dot.alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + textSize * 0.35 }
+            .padding(.trailing,6)
+    }
+
+    private func face<S: InsettableShape, Content: View>(_ shape: S, @ViewBuilder _ content: () -> Content) -> some View {
+        content()
+            .scaledFont(13, relativeTo:.footnote)
+            .padding(.horizontal,10).padding(.vertical,6)
+            .frame(minHeight:32)
+            .background {
+                if share.included { shape.fill(theme == .clear ? AnyShapeStyle(NativeTheme.surface) : AnyShapeStyle(Theme.group)) }
+            }
+            .overlay {
+                if !share.included {
+                    shape.strokeBorder(theme == .clear ? AnyShapeStyle(Color(uiColor:.separator)) : AnyShapeStyle(Theme.ink3),
+                                       lineWidth:1)
+                }
+            }
     }
 
     @ViewBuilder private var dot: some View {
         if let shade {
-            Circle().fill(shade).frame(width:8, height:8)
+            Circle().fill(shade).frame(width:dotSize, height:dotSize)
         } else {
-            Circle().strokeBorder(Theme.ink2, lineWidth:1.5).frame(width:8, height:8)
+            Circle().strokeBorder(Theme.ink2, lineWidth:1.5 * dotSize / 8).frame(width:dotSize, height:dotSize)
         }
     }
 }
 
-/// Lays its subviews left to right, wrapping onto a new line when the next doesn't fit.
+/// Lays its subviews left to right at their size within a line, wrapping onto a new line when
+/// the next doesn't fit.
 struct FlowRow: Layout {
     let spacing: CGFloat
     let lineSpacing: CGFloat
@@ -150,7 +185,7 @@ struct FlowRow: Layout {
         for row in rows(width:bounds.width, subviews:subviews) {
             var x = bounds.minX
             for index in row.items {
-                let size = subviews[index].sizeThatFits(.unspecified)
+                let size = subviews[index].sizeThatFits(Self.proposal(bounds.width))
                 subviews[index].place(at:CGPoint(x:x, y:y + (row.height - size.height) / 2),
                                       proposal:ProposedViewSize(width:min(size.width, bounds.width), height:size.height))
                 x += size.width + spacing
@@ -159,13 +194,18 @@ struct FlowRow: Layout {
         }
     }
 
+    /// Each subview is offered the whole line: one that can wrap (large text) fits in it.
+    private static func proposal(_ width: CGFloat) -> ProposedViewSize {
+        ProposedViewSize(width:width.isFinite ? width : nil, height:nil)
+    }
+
     private struct Row { var items: [Int] = []; var width: CGFloat = 0; var height: CGFloat = 0 }
 
     private func rows(width: CGFloat, subviews: Subviews) -> [Row] {
         var rows: [Row] = []
         var row = Row()
         for index in subviews.indices {
-            let size = subviews[index].sizeThatFits(.unspecified)
+            let size = subviews[index].sizeThatFits(Self.proposal(width))
             let next = row.items.isEmpty ? size.width : row.width + spacing + size.width
             if !row.items.isEmpty, next > width {
                 rows.append(row)
