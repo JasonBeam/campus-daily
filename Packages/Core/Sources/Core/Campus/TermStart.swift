@@ -51,11 +51,13 @@ public enum TermStart {
         return defaultStart(today: today, calendar: calendar)
     }
 
-    /// Days the start can be set to: a year back through today.
+    /// Days the start can be set to: the earliest day the current term takes (`earlyDays` before
+    /// its default start) through today. Every one of them counts today (`isActive`).
     public static func pickerRange(today: Date, calendar: Calendar = SchoolCalendar.shanghai) -> ClosedRange<Date> {
         let now = calendar.startOfDay(for: today)
-        let first = calendar.date(byAdding: .year, value: -1, to: now) ?? now
-        return first...now
+        let start = defaultStart(today: today, calendar: calendar)
+        let first = calendar.date(byAdding: .day, value: -earlyDays, to: start) ?? start
+        return min(first, now)...now
     }
 }
 

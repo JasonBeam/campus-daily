@@ -121,10 +121,29 @@ final class TermStartTests: XCTestCase {
         XCTAssertEqual(start(day(2026, 11, 24), custom: day(2026, 3, 2)), "20260901")
     }
 
-    func testPickerRangeIsAYearBackThroughToday() {
+    func testPickerRangeIsTheEarliestDayThisTermTakesThroughToday() {
         let range = TermStart.pickerRange(today: day(2026, 11, 24, hour: 15), calendar: cal)
-        XCTAssertEqual(id(range.lowerBound), "20251124")
+        XCTAssertEqual(id(range.lowerBound), "20260804", "28 days before 9月1日")
         XCTAssertEqual(range.upperBound, day(2026, 11, 24))
+        XCTAssertEqual(id(TermStart.pickerRange(today: day(2026, 8, 20, hour: 15), calendar: cal).lowerBound), "20260201")
+        XCTAssertEqual(id(TermStart.pickerRange(today: day(2027, 2, 10, hour: 15), calendar: cal).lowerBound), "20260804")
+    }
+
+    /// Whatever the picker offers counts today, and the day before it does not: no choice is
+    /// kept only to be ignored.
+    func testEveryDayThePickerOffersCountsAndTheDayBeforeItDoesNot() {
+        for today in [day(2026, 11, 24, hour: 15), day(2026, 8, 20, hour: 15), day(2026, 8, 31, hour: 23),
+                      day(2026, 9, 1), day(2027, 2, 10, hour: 15), day(2027, 2, 28, hour: 23), day(2027, 3, 1)] {
+            let range = TermStart.pickerRange(today: today, calendar: cal)
+            var d = range.lowerBound
+            while d <= range.upperBound {
+                XCTAssertTrue(TermStart.isActive(custom: d, today: today, calendar: cal), "\(id(d)) on \(id(today))")
+                XCTAssertEqual(start(today, custom: d), id(d))
+                d = cal.date(byAdding: .day, value: 1, to: d)!
+            }
+            let before = cal.date(byAdding: .day, value: -1, to: range.lowerBound)!
+            XCTAssertFalse(TermStart.isActive(custom: before, today: today, calendar: cal), "\(id(before)) on \(id(today))")
+        }
     }
 
     // MARK: Store

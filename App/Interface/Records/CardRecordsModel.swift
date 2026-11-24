@@ -95,16 +95,19 @@ extension CardRecordsSource {
     var termStartIsCustom: Bool {
         customTermStart.map { TermStart.isActive(custom:$0, today:now(), calendar:calendar) } ?? false
     }
-    /// Days the start can be set to: a year back through today.
+    /// Days the start can be set to: the earliest day this term takes through today.
     var termStartRange: ClosedRange<Date> { TermStart.pickerRange(today:now(), calendar:calendar) }
 
-    /// Sets this term's start day (kept to `termStartRange`).
-    func setTermStart(_ day: Date) {
-        let range = termStartRange
-        let kept = min(max(calendar.startOfDay(for:day), range.lowerBound), range.upperBound)
+    /// Sets this term's start day. A day that would not count today (after today, or another
+    /// term's) is refused: nothing is kept, and false comes back.
+    @discardableResult
+    func setTermStart(_ day: Date) -> Bool {
+        let kept = calendar.startOfDay(for:day)
+        guard TermStart.isActive(custom:kept, today:now(), calendar:calendar) else { return false }
         customTermStart = kept
         if let preferences { TermStartStore(preferences:preferences, calendar:calendar).set(kept) }
         updateStats()
+        return true
     }
 
     /// Back to the default start day.
