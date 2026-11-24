@@ -29,7 +29,10 @@ struct ClearRecentOrdersSections: View {
                     VStack(alignment:.leading, spacing:8) {
                         Text(order.title).font(.headline).foregroundStyle(Color.primary)
                         Text(order.program).font(.subheadline).foregroundStyle(Color.secondary)
-                        if let amount = order.amount { Text(ClearCNY.text(amount)).monospacedDigit().foregroundStyle(Color.primary) }
+                        if let amount = order.amount {
+                            Text(ClearCNY.text(amount)).monospacedDigit().foregroundStyle(Color.primary)
+                                .lineLimit(1).minimumScaleFactor(0.5)
+                        }
                     }
                     .padding(.vertical,6)
                 }
@@ -57,7 +60,9 @@ struct ClearRecentOrdersSections: View {
                         }
                         Spacer(minLength:8)
                         if let amount = settled.amount {
+                            // One line at any text size: it shrinks first, the title beside it wraps.
                             Text(ClearCNY.text(amount)).monospacedDigit().foregroundStyle(Color.primary)
+                                .lineLimit(1).minimumScaleFactor(0.5).layoutPriority(1)
                         } else {
                             Text(ClearRecentOrders.noAmount).font(.caption).foregroundStyle(Color.secondary)
                         }

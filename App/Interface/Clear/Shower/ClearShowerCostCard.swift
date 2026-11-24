@@ -31,6 +31,7 @@ struct ClearShowerCostCard: View {
             // Only the platform's amount is ever shown.
             if let amount = page?.amount {
                 Text(ClearBalanceText.currency(amount.yuan)).font(.title2.weight(.semibold)).monospacedDigit()
+                    .lineLimit(1).minimumScaleFactor(0.5)
                     .accessibilityLabel("\(amount.yuanText) 元")
             } else {
                 missing

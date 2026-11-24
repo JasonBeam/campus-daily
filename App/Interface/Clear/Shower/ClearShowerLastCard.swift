@@ -26,7 +26,10 @@ struct ClearShowerLastCard: View {
                     }
                 }
                 Spacer(minLength:8)
-                if let cost = last.cost { Text(ClearBalanceText.currency(cost)).font(.subheadline).monospacedDigit() }
+                if let cost = last.cost {
+                    Text(ClearBalanceText.currency(cost)).font(.subheadline).monospacedDigit()
+                        .lineLimit(1).minimumScaleFactor(0.5).layoutPriority(1)
+                }
             }
             .accessibilityElement(children:.combine)
         }

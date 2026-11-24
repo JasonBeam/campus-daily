@@ -28,6 +28,7 @@ struct ClearLaundryOrderCard: View {
             if let amount = facts.amount {
                 Text(ClearCNY.text(amount))
                     .font(.system(.largeTitle, design:.rounded).weight(.semibold)).monospacedDigit()
+                    .lineLimit(1).minimumScaleFactor(0.5)
                     .foregroundStyle(Theme.ink)
                     .accessibilityLabel(LaundryFormat.spokenYuan(amount))
             }
