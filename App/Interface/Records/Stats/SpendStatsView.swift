@@ -43,8 +43,10 @@ struct SpendStatsView: View {
 
     @State private var selected: String?
     @State private var termSheet = false
-    /// A capsule was switched: the new total is read out once the stats come back.
-    @State private var announcing = false
+    /// Bumped with each switch; the latest reads the new total out a moment later.
+    @State private var switches = 0
+    /// Bumped when it is time to read the new total out.
+    @State private var announcement = 0
     /// The last category's refusal shows in the category note's place for a while (`refusalNote`).
     @State private var refusing = false
     /// Bumped with each refusal: only the latest puts the note back.
@@ -97,10 +99,8 @@ struct SpendStatsView: View {
         }
         .frame(maxWidth:.infinity, alignment:.leading)
         .onChange(of:span) { _, _ in selected = nil }
-        .onChange(of:stats) { _, new in
-            guard announcing else { return }
-            announcing = false
-            if let new { AccessibilityNotification.Announcement(text.spokenTotal(new)).post() }
+        .onChange(of:announcement) { _, _ in
+            if let stats { AccessibilityNotification.Announcement(text.spokenTotal(stats)).post() }
         }
         .onChange(of:pinned) { _, new in selected = new }
         .sheet(isPresented:$termSheet) {
@@ -120,8 +120,20 @@ struct SpendStatsView: View {
     private func switching(_ toggle: @escaping (CardRecordKind) -> Bool) -> (CardRecordKind) -> Bool {
         { kind in
             let done = toggle(kind)
-            if done { announcing = true } else { refused() }
+            if done { switched() } else { refused() }
             return done
+        }
+    }
+
+    /// The new total is read out 0.6 s after a switch, once VoiceOver has said the capsule's new
+    /// state; quick switches read only the last total.
+    private func switched() {
+        switches += 1
+        let mine = switches
+        Task { @MainActor in
+            try? await Task.sleep(for:.milliseconds(600))
+            guard mine == switches else { return }
+            announcement += 1
         }
     }
 
