@@ -103,6 +103,13 @@ public struct CardHistory: Sendable, Equatable {
         return dated.map { Self.trimmed($0.date) }.min()
     }
 
+    /// Every range back to `day` (`yyyyMMdd`) has been read to its end, or there is nothing older
+    /// to read: the records from `day` through today are all here (some days may be unsure).
+    public func hasRead(through day: String) -> Bool {
+        if reachedEnd { return true }
+        return readFrom.map { $0 <= day } ?? false
+    }
+
     /// Every record of `day` (`yyyyMMdd`) has been read, each once.
     public func isComplete(day: String) -> Bool {
         if mayRepeat.contains(day) || unsure.contains(day) { return false }
