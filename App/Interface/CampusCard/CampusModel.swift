@@ -98,6 +98,9 @@ struct PowerChoice: Identifiable, Equatable {
     /// Tests only: runs once the previous person's widget snapshot is cleared, before the
     /// hot-water binding goes (`previousPersonCleared`).
     var afterSnapshotCleared: (@MainActor () async -> Void)?
+    /// Tests only: runs right before the previous person's widget snapshot is cleared
+    /// (`previousPersonCleared`), the new person already signed in.
+    var beforeSnapshotCleared: (@MainActor () async -> Void)?
     /// Tests only: runs in a refresh right before its last await (who is signed in now), once
     /// the early checks passed.
     var beforeBalanceStamp: (@MainActor () async -> Void)?
@@ -203,7 +206,8 @@ struct PowerChoice: Identifiable, Equatable {
         // The round keeps the account generation of the call that started it (`roundTag`).
         let report = await refresher.refresh(inBackground:inBackground, includingChanges:force, tag:accountGeneration)
         lastReadCard = report.outcome == .ok
-        guard started == signOutGeneration else { return }
+        // Signed out, or someone else signed in, while it read: what it read is not theirs.
+        guard started == signOutGeneration, person == personChanges else { return }
         snapshot = report.snapshot
         snapshotPerson = person
         reloadAccount()
@@ -388,11 +392,15 @@ struct PowerChoice: Identifiable, Equatable {
         let refresher = refresher
         #if DEBUG
         let afterSnapshotCleared = afterSnapshotCleared
+        let beforeSnapshotCleared = beforeSnapshotCleared
         #endif
         let redraw = services.sharedDidChange
         let hotWater = await AccountSwitch.clearPreviousPerson(
             snapshot:{
                 var failure: Error?
+                #if DEBUG
+                await beforeSnapshotCleared?()
+                #endif
                 do { try await refresher.clear() } catch { failure = error }
                 #if DEBUG
                 await afterSnapshotCleared?()

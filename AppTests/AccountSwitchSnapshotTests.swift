@@ -30,14 +30,20 @@ final class AccountSwitchSnapshotTests: XCTestCase {
         }
     }
 
-    /// Holds the school's requests made while `holding` (a refresh's) until `open()`, then says
-    /// offline; later ones go to `check` (the card check answers B).
+    /// The school answering for one card at a time (`card`; its balance `yuan`; anything else
+    /// offline). Requests made while `holding` (a refresh's) wait until `open()`, then are
+    /// answered for whoever `card` is then.
     private final class HeldSchool: HTTPClient, @unchecked Sendable {
         private let lock = NSLock()
         private var holding = true
         private var waiters: [CheckedContinuation<Void, Never>] = []
-        private let check: CardCheck
-        init(check: CardCheck) { self.check = check }
+        private var answer: String
+        private let yuan: Double
+        init(card: String, yuan: Double) { answer = card; self.yuan = yuan }
+        var card: String {
+            get { lock.withLock { answer } }
+            set { lock.withLock { answer = newValue } }
+        }
         var held: Int { lock.withLock { waiters.count } }
         func stopHolding() { lock.withLock { holding = false } }
         func open() {
@@ -49,18 +55,24 @@ final class AccountSwitchSnapshotTests: XCTestCase {
             waiting.forEach { $0.resume() }
         }
         func send(_ request: HTTPRequest) async throws -> HTTPResponse {
-            var held = false
             await withCheckedContinuation { (go: CheckedContinuation<Void, Never>) in
                 let wait = lock.withLock { () -> Bool in
                     guard holding else { return false }
                     waiters.append(go)
                     return true
                 }
-                held = wait
                 if !wait { go.resume() }
             }
-            if held { throw ServiceError.offline }
-            return try await check.send(request)
+            let path = request.url.path
+            let body: String
+            if path.hasSuffix("/getSysBindCustInfo") {
+                body = #"{"code":0,"msg":"获取成功","data":[{"custid":"SYNTHETIC-CUST","custunionid":"\#(card)","custname":"测试员"}]}"#
+            } else if path.hasSuffix("/getUserBalance") {
+                body = #"{"code":0,"msg":"获取成功","data":\#(yuan)}"#
+            } else {
+                throw ServiceError.offline
+            }
+            return HTTPResponse(status:200, headers:["Content-Type":"application/json"], body:Data(body.utf8))
         }
     }
 
@@ -91,8 +103,8 @@ final class AccountSwitchSnapshotTests: XCTestCase {
                        applicationSupport:support, sharedDidChange:{ redraws.bump() })
     }
 
-    private func makeCampus(_ services: CampusServices) -> CampusModel {
-        let reminders = Reminders.sample(defaults:services.defaults)
+    private func makeCampus(_ services: CampusServices, reminders: Reminders? = nil) -> CampusModel {
+        let reminders = reminders ?? Reminders.sample(defaults:services.defaults)
         let shower = ShowerModel(services:services, reminders:reminders, activities:nil, gate:LiveShowerGate())
         return CampusModel(services:services, stack:services.schoolStack(), reminders:reminders) { shower }
     }
@@ -195,31 +207,52 @@ final class AccountSwitchSnapshotTests: XCTestCase {
         XCTAssertNil(pageB.prefill?())
     }
 
-    /// A home refresh started for A comes back after B signed in and A's numbers were cleared:
-    /// it doesn't put A's numbers back on home.
+    /// A home refresh started for A reads A's numbers (¥56.50) after B signed in, before A's
+    /// widget snapshot is cleared (no lease file: nothing keeps its write out of that gap):
+    /// home never shows them, reminders never judge them, and the clean-up leaves none stored.
     func testARefreshStartedBeforeASwitchDoesNotPutThePreviousPersonBack() async throws {
         let store = ScriptedStore()
         try seedPersonA(store)
-        let http = HeldSchool(check:CardCheck(card:"SYNTHETIC-CARD-B"))
-        let campus = makeCampus(makeServices(store, http:http, lease:nil))
+        let fresh = Money(fen:5650)
+        func isA(_ snapshot: HomeSnapshot?) -> Bool { showsPersonA(snapshot) || snapshot?.card.value == fresh }
+        let http = HeldSchool(card:"SYNTHETIC-CARD-A", yuan:56.5)
+        let services = makeServices(store, http:http, lease:nil)
+        let reminders = Reminders.sample(defaults:services.defaults)
+        var judged: [HomeSnapshot] = []
+        reminders.campusEvaluated = { judged.append($0) }
+        let campus = makeCampus(services, reminders:reminders)
         XCTAssertTrue(showsPersonA(campus.snapshot))
-        let refresh = Task { await campus.refresh(force:true) }
+
+        let refreshed = Counter()
+        let refresh = Task { await campus.refresh(force:true); refreshed.bump() }
         await waitUntil { http.held > 0 }
         XCTAssertGreaterThan(http.held, 0, "A's refresh is reading")
         http.stopHolding()
+        http.card = "SYNTHETIC-CARD-B"
 
-        let switched = Counter()
-        let signIn = Task { try await campus.adoptWebState(Self.webLogin(card:"SYNTHETIC-CARD-B")); switched.bump() }
-        await waitUntil { switched.value > 0 }
-        XCTAssertEqual(switched.value, 1, "B signed in while A's refresh was still reading")
-        XCTAssertFalse(showsPersonA(campus.snapshot), "after the switch")
-
-        http.open()
+        // B is signed in (stored, A's snapshot marked stale); right before A's snapshot is
+        // cleared, A's read gets its answers and finishes.
+        var storedInTheGap: HomeSnapshot?
+        var homeInTheGap: HomeSnapshot?
+        campus.beforeSnapshotCleared = {
+            http.card = "SYNTHETIC-CARD-A"
+            http.open()
+            await waitUntil { refreshed.value > 0 }
+            storedInTheGap = try? SharedSnapshotStore(store:store).loadSnapshot()
+            homeInTheGap = campus.snapshot
+        }
+        try await campus.adoptWebState(Self.webLogin(card:"SYNTHETIC-CARD-B"))
         await refresh.value
-        try await signIn.value
-        XCTAssertFalse(showsPersonA(campus.snapshot), "A's refresh came back after the switch")
-        XCTAssertNotEqual(try SharedSnapshotStore(store:store).loadSnapshot()?.card.value, Self.previousBalance,
-                          "nor wrote them back")
+
+        XCTAssertEqual(refreshed.value, 1, "A's refresh finished before the clean-up's clear")
+        XCTAssertEqual(storedInTheGap?.card.value, fresh, "A's read was written in the gap")
+        // Home still holds A's earlier numbers until the clean-up empties it; not the new read.
+        XCTAssertNotEqual(homeInTheGap?.card.value, fresh, "home, A's refresh just back")
+        XCTAssertFalse(isA(campus.snapshot), "home, after the clean-up")
+        XCTAssertFalse(isA(try SharedSnapshotStore(store:store).loadSnapshot()), "stored, after the clean-up")
+        XCTAssertEqual(try SharedSnapshotStore(store:store).loadSnapshot(), .empty)
+        XCTAssertNil(try store.read(.sharedSnapshotStale))
+        XCTAssertFalse(judged.contains(where:isA), "reminders never judged A's numbers")
     }
 
     func testASwitchAsksTheWidgetToRedrawEvenWhenTheClearFails() async throws {
