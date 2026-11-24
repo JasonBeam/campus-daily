@@ -9,29 +9,65 @@ import XCTest
 import Core
 @testable import XiaoRiChang
 
-/// 退出登录 forgets the records page's span and term start: the next account starts from 7 天 and
-/// 3月1日 / 9月1日.
+/// 退出登录 and a sign-in as someone else forget the records page's span and term start: the next
+/// account starts from 7 天 and 3月1日 / 9月1日.
 @MainActor
 final class SignOutRecordsPreferencesTests: XCTestCase {
-    func testSignOutClearsTheSpanAndTheTermStart() async {
-        let defaults = SampleDefaults()
-        let services = CampusServices(kind:.live, secureStore:ScriptedStore(), defaults:defaults, sharedPreferences:nil,
+    private func campus(_ store: ScriptedStore = ScriptedStore(), defaults: SampleDefaults) -> CampusModel {
+        let services = CampusServices(kind:.live, secureStore:store, defaults:defaults, sharedPreferences:nil,
                                       schoolHTTP:SampleHTTPClient(), showerHTTP:SampleHTTPClient(), laundryHTTP:SampleHTTPClient(),
                                       feedbackHTTP:nil, showerTransport:SampleShowerTransport(), leaseFile:nil,
                                       applicationSupport:nil, sharedDidChange:{})
-        let campus = CampusModel(services:services, stack:services.schoolStack(), reminders:.sample(defaults:defaults)) { nil }
+        return CampusModel(services:services, stack:services.schoolStack(), reminders:.sample(defaults:defaults)) { nil }
+    }
+
+    private func setPreferences(_ defaults: SampleDefaults) {
         defaults.set("term", forKey:SpendSpan.storeKey)
         defaults.set("20261114", forKey:TermStartStore.key)
         defaults.set("kept", forKey:"another.key")
+    }
+
+    private func assertForgotten(_ defaults: SampleDefaults, file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertNil(defaults.object(forKey:SpendSpan.storeKey), file:file, line:line)
+        XCTAssertNil(defaults.object(forKey:TermStartStore.key), file:file, line:line)
+        XCTAssertEqual(defaults.string(forKey:"another.key"), "kept", file:file, line:line)
+        let next = CardRecordsModel(source:SampleData.recordsSource(delay:.milliseconds(1)), preferences:defaults)
+        XCTAssertEqual(next.statsSpan, .week, file:file, line:line)
+        XCTAssertNil(next.customTermStart, file:file, line:line)
+    }
+
+    func testSignOutClearsTheSpanAndTheTermStart() async {
+        let defaults = SampleDefaults()
+        let campus = campus(defaults:defaults)
+        setPreferences(defaults)
 
         campus.signOut()
-
-        XCTAssertNil(defaults.object(forKey:SpendSpan.storeKey))
-        XCTAssertNil(defaults.object(forKey:TermStartStore.key))
-        XCTAssertEqual(defaults.string(forKey:"another.key"), "kept")
-        let next = CardRecordsModel(source:SampleData.recordsSource(delay:.milliseconds(1)), preferences:defaults)
-        XCTAssertEqual(next.statsSpan, .week)
-        XCTAssertNil(next.customTermStart)
         await campus.signOutsFinished()
+
+        XCTAssertFalse(campus.signOutFailed)
+        assertForgotten(defaults)
+    }
+
+    /// Someone else signs in without signing out first: the clean-up forgets them too.
+    func testAnAccountSwitchClearsTheSpanAndTheTermStart() async {
+        let defaults = SampleDefaults()
+        let campus = campus(defaults:defaults)
+        setPreferences(defaults)
+
+        await campus.previousPersonCleared(unconfirmed:false, dormAndMeterCleared:false, since:campus.signOutGeneration)
+
+        assertForgotten(defaults)
+    }
+
+    /// A clean-up overtaken by a sign-out (or a later sign-in) leaves what is stored now alone.
+    func testAnOvertakenSwitchLeavesThemAlone() async {
+        let defaults = SampleDefaults()
+        let campus = campus(defaults:defaults)
+        setPreferences(defaults)
+
+        await campus.previousPersonCleared(unconfirmed:false, dormAndMeterCleared:false, since:campus.signOutGeneration - 1)
+
+        XCTAssertEqual(defaults.string(forKey:SpendSpan.storeKey), "term")
+        XCTAssertEqual(defaults.string(forKey:TermStartStore.key), "20261114")
     }
 }

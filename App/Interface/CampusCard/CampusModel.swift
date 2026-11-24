@@ -354,7 +354,8 @@ struct PowerChoice: Identifiable, Equatable {
     /// The login was someone else, or nothing showed it was the same person: Core already
     /// dropped their school data and marked the snapshot stale. Here: the widget snapshot (a
     /// clear that fails is logged; the mark keeps it hidden), a request for the widget to draw
-    /// again, the hot-water binding made with their identity, and the one-time alert.
+    /// again, the hot-water binding made with their identity, the records page's span and term
+    /// start, and the one-time alert.
     /// Laundry (U净) is its own login and stays. Nothing is cleared once a sign-out came after
     /// the sign-in started (`started`), or someone else signed in after it (`person`: the
     /// `personChanges` it left; nil = now): what is stored now is whoever signed in after it,
@@ -362,6 +363,7 @@ struct PowerChoice: Identifiable, Equatable {
     func previousPersonCleared(unconfirmed: Bool, dormAndMeterCleared: Bool, since started: Int, person: Int? = nil) async {
         let person = person ?? personChanges
         guard started == signOutGeneration, person == personChanges else { return }
+        forgetRecordsStatsPreferences()
         // Before any wait: the previous person's binding no longer starts anything (a start that
         // hasn't sent its authorize request is taken back), and their balance goes.
         accountGeneration += 1
@@ -458,7 +460,12 @@ struct PowerChoice: Identifiable, Equatable {
         }
         configured = false; snapshot = .empty; profile = nil; issue = nil; account = nil
         lookup.clear(); powerMatchIssue = nil
-        // The next account's records page starts from 7 天 and the default term start.
+        forgetRecordsStatsPreferences()
+    }
+
+    /// The records page's span and term start were the person's who signed out or was switched
+    /// from: the next one starts from 7 天 and 3月1日 / 9月1日.
+    private func forgetRecordsStatsPreferences() {
         TermStartStore(preferences:services.defaults).clear()
         services.defaults.removeObject(forKey:SpendSpan.storeKey)
     }
