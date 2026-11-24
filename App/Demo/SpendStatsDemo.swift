@@ -16,7 +16,8 @@ import Core
 /// - `day`: the sample's 7 天, looking at its biggest day, as while pressing the bars;
 /// - `s30-on`: the sample's 30 天 with 电费 counted too (the others leave it out, as by default);
 /// - `s30-one`: the sample's 30 天 counting 食堂 only, the last capsule that can't be turned off;
-/// - `s7-zero`: the sample's 7 天 counting 电费 only, which it has none of: every capsule off;
+/// - `s7-zero`: the sample's 7 天 counting 电费 only, which it has none of: every capsule spent on off;
+/// - `refresh-failed`: the sample's 30 天, as if the newest records could not be read (a pull clears it);
 /// made up rather than worked out (synthetic amounts, today's dates), the span switch working
 /// on them and 改开学日 changing nothing:
 /// - `load`: 本学期 still reading; `empty`: 7 天 with nothing spent; `failed`: the read failed;
@@ -26,9 +27,10 @@ enum SpendStatsDemo: String {
     case s30On = "s30-on"
     case s30One = "s30-one"
     case s7Zero = "s7-zero"
+    case refreshFailed = "refresh-failed"
 
     /// Its stats are made up, not the sample records' own.
-    var madeUp: Bool { ![.s7, .day, .s30, .s30On, .s30One, .s7Zero, .sem].contains(self) }
+    var madeUp: Bool { ![.s7, .day, .s30, .s30On, .s30One, .s7Zero, .refreshFailed, .sem].contains(self) }
 
     /// The categories the sample's stats count (set on the sample's preferences when it opens).
     var categories: Set<CardRecordKind> {
@@ -53,7 +55,7 @@ enum SpendStatsDemo: String {
     var span: SpendSpan {
         switch self {
         case .s7, .day, .s7Zero, .empty, .failed: return .week
-        case .s30, .s30On, .s30One, .notes: return .month
+        case .s30, .s30On, .s30One, .refreshFailed, .notes: return .month
         case .sem, .load: return .term
         }
     }

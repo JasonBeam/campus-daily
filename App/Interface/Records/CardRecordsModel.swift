@@ -82,12 +82,38 @@ extension CardRecordsSource {
     var reloads: Int { state.reloads }
     /// The records kept from an earlier visit are shown, and the newest days could not be read
     /// again: the list and stats are as last read (a pull tries again).
-    var refreshFailed: Bool { state.refreshFailed }
+    var refreshFailed: Bool {
+        #if DEBUG
+        if demoRefreshFailed { return true }
+        #endif
+        return state.refreshFailed
+    }
+    #if DEBUG
+    /// `SpendStatsDemo.refreshFailed`: as if the newest records could not be read; a pull clears it.
+    @Published private(set) var demoRefreshFailed = false
+    private var demoRefreshFailedShown = false
+    /// Puts the demo's line up, once: the stats' row appearing again (scrolled back into view)
+    /// doesn't bring it back after a pull.
+    func showDemoRefreshFailed() {
+        guard !demoRefreshFailedShown else { return }
+        demoRefreshFailedShown = true
+        demoRefreshFailed = true
+    }
+    #endif
     /// The calendar the records are read in (the school's, or the sample's).
     var calendar: Calendar { loader.calendar }
 
     /// From today again (first visit, pull), then back as far as the stats need.
-    func reload() async { await loader.reload() }
+    func reload() async {
+        #if DEBUG
+        // A pull after the demo's line came clears it; the first read, still running then, doesn't.
+        let demoShown = demoRefreshFailed
+        #endif
+        await loader.reload()
+        #if DEBUG
+        if demoShown { demoRefreshFailed = false }
+        #endif
+    }
     /// Older records: when the list's end appears, or 「点这里再试」.
     func loadMore() async { await loader.loadMore() }
 

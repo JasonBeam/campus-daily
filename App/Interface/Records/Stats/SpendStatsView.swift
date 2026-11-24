@@ -38,6 +38,9 @@ struct SpendStatsView: View {
     var toggleCategory: ((CardRecordKind) -> Bool)?
     /// Every category counted (`CardRecordsModel.includedCategories`); nil: those counted on the list.
     var counted: Set<CardRecordKind>?
+    /// The records shown are those kept from before; the newest could not be read
+    /// (`CardRecordsModel.refreshFailed`): a line says so under the span switch.
+    var stale = false
     /// The records' calendar (`CardRecordsModel.calendar`): days are named and picked in it.
     let calendar: Calendar
 
@@ -56,10 +59,12 @@ struct SpendStatsView: View {
 
     init(phase: Phase, span: Binding<SpendSpan>, placeholder: [SpendBar] = [], term: TermStartSheet.Term? = nil,
          setTermStart: @escaping (Date?) -> Void = { _ in }, pinned: String? = nil, comparing: Bool = false,
-         toggleCategory: ((CardRecordKind) -> Bool)? = nil, counted: Set<CardRecordKind>? = nil, calendar: Calendar) {
+         toggleCategory: ((CardRecordKind) -> Bool)? = nil, counted: Set<CardRecordKind>? = nil, stale: Bool = false,
+         calendar: Calendar) {
         self.phase = phase; _span = span; self.placeholder = placeholder; self.term = term
         self.setTermStart = setTermStart; self.pinned = pinned; self.comparing = comparing
-        self.toggleCategory = toggleCategory; self.counted = counted; self.calendar = calendar
+        self.toggleCategory = toggleCategory; self.counted = counted; self.stale = stale
+        self.calendar = calendar
         _selected = State(initialValue:pinned)
     }
 
@@ -80,7 +85,8 @@ struct SpendStatsView: View {
             if phase == .failed {
                 failedLine.padding(.top,10)
             } else {
-                headline.padding(.top,10)
+                if stale { staleLine }
+                headline.padding(.top,stale ? 2 : 10)
                 chart.padding(.top,20)
                 if !shares.isEmpty {
                     // The capsules' 44pt rows put the first one's face 18 under the chart.
@@ -325,7 +331,22 @@ struct SpendStatsView: View {
         return SpendBarsPlaceholder.bars(span, termStart:term?.start ?? Date(), calendar:calendar)
     }
 
-    // MARK: Lines under the chart
+    // MARK: Lines
+
+    /// Over everything under the span switch, as the stats and the list are both as last read.
+    /// Gone at once when a pull reads the newest.
+    private var staleLine: some View {
+        HStack(alignment:.firstTextBaseline, spacing:5) {
+            Image(systemName:"exclamationmark.arrow.circlepath").accessibilityHidden(true)
+            Text(text.refreshFailed).fixedSize(horizontal:false, vertical:true)
+        }
+        .scaledFont(13, relativeTo:.footnote)
+        .foregroundStyle(Theme.ink2)
+        .padding(.vertical,8)
+        .accessibilityElement(children:.combine)
+        .accessibilityIdentifier("recordsRefreshFailed")
+        .transition(.identity)
+    }
 
     private var failedLine: some View {
         HStack(alignment:.firstTextBaseline, spacing:5) {

@@ -224,6 +224,12 @@ struct SpendStatsText {
         isLastCounted(share, counted:counted) ? lastCategoryNote : "轻点两下，加进或拿出统计"
     }
 
+    /// The records kept from before are shown and the newest could not be read
+    /// (`CardRecordsModel.refreshFailed`): over the stats, as both they and the list are old.
+    var refreshFailed: String {
+        warm ? "最新的记录没读到，这里是刚才读到的。下拉再试。" : "未能读取最新记录，当前显示此前读取的内容；可下拉重试"
+    }
+
     /// The last category counted was tapped: read out, and for a while in the category note's place.
     static let lastCategoryNote = "至少要留一类，这一类拿不掉"
 
