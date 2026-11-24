@@ -46,7 +46,7 @@ import Core
 
     private func settled(_ model: CardRecordsModel, file: StaticString = #filePath, line: UInt = #line) async throws {
         for _ in 0..<1000 {
-            if model.phase == .loaded, !model.statsLoading, !model.loadingMore { return }
+            if model.phase == .loaded, !model.statsLoading, !model.comparisonLoading, !model.loadingMore { return }
             try await Task.sleep(for:.milliseconds(10))
         }
         XCTFail("the stats never came", file:file, line:line)

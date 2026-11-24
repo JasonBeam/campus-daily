@@ -34,11 +34,15 @@ extension CardRecordsSource {
             updateStats()
         }
     }
-    /// The stats for `statsSpan`; nil while the records are read (`statsLoading`) or when they
-    /// could not be (`statsFailed`). Given once the span and the period before it are read, or
-    /// the read stopped short of the period before it.
+    /// The stats for `statsSpan`; nil while the span's records are read (`statsLoading`) or when
+    /// they could not be (`statsFailed`). Given as soon as the span itself is read; its
+    /// `versusPrevious` stays nil while the period before it is read (`comparisonLoading`).
     @Published private(set) var stats: SpendStats?
     @Published private(set) var statsLoading = true
+    /// The stats are shown and the period before the span is still being read for the
+    /// comparison (7 / 30 days only): `stats.versusPrevious` comes when it is. False once it
+    /// came, or the read stopped (`moreFailed`: no comparison).
+    @Published private(set) var comparisonLoading = false
     /// The span's records could not be read (the first read failed, or an older page did).
     @Published private(set) var statsFailed = false
     /// The start day the user set for this term, whether or not it still counts.
@@ -122,11 +126,11 @@ extension CardRecordsSource {
     private func updateStats() {
         switch state.phase {
         case .loading:
-            set(stats:nil, loading:true, failed:false)
+            set(stats:nil, loading:true, failed:false, comparing:false)
         case .failed:
-            set(stats:nil, loading:false, failed:true)
+            set(stats:nil, loading:false, failed:true, comparing:false)
         case .loaded:
-            guard let history = state.history else { set(stats:nil, loading:false, failed:true); return }
+            guard let history = state.history else { set(stats:nil, loading:false, failed:true, comparing:false); return }
             let start = termStart
             let first = SpendStats.firstDayNeeded(span:statsSpan, today:now(), termStart:start, calendar:calendar)
             let made = SpendStats.make(span:statsSpan, history:history, termStart:start, calendar:calendar)
@@ -135,19 +139,22 @@ extension CardRecordsSource {
             let moved = loader.target != first
             loader.setTarget(first)
             if history.hasRead(through:first) || state.moreFailed {
-                set(stats:made, loading:false, failed:made == nil)
+                set(stats:made, loading:false, failed:made == nil, comparing:false)
                 return
             }
-            set(stats:nil, loading:true, failed:false)
+            // The span itself is read (`made`): its stats show, and the comparison follows once the
+            // period before it is.
+            set(stats:made, loading:made == nil, failed:false, comparing:made != nil)
             if moved || (!state.loadingMore && !state.reloading) {
                 Task { [weak self] in await self?.loader.loadMore() }
             }
         }
     }
 
-    private func set(stats: SpendStats?, loading: Bool, failed: Bool) {
+    private func set(stats: SpendStats?, loading: Bool, failed: Bool, comparing: Bool) {
         if self.stats != stats { self.stats = stats }
         if statsLoading != loading { statsLoading = loading }
         if statsFailed != failed { statsFailed = failed }
+        if comparisonLoading != comparing { comparisonLoading = comparing }
     }
 }
