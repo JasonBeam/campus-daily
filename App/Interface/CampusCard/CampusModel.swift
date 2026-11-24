@@ -64,6 +64,9 @@ struct PowerChoice: Identifiable, Equatable {
     /// page opened again shows them and reads only the newest days (`CardRecordsLoader`). Never
     /// written anywhere; a new, empty one with every change of person.
     private(set) var recordsMemory = CardRecordsMemory()
+    /// The `personChanges` the shown `snapshot` was read for: after a switch of person it stays
+    /// the previous person's until their clean-up empties it.
+    private var snapshotPerson = 0
     private var lastRefresh: Date?
     /// The last refresh read the card (its session alive, or renewed).
     private var lastReadCard = false
@@ -123,7 +126,9 @@ struct PowerChoice: Identifiable, Equatable {
         configured = shown.signedIn
         profile = shown.profile
         account = shown.account
+        // The stored one: the previous person's is marked stale at a switch and reads as empty.
         snapshot = refresher.latest()
+        snapshotPerson = personChanges
     }
 
     /// The previous person's snapshot still stored under the stale mark: replaced by the empty
@@ -194,11 +199,13 @@ struct PowerChoice: Identifiable, Equatable {
         refreshesRunning += 1; loading = true
         defer { refreshesRunning -= 1; loading = refreshesRunning > 0 }
         let started = signOutGeneration
+        let person = personChanges
         // The round keeps the account generation of the call that started it (`roundTag`).
         let report = await refresher.refresh(inBackground:inBackground, includingChanges:force, tag:accountGeneration)
         lastReadCard = report.outcome == .ok
         guard started == signOutGeneration else { return }
         snapshot = report.snapshot
+        snapshotPerson = person
         reloadAccount()
         // A cancelled refresh (the view went away, the pull was abandoned) reads as offline; that
         // says nothing about the school, so it neither shows an issue nor counts as a refresh.
@@ -402,7 +409,7 @@ struct PowerChoice: Identifiable, Equatable {
                 return hotWater()?.clearBindingForAccountSwitch() ?? AccountSwitch.HotWater.none
             })
         guard started == signOutGeneration, person == personChanges else { return }
-        snapshot = .empty
+        snapshot = .empty; snapshotPerson = personChanges
         switchNotice = AccountSwitchNotice(previousPersonUnconfirmed:unconfirmed, dormAndMeterCleared:dormAndMeterCleared,
                                            hotWaterCleared:hotWater.noticed)
     }
@@ -437,7 +444,7 @@ struct PowerChoice: Identifiable, Equatable {
         signOutGeneration += 1; personChanges += 1; accountGeneration += 1
         hotWater()?.noteBalance(nil)
         _ = await signOuts.start().value
-        configured = false; snapshot = .empty; profile = nil; issue = nil; account = nil
+        configured = false; snapshot = .empty; snapshotPerson = personChanges; profile = nil; issue = nil; account = nil
         lookup.clear(); powerMatchIssue = nil; lastRefresh = nil
     }
 
@@ -467,8 +474,14 @@ struct PowerChoice: Identifiable, Equatable {
             // Only once signed out: a failed sign-out leaves the person, and their settings.
             forgetRecordsStatsPreferences()
         }
-        configured = false; snapshot = .empty; profile = nil; issue = nil; account = nil
+        configured = false; snapshot = .empty; snapshotPerson = personChanges; profile = nil; issue = nil; account = nil
         lookup.clear(); powerMatchIssue = nil
+    }
+
+    /// Home's last card records for 校园卡记录 to show until its own come: nil while the snapshot
+    /// shown is still a previous person's (a switch whose clean-up hasn't emptied it yet).
+    var recordsPrefill: CardActivity? {
+        snapshotPerson == personChanges ? snapshot.activity.value : nil
     }
 
     /// Who a records page is for: it changes with the graph and with every sign-out or change of

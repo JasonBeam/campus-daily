@@ -12,15 +12,20 @@ extension CardRecordsSource {
     /// `campus`'s school session (the live one, or a sample's, which reads nothing): pages for
     /// the person signed in when the list was read from today. The records are kept in memory for
     /// the person while the app runs (`CampusModel.recordsMemory`), and home's last records show
-    /// until the first page comes.
+    /// until the first page comes, if they are that person's (`CampusModel.recordsPrefill`).
     @MainActor static func school(_ campus: CampusModel) -> CardRecordsSource {
         let session = campus.schoolSession
+        // Home's records are shown only for the person the page was made for.
+        let person = campus.personChanges
         return CardRecordsSource(stamp:{ await session.personStamp() },
                                  page:{ query, stamp in try await session.cardHistoryPage(query, since:stamp) },
                                  samePerson:{ await session.isSamePerson(since:$0) },
                                  renew:{ [weak campus] in await campus?.renewCardSession() ?? false },
                                  memory:campus.recordsMemory,
-                                 prefill:{ [weak campus] in campus?.snapshot.activity.value })
+                                 prefill:{ [weak campus] in
+                                     guard let campus, campus.personChanges == person else { return nil }
+                                     return campus.recordsPrefill
+                                 })
     }
 }
 

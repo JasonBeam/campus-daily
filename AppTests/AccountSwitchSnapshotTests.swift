@@ -135,6 +135,32 @@ final class AccountSwitchSnapshotTests: XCTestCase {
         XCTAssertTrue(campus.recordsMemory.isEmpty)
     }
 
+    /// B signs in over A and 校园卡记录 opens before A's numbers are cleared from home: home's
+    /// last records are still A's then, so no page shows them, B's new one or A's still open.
+    func testASwitchedPersonsPageIsNotPrefilledWithThePreviousPersonsRecords() async throws {
+        let store = ScriptedStore()
+        try StoredSchoolVault(store:store).saveEcyktSession(EcyktSession(token:"SYNTHETIC-A", syscustid:"SYNTHETIC-SYS",
+                                                                        cardUnionID:"SYNTHETIC-CARD-A"))
+        try SharedSnapshotStore(store:store).saveSnapshot(SampleData.homeSnapshot(now:Date()))
+        let campus = makeCampus(makeServices(store, http:CardCheck(card:"SYNTHETIC-CARD-B"), lease:nil))
+        let pageA = CardRecordsSource.school(campus)
+        XCTAssertNotNil(pageA.prefill?(), "A's own page shows home's records")
+
+        let held = ShowerBalanceAccountTests.Gate()
+        var cleaning = false
+        campus.afterSnapshotCleared = { cleaning = true; await held.wait() }
+        let signIn = Task { try await campus.adoptWebState(Self.webLogin(card:"SYNTHETIC-CARD-B")) }
+        await waitUntil { cleaning }
+        XCTAssertNotNil(campus.snapshot.activity.value, "home still holds A's records while the clean-up runs")
+        let pageB = CardRecordsSource.school(campus)
+        XCTAssertNil(pageB.prefill?(), "B's page, opened at once")
+        XCTAssertNil(pageA.prefill?(), "A's page, still open")
+
+        held.open()
+        try await signIn.value
+        XCTAssertNil(pageB.prefill?())
+    }
+
     func testASwitchAsksTheWidgetToRedrawEvenWhenTheClearFails() async throws {
         let store = ScriptedStore()
         try seedPersonA(store)
