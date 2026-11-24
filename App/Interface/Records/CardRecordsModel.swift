@@ -22,8 +22,9 @@ extension CardRecordsSource {
 
 /// 校园卡记录's state for SwiftUI, over Core's `CardRecordsLoader`, and the page's spending
 /// stats (`SpendStats`) for the span chosen. The records are not stored: every visit (and every
-/// pull) starts from today, and reads back as far as the stats need. The span and the start day
-/// set for this term are kept in the graph's preferences once `bind(_:)` gives them.
+/// pull) starts from today, and reads back as far as the stats need. The span, the start day
+/// set for this term and the categories counted are kept in the graph's preferences once
+/// `bind(_:)` gives them.
 @MainActor final class CardRecordsModel: ObservableObject {
     @Published private(set) var state = CardRecordsState()
     /// The stats' span: kept under `SpendSpan.storeKey`; the records are read back far enough for it.
@@ -47,6 +48,9 @@ extension CardRecordsSource {
     @Published private(set) var statsFailed = false
     /// The start day the user set for this term, whether or not it still counts.
     @Published private(set) var customTermStart: Date?
+    /// The categories the stats count (`toggleCategory(_:)`): kept under `SpendCategoryStore.key`,
+    /// all but 电费 until the user changes it.
+    @Published private(set) var includedCategories = SpendCategories.defaultIncluded
 
     private let loader: CardRecordsLoader
     private let now: () -> Date
@@ -83,6 +87,7 @@ extension CardRecordsSource {
         guard self.preferences !== preferences else { return }
         self.preferences = preferences
         customTermStart = TermStartStore(preferences:preferences, calendar:calendar).custom
+        includedCategories = SpendCategoryStore(preferences:preferences).included
         if let raw = preferences.object(forKey:SpendSpan.storeKey) as? String, let span = SpendSpan(rawValue:raw),
            span != statsSpan {
             statsSpan = span
@@ -121,6 +126,27 @@ extension CardRecordsSource {
         updateStats()
     }
 
+    /// Counts `kind` in the stats, or stops counting it; kept, and the stats worked out again
+    /// from the records read (nothing is read). The last category counted is not turned off:
+    /// one that would leave no category counted on the list (`stats.shares`, or all of them
+    /// while there are no stats) is refused, and false comes back. Top-ups are never counted.
+    @discardableResult
+    func toggleCategory(_ kind: CardRecordKind) -> Bool {
+        guard SpendCategories.all.contains(kind) else { return false }
+        var next = includedCategories
+        if next.contains(kind) {
+            next.remove(kind)
+            let listed = stats.map { $0.shares.map(\.kind) } ?? SpendCategories.all
+            guard listed.contains(where:next.contains) else { return false }
+        } else {
+            next.insert(kind)
+        }
+        includedCategories = next
+        if let preferences { SpendCategoryStore(preferences:preferences).set(next) }
+        updateStats()
+        return true
+    }
+
     /// Works the stats out again from the records read, and has older pages read when the span
     /// needs them.
     private func updateStats() {
@@ -133,7 +159,8 @@ extension CardRecordsSource {
             guard let history = state.history else { set(stats:nil, loading:false, failed:true, comparing:false); return }
             let start = termStart
             let first = SpendStats.firstDayNeeded(span:statsSpan, today:now(), termStart:start, calendar:calendar)
-            let made = SpendStats.make(span:statsSpan, history:history, termStart:start, calendar:calendar)
+            let made = SpendStats.make(span:statsSpan, history:history, termStart:start, included:includedCategories,
+                                       calendar:calendar)
             // Always the span's day, a nearer one too: a read running stops there, and a pull
             // reads back to it only.
             let moved = loader.target != first

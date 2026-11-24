@@ -468,10 +468,11 @@ struct PowerChoice: Identifiable, Equatable {
     /// person, so a page (and its `CardRecordsModel`) never outlives the person it read.
     var recordsIdentity: CardRecordsIdentity { CardRecordsIdentity(services:services.id, person:personChanges) }
 
-    /// The records page's span and term start were the person's who signed out or was switched
-    /// from: the next one starts from 7 天 and 3月1日 / 9月1日.
+    /// The records page's span, term start and categories were the person's who signed out or
+    /// was switched from: the next one starts from 7 天, 3月1日 / 9月1日 and all but 电费.
     private func forgetRecordsStatsPreferences() {
         TermStartStore(preferences:services.defaults).clear()
+        SpendCategoryStore(preferences:services.defaults).clear()
         services.defaults.removeObject(forKey:SpendSpan.storeKey)
     }
 

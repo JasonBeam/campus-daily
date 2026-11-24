@@ -9,8 +9,9 @@ import XCTest
 import Core
 @testable import XiaoRiChang
 
-/// 退出登录 and a sign-in as someone else forget the records page's span and term start: the next
-/// account starts from 7 天 and 3月1日 / 9月1日. A sign-out that fails keeps them.
+/// 退出登录 and a sign-in as someone else forget the records page's span, term start and
+/// categories: the next account starts from 7 天, 3月1日 / 9月1日 and all but 电费. A sign-out that
+/// fails keeps them.
 @MainActor
 final class SignOutRecordsPreferencesTests: XCTestCase {
     private func campus(_ store: ScriptedStore = ScriptedStore(), defaults: SampleDefaults) -> CampusModel {
@@ -24,16 +25,19 @@ final class SignOutRecordsPreferencesTests: XCTestCase {
     private func setPreferences(_ defaults: SampleDefaults) {
         defaults.set("term", forKey:SpendSpan.storeKey)
         defaults.set("20261114", forKey:TermStartStore.key)
+        SpendCategoryStore(preferences:defaults).set([.canteen, .electricity])
         defaults.set("kept", forKey:"another.key")
     }
 
     private func assertForgotten(_ defaults: SampleDefaults, file: StaticString = #filePath, line: UInt = #line) {
         XCTAssertNil(defaults.object(forKey:SpendSpan.storeKey), file:file, line:line)
         XCTAssertNil(defaults.object(forKey:TermStartStore.key), file:file, line:line)
+        XCTAssertNil(defaults.object(forKey:SpendCategoryStore.key), file:file, line:line)
         XCTAssertEqual(defaults.string(forKey:"another.key"), "kept", file:file, line:line)
         let next = CardRecordsModel(source:SampleData.recordsSource(delay:.milliseconds(1)), preferences:defaults)
         XCTAssertEqual(next.statsSpan, .week, file:file, line:line)
         XCTAssertNil(next.customTermStart, file:file, line:line)
+        XCTAssertEqual(next.includedCategories, SpendCategories.defaultIncluded, file:file, line:line)
     }
 
     func testSignOutClearsTheSpanAndTheTermStart() async {
@@ -63,6 +67,7 @@ final class SignOutRecordsPreferencesTests: XCTestCase {
         XCTAssertTrue(campus.signOutFailed)
         XCTAssertEqual(defaults.string(forKey:SpendSpan.storeKey), "term")
         XCTAssertEqual(defaults.string(forKey:TermStartStore.key), "20261114")
+        XCTAssertEqual(SpendCategoryStore(preferences:defaults).included, [.canteen, .electricity])
     }
 
     /// The records pages are made again after a sign-out (and per graph): a page left open
@@ -101,5 +106,6 @@ final class SignOutRecordsPreferencesTests: XCTestCase {
 
         XCTAssertEqual(defaults.string(forKey:SpendSpan.storeKey), "term")
         XCTAssertEqual(defaults.string(forKey:TermStartStore.key), "20261114")
+        XCTAssertEqual(SpendCategoryStore(preferences:defaults).included, [.canteen, .electricity])
     }
 }
