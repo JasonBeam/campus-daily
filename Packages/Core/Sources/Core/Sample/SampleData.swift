@@ -115,11 +115,12 @@ public enum SampleData {
             if back % 3 == 2 { rows.append(record(at(21, 30, back), "蓝牙热水", "1.10", school)) }
             if back % 5 == 4 { rows.append(record(at(19, 12, back), "洗衣", "4.00", school)) }
             if back % 30 == 15 { rows.append(record(at(13, 5, back), "校园卡充值", ["50.00", "100.00"][back / 30 % 2], school, flag: nil)) }
-            // A shop now and then, and the dorm's electricity once a month, so weeks differ.
+            // A shop now and then, and the dorm's electricity once a month (paid for the whole
+            // room, so it dwarfs a day's meals), so weeks differ.
             if back % 7 == 5 || back % 11 == 6 {
                 rows.append(record(at(15, 40, back), "示例便利店", ["6.80", "12.50", "9.90", "23.00", "4.50"][back / 7 % 5], school))
             }
-            if back % 30 == 20 { rows.append(record(at(10, 3, back), "电费", ["30.00", "20.00", "50.00"][back / 30 % 3], school)) }
+            if back % 30 == 20 { rows.append(record(at(10, 3, back), "电费", ["120.00", "80.00", "100.00"][back / 30 % 3], school)) }
         }
         // Each with a voucher, as the school gives them (synthetic: 99 and a zero-padded counter).
         // A meal paid with WeChat comes as the school sends it: WeChat's money in, then the

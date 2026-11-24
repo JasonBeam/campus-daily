@@ -43,7 +43,12 @@ extension SpendStats {
     /// one of its records may be money in or out (left out). When the list has reached its end
     /// and the school's oldest record is after the span's first day, the stats begin on that
     /// record's day (`coveredFrom`) and the average is over the days from it.
+    ///
+    /// Only the categories in `included` count: the total, the average, the comparison and the
+    /// bars leave the others out, and so does a day's doubt about a record of theirs. `shares`
+    /// still lists every category left out, with what was spent on it.
     public static func make(span: SpendSpan, history: CardHistory, termStart: Date,
+                            included: Set<CardRecordKind> = Set(SpendCategories.all),
                             calendar: Calendar = SchoolCalendar.shanghai) -> SpendStats? {
         let today = history.today
         let first: Date
@@ -62,18 +67,18 @@ extension SpendStats {
             let day = CardHistory.trimmed(record.date)
             let readableDay = day.count == 8 && day.allSatisfy { $0.isASCII && $0.isNumber }
             if readableDay { oldest = min(oldest ?? day, day) }
+            // Paid from the card under a top-up's name (「网费充值」, 「xx圈存」): spent on
+            // something else.
+            let named = CardRecordKind.of(record)
+            let kind: CardRecordKind = named == .topUp ? .other : named
             switch CardSpend.of(record, calendar: calendar) {
             case .moneyIn: continue
             case .unsure(let unsureDay):
-                // Its day, when readable, can't be summed for sure.
-                if let unsureDay { doubtful.insert(unsureDay) }
+                // Its day, when readable, can't be summed for sure, unless it would not count.
+                if let unsureDay, included.contains(kind) { doubtful.insert(unsureDay) }
             case .paid(_, let amount):
-                // Paid from the card under a top-up's name (「网费充值」, 「xx圈存」): spent on
-                // something else.
-                let named = CardRecordKind.of(record)
-                let kind: CardRecordKind = named == .topUp ? .other : named
-                spentOn[day, default: 0] += amount.fen
                 if day >= firstID && day <= spanDays.last!.id { byKind[kind, default: 0] += amount.fen }
+                if included.contains(kind) { spentOn[day, default: 0] += amount.fen }
             }
         }
 
@@ -111,13 +116,19 @@ extension SpendStats {
         }
         if !bars.isEmpty { bars[bars.count - 1].axisLabel = span == .term ? "本周" : "今天" }
 
-        let shares = byKind.filter { $0.value > 0 }
+        // Left out, it stays on the list at nothing spent: it can be counted again from there.
+        for kind in SpendCategories.all where !included.contains(kind) && byKind[kind] == nil { byKind[kind] = 0 }
+        let shares = byKind.filter { $0.value > 0 || !included.contains($0.key) }
             .sorted { a, b in
                 if (a.key == .other) != (b.key == .other) { return b.key == .other }
                 if a.value != b.value { return a.value > b.value }
                 return order(a.key) < order(b.key)
             }
-            .map { SpendShare(kind: $0.key, spent: Money(fen: $0.value), fraction: total > 0 ? Double($0.value) / Double(total) : 0) }
+            .map { share in
+                let counted = included.contains(share.key)
+                return SpendShare(kind: share.key, spent: Money(fen: share.value),
+                                  fraction: counted && total > 0 ? Double(share.value) / Double(total) : 0, included: counted)
+            }
 
         return SpendStats(span: span, total: Money(fen: total),
                           dailyAverage: Money(fen: dividedRounding(total, by: max(covered.count, 1))),

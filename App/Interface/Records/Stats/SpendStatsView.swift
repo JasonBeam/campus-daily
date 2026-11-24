@@ -48,6 +48,8 @@ struct SpendStatsView: View {
     private var stats: SpendStats? { if case .loaded(let stats) = phase, stats.span == span { return stats }; return nil }
     private var loading: Bool { phase == .loading || (stats == nil && phase != .failed) }
     private var empty: Bool { stats?.isEmpty == true }
+    /// The categories counted: until the category switches come, the ones left out are not listed.
+    private var countedShares: [SpendShare] { stats?.shares.filter(\.included) ?? [] }
     private var selectedBar: SpendBar? { selected.flatMap { id in stats?.bars.first { $0.id == id } } }
 
     var body: some View {
@@ -58,8 +60,8 @@ struct SpendStatsView: View {
             } else {
                 headline.padding(.top,10)
                 chart.padding(.top,20)
-                if let stats, !stats.isEmpty, !stats.shares.isEmpty {
-                    SpendShareFlow(shares:stats.shares).padding(.top,18)
+                if let stats, !stats.isEmpty, !countedShares.isEmpty {
+                    SpendShareFlow(shares:countedShares).padding(.top,18)
                 }
             }
             if span == .term, let term { termRow(term).padding(.top,8) }
