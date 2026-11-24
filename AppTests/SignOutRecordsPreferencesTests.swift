@@ -65,6 +65,21 @@ final class SignOutRecordsPreferencesTests: XCTestCase {
         XCTAssertEqual(defaults.string(forKey:TermStartStore.key), "20261114")
     }
 
+    /// The records pages are made again after a sign-out (and per graph): a page left open
+    /// keeps none of the person's span or term start in memory.
+    func testASignOutGivesTheRecordsPagesANewIdentity() async {
+        let defaults = SampleDefaults()
+        let campus = campus(defaults:defaults)
+        let other = self.campus(defaults:SampleDefaults())
+        let before = campus.recordsIdentity
+        XCTAssertNotEqual(before, other.recordsIdentity)
+
+        campus.signOut()
+
+        XCTAssertNotEqual(campus.recordsIdentity, before)
+        await campus.signOutsFinished()
+    }
+
     /// Someone else signs in without signing out first: the clean-up forgets them too.
     func testAnAccountSwitchClearsTheSpanAndTheTermStart() async {
         let defaults = SampleDefaults()

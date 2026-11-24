@@ -305,7 +305,10 @@ extension HomeView {
             WasherSetupView(onDone:washerSetupDone)
             #endif
         case .records:
+            // A new page (and records model) for each person: none of the last one's records,
+            // span or term start stays in memory.
             CardRecordsView(app:recordsDemo?.app() ?? data.recentActivities, source:recordsDemo?.source ?? .school(campus))
+                .id(campus.recordsIdentity)
         }
     }
 

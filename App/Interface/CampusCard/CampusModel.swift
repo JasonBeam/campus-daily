@@ -464,6 +464,10 @@ struct PowerChoice: Identifiable, Equatable {
         lookup.clear(); powerMatchIssue = nil
     }
 
+    /// Who a records page is for: it changes with the graph and with every sign-out or change of
+    /// person, so a page (and its `CardRecordsModel`) never outlives the person it read.
+    var recordsIdentity: CardRecordsIdentity { CardRecordsIdentity(services:services.id, person:personChanges) }
+
     /// The records page's span and term start were the person's who signed out or was switched
     /// from: the next one starts from 7 天 and 3月1日 / 9月1日.
     private func forgetRecordsStatsPreferences() {
@@ -622,4 +626,10 @@ struct PowerChoice: Identifiable, Equatable {
             : slow ? ServiceError.timedOut.userMessage : running ? nil : Self.stoppedIssue
     }
     #endif
+}
+
+/// `CampusModel.recordsIdentity`: the records pages' view identity.
+struct CardRecordsIdentity: Hashable, Sendable {
+    let services: UUID
+    let person: Int
 }

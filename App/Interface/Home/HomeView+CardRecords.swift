@@ -17,7 +17,8 @@ extension HomeView {
         guard data.signedIn, !sample.isActive else { return ShowerCardRecords() }
         // A DEBUG demo's link opens synthetic pages, never the school's.
         let page = ShowerCardRecords.Page(app:recordsDemo?.app() ?? data.recentActivities,
-                                          source:recordsDemo?.source ?? (demo != nil ? RecordsDemo.list.source : .school(campus)))
+                                          source:recordsDemo?.source ?? (demo != nil ? RecordsDemo.list.source : .school(campus)),
+                                          identity:campus.recordsIdentity)
         return ShowerCardRecords(page:page, openFromCover:{ openCardRecordsFromShowerPage() },
                                  activity:data.snapshot.activity.value, calendar:data.calendar)
     }
