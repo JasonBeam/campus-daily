@@ -150,7 +150,7 @@ final class CardHistoryJoinTests: XCTestCase {
         h.prefill(activity(home))
         XCTAssertEqual(h.records.count, 7)
         XCTAssertEqual(h.readThrough, id(back: 6))
-        XCTAssertTrue(h.isComplete(day: id(back: 1)), "a day home read in full has its total")
+        XCTAssertFalse(h.isComplete(day: id(back: 1)), "home's records of a day are not this read's: no total")
         XCTAssertFalse(h.isComplete(day: id(back: 0)), "home read today some time ago")
         XCTAssertFalse(h.isComplete(day: id(back: 7)))
         XCTAssertFalse(h.hasRead(through: id(back: 0)))
@@ -158,8 +158,7 @@ final class CardHistoryJoinTests: XCTestCase {
         XCTAssertEqual(h.nextQuery?.page, 1, "the read starts as usual")
         let days = CardDays.groups(history: h, app: [], now: noon, calendar: cal)
         XCTAssertEqual(days.map(\.id), (0..<7).map { id(back: $0) })
-        XCTAssertNil(days[0].total)
-        XCTAssertEqual(days[1].total, Money(fen: 1000))
+        XCTAssertTrue(days.allSatisfy { $0.total == nil }, "no day total until the read has the day")
     }
 
     /// The first page cuts yesterday: today and yesterday are the read's own, the days before
@@ -178,7 +177,8 @@ final class CardHistoryJoinTests: XCTestCase {
         XCTAssertEqual(h.records.filter { $0.date == id(back: 1) }.count, 20, "the read's part of the cut day; home's of it go")
         XCTAssertEqual(h.records.filter { $0.date == id(back: 2) }.count, 1, "home's")
         XCTAssertFalse(h.isComplete(day: id(back: 1)))
-        XCTAssertTrue(h.isComplete(day: id(back: 2)))
+        XCTAssertFalse(h.isComplete(day: id(back: 2)), "home's day")
+        XCTAssertTrue(h.isComplete(day: id(back: 0)), "the read's own, past the cut")
         XCTAssertEqual(h.records.count, 30 + 20 + 5)
 
         q = h.nextQuery!

@@ -245,15 +245,23 @@ import XCTest
         XCTAssertTrue(history.records.allSatisfy { $0.voucher != nil })
     }
 
-    /// The first page failing leaves home's records shown, with the retry at the list's end.
-    func testHomesRecordsStayWhenTheFirstPageFails() async throws {
+    /// The first page failing with nothing of its own read is a failed read, home's records
+    /// shown meanwhile or not: the failed state, not home's days as if the school's.
+    func testTheFirstPageFailingIsAFailedReadThoughHomesRecordsShowed() async throws {
         let school = School(rows: [], today: id(back: 0))
+        await school.hold()
         await school.fail(true)
         let home = CardActivity(records: [record(id(back: 1))], begin: id(back: 6), end: id(back: 0), complete: true)
         let first = loader(school, memory: nil, prefill: home)
-        await first.reload()
-        XCTAssertEqual(first.state.phase, .loaded)
+        let visit = Task { await first.reload() }
+        await held(school)
+        XCTAssertEqual(first.state.phase, .loaded, "home's records show meanwhile")
         XCTAssertEqual(first.state.history?.records.count, 1)
-        XCTAssertTrue(first.state.moreFailed)
+        await school.release()
+        await visit.value
+        XCTAssertEqual(first.state.phase, .failed)
+        XCTAssertNil(first.state.history)
+        XCTAssertFalse(first.state.moreFailed)
+        XCTAssertFalse(first.state.refreshFailed)
     }
 }

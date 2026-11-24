@@ -132,7 +132,9 @@ public struct CardRecordsState: Sendable, Equatable {
         next.loadingMore = false
         next.refreshFailed = false
         next.reloads += 1
-        if load.history.records.isEmpty, load.failure != nil {
+        // Home's records it showed meanwhile (`prefill`) are not a read: nothing of its own, and
+        // the read failed.
+        if load.history.readRecords.isEmpty, load.failure != nil {
             next.history = nil; next.phase = .failed; next.moreFailed = false
         } else {
             next.history = load.history; next.phase = .loaded; next.moreFailed = load.failure != nil

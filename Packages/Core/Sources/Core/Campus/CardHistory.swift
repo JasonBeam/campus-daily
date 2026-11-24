@@ -126,11 +126,11 @@ public struct CardHistory: Sendable, Equatable {
         return readFrom.map { $0 <= day } ?? false
     }
 
-    /// Every record of `day` (`yyyyMMdd`) has been read, each once.
+    /// Every record of `day` (`yyyyMMdd`) has been read, each once, by this read: a day shown
+    /// from home's records (`prefill(_:)`) is not, so it has no total until read.
     public func isComplete(day: String) -> Bool {
         if mayRepeat.contains(day) || unsure.contains(day) { return false }
-        if isRead(day: day) { return true }
-        return day < SchoolCalendar.dayString(today, calendar: calendar) && prefillShows(day)
+        return isRead(day: day)
     }
 
     /// No more records of `day` will come: its range was read to its end (even when the school

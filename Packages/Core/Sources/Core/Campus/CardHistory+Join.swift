@@ -46,9 +46,10 @@ extension CardHistory {
     /// Shows home's last read (`HomeSnapshot.activity`) until this read has its days: its
     /// records on the days it holds in full (`CardActivity.holdsAll`), each day's until this read
     /// has a record of that day or an older one, or has read it, so no record shows twice. Only a
-    /// read of today, before this read has any page. Those days count as complete for the list's
-    /// day totals, except today (home read it some time ago); the stats never use them, as
-    /// `hasRead(through:)` waits for this read's own ranges.
+    /// read of today, before this read has any page. Those days are never complete: the list
+    /// shows no day total for them, and the stats never use them, as `hasRead(through:)` waits for
+    /// this read's own ranges. Nor do they count as read when the first page fails
+    /// (`CardRecordsLoader`: the failed state).
     public mutating func prefill(_ activity: CardActivity) {
         let todayID = SchoolCalendar.dayString(today, calendar: calendar)
         guard readFrom == nil, finished.isEmpty, current.isEmpty, Self.trimmed(activity.end) == todayID else { return }
