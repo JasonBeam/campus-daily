@@ -204,10 +204,10 @@ struct SpendStatsText {
     }
 
     /// A category's capsule to VoiceOver: 「电费，40 元」, and its share of those counted when it
-    /// is counted: 「食堂，86.40 元，占 70%」.
+    /// is counted and spent on: 「食堂，86.40 元，占 70%」.
     static func spokenShare(_ share: SpendShare) -> String {
         let words = "\(share.kind.title)，\(spokenYuan(share.spent)) 元"
-        guard share.included else { return words }
+        guard share.included, share.spent > .zero else { return words }
         let value = Int((share.fraction * 100).rounded())
         let part = value < 1 && share.fraction > 0 ? "不到 1%" : "\(value)%"
         return words + "，占 \(part)"

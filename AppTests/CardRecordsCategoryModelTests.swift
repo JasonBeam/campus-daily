@@ -98,7 +98,7 @@ import Core
 
     /// The last one is judged on all the categories kept, not the span's list: counted with
     /// nothing spent in the span (so not listed), a category still counts as left on, and the
-    /// span may then have none of its listed categories counted.
+    /// span may then have nothing counted spent; it is then listed at ¥0, on.
     func testACategoryNotOnTheListStillCountsAsLeftOn() async throws {
         let defaults = SampleDefaults()
         SpendCategoryStore(preferences:defaults).set([.canteen, .electricity])
@@ -111,7 +111,9 @@ import Core
         let none = try XCTUnwrap(m.stats)
         XCTAssertTrue(none.isEmpty)
         XCTAssertFalse(none.shares.isEmpty)
-        XCTAssertTrue(none.shares.allSatisfy { !$0.included }, "every capsule shown is off")
+        XCTAssertTrue(none.shares.filter { $0.spent > .zero }.allSatisfy { !$0.included }, "every category spent on is off")
+        XCTAssertEqual(none.shares.filter(\.included).map(\.kind), [.electricity], "the one on shows, at ¥0")
+        XCTAssertEqual(none.shares.first { $0.included }?.spent, .zero)
         XCTAssertFalse(m.toggleCategory(.electricity), "the last one kept, though not on the list")
         XCTAssertEqual(m.includedCategories, [.electricity])
 

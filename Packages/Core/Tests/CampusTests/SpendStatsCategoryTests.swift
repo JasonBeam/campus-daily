@@ -111,12 +111,25 @@ final class SpendStatsCategoryTests: XCTestCase {
         XCTAssertEqual(s.shares.map(\.included), [true, false])
     }
 
-    /// Spending only on a category left out: nothing counted, but the category is listed.
+    /// Spending only on a category left out: nothing counted, but the category is listed, and so
+    /// are those counted, at nothing spent, so it shows which are on.
     func testOnlyACategoryLeftOutIsEmptyButListed() throws {
         let s = try stats([record("20261122", "120.00", "电费")], SpendCategories.defaultIncluded)
         XCTAssertTrue(s.isEmpty)
-        XCTAssertEqual(s.shares.map(\.kind), [.electricity])
-        XCTAssertEqual(s.shares.first?.spent, Money(fen: 12000))
+        XCTAssertEqual(s.shares.map(\.kind), [.electricity, .canteen, .shower, .laundry, .other])
+        XCTAssertEqual(s.shares.map(\.spent.fen), [12000, 0, 0, 0, 0])
+        XCTAssertEqual(s.shares.map(\.included), [false, true, true, true, true])
+        XCTAssertTrue(s.shares.allSatisfy { $0.fraction == 0 })
+
+        let one = try stats([record("20261122", "120.00", "电费"), record("20261123", "8.00")], [.shower])
+        XCTAssertEqual(one.shares.map(\.kind), [.electricity, .canteen, .shower, .laundry, .other])
+        XCTAssertEqual(one.shares.map(\.included), [false, false, true, false, false])
+    }
+
+    /// Something counted was spent: a category counted with nothing spent stays off the list.
+    func testACountedCategoryWithNothingSpentIsNotListedWhileOthersCount() throws {
+        let s = try stats([record("20261122", "120.00", "电费"), record("20261123", "8.00")], SpendCategories.defaultIncluded)
+        XCTAssertEqual(s.shares.map(\.kind), [.electricity, .canteen])
     }
 
     /// A record that may be money in or out makes its day unsure only when its category counts.

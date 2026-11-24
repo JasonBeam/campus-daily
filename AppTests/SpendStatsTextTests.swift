@@ -98,6 +98,8 @@ final class SpendStatsTextTests: XCTestCase {
         XCTAssertEqual(SpendStatsText.spokenShare(electricity), "电费，40 元")
         XCTAssertEqual(SpendStatsText.spokenShare(SpendShare(kind:.electricity, spent:Money(fen:4050), fraction:0.12)), "电费，40.50 元，占 12%")
         XCTAssertEqual(SpendStatsText.spokenShare(SpendShare(kind:.electricity, spent:.zero, fraction:0, included:false)), "电费，0 元")
+        XCTAssertEqual(SpendStatsText.spokenShare(SpendShare(kind:.shower, spent:.zero, fraction:0)), "热水，0 元",
+                       "counted at nothing spent: no share")
         XCTAssertEqual(SpendStatsText.categoryValue(electricity), "不算")
         XCTAssertEqual(SpendStatsText.categoryValue(SpendShare(kind:.canteen, spent:Money(fen:8600), fraction:0.7)), "算进统计")
     }

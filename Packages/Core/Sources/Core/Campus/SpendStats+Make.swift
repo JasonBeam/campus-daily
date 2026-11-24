@@ -46,7 +46,8 @@ extension SpendStats {
     ///
     /// Only the categories in `included` count: the total, the average, the comparison and the
     /// bars leave the others out, and so does a day's doubt about a record of theirs. `shares`
-    /// still lists every category left out, with what was spent on it.
+    /// still lists every category left out, with what was spent on it; when only those were spent
+    /// on, the ones counted are listed too, at nothing spent.
     public static func make(span: SpendSpan, history: CardHistory, termStart: Date,
                             included: Set<CardRecordKind> = Set(SpendCategories.all),
                             calendar: Calendar = SchoolCalendar.shanghai) -> SpendStats? {
@@ -118,7 +119,13 @@ extension SpendStats {
 
         // Left out, it stays on the list at nothing spent: it can be counted again from there.
         for kind in SpendCategories.all where !included.contains(kind) && byKind[kind] == nil { byKind[kind] = 0 }
-        let shares = byKind.filter { $0.value > 0 || !included.contains($0.key) }
+        // Spent only on categories left out: those counted are listed at nothing spent too, so
+        // it shows which are on. Otherwise a category counted with nothing spent is not listed.
+        let onlyLeftOut = total == 0 && byKind.contains { !included.contains($0.key) && $0.value > 0 }
+        if onlyLeftOut {
+            for kind in SpendCategories.all where included.contains(kind) && byKind[kind] == nil { byKind[kind] = 0 }
+        }
+        let shares = byKind.filter { $0.value > 0 || !included.contains($0.key) || onlyLeftOut }
             .sorted { a, b in
                 if (a.key == .other) != (b.key == .other) { return b.key == .other }
                 if a.value != b.value { return a.value > b.value }
