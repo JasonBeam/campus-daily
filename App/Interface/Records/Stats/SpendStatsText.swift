@@ -236,14 +236,17 @@ struct SpendStatsText {
         stats.isEmpty && stats.shares.contains { !$0.included && $0.spent > .zero }
     }
 
-    /// In the chart's place when `nothingCounted`, both themes; the capsules are under it.
-    static let nothingCountedNote = "这段时间里，算进统计的分类都没花钱；点下面的分类加进来。"
+    /// In the chart's place when `nothingCounted`, both themes, a sentence a line; the capsules
+    /// are under it.
+    static let nothingCountedNote = "这段时间里，算进统计的分类都没花钱。\n点下面的分类加进来。"
+    /// `nothingCountedNote` read out as one string.
+    static var spokenNothingCounted: String { nothingCountedNote.replacingOccurrences(of:"\n", with:"") }
 
     /// Read out after a capsule is switched: the new total, as the label says it — 「7 天花了 383 元」
     /// / 「合计 383 元」; with nothing counted spent, the ¥0 total and then the chart's words; the
     /// empty words when nothing at all was spent.
     func spokenTotal(_ stats: SpendStats) -> String {
-        if Self.nothingCounted(stats) { return spokenAmount(stats) + "。" + Self.nothingCountedNote }
+        if Self.nothingCounted(stats) { return spokenAmount(stats) + "。" + Self.spokenNothingCounted }
         if stats.isEmpty { return empty(stats.span) }
         return spokenAmount(stats)
     }

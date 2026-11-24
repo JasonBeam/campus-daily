@@ -256,6 +256,7 @@ struct SpendStatsView: View {
                     .fixedSize(horizontal:false, vertical:true)
                     .frame(maxWidth:.infinity)
                     .padding(.horizontal,24)
+                    .accessibilityLabel(SpendStatsText.spokenNothingCounted)
                     .accessibilityAddTraits(.isStaticText)
                     .accessibilityIdentifier("spendNothingCounted")
             }

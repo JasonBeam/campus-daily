@@ -123,9 +123,10 @@ final class SpendStatsTextTests: XCTestCase {
         none.shares = [SpendShare(kind:.canteen, spent:Money(fen:8600), fraction:0, included:false),
                        SpendShare(kind:.shower, spent:Money(fen:1200), fraction:0, included:false)]
         XCTAssertTrue(SpendStatsText.nothingCounted(none))
-        XCTAssertEqual(warm.spokenTotal(none), "7 天花了 0 元。这段时间里，算进统计的分类都没花钱；点下面的分类加进来。")
-        XCTAssertEqual(clear.spokenTotal(none), "合计 0 元。这段时间里，算进统计的分类都没花钱；点下面的分类加进来。")
+        XCTAssertEqual(warm.spokenTotal(none), "7 天花了 0 元。这段时间里，算进统计的分类都没花钱。点下面的分类加进来。")
+        XCTAssertEqual(clear.spokenTotal(none), "合计 0 元。这段时间里，算进统计的分类都没花钱。点下面的分类加进来。")
         XCTAssertEqual(warm.spokenAmount(none), "7 天花了 0 元")
+        XCTAssertEqual(SpendStatsText.nothingCountedNote, "这段时间里，算进统计的分类都没花钱。\n点下面的分类加进来。")
         var nothing = stats(total:0)
         nothing.shares = [SpendShare(kind:.electricity, spent:.zero, fraction:0, included:false)]
         XCTAssertFalse(SpendStatsText.nothingCounted(nothing), "nothing spent at all")
