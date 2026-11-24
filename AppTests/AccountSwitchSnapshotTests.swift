@@ -30,6 +30,40 @@ final class AccountSwitchSnapshotTests: XCTestCase {
         }
     }
 
+    /// Holds the school's requests made while `holding` (a refresh's) until `open()`, then says
+    /// offline; later ones go to `check` (the card check answers B).
+    private final class HeldSchool: HTTPClient, @unchecked Sendable {
+        private let lock = NSLock()
+        private var holding = true
+        private var waiters: [CheckedContinuation<Void, Never>] = []
+        private let check: CardCheck
+        init(check: CardCheck) { self.check = check }
+        var held: Int { lock.withLock { waiters.count } }
+        func stopHolding() { lock.withLock { holding = false } }
+        func open() {
+            let waiting = lock.withLock { () -> [CheckedContinuation<Void, Never>] in
+                holding = false
+                defer { waiters = [] }
+                return waiters
+            }
+            waiting.forEach { $0.resume() }
+        }
+        func send(_ request: HTTPRequest) async throws -> HTTPResponse {
+            var held = false
+            await withCheckedContinuation { (go: CheckedContinuation<Void, Never>) in
+                let wait = lock.withLock { () -> Bool in
+                    guard holding else { return false }
+                    waiters.append(go)
+                    return true
+                }
+                held = wait
+                if !wait { go.resume() }
+            }
+            if held { throw ServiceError.offline }
+            return try await check.send(request)
+        }
+    }
+
     private static func webLogin(card: String) -> CampusWebLogin {
         CampusWebLogin(state:Data(#"""
             {"logintoken":"SYNTHETIC-TOKEN","schoolid":"450010","loginInfo":{"syscustid":"SYNTHETIC-SYS","token":"SYNTHETIC-TOKEN"},"custInfo":{"custid":"SYNTHETIC-CUST","custunionid":"\#(card)"}}
@@ -159,6 +193,33 @@ final class AccountSwitchSnapshotTests: XCTestCase {
         held.open()
         try await signIn.value
         XCTAssertNil(pageB.prefill?())
+    }
+
+    /// A home refresh started for A comes back after B signed in and A's numbers were cleared:
+    /// it doesn't put A's numbers back on home.
+    func testARefreshStartedBeforeASwitchDoesNotPutThePreviousPersonBack() async throws {
+        let store = ScriptedStore()
+        try seedPersonA(store)
+        let http = HeldSchool(check:CardCheck(card:"SYNTHETIC-CARD-B"))
+        let campus = makeCampus(makeServices(store, http:http, lease:nil))
+        XCTAssertTrue(showsPersonA(campus.snapshot))
+        let refresh = Task { await campus.refresh(force:true) }
+        await waitUntil { http.held > 0 }
+        XCTAssertGreaterThan(http.held, 0, "A's refresh is reading")
+        http.stopHolding()
+
+        let switched = Counter()
+        let signIn = Task { try await campus.adoptWebState(Self.webLogin(card:"SYNTHETIC-CARD-B")); switched.bump() }
+        await waitUntil { switched.value > 0 }
+        XCTAssertEqual(switched.value, 1, "B signed in while A's refresh was still reading")
+        XCTAssertFalse(showsPersonA(campus.snapshot), "after the switch")
+
+        http.open()
+        await refresh.value
+        try await signIn.value
+        XCTAssertFalse(showsPersonA(campus.snapshot), "A's refresh came back after the switch")
+        XCTAssertNotEqual(try SharedSnapshotStore(store:store).loadSnapshot()?.card.value, Self.previousBalance,
+                          "nor wrote them back")
     }
 
     func testASwitchAsksTheWidgetToRedrawEvenWhenTheClearFails() async throws {
