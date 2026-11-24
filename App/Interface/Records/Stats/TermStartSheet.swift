@@ -8,9 +8,10 @@
 import SwiftUI
 import Core
 
-/// 开学日: the day 「本学期」 counts from, on a date wheel from a year ago to today (a later day
-/// can't be picked). 完成 keeps it; 「用回 9月1日」 (only once it was changed) goes back to the
-/// default. Nothing is said after: the stats just count from the new day.
+/// 开学日: the day 「本学期」 counts from, on a date wheel over the days this term takes (the
+/// model's `termStartRange`, through today). 完成 keeps it and closes; 「用回 9月1日」 (only once
+/// it was changed) goes back to the default. Nothing is said after: the stats just count from
+/// the new day.
 struct TermStartSheet: View {
     struct Term: Equatable {
         /// The day this term counts from now.
@@ -91,6 +92,8 @@ struct TermStartSheet: View {
                 ToolbarItem(placement:.confirmationAction) {
                     Button {
                         onDone(calendar.startOfDay(for:picked))
+                        // Closes either way: a day the model refuses (the term moved on past
+                        // midnight since the sheet opened) leaves the setting as it was.
                         dismiss()
                     } label: {
                         Text("完成").fontWeight(.semibold)
