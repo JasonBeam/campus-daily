@@ -458,6 +458,9 @@ struct PowerChoice: Identifiable, Equatable {
         }
         configured = false; snapshot = .empty; profile = nil; issue = nil; account = nil
         lookup.clear(); powerMatchIssue = nil
+        // The next account's records page starts from 7 天 and the default term start.
+        TermStartStore(preferences:services.defaults).clear()
+        services.defaults.removeObject(forKey:SpendSpan.storeKey)
     }
 
     /// Returns once every sign-out asked for before has finished, its hot water included.
