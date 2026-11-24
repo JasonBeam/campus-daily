@@ -22,6 +22,8 @@ struct TermStartSheet: View {
     }
 
     let term: Term
+    /// The records' calendar: the wheel shows its days and a pick is that day's start in it.
+    let calendar: Calendar
     var now = Date()
     /// The day picked, or nil to go back to the default.
     let onDone: (Date?) -> Void
@@ -30,15 +32,19 @@ struct TermStartSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.appTheme) private var theme
 
-    init(term: Term, now: Date = Date(), onDone: @escaping (Date?) -> Void) {
-        self.term = term; self.now = now; self.onDone = onDone
+    init(term: Term, calendar: Calendar, now: Date = Date(), onDone: @escaping (Date?) -> Void) {
+        self.term = term; self.calendar = calendar; self.now = now; self.onDone = onDone
         _picked = State(initialValue:term.start)
     }
 
-    private var text: SpendStatsText { SpendStatsText(theme:theme) }
+    private var text: SpendStatsText { SpendStatsText(theme:theme, calendar:calendar) }
 
     private var range: ClosedRange<Date> {
-        let calendar = SchoolCalendar.shanghai
+        Self.range(now:now, calendar:calendar)
+    }
+
+    /// A year ago … today, in the records' calendar.
+    static func range(now: Date, calendar: Calendar) -> ClosedRange<Date> {
         let today = calendar.startOfDay(for:now)
         let yearAgo = calendar.date(byAdding:.year, value:-1, to:today) ?? today
         return yearAgo...now
@@ -54,8 +60,8 @@ struct TermStartSheet: View {
                     DatePicker(text.termPickerTitle, selection:$picked, in:range, displayedComponents:.date)
                         .datePickerStyle(.wheel)
                         .labelsHidden()
-                        .environment(\.timeZone, SchoolCalendar.shanghai.timeZone)
-                        .environment(\.calendar, SchoolCalendar.shanghai)
+                        .environment(\.timeZone, calendar.timeZone)
+                        .environment(\.calendar, calendar)
                         .frame(maxWidth:.infinity)
                         .accessibilityIdentifier("termStartPicker")
                     Text(text.termFootnote)
@@ -93,7 +99,7 @@ struct TermStartSheet: View {
                 }
                 ToolbarItem(placement:.confirmationAction) {
                     Button {
-                        onDone(SchoolCalendar.shanghai.startOfDay(for:picked))
+                        onDone(calendar.startOfDay(for:picked))
                         dismiss()
                     } label: {
                         Text("完成").fontWeight(.semibold)

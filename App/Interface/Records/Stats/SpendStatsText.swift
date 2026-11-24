@@ -18,7 +18,8 @@ struct SpendStatsText {
     }
 
     let theme: AppTheme
-    var calendar: Calendar = SchoolCalendar.shanghai
+    /// The records' calendar (the school's, or the sample's): days are named in it.
+    let calendar: Calendar
 
     private var warm: Bool { theme != .clear }
 

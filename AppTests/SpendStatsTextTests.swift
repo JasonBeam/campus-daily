@@ -11,8 +11,8 @@ import Core
 
 /// The records page stats' words (Camo's copy), in both themes.
 final class SpendStatsTextTests: XCTestCase {
-    let warm = SpendStatsText(theme:.warm)
-    let clear = SpendStatsText(theme:.clear)
+    let warm = SpendStatsText(theme:.warm, calendar:SchoolCalendar.shanghai)
+    let clear = SpendStatsText(theme:.clear, calendar:SchoolCalendar.shanghai)
 
     func stats(_ span: SpendSpan = .week, total: Int = 12340, average: Int = 1763, versus: Int? = 1230) -> SpendStats {
         SpendStats(span:span, total:Money(fen:total), dailyAverage:Money(fen:average), versusPrevious:versus.map { Money(fen:$0) },
@@ -125,5 +125,42 @@ final class SpendStatsTextTests: XCTestCase {
         XCTAssertEqual(term.first?.days.count, 6)  // Tuesday 9月1日 through Sunday
         XCTAssertEqual(term.last?.axisLabel, "本周")
         XCTAssertEqual(term.compactMap(\.axisLabel), ["9月", "10月", "11月", "本周"])
+    }
+
+    func testDaysAreNamedInTheRecordsCalendar() {
+        // The sample's calendar is the device's: east of 东八区 the same instant is a day later
+        // in Shanghai's calendar, so naming it there would say 8月31日.
+        var tokyo = Calendar(identifier:.gregorian)
+        tokyo.timeZone = TimeZone(identifier:"Asia/Tokyo")!
+        let start = tokyo.date(from:DateComponents(year:2026, month:9, day:1))!
+        XCTAssertEqual(SpendStatsText(theme:.warm, calendar:SchoolCalendar.shanghai).termRange(start).text, "8月31日起 · ")
+        XCTAssertEqual(SpendStatsText(theme:.warm, calendar:tokyo).termRange(start).text, "9月1日起 · ")
+        let now = tokyo.date(from:DateComponents(year:2026, month:11, day:24, hour:8))!
+        let range = TermStartSheet.range(now:now, calendar:tokyo)
+        XCTAssertEqual(range.lowerBound, tokyo.date(from:DateComponents(year:2025, month:11, day:24)))
+        XCTAssertEqual(range.upperBound, now)
+    }
+
+    func testAWeekBarCanBeLookedAtOnceAnyOfItsDaysIsCovered() {
+        let week = bar("20261005", fen:4200, days:["20261005", "20261006", "20261007", "20261008", "20261009", "20261010", "20261011"])
+        XCTAssertTrue(SpendBarsChart.canLook(at:week, coveredFrom:"20261008"))
+        XCTAssertTrue(SpendBarsChart.canLook(at:week, coveredFrom:"20261011"))
+        XCTAssertFalse(SpendBarsChart.canLook(at:week, coveredFrom:"20261012"))
+        XCTAssertTrue(SpendBarsChart.canLook(at:week, coveredFrom:nil))
+        XCTAssertFalse(SpendBarsChart.canLook(at:bar("20261007", fen:0), coveredFrom:"20261008"))
+        var before = bar("20260831", fen:0)
+        before.beforeStart = true
+        XCTAssertFalse(SpendBarsChart.canLook(at:before, coveredFrom:nil))
+    }
+
+    func testATouchLooksAtBarsOnlyOnceItMovesSideways() {
+        typealias Chart = SpendBarsChart
+        XCTAssertEqual(Chart.touch(.none, moved:.zero, at:10), .undecided)
+        XCTAssertEqual(Chart.touch(.undecided, moved:CGSize(width:2, height:1), at:12), .undecided)
+        XCTAssertEqual(Chart.touch(.undecided, moved:CGSize(width:5, height:2), at:15), .looking(x:15))
+        XCTAssertEqual(Chart.touch(.undecided, moved:CGSize(width:2, height:6), at:12), .scrolling)
+        // Decided stays decided, whichever way the finger goes after.
+        XCTAssertEqual(Chart.touch(.looking(x:15), moved:CGSize(width:5, height:40), at:20), .looking(x:20))
+        XCTAssertEqual(Chart.touch(.scrolling, moved:CGSize(width:80, height:6), at:90), .scrolling)
     }
 }

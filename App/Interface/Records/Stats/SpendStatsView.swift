@@ -29,6 +29,8 @@ struct SpendStatsView: View {
     var setTermStart: (Date?) -> Void = { _ in }
     /// The bar looked at when the view appears (screenshots).
     var pinned: String?
+    /// The records' calendar (`CardRecordsModel.calendar`): days are named and picked in it.
+    let calendar: Calendar
 
     @State private var selected: String?
     @State private var termSheet = false
@@ -36,13 +38,13 @@ struct SpendStatsView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(phase: Phase, span: Binding<SpendSpan>, placeholder: [SpendBar] = [], term: TermStartSheet.Term? = nil,
-         setTermStart: @escaping (Date?) -> Void = { _ in }, pinned: String? = nil) {
+         setTermStart: @escaping (Date?) -> Void = { _ in }, pinned: String? = nil, calendar: Calendar) {
         self.phase = phase; _span = span; self.placeholder = placeholder; self.term = term
-        self.setTermStart = setTermStart; self.pinned = pinned
+        self.setTermStart = setTermStart; self.pinned = pinned; self.calendar = calendar
         _selected = State(initialValue:pinned)
     }
 
-    private var text: SpendStatsText { SpendStatsText(theme:theme) }
+    private var text: SpendStatsText { SpendStatsText(theme:theme, calendar:calendar) }
     private var stats: SpendStats? { if case .loaded(let stats) = phase, stats.span == span { return stats }; return nil }
     private var loading: Bool { phase == .loading || (stats == nil && phase != .failed) }
     private var empty: Bool { stats?.isEmpty == true }
@@ -71,9 +73,8 @@ struct SpendStatsView: View {
         .onChange(of:span) { _, _ in selected = nil }
         .onChange(of:pinned) { _, new in selected = new }
         .sheet(isPresented:$termSheet) {
-            if let term { TermStartSheet(term:term, onDone:setTermStart) }
+            if let term { TermStartSheet(term:term, calendar:calendar, onDone:setTermStart) }
         }
-        .accessibilityIdentifier("spendStats")
     }
 
     // MARK: Headline
@@ -192,7 +193,7 @@ struct SpendStatsView: View {
     /// The span's bars while reading: the host's, else the span's own shape.
     private var placeholderBars: [SpendBar] {
         if !placeholder.isEmpty { return placeholder }
-        return SpendBarsPlaceholder.bars(span, termStart:term?.start ?? Date())
+        return SpendBarsPlaceholder.bars(span, termStart:term?.start ?? Date(), calendar:calendar)
     }
 
     // MARK: Lines under the chart

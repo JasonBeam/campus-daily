@@ -36,7 +36,7 @@ struct SpendBarsChart: View {
     static let height: CGFloat = 112
     private static let reach: CGFloat = 0.86
 
-    @GestureState private var touch: CGPoint?
+    @GestureState private var touch: Touch = .none
     @State private var width: CGFloat = 0
     @State private var grown = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -49,6 +49,7 @@ struct SpendBarsChart: View {
         .accessibilityElement(children:.ignore)
         .accessibilityLabel(look == .live ? chartName : "")
         .accessibilityValue(look == .live ? spokenValue : "")
+        .accessibilityHint(look == .live ? hint : "")
         .accessibilityAdjustableAction { direction in
             guard look == .live else { return }
             switch direction {
@@ -116,7 +117,6 @@ struct SpendBarsChart: View {
                 .onChange(of:proxy.size.width) { _, new in width = new }
         })
         .contentShape(Rectangle())
-        // Alongside the page's scrolling, so a vertical swipe that starts on the bars still scrolls.
         .simultaneousGesture(scrub)
         .onChange(of:touchedID) { _, new in selected = new }
         .sensoryFeedback(.selection, trigger:touchedID) { _, new in new != nil }
@@ -188,35 +188,57 @@ struct SpendBarsChart: View {
         return bars.firstIndex { $0.spent.fen == top }
     }
 
-    /// Pressed and moved sideways: the finger looks at bars. Once a drag turns out to be a vertical
-    /// swipe (the page scrolling), it stops looking for the rest of that touch.
+    /// A press on the bars: nothing is looked at (no haptic) until it is known to be sideways.
+    enum Touch: Equatable {
+        case none
+        /// Down, not yet moved far enough to tell.
+        case undecided
+        /// Moved sideways first: the finger looks at bars, whichever way it goes after.
+        case looking(x: CGFloat)
+        /// Moved up or down first: the page scrolls, the bars are left alone until the finger lifts.
+        case scrolling
+    }
+
+    /// How far the finger moves before its direction counts.
+    static let decideDistance: CGFloat = 4
+
+    /// What a touch becomes on moving by `moved`, from `touch`.
+    static func touch(_ touch: Touch, moved: CGSize, at x: CGFloat) -> Touch {
+        switch touch {
+        case .scrolling: return .scrolling
+        case .looking: return .looking(x:x)
+        case .none, .undecided:
+            let dx = abs(moved.width), dy = abs(moved.height)
+            guard max(dx, dy) >= decideDistance else { return .undecided }
+            return dx > dy ? .looking(x:x) : .scrolling
+        }
+    }
+
+    /// Alongside the page's scrolling (`simultaneousGesture`), so a swipe that starts on the bars
+    /// still scrolls.
     private var scrub: some Gesture {
         DragGesture(minimumDistance:0)
             .updating($touch) { value, state, _ in
-                let moved = value.translation
-                if state == Self.scrolling { return }
-                if abs(moved.height) > 10, abs(moved.height) > abs(moved.width) {
-                    state = Self.scrolling
-                } else {
-                    state = value.location
-                }
+                state = Self.touch(state, moved:value.translation, at:value.location.x)
             }
     }
 
-    /// The touch is the page scrolling, not looking at bars.
-    private static let scrolling = CGPoint(x:-.infinity, y:-.infinity)
-
     /// The bar under the finger, if it can be looked at.
     private var touchedID: String? {
-        guard look == .live, let touch, touch != Self.scrolling, width > 0, !bars.isEmpty else { return nil }
+        guard look == .live, case .looking(let x) = touch, width > 0, !bars.isEmpty else { return nil }
         let slot = (width + spacing) / CGFloat(bars.count)
-        let index = min(max(Int(touch.x / slot), 0), bars.count - 1)
+        let index = min(max(Int(x / slot), 0), bars.count - 1)
         return open(bars[index]) ? bars[index].id : nil
     }
 
-    /// Before the term's start day or the school's first record: nothing to look at.
-    private func open(_ bar: SpendBar) -> Bool {
-        !bar.beforeStart && (coveredFrom.map { bar.id >= $0 } ?? true)
+    private func open(_ bar: SpendBar) -> Bool { Self.canLook(at:bar, coveredFrom:coveredFrom) }
+
+    /// Before the term's start day, or wholly before the school's first record (`coveredFrom`,
+    /// `yyyyMMdd`): nothing to look at. A week bar counts once any of its days is covered.
+    static func canLook(at bar: SpendBar, coveredFrom: String?) -> Bool {
+        guard !bar.beforeStart else { return false }
+        guard let coveredFrom else { return true }
+        return (bar.days.last ?? bar.id) >= coveredFrom
     }
 
     private func step(_ delta: Int) {
@@ -235,9 +257,14 @@ struct SpendBarsChart: View {
         return text.theme == .clear ? "每\(unit == "天" ? "日" : "周")支出" : "每\(unit)花的钱"
     }
 
+    /// The day (week) looked at: 「11月19日，32.10 元」; nothing before one is.
     private var spokenValue: String {
-        if let selected, let bar = bars.first(where:{ $0.id == selected }) { return text.spokenBar(bar) }
-        return text.theme == .clear ? "上下轻扫逐个查看" : "上下轻扫一个个听"
+        guard let selected, let bar = bars.first(where:{ $0.id == selected }) else { return "" }
+        return text.spokenBar(bar)
+    }
+
+    private var hint: String {
+        text.theme == .clear ? "上下轻扫逐个查看" : "上下轻扫一个个听"
     }
 
     /// Over the lit bar: whole yuan on the narrow 30-day bars, else to the fen.
