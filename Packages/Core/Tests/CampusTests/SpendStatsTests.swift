@@ -122,6 +122,38 @@ final class SpendStatsTests: XCTestCase {
         XCTAssertEqual(s.shares.map(\.kind), [.canteen])
     }
 
+    /// A payment from the card under a top-up's name (「网费充值」, 「xx圈存」 with direction 「1」)
+    /// is spent like any other, as in the list's 「花了」: under 其他.
+    func testAPaymentUnderATopUpsNameCountsAsOther() throws {
+        let rows = [record("20261124", "12.00"), record("20261124", "30.00", "网费充值", time: "130000"),
+                    record("20261124", "50.00", "校园卡充值", time: "140000", flag: nil),
+                    record("20261123", "20.00", "示例圈存"), record("20261120", "5.00", "蓝牙热水")]
+        let s = try XCTUnwrap(stats(.week, rows))
+        XCTAssertEqual(s.total, Money(fen: 6700))
+        XCTAssertEqual(s.bars.last?.spent, Money(fen: 4200))
+        XCTAssertEqual(s.shares.map(\.kind), [.canteen, .shower, .other])
+        XCTAssertEqual(s.shares.map(\.spent.fen), [1200, 500, 5000])
+    }
+
+    /// Each day's bar is the list's 「花了」 for that day (`CardDays`), whatever its records.
+    func testEachDaysBarIsTheListsDayTotal() throws {
+        let rows = [record("20261124", "12.00"), record("20261124", "30.00", "网费充值", time: "130000"),
+                    record("20261124", "50.00", "校园卡充值", time: "140000", flag: nil),
+                    record("20261124", "3.00", "退款", time: "150000", flag: "2"),
+                    record("20261123", "20.00", "示例圈存"), record("20261123", "8.80", "电费", time: "090000"),
+                    record("20261121", "4.00", "洗衣"), record("20261118", "16.00", "示例便利店"),
+                    record("20261112", "7.00")]
+        let through = SpendStats.firstDayNeeded(span: .week, today: noon, termStart: autumn, calendar: cal)
+        let h = history(rows, through: through)
+        let s = try XCTUnwrap(SpendStats.make(span: .week, history: h, termStart: autumn, calendar: cal))
+        let days = CardDays.groups(history: h, app: [], now: noon, calendar: cal)
+        XCTAssertEqual(days.first { $0.id == "20261124" }?.total, Money(fen: 4200))
+        for bar in s.bars {
+            XCTAssertEqual(bar.spent, days.first { $0.id == bar.id }?.total ?? .zero, bar.id)
+        }
+        XCTAssertEqual(s.bars.map(\.spent.fen), [1600, 0, 0, 400, 0, 2880, 4200])
+    }
+
     // MARK: Unsure days
 
     func testARecordThatMayRepeatMakesItsDayUnsureAndTheComparisonGoes() throws {

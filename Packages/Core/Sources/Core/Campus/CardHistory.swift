@@ -225,6 +225,31 @@ public struct CardDay: Sendable, Equatable, Identifiable {
     public var spokenTitle: String { total.map { title + "，花了 " + $0.yuanText + " 元" } ?? title }
 }
 
+/// How one card record counts toward what was spent: the one rule behind 「昨天花了」 on home,
+/// each day's total in 校园卡记录 and the records page's stats (`SpendStats`).
+enum CardSpend: Equatable {
+    /// Paid from the card on `day` (`yyyyMMdd`), whatever the name says: 「网费充值」 or 「xx圈存」
+    /// with direction 「1」 are payments too. Its amount counts with its sign.
+    case paid(day: String, amount: Money)
+    /// Money in (top-ups, refunds, grants, WeChat's half of a meal): never counts.
+    case moneyIn
+    /// Can't be told: its time can't be read, or it may be money in or out. `day` is nil when
+    /// its day can't be read either.
+    case unsure(day: String?)
+
+    static func of(_ record: CardRecord, calendar: Calendar) -> CardSpend {
+        let day = CardHistory.trimmed(record.date)
+        guard record.moment(calendar: calendar) != nil else {
+            return .unsure(day: day.count == 8 && day.allSatisfy({ $0.isASCII && $0.isNumber }) ? day : nil)
+        }
+        switch record.flow {
+        case .moneyOut: return .paid(day: day, amount: record.amount)
+        case .moneyIn: return .moneyIn
+        case .unknown: return .unsure(day: day)
+        }
+    }
+}
+
 /// 校园卡记录's day groups.
 public enum CardDays {
     /// `history` nil = the school's records could not be read: the app's own showers and laundry
@@ -252,27 +277,21 @@ public enum CardDays {
         return days
     }
 
-    /// What was paid on `day` (`yyyyMMdd`, the school's calendar) by the school's records: the
-    /// one rule behind 「昨天花了」 on home and each day's total in 校园卡记录. Money in (top-ups,
-    /// refunds, grants) is left out; a payment's amount counts with its sign. `paid`: at least
-    /// one payment. Nil when the records can't say: a record of that day whose time can't be
-    /// read or that may be money in or out, or a record whose day can't be read at all.
+    /// What was paid on `day` (`yyyyMMdd`, the school's calendar) by the school's records, each
+    /// counted by `CardSpend` (the rule the records page's stats use too). `paid`: at least one
+    /// payment. Nil when the records can't say: a record of that day whose time can't be read or
+    /// that may be money in or out, or a record whose day can't be read at all.
     static func spending(on day: String, _ records: [CardRecord],
                          calendar: Calendar) -> (total: Money, paid: Bool)? {
         var total = Money.zero, paid = false
         for record in records {
-            let recordDay = CardHistory.trimmed(record.date)
-            guard record.moment(calendar: calendar) != nil else {
-                // It may be that day's.
-                if recordDay == day || recordDay.count != 8 || !recordDay.allSatisfy({ $0.isASCII && $0.isNumber }) { return nil }
-                continue
-            }
-            guard recordDay == day else { continue }
-            switch record.flow {
-            case .moneyOut: total = total + record.amount; paid = true
+            switch CardSpend.of(record, calendar: calendar) {
+            case .paid(let recordDay, let amount):
+                guard recordDay == day else { continue }
+                total = total + amount; paid = true
             case .moneyIn: continue
-            // A record that may be money in or out: no total rather than a wrong one.
-            case .unknown: return nil
+            // It may be that day's, or money in or out that day: no total rather than a wrong one.
+            case .unsure(let recordDay): if recordDay == nil || recordDay == day { return nil }
             }
         }
         return (total, paid)

@@ -33,10 +33,11 @@ extension SpendStats {
         return SchoolCalendar.dayString(calendar.date(byAdding: .day, value: -(2 * days - 1), to: now) ?? now, calendar: calendar)
     }
 
-    /// The stats of `span` from the records `history` has read, on its today. Payments only: money
-    /// in (top-ups, refunds, WeChat's half of a meal) and top-up records never count; a meal paid
-    /// with WeChat counts once, as `history.records` merges it. Nil while a day of the span is
-    /// not read yet.
+    /// The stats of `span` from the records `history` has read, on its today. Payments only, by
+    /// the rule of each day's total in the list (`CardSpend`): money in (top-ups, refunds,
+    /// WeChat's half of a meal) never counts, a payment under a top-up's name counts as 其他, and
+    /// a meal paid with WeChat counts once, as `history.records` merges it. Nil while a day of
+    /// the span is not read yet.
     ///
     /// A day is unsure when its records may be incomplete or repeated (`CardHistory.isComplete`), or
     /// one of its records may be money in or out (left out). When the list has reached its end
@@ -61,20 +62,19 @@ extension SpendStats {
             let day = CardHistory.trimmed(record.date)
             let readableDay = day.count == 8 && day.allSatisfy { $0.isASCII && $0.isNumber }
             if readableDay { oldest = min(oldest ?? day, day) }
-            guard record.moment(calendar: calendar) != nil else {
-                // Its day, when readable, can't be summed for sure.
-                if readableDay { doubtful.insert(day) }
-                continue
-            }
-            switch record.flow {
+            switch CardSpend.of(record, calendar: calendar) {
             case .moneyIn: continue
-            case .unknown: doubtful.insert(day); continue
-            case .moneyOut: break
+            case .unsure(let unsureDay):
+                // Its day, when readable, can't be summed for sure.
+                if let unsureDay { doubtful.insert(unsureDay) }
+            case .paid(_, let amount):
+                // Paid from the card under a top-up's name (「网费充值」, 「xx圈存」): spent on
+                // something else.
+                let named = CardRecordKind.of(record)
+                let kind: CardRecordKind = named == .topUp ? .other : named
+                spentOn[day, default: 0] += amount.fen
+                if day >= firstID && day <= spanDays.last!.id { byKind[kind, default: 0] += amount.fen }
             }
-            let kind = CardRecordKind.of(record)
-            guard kind != .topUp else { continue }
-            spentOn[day, default: 0] += record.amount.fen
-            if day >= firstID && day <= spanDays.last!.id { byKind[kind, default: 0] += record.amount.fen }
         }
 
         let coveredFrom = history.reachedEnd ? oldest.flatMap { $0 > firstID ? $0 : nil } : nil
