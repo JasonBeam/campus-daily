@@ -37,6 +37,8 @@ final class RecentFeedTests: XCTestCase {
             ("购电(99栋)", .electricity),
             ("电费缴纳", .electricity),
             ("电费充值", .electricity),
+            ("缴电费", .electricity),
+            ("转入电控", .electricity),
             ("转入水控", .shower),
             ("示例超市", .other),
         ]

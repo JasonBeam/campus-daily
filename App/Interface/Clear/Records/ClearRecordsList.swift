@@ -23,6 +23,7 @@ struct ClearRecordsList: View {
     /// The recent orders' 「今天」/「昨天」 move on at midnight and after a clock change.
     @State private var clock = Date()
     @Environment(ClearNavigator.self) private var navigator
+    @Environment(\.campusServices) private var campusServices
     @EnvironmentObject private var laundry: LaundryModel
 
     init(orders: ClearRecentOrders, app: [AppActivity], source: CardRecordsSource) {
@@ -36,16 +37,28 @@ struct ClearRecordsList: View {
         ScrollViewReader { proxy in
         List {
             ClearRecentOrdersSections(orders:orders, now:clock) { retainedOnScreen = max(0, retainedOnScreen + $0) }
-            switch model.phase {
-            case .loading: loadingSection
-            case .failed: failedSection
-            case .loaded: EmptyView()
+            // The stats say when the records are being read or could not be.
+            Section {
+                CardRecordsStats(model:model)
+                    .listRowInsets(EdgeInsets(top:4, leading:0, bottom:8, trailing:0))
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+            } header: {
+                Text("消费统计")
             }
             ForEach(days) { day in
                 Section {
                     ForEach(day.items) { row($0) }
                 } header: {
-                    header(day)
+                    // Under the stats, the records start with their own heading.
+                    if day.id == days.first?.id {
+                        VStack(alignment:.leading, spacing:14) {
+                            Text("校园卡记录").accessibilityAddTraits(.isHeader)
+                            header(day)
+                        }
+                    } else {
+                        header(day)
+                    }
                 }
             }
             footer(empty:days.isEmpty)
@@ -56,7 +69,10 @@ struct ClearRecordsList: View {
         // SwiftUI cancels the pull's own task when the list changes under it (the read starting
         // does): a read cancelled that way would come back as failed. The read runs on its own.
         .refreshable { await Task { await model.reload() }.value }
-        .task { if model.phase == .loading { await model.reload() } }
+        .task {
+            model.bind(campusServices.defaults)
+            if model.phase == .loading { await model.reload() }
+        }
         // The hot-water page's kept line: its section to the top, unless it is already in view.
         .task(id:navigator.recordsScroll) {
             guard let target = navigator.recordsScroll else { return }
@@ -104,25 +120,6 @@ struct ClearRecordsList: View {
     }
 
     // MARK: States
-
-    private var loadingSection: some View {
-        Section {
-            HStack(spacing:10) {
-                ProgressView().accessibilityHidden(true)
-                Text("正在读记录…").foregroundStyle(Color.secondary)
-            }
-            .accessibilityElement(children:.combine)
-            .accessibilityIdentifier("recordsLoading")
-        }
-    }
-
-    private var failedSection: some View {
-        Section {
-            Label("没读到记录，下拉再试。", systemImage:"exclamationmark.circle.fill")
-                .font(.footnote).foregroundStyle(Theme.notice)
-                .accessibilityIdentifier("recordsFailed")
-        }
-    }
 
     @ViewBuilder private func footer(empty: Bool) -> some View {
         if model.phase == .loaded, let history = model.history {

@@ -22,8 +22,9 @@ public struct CardHistoryQuery: Sendable, Equatable {
 /// 校园卡记录: the card's records read back from today, range by range of whole school days,
 /// so a day never ends at a range boundary. Inside a range the school pages by count: the
 /// range's pages are read one after another, and a day cut by a page boundary stays
-/// incomplete until the range's next page came. Nothing is stored; a new page starts from
-/// today again.
+/// incomplete until the range's next page came. Nothing is written anywhere: a new read starts
+/// from today, and may be joined onto an earlier one kept in memory (`joined(earlier:)`) or show
+/// home's last records until its own come (`prefill(_:)`).
 ///
 /// The school never says where the records begin, so the list ends after
 /// `emptyRangesBeforeEnd` empty ranges in a row (longer than any holiday), or `maxDaysBack`.
@@ -43,18 +44,18 @@ public struct CardHistory: Sendable, Equatable {
     let today: Date
     /// Records of the ranges read to their end, then the current range's so far; each in the
     /// school's order (newest first).
-    private var finished: [CardRecord] = []
-    private var current: [CardRecord] = []
+    var finished: [CardRecord] = []
+    var current: [CardRecord] = []
     /// Oldest day of the ranges read to their end.
-    private var readFrom: String?
+    var readFrom: String?
     /// Days of finished ranges that may still miss records (the school stopped paging).
-    private var unsure: Set<String> = []
+    var unsure: Set<String> = []
     /// Days with a record that may be on the list twice (no voucher, no balance): no total.
-    private var mayRepeat: Set<String> = []
+    var mayRepeat: Set<String> = []
     /// Days back from today of the current range's last day.
-    private var rangeEnd = 0
+    var rangeEnd = 0
     private var page = 1
-    private var emptyRanges = 0
+    var emptyRanges = 0
     /// The current range came up short of the total the school gave for it.
     private var shortOfTotal = false
     /// The oldest day read when the first short page came: the records the school left out
@@ -64,7 +65,12 @@ public struct CardHistory: Sendable, Equatable {
     /// trusted for this range.
     private var wrongTotal = false
     /// No older records to ask for.
-    public private(set) var reachedEnd = false
+    public internal(set) var reachedEnd = false
+    /// Home's last records (`prefill(_:)`), shown on the days they hold in full until this read
+    /// has read those days itself; never counted by the stats (`hasRead(through:)`).
+    var prefilled: [CardRecord] = []
+    /// The oldest day `prefilled` holds in full.
+    var prefillFrom: String?
 
     public init(now: Date, calendar: Calendar = SchoolCalendar.shanghai) {
         self.calendar = calendar
@@ -73,7 +79,16 @@ public struct CardHistory: Sendable, Equatable {
 
     /// Every record read so far, newest range first; a meal paid with WeChat as one expense
     /// (`WeChatPairs`), its WeChat half left out while its day may still bring the other.
-    public var records: [CardRecord] { WeChatPairs.merged(finished + current) { isRead(day: $0) } }
+    /// Before a day is read, home's records of it (`prefill(_:)`), after this read's own.
+    public var records: [CardRecord] {
+        let read = readRecords
+        guard !prefilled.isEmpty else { return read }
+        let shows = prefillShows
+        return read + prefilled.filter { shows(Self.trimmed($0.date)) }
+    }
+
+    /// The records this read has read itself, without home's.
+    var readRecords: [CardRecord] { WeChatPairs.merged(finished + current) { isRead(day: $0) } }
 
     /// Days back from today of the current range's first day: no further than `maxDaysBack`.
     private var rangeBegin: Int { min(rangeEnd + Self.rangeDays, Self.maxDaysBack) - 1 }
@@ -91,8 +106,9 @@ public struct CardHistory: Sendable, Equatable {
 
     /// The oldest day read (fully or in part): the app's own records older than it wait for it.
     public var readThrough: String? {
-        if let cut = cutDay { return cut }
-        return readFrom
+        let read = cutDay ?? readFrom
+        guard let prefillFrom else { return read }
+        return min(read ?? prefillFrom, prefillFrom)
     }
 
     /// The oldest day of the current range so far, when its pages come newest first. Records
@@ -103,7 +119,15 @@ public struct CardHistory: Sendable, Equatable {
         return dated.map { Self.trimmed($0.date) }.min()
     }
 
-    /// Every record of `day` (`yyyyMMdd`) has been read, each once.
+    /// Every range back to `day` (`yyyyMMdd`) has been read to its end, or there is nothing older
+    /// to read: the records from `day` through today are all here (some days may be unsure).
+    public func hasRead(through day: String) -> Bool {
+        if reachedEnd { return true }
+        return readFrom.map { $0 <= day } ?? false
+    }
+
+    /// Every record of `day` (`yyyyMMdd`) has been read, each once, by this read: a day shown
+    /// from home's records (`prefill(_:)`) is not, so it has no total until read.
     public func isComplete(day: String) -> Bool {
         if mayRepeat.contains(day) || unsure.contains(day) { return false }
         return isRead(day: day)
@@ -182,9 +206,10 @@ public struct CardHistory: Sendable, Equatable {
         while let query = h.nextQuery {
             do {
                 let answer = try await fetch(query)
-                let before = h.records.count
+                // Rows of its own: home's records it replaces don't count as new.
+                let before = h.readRecords.count
                 h.receive(answer, for: query)
-                if h.records.count > before { break }
+                if h.readRecords.count > before { break }
             } catch let e as ServiceError {
                 return Load(history: h, failure: e)
             } catch {
@@ -218,6 +243,31 @@ public struct CardDay: Sendable, Equatable, Identifiable {
     public var spokenTitle: String { total.map { title + "，花了 " + $0.yuanText + " 元" } ?? title }
 }
 
+/// How one card record counts toward what was spent: the one rule behind 「昨天花了」 on home,
+/// each day's total in 校园卡记录 and the records page's stats (`SpendStats`).
+enum CardSpend: Equatable {
+    /// Paid from the card on `day` (`yyyyMMdd`), whatever the name says: 「网费充值」 or 「xx圈存」
+    /// with direction 「1」 are payments too. Its amount counts with its sign.
+    case paid(day: String, amount: Money)
+    /// Money in (top-ups, refunds, grants, WeChat's half of a meal): never counts.
+    case moneyIn
+    /// Can't be told: its time can't be read, or it may be money in or out. `day` is nil when
+    /// its day can't be read either.
+    case unsure(day: String?)
+
+    static func of(_ record: CardRecord, calendar: Calendar) -> CardSpend {
+        let day = CardHistory.trimmed(record.date)
+        guard record.moment(calendar: calendar) != nil else {
+            return .unsure(day: day.count == 8 && day.allSatisfy({ $0.isASCII && $0.isNumber }) ? day : nil)
+        }
+        switch record.flow {
+        case .moneyOut: return .paid(day: day, amount: record.amount)
+        case .moneyIn: return .moneyIn
+        case .unknown: return .unsure(day: day)
+        }
+    }
+}
+
 /// 校园卡记录's day groups.
 public enum CardDays {
     /// `history` nil = the school's records could not be read: the app's own showers and laundry
@@ -245,27 +295,21 @@ public enum CardDays {
         return days
     }
 
-    /// What was paid on `day` (`yyyyMMdd`, the school's calendar) by the school's records: the
-    /// one rule behind 「昨天花了」 on home and each day's total in 校园卡记录. Money in (top-ups,
-    /// refunds, grants) is left out; a payment's amount counts with its sign. `paid`: at least
-    /// one payment. Nil when the records can't say: a record of that day whose time can't be
-    /// read or that may be money in or out, or a record whose day can't be read at all.
+    /// What was paid on `day` (`yyyyMMdd`, the school's calendar) by the school's records, each
+    /// counted by `CardSpend` (the rule the records page's stats use too). `paid`: at least one
+    /// payment. Nil when the records can't say: a record of that day whose time can't be read or
+    /// that may be money in or out, or a record whose day can't be read at all.
     static func spending(on day: String, _ records: [CardRecord],
                          calendar: Calendar) -> (total: Money, paid: Bool)? {
         var total = Money.zero, paid = false
         for record in records {
-            let recordDay = CardHistory.trimmed(record.date)
-            guard record.moment(calendar: calendar) != nil else {
-                // It may be that day's.
-                if recordDay == day || recordDay.count != 8 || !recordDay.allSatisfy({ $0.isASCII && $0.isNumber }) { return nil }
-                continue
-            }
-            guard recordDay == day else { continue }
-            switch record.flow {
-            case .moneyOut: total = total + record.amount; paid = true
+            switch CardSpend.of(record, calendar: calendar) {
+            case .paid(let recordDay, let amount):
+                guard recordDay == day else { continue }
+                total = total + amount; paid = true
             case .moneyIn: continue
-            // A record that may be money in or out: no total rather than a wrong one.
-            case .unknown: return nil
+            // It may be that day's, or money in or out that day: no total rather than a wrong one.
+            case .unsure(let recordDay): if recordDay == nil || recordDay == day { return nil }
             }
         }
         return (total, paid)

@@ -60,7 +60,9 @@ extension ClearRootView {
             freshPush(.laundry)
             return
         }
-        if let records = RecordsDemo.handle(url) {
+        // campusdaily://demo/stats/<state>: 订单 with a washing order, its stats on that demo state.
+        SpendStatsDemo.current = SpendStatsDemo.handle(url)
+        if let records = SpendStatsDemo.current != nil ? RecordsDemo.open : RecordsDemo.handle(url) {
             navigator.setup = nil; navigator.panel = nil; navigator.laundryDemo = nil
             navigator.demo = normal
             navigator.recordsDemo = records

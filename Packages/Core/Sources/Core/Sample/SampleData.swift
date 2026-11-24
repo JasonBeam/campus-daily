@@ -87,8 +87,10 @@ public enum SampleData {
 
     // MARK: 校园卡记录
 
-    /// Days back from today that 校园卡记录 has records for in the full sample: four weeks.
-    public static let recordDays = Array(0..<28)
+    /// Days back from today that 校园卡记录 has records for in the full sample: a little over six
+    /// months, so 本学期 (from 3月1日 or 9月1日, the longest about 184 days) and 30 days with the
+    /// 30 before them all have records.
+    public static let recordDays = Array(0..<200)
 
     /// The last three days are home's records (its meals, shower, laundry order and top-up), so
     /// 昨天 here sums to home's 昨天花了 under the same names; older days have meals at meal
@@ -112,7 +114,13 @@ public enum SampleData {
             if back % 4 != 3 { rows.append(record(at(17, 58 - back % 9, back), "POS消费示例面馆", ["9.00", "8.50", "10.00"][back % 3], school)) }
             if back % 3 == 2 { rows.append(record(at(21, 30, back), "蓝牙热水", "1.10", school)) }
             if back % 5 == 4 { rows.append(record(at(19, 12, back), "洗衣", "4.00", school)) }
-            if back == 15 { rows.append(record(at(13, 5, back), "校园卡充值", "50.00", school, flag: nil)) }
+            if back % 30 == 15 { rows.append(record(at(13, 5, back), "校园卡充值", ["50.00", "100.00"][back / 30 % 2], school, flag: nil)) }
+            // A shop now and then, and the dorm's electricity once a month (paid for the whole
+            // room, so it dwarfs a day's meals), so weeks differ.
+            if back % 7 == 5 || back % 11 == 6 {
+                rows.append(record(at(15, 40, back), "示例便利店", ["6.80", "12.50", "9.90", "23.00", "4.50"][back / 7 % 5], school))
+            }
+            if back % 30 == 20 { rows.append(record(at(10, 3, back), "电费", ["120.00", "80.00", "100.00"][back / 30 % 3], school)) }
         }
         // Each with a voucher, as the school gives them (synthetic: 99 and a zero-padded counter).
         // A meal paid with WeChat comes as the school sends it: WeChat's money in, then the
@@ -139,12 +147,14 @@ public enum SampleData {
         return CardRecordPage(total: inRange.count, rows: page)
     }
 
-    /// 校园卡记录 on the full sample, paged after a short wait; nothing is read from the school.
+    /// 校园卡记录 on the full sample, paged after a short wait (shorter for older ranges, read on
+    /// for the stats); nothing is read from the school.
     public static func recordsSource(now: Date = Date(), delay: Duration = .milliseconds(500)) -> CardRecordsSource {
         let school = calendar
         let rows = cardRecords(days: recordDays, now: now, school: school)
+        let today = SchoolCalendar.dayString(now, calendar: school)
         return CardRecordsSource(stamp: { 0 }, page: { query, _ in
-            try await Task.sleep(for: delay)
+            try await Task.sleep(for: query.end == today ? delay : delay / 4)
             return recordPage(rows, query)
         }, calendar: school)
     }

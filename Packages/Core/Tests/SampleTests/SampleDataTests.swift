@@ -51,6 +51,41 @@ final class SampleDataTests: XCTestCase {
         XCTAssertTrue(past.rows.isEmpty)
     }
 
+    /// The records page's stats on the sample: every span has spending, a comparison for 7 and
+    /// 30 days, no unsure day, and this term's weeks from its first day (an autumn term and a
+    /// spring one nearly over).
+    func testSampleRecordsGiveBelievableStats() throws {
+        let school = SampleData.calendar
+        for now in [now, Date(timeIntervalSince1970: 1_787_000_000)] {
+            let rows = SampleData.cardRecords(days: SampleData.recordDays, now: now)
+            let start = TermStart.defaultStart(today: now, calendar: school)
+            var history = CardHistory(now: now, calendar: school)
+            let first = SpendStats.firstDayNeeded(span: .term, today: now, termStart: start, calendar: school)
+            let needed = min(first, SpendStats.firstDayNeeded(span: .month, today: now, termStart: start, calendar: school))
+            while let q = history.nextQuery, !history.hasRead(through: needed) {
+                history.receive(SampleData.recordPage(rows, q), for: q)
+            }
+            XCTAssertLessThanOrEqual(try XCTUnwrap(rows.map(\.date).min()), first, "the sample reaches back to the term's start")
+            for span in SpendSpan.allCases {
+                let stats = try XCTUnwrap(SpendStats.make(span: span, history: history, termStart: start, calendar: school), "\(span)")
+                XCTAssertGreaterThan(stats.total, .zero, "\(span)")
+                XCTAssertEqual(stats.unsureDays, 0, "\(span)")
+                XCTAssertNil(stats.coveredFrom, "\(span)")
+                XCTAssertEqual(stats.shares.first?.kind, .canteen, "\(span)")
+                XCTAssertEqual(stats.shares.last?.kind, .other, "\(span)")
+                XCTAssertFalse(stats.shares.contains { $0.kind == .topUp })
+                if span == .term {
+                    XCTAssertNil(stats.versusPrevious)
+                    XCTAssertEqual(stats.termStart, SchoolCalendar.dayString(start, calendar: school))
+                    XCTAssertEqual(stats.bars.last?.axisLabel, "本周")
+                } else {
+                    XCTAssertNotNil(stats.versusPrevious, "\(span)")
+                    XCTAssertEqual(stats.bars.count, span == .week ? 7 : 30)
+                }
+            }
+        }
+    }
+
     func testAppActivitiesAreTheLastShowerAndLaundryOrder() {
         let items = SampleData.appActivities(now: now)
         XCTAssertEqual(items.map(\.id), ["demo-shower", "demo-laundry"])

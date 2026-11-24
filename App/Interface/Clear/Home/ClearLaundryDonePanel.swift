@@ -23,6 +23,7 @@ struct ClearLaundryDonePanel: View {
                     .accessibilityAddTraits(.isHeader)
                 if let amount {
                     Text(Theme.yuan(amount)).font(.largeTitle.weight(.semibold)).monospacedDigit().foregroundStyle(Theme.ink)
+                        .lineLimit(1).minimumScaleFactor(0.5)
                 }
                 Text(detail).font(.subheadline).foregroundStyle(Theme.ink2).multilineTextAlignment(.center)
             }

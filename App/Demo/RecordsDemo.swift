@@ -10,8 +10,8 @@ import Core
 
 /// campusdaily://demo/records/<state> — 校园卡记录 over the home demo, on synthetic pages (nothing
 /// is read from the school). `list` is also the sample mode's (「先看看示例」), in Release too:
-/// - `list`: four weeks of meals, showers, laundry and top-ups (the last three days the home
-///   demo's, with its lunch paid with WeChat), then the end;
+/// - `list`: a little over six months of meals, showers, laundry, shops, electricity and top-ups
+///   (the last three days the home demo's, with its lunch paid with WeChat), then the end;
 /// - `loading`: the first read never answers;
 /// - `more`: two days, then the older read never answers (the footer spinner);
 /// - `end`: today, then nothing older;
@@ -45,8 +45,9 @@ enum RecordsDemo: String {
         let school = SampleData.calendar
         let rows = SampleData.cardRecords(days:demo.days, now:Date(), school:school)
         return CardRecordsSource(stamp:{ 0 }, page:{ query, _ in
-            try await Task.sleep(for:.milliseconds(500))
             let firstRange = query.end == SchoolCalendar.dayString(Date(), calendar:school)
+            // Older ranges, read on for the stats, come quicker.
+            try await Task.sleep(for:.milliseconds(firstRange ? 500 : 120))
             switch demo {
             case .loading: try await Task.sleep(for:.seconds(3600))
             case .failed: throw ServiceError.offline

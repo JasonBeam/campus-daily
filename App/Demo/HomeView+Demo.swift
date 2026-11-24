@@ -63,7 +63,9 @@ extension HomeView {
                 freshPush(.washerSetup)
                 return
             }
-            if let records = RecordsDemo.handle(url) {
+            // campusdaily://demo/stats/<state>: the records list demo, its stats on that demo state.
+            SpendStatsDemo.current = SpendStatsDemo.handle(url)
+            if let records = SpendStatsDemo.current != nil ? RecordsDemo.list : RecordsDemo.handle(url) {
                 // 校园卡记录 over the home demo; a fresh push so the page starts from this demo.
                 onboarding = nil; panel = nil; laundryDemo = nil
                 demo = HomeDemo.normal.content().0

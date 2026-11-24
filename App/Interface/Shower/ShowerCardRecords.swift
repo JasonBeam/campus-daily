@@ -17,6 +17,8 @@ struct ShowerCardRecords: Sendable {
     struct Page: Sendable {
         let app: [AppActivity]
         let source: CardRecordsSource
+        /// Who the page is for (`CampusModel.recordsIdentity`): a new page for each person.
+        var identity: CardRecordsIdentity?
     }
 
     /// Nil while signed out of the school: 校园卡记录 can't open then, so no link shows.
@@ -81,7 +83,7 @@ private struct ShowerCardRecordsDestination: ViewModifier {
     func body(content: Content) -> some View {
         content.navigationDestination(isPresented:$isPresented) {
             if let page = records.page {
-                CardRecordsView(app:page.app, source:page.source).navOpen(.cardRecords, from:.homeButton)
+                CardRecordsView(app:page.app, source:page.source).id(page.identity).navOpen(.cardRecords, from:.homeButton)
             }
         }
     }

@@ -64,6 +64,8 @@ enum ReminderKey {
     @Published var demoStatus: UNAuthorizationStatus?
     /// campusdaily://demo/permission-home: the next pending app prompt ignores the flag and the real status.
     private var demoForcePrompt = false
+    /// Tests only: each snapshot `evaluateCampus` is given (a sample's sends nothing to see).
+    var campusEvaluated: ((HomeSnapshot) -> Void)?
     #endif
 
     /// The notification center; nil for a sample's, which reaches no notification at all.
@@ -310,6 +312,9 @@ enum ReminderKey {
 
     /// After each campus read (foreground, pull to refresh, background refresh). Only fresh, successful values count.
     func evaluateCampus(_ snapshot: HomeSnapshot, now: Date = Date()) {
+        #if DEBUG
+        campusEvaluated?(snapshot)
+        #endif
         guard center != nil else { return }
         let lines = ReminderKey.lines(in:defaults)
         if snapshot.power.error == nil, let meter = snapshot.power.value, let left = meter.remainingKWh {

@@ -29,7 +29,10 @@ struct ClearRecentOrdersSections: View {
                     VStack(alignment:.leading, spacing:8) {
                         Text(order.title).font(.headline).foregroundStyle(Color.primary)
                         Text(order.program).font(.subheadline).foregroundStyle(Color.secondary)
-                        if let amount = order.amount { Text(ClearCNY.text(amount)).monospacedDigit().foregroundStyle(Color.primary) }
+                        if let amount = order.amount {
+                            Text(ClearCNY.text(amount)).monospacedDigit().foregroundStyle(Color.primary)
+                                .lineLimit(1).minimumScaleFactor(0.5)
+                        }
                     }
                     .padding(.vertical,6)
                 }
@@ -49,13 +52,13 @@ struct ClearRecentOrdersSections: View {
         if let settled = orders.showerSettled {
             Section(ClearRecentOrders.showerSettledTitle) {
                 link(.shower, id:"recordsSettledShower") {
-                    HStack {
+                    ClearAmountRow {
                         VStack(alignment:.leading, spacing:6) {
                             Text(ClearRecentOrders.settled).foregroundStyle(Color.primary)
                             Text(ClearBalanceText.dayTime(settled.date, now:now, calendar:calendar))
                                 .font(.caption).foregroundStyle(Color.secondary)
                         }
-                        Spacer(minLength:8)
+                    } amount: {
                         if let amount = settled.amount {
                             Text(ClearCNY.text(amount)).monospacedDigit().foregroundStyle(Color.primary)
                         } else {

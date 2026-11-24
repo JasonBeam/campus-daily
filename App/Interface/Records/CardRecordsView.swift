@@ -15,6 +15,7 @@ struct CardRecordsView: View {
     /// shown alone when the school's records can't be read.
     let app: [AppActivity]
     @StateObject private var model: CardRecordsModel
+    @Environment(\.campusServices) private var campusServices
     @Environment(\.dynamicTypeSize) private var typeSize
 
     init(app: [AppActivity], source: CardRecordsSource) {
@@ -27,16 +28,15 @@ struct CardRecordsView: View {
         let days = days(now:now)
         ScrollView {
             LazyVStack(alignment:.leading, spacing:0, pinnedViews:[.sectionHeaders]) {
-                switch model.phase {
-                case .loading: loadingLine
-                case .failed: failedLine
-                case .loaded: EmptyView()
-                }
-                ForEach(Array(days.enumerated()), id:\.element.id) { index, day in
+                // The stats say when the records are being read or could not be.
+                CardRecordsStats(model:model)
+                    .padding(.horizontal,24)
+                Hairline().padding(.horizontal,24).padding(.top,22)
+                ForEach(days) { day in
                     Section {
                         rows(day)
                     } header: {
-                        header(day, first:index == 0 && model.phase == .loaded)
+                        header(day)
                     }
                 }
                 footer(empty:days.isEmpty)
@@ -51,7 +51,10 @@ struct CardRecordsView: View {
         // SwiftUI cancels the pull's own task when the list changes under it (the read starting
         // does): a read cancelled that way would come back as failed. The read runs on its own.
         .refreshable { await Task { await model.reload() }.value }
-        .task { if model.phase == .loading { await model.reload() } }
+        .task {
+            model.bind(campusServices.defaults)
+            if model.phase == .loading { await model.reload() }
+        }
     }
 
     private func days(now: Date) -> [CardDay] {
@@ -64,7 +67,7 @@ struct CardRecordsView: View {
 
     // MARK: Day groups
 
-    private func header(_ day: CardDay, first: Bool) -> some View {
+    private func header(_ day: CardDay) -> some View {
         ViewThatFits(in:.horizontal) {
             HStack(alignment:.firstTextBaseline) {
                 dayTitle(day)
@@ -77,7 +80,7 @@ struct CardRecordsView: View {
             }
         }
         .frame(maxWidth:.infinity, alignment:.leading)
-        .padding(.horizontal,24).padding(.top,first ? 8 : 22).padding(.bottom,6)
+        .padding(.horizontal,24).padding(.top,22).padding(.bottom,6)
         .background(Theme.bg)
         .accessibilityElement(children:.ignore)
         .accessibilityLabel(day.spokenTitle)
@@ -113,28 +116,6 @@ struct CardRecordsView: View {
     }
 
     // MARK: States
-
-    private var loadingLine: some View {
-        HStack(spacing:6) {
-            ProgressView().controlSize(.mini).frame(width:12, height:12).accessibilityHidden(true)
-            Text("正在读记录…")
-        }
-        .scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
-        .accessibilityElement(children:.combine)
-        .padding(.horizontal,24).padding(.top,16)
-        .accessibilityIdentifier("recordsLoading")
-    }
-
-    private var failedLine: some View {
-        HStack(alignment:.firstTextBaseline, spacing:5) {
-            Image(systemName:"exclamationmark.circle.fill").accessibilityHidden(true)
-            Text("没读到记录，下拉再试。").fixedSize(horizontal:false, vertical:true)
-        }
-        .scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.notice)
-        .accessibilityElement(children:.combine)
-        .padding(.horizontal,24).padding(.top,16)
-        .accessibilityIdentifier("recordsFailed")
-    }
 
     @ViewBuilder private func footer(empty: Bool) -> some View {
         if model.phase == .loaded, let history = model.history {

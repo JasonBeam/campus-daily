@@ -20,6 +20,9 @@ struct ThemeColor: ShapeStyle, Equatable {
         case redLarge, redText, pill, pillInk, notice
         /// Line icons: ink2 in 暖橙, accentText in 清爽.
         case icon
+        /// Chart marks (bars, dots): accent in 暖橙, accentLarge in 清爽 (#8ABAFF in dark, where its
+        /// accent stays the buttons' #175EC9).
+        case mark
         /// A text entry that is shut (「先看看示例」 refused): ink2 in 暖橙, #6C6C70 (dark #AEAEB2)
         /// in 清爽, at least 4.5:1 on the page in both.
         case disabledText
@@ -60,6 +63,7 @@ struct ThemeColor: ShapeStyle, Equatable {
         case .pillInk: palette.pillInk
         case .notice: palette.notice
         case .icon: theme == .clear ? palette.accentText : palette.ink2
+        case .mark: theme == .clear ? palette.accentLarge : palette.accent
         case .disabledText: theme == .clear ? ClearPalette.disabledText : palette.ink2
         case .nativeNotice: ClearPalette.notice
         case .fixed(let color): color

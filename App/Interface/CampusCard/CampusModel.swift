@@ -56,7 +56,17 @@ struct PowerChoice: Identifiable, Equatable {
     @Published private(set) var signOutFailedHeldHotWater = false
     /// Bumped by a sign-out and by a sign-in of someone else (or someone not known to be the
     /// same): pages showing the previous person's school data close.
-    @Published private(set) var personChanges = 0
+    @Published private(set) var personChanges = 0 {
+        // The records kept were the previous person's.
+        didSet { recordsMemory.clear(); recordsMemory = CardRecordsMemory() }
+    }
+    /// 校园卡记录's records kept in memory for the person signed in now, while the app runs: a
+    /// page opened again shows them and reads only the newest days (`CardRecordsLoader`). Never
+    /// written anywhere; a new, empty one with every change of person.
+    private(set) var recordsMemory = CardRecordsMemory()
+    /// The `personChanges` the shown `snapshot` was read for: after a switch of person it stays
+    /// the previous person's until their clean-up empties it.
+    private var snapshotPerson = 0
     private var lastRefresh: Date?
     /// The last refresh read the card (its session alive, or renewed).
     private var lastReadCard = false
@@ -88,6 +98,9 @@ struct PowerChoice: Identifiable, Equatable {
     /// Tests only: runs once the previous person's widget snapshot is cleared, before the
     /// hot-water binding goes (`previousPersonCleared`).
     var afterSnapshotCleared: (@MainActor () async -> Void)?
+    /// Tests only: runs right before the previous person's widget snapshot is cleared
+    /// (`previousPersonCleared`), the new person already signed in.
+    var beforeSnapshotCleared: (@MainActor () async -> Void)?
     /// Tests only: runs in a refresh right before its last await (who is signed in now), once
     /// the early checks passed.
     var beforeBalanceStamp: (@MainActor () async -> Void)?
@@ -116,7 +129,9 @@ struct PowerChoice: Identifiable, Equatable {
         configured = shown.signedIn
         profile = shown.profile
         account = shown.account
+        // The stored one: the previous person's is marked stale at a switch and reads as empty.
         snapshot = refresher.latest()
+        snapshotPerson = personChanges
     }
 
     /// The previous person's snapshot still stored under the stale mark: replaced by the empty
@@ -187,11 +202,14 @@ struct PowerChoice: Identifiable, Equatable {
         refreshesRunning += 1; loading = true
         defer { refreshesRunning -= 1; loading = refreshesRunning > 0 }
         let started = signOutGeneration
+        let person = personChanges
         // The round keeps the account generation of the call that started it (`roundTag`).
         let report = await refresher.refresh(inBackground:inBackground, includingChanges:force, tag:accountGeneration)
         lastReadCard = report.outcome == .ok
-        guard started == signOutGeneration else { return }
+        // Signed out, or someone else signed in, while it read: what it read is not theirs.
+        guard started == signOutGeneration, person == personChanges else { return }
         snapshot = report.snapshot
+        snapshotPerson = person
         reloadAccount()
         // A cancelled refresh (the view went away, the pull was abandoned) reads as offline; that
         // says nothing about the school, so it neither shows an issue nor counts as a refresh.
@@ -354,7 +372,8 @@ struct PowerChoice: Identifiable, Equatable {
     /// The login was someone else, or nothing showed it was the same person: Core already
     /// dropped their school data and marked the snapshot stale. Here: the widget snapshot (a
     /// clear that fails is logged; the mark keeps it hidden), a request for the widget to draw
-    /// again, the hot-water binding made with their identity, and the one-time alert.
+    /// again, the hot-water binding made with their identity, the records page's span and term
+    /// start, and the one-time alert.
     /// Laundry (U净) is its own login and stays. Nothing is cleared once a sign-out came after
     /// the sign-in started (`started`), or someone else signed in after it (`person`: the
     /// `personChanges` it left; nil = now): what is stored now is whoever signed in after it,
@@ -362,6 +381,7 @@ struct PowerChoice: Identifiable, Equatable {
     func previousPersonCleared(unconfirmed: Bool, dormAndMeterCleared: Bool, since started: Int, person: Int? = nil) async {
         let person = person ?? personChanges
         guard started == signOutGeneration, person == personChanges else { return }
+        forgetRecordsStatsPreferences()
         // Before any wait: the previous person's binding no longer starts anything (a start that
         // hasn't sent its authorize request is taken back), and their balance goes.
         accountGeneration += 1
@@ -372,11 +392,15 @@ struct PowerChoice: Identifiable, Equatable {
         let refresher = refresher
         #if DEBUG
         let afterSnapshotCleared = afterSnapshotCleared
+        let beforeSnapshotCleared = beforeSnapshotCleared
         #endif
         let redraw = services.sharedDidChange
         let hotWater = await AccountSwitch.clearPreviousPerson(
             snapshot:{
                 var failure: Error?
+                #if DEBUG
+                await beforeSnapshotCleared?()
+                #endif
                 do { try await refresher.clear() } catch { failure = error }
                 #if DEBUG
                 await afterSnapshotCleared?()
@@ -393,7 +417,7 @@ struct PowerChoice: Identifiable, Equatable {
                 return hotWater()?.clearBindingForAccountSwitch() ?? AccountSwitch.HotWater.none
             })
         guard started == signOutGeneration, person == personChanges else { return }
-        snapshot = .empty
+        snapshot = .empty; snapshotPerson = personChanges
         switchNotice = AccountSwitchNotice(previousPersonUnconfirmed:unconfirmed, dormAndMeterCleared:dormAndMeterCleared,
                                            hotWaterCleared:hotWater.noticed)
     }
@@ -428,7 +452,7 @@ struct PowerChoice: Identifiable, Equatable {
         signOutGeneration += 1; personChanges += 1; accountGeneration += 1
         hotWater()?.noteBalance(nil)
         _ = await signOuts.start().value
-        configured = false; snapshot = .empty; profile = nil; issue = nil; account = nil
+        configured = false; snapshot = .empty; snapshotPerson = personChanges; profile = nil; issue = nil; account = nil
         lookup.clear(); powerMatchIssue = nil; lastRefresh = nil
     }
 
@@ -455,9 +479,29 @@ struct PowerChoice: Identifiable, Equatable {
             // The next sign-in finds nobody stored to compare with: hot water goes as on an
             // account switch.
             _ = hotWater()?.clearBindingForAccountSwitch()
+            // Only once signed out: a failed sign-out leaves the person, and their settings.
+            forgetRecordsStatsPreferences()
         }
-        configured = false; snapshot = .empty; profile = nil; issue = nil; account = nil
+        configured = false; snapshot = .empty; snapshotPerson = personChanges; profile = nil; issue = nil; account = nil
         lookup.clear(); powerMatchIssue = nil
+    }
+
+    /// Home's last card records for 校园卡记录 to show until its own come: nil while the snapshot
+    /// shown is still a previous person's (a switch whose clean-up hasn't emptied it yet).
+    var recordsPrefill: CardActivity? {
+        snapshotPerson == personChanges ? snapshot.activity.value : nil
+    }
+
+    /// Who a records page is for: it changes with the graph and with every sign-out or change of
+    /// person, so a page (and its `CardRecordsModel`) never outlives the person it read.
+    var recordsIdentity: CardRecordsIdentity { CardRecordsIdentity(services:services.id, person:personChanges) }
+
+    /// The records page's span, term start and categories were the person's who signed out or
+    /// was switched from: the next one starts from 7 天, 3月1日 / 9月1日 and all but 电费.
+    private func forgetRecordsStatsPreferences() {
+        TermStartStore(preferences:services.defaults).clear()
+        SpendCategoryStore(preferences:services.defaults).clear()
+        services.defaults.removeObject(forKey:SpendSpan.storeKey)
     }
 
     /// Returns once every sign-out asked for before has finished, its hot water included.
@@ -611,4 +655,10 @@ struct PowerChoice: Identifiable, Equatable {
             : slow ? ServiceError.timedOut.userMessage : running ? nil : Self.stoppedIssue
     }
     #endif
+}
+
+/// `CampusModel.recordsIdentity`: the records pages' view identity.
+struct CardRecordsIdentity: Hashable, Sendable {
+    let services: UUID
+    let person: Int
 }
