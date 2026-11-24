@@ -18,12 +18,12 @@ struct ClearLastShowerCard: View {
     @State private var now = Date()
 
     var body: some View {
-        HStack(spacing:12) {
+        ClearAmountRow {
             VStack(alignment:.leading, spacing:5) {
                 Text("上次热水 · 已结算").font(.subheadline).foregroundStyle(Theme.ink)
                 Text(ClearBalanceText.dayTime(ended, now:now, calendar:calendar)).font(.caption).foregroundStyle(Theme.ink2)
             }
-            Spacer(minLength:8)
+        } amount: {
             if let cost {
                 Text(ClearBalanceText.currency(cost)).font(.subheadline.weight(.medium)).monospacedDigit()
                     .foregroundStyle(Theme.ink)

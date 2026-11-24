@@ -18,18 +18,15 @@ struct ClearShowerLastCard: View {
     var body: some View {
         VStack(alignment:.leading, spacing:14) {
             Text(ClearShowerText.lastUse).font(.subheadline).foregroundStyle(.secondary)
-            HStack(alignment:.firstTextBaseline) {
+            ClearAmountRow(alignment:.firstTextBaseline) {
                 VStack(alignment:.leading, spacing:6) {
                     Text(ClearShowerText.lastUseSettled).font(.subheadline)
                     if let ended = last.endedText(now:Date(), calendar:calendar) {
                         Text(ended).font(.caption).foregroundStyle(.secondary)
                     }
                 }
-                Spacer(minLength:8)
-                if let cost = last.cost {
-                    Text(ClearBalanceText.currency(cost)).font(.subheadline).monospacedDigit()
-                        .lineLimit(1).minimumScaleFactor(0.5).layoutPriority(1)
-                }
+            } amount: {
+                if let cost = last.cost { Text(ClearBalanceText.currency(cost)).font(.subheadline).monospacedDigit() }
             }
             .accessibilityElement(children:.combine)
         }

@@ -52,17 +52,15 @@ struct ClearRecentOrdersSections: View {
         if let settled = orders.showerSettled {
             Section(ClearRecentOrders.showerSettledTitle) {
                 link(.shower, id:"recordsSettledShower") {
-                    HStack {
+                    ClearAmountRow {
                         VStack(alignment:.leading, spacing:6) {
                             Text(ClearRecentOrders.settled).foregroundStyle(Color.primary)
                             Text(ClearBalanceText.dayTime(settled.date, now:now, calendar:calendar))
                                 .font(.caption).foregroundStyle(Color.secondary)
                         }
-                        Spacer(minLength:8)
+                    } amount: {
                         if let amount = settled.amount {
-                            // One line at any text size: it shrinks first, the title beside it wraps.
                             Text(ClearCNY.text(amount)).monospacedDigit().foregroundStyle(Color.primary)
-                                .lineLimit(1).minimumScaleFactor(0.5).layoutPriority(1)
                         } else {
                             Text(ClearRecentOrders.noAmount).font(.caption).foregroundStyle(Color.secondary)
                         }
