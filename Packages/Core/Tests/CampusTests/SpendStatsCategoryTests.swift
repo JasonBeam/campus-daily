@@ -37,6 +37,29 @@ final class SpendStatsCategoryTests: XCTestCase {
          record("20261115", "10.00"), record("20261113", "50.00", "购电")]
     }
 
+    /// 「转入电控」 is 电费 by its name, and money out only with flag 「1」: without it 转入 reads as
+    /// money in, as it does for 「转入水控」, and no category counts it.
+    func testElectricityTransfersCountOnlyWithTheirPaymentFlag() throws {
+        let paid = record("20261123", "30.00", "转入电控")
+        let unflagged = record("20261123", "30.00", "转入电控", flag: nil)
+        let water = record("20261123", "10.00", "转入水控", flag: nil)
+        XCTAssertEqual([paid.kind, unflagged.kind, water.kind], [.electricity, .electricity, .shower])
+        XCTAssertEqual(CardSpend.of(paid, calendar: cal), .paid(day: "20261123", amount: Money(fen: 3000)))
+        XCTAssertEqual(CardSpend.of(unflagged, calendar: cal), .moneyIn)
+        XCTAssertEqual(CardSpend.of(water, calendar: cal), .moneyIn, "the same as 转入水控")
+
+        let meal = record("20261124", "12.00")
+        let on = try stats([meal, paid], Set(SpendCategories.all))
+        XCTAssertEqual(on.total, Money(fen: 4200))
+        XCTAssertEqual(on.shares.first { $0.kind == .electricity }?.spent, Money(fen: 3000))
+        XCTAssertEqual(try stats([meal, paid], SpendCategories.defaultIncluded).total, Money(fen: 1200))
+
+        let unpaid = try stats([meal, unflagged, water], Set(SpendCategories.all))
+        XCTAssertEqual(unpaid.total, Money(fen: 1200))
+        XCTAssertEqual(unpaid.shares.map(\.kind), [.canteen], "money in: on no category's list")
+        XCTAssertEqual(unpaid.unsureDays, 0)
+    }
+
     func testTheDefaultLeavesElectricityOut() {
         XCTAssertEqual(SpendCategories.all, [.canteen, .shower, .laundry, .electricity, .other])
         XCTAssertEqual(SpendCategories.defaultIncluded, [.canteen, .shower, .laundry, .other])

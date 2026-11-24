@@ -103,7 +103,8 @@ public enum CardRecordKind: String, Sendable, Codable, CaseIterable {
 
     /// Classifies by the record name (`transname`). Order matters: a hot-water name contains
     /// 「POS」 too, and paying for electricity or hot water from the card can be called
-    /// 「电费充值」, 「转入电控」 or 「转入水控」, so those come before top-ups.
+    /// 「电费充值」, 「转入电控」 or 「转入水控」, so those come before top-ups. The kind says what for,
+    /// not which way: that is `CardRecord.flow`.
     /// WeChat's money in for a meal, left alone, is money in whatever its name (it can carry
     /// 「POS消费」): a top-up.
     public static func of(_ record: CardRecord) -> CardRecordKind {
@@ -144,7 +145,9 @@ public extension CardRecord {
     /// (「电费充值」 and 「转入水控」 take money out): out for a positive amount. Otherwise WeChat's
     /// money in for a meal (`isWeChatHalf`) and a name that says money came back or in (充值,
     /// 退款, 冲正, 补贴 …) are in, and without a flag any other positive amount is out. Anything
-    /// else (a negative amount, another flag) can't be told apart and is `.unknown`.
+    /// else (a negative amount, another flag) can't be told apart and is `.unknown`. So
+    /// 「转入电控」 and 「转入水控」 without the flag are money in (转入), counted nowhere: in no
+    /// day's total and in no category of the stats, 电费 and 热水 even when counted.
     var flow: CardFlow {
         let flag = CardRecord.flag(direction)
         if flag == "1" { return amount.fen >= 0 ? .moneyOut : .unknown }
