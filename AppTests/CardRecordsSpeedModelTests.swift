@@ -9,7 +9,8 @@ import XCTest
 import Core
 @testable import XiaoRiChang
 
-/// 校园卡记录's stats come as soon as the span is read, the comparison after. Today is fixed: Tuesday
+/// 校园卡记录's stats come as soon as the span is read (the comparison after), and a page opened
+/// again in the same launch shows the kept records' stats at once. Today is fixed: Tuesday
 /// 2026-11-24 noon, on the sample's records.
 @MainActor final class CardRecordsSpeedModelTests: XCTestCase {
     private var calendar: Calendar { SampleData.calendar }
@@ -32,12 +33,13 @@ import Core
         var isWaiting: Bool { !waiting.isEmpty }
     }
 
-    private func source(_ gate: Gate, holds: @escaping @Sendable (CardHistoryQuery) -> Bool) -> CardRecordsSource {
+    private func source(_ gate: Gate, memory: CardRecordsMemory? = nil,
+                        holds: @escaping @Sendable (CardHistoryQuery) -> Bool) -> CardRecordsSource {
         let sample = SampleData.recordsSource(now:now, delay:.milliseconds(1))
         return CardRecordsSource(stamp:{ 0 }, page:{ query, stamp in
             await gate.ask(query, hold:holds(query))
             return try await sample.page(query, stamp)
-        }, calendar:sample.calendar)
+        }, calendar:sample.calendar, memory:memory)
     }
 
     private func until(_ condition: @autoclosure () -> Bool, _ what: String,
@@ -84,5 +86,35 @@ import Core
         await m.reload()
         try await until(m.stats != nil && !m.loadingMore, "the term's stats never came")
         XCTAssertFalse(m.comparisonLoading)
+    }
+
+    /// Opened again: the kept records' stats show before the newest range is read again, and
+    /// only that range is read.
+    func testAPageOpenedAgainShowsItsStatsAtOnce() async throws {
+        let memory = CardRecordsMemory()
+        let defaults = SampleDefaults()
+        defaults.set("month", forKey:SpendSpan.storeKey)
+        let gate = Gate()
+        await gate.release()
+        let first = CardRecordsModel(source:source(gate, memory:memory) { _ in false }, preferences:defaults, now:{ [now] in now })
+        await first.reload()
+        try await until(first.stats?.versusPrevious != nil && !first.loadingMore, "the first visit's stats never came")
+        let stats = try XCTUnwrap(first.stats)
+
+        let again = Gate()
+        let today = id(back:0)
+        let second = CardRecordsModel(source:source(again, memory:memory) { $0.end == today }, preferences:defaults,
+                                      now:{ [now] in now })
+        let visit = Task { await second.reload() }
+        try await until(second.stats != nil, "the kept records' stats never showed")
+        XCTAssertEqual(second.stats, stats)
+        XCTAssertFalse(second.comparisonLoading)
+        await again.release()
+        await visit.value
+        try await until(!second.loadingMore, "the reads never settled")
+        try await Task.sleep(for:.milliseconds(50))
+        let asked = await again.asked
+        XCTAssertEqual(Set(asked.map(\.begin)), [id(back:13)], "the newest range only")
+        XCTAssertEqual(second.stats, stats, "nothing new since")
     }
 }

@@ -110,7 +110,7 @@ final class AccountSwitchSnapshotTests: XCTestCase {
     }
 
     /// B signs in over A without a sign-out: the records pages are made again for B (none of A's
-    /// span, term start or categories stays in memory) and A's stored choices are gone.
+    /// span, term start or records stays in memory) and A's stored choices are gone.
     func testASwitchGivesTheRecordsPagesANewIdentityAndForgetsTheStats() async throws {
         let store = ScriptedStore()
         try seedPersonA(store)
@@ -120,6 +120,10 @@ final class AccountSwitchSnapshotTests: XCTestCase {
         services.defaults.set("20261114", forKey:TermStartStore.key)
         SpendCategoryStore(preferences:services.defaults).set(Set(SpendCategories.all))
         let before = campus.recordsIdentity
+        let kept = campus.recordsMemory
+        var history = CardHistory(now:Date())
+        if let query = history.nextQuery { history.receive(CardRecordPage(total:0, rows:[]), for:query) }
+        kept.keep(history, stamp:0)
 
         try await campus.adoptWebState(Self.webLogin(card:"SYNTHETIC-CARD-B"))
 
@@ -127,6 +131,8 @@ final class AccountSwitchSnapshotTests: XCTestCase {
         XCTAssertNil(services.defaults.object(forKey:SpendSpan.storeKey))
         XCTAssertNil(services.defaults.object(forKey:TermStartStore.key))
         XCTAssertNil(services.defaults.object(forKey:SpendCategoryStore.key))
+        XCTAssertTrue(kept.isEmpty, "A's records are not kept for B")
+        XCTAssertTrue(campus.recordsMemory.isEmpty)
     }
 
     func testASwitchAsksTheWidgetToRedrawEvenWhenTheClearFails() async throws {

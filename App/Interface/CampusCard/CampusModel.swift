@@ -56,7 +56,14 @@ struct PowerChoice: Identifiable, Equatable {
     @Published private(set) var signOutFailedHeldHotWater = false
     /// Bumped by a sign-out and by a sign-in of someone else (or someone not known to be the
     /// same): pages showing the previous person's school data close.
-    @Published private(set) var personChanges = 0
+    @Published private(set) var personChanges = 0 {
+        // The records kept were the previous person's.
+        didSet { recordsMemory.clear(); recordsMemory = CardRecordsMemory() }
+    }
+    /// 校园卡记录's records kept in memory for the person signed in now, while the app runs: a
+    /// page opened again shows them and reads only the newest days (`CardRecordsLoader`). Never
+    /// written anywhere; a new, empty one with every change of person.
+    private(set) var recordsMemory = CardRecordsMemory()
     private var lastRefresh: Date?
     /// The last refresh read the card (its session alive, or renewed).
     private var lastReadCard = false

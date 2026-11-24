@@ -85,6 +85,24 @@ final class SignOutRecordsPreferencesTests: XCTestCase {
         await campus.signOutsFinished()
     }
 
+    /// The records kept in memory for the records pages go with the person: the old store is
+    /// emptied and the next pages get a new one.
+    func testASignOutDropsTheRecordsKeptInMemory() async {
+        let campus = campus(defaults:SampleDefaults())
+        let kept = campus.recordsMemory
+        var history = CardHistory(now:Date())
+        if let query = history.nextQuery { history.receive(CardRecordPage(total:0, rows:[]), for:query) }
+        kept.keep(history, stamp:0)
+        XCTAssertFalse(kept.isEmpty)
+
+        campus.signOut()
+
+        XCTAssertTrue(kept.isEmpty)
+        XCTAssertFalse(campus.recordsMemory === kept)
+        XCTAssertTrue(campus.recordsMemory.isEmpty)
+        await campus.signOutsFinished()
+    }
+
     /// Someone else signs in without signing out first: the clean-up forgets them too.
     func testAnAccountSwitchClearsTheSpanAndTheTermStart() async {
         let defaults = SampleDefaults()

@@ -22,8 +22,9 @@ public struct CardHistoryQuery: Sendable, Equatable {
 /// 校园卡记录: the card's records read back from today, range by range of whole school days,
 /// so a day never ends at a range boundary. Inside a range the school pages by count: the
 /// range's pages are read one after another, and a day cut by a page boundary stays
-/// incomplete until the range's next page came. Nothing is stored; a new page starts from
-/// today again.
+/// incomplete until the range's next page came. Nothing is written anywhere: a new read starts
+/// from today, and may be joined onto an earlier one kept in memory (`joined(earlier:)`) or show
+/// home's last records until its own come (`prefill(_:)`).
 ///
 /// The school never says where the records begin, so the list ends after
 /// `emptyRangesBeforeEnd` empty ranges in a row (longer than any holiday), or `maxDaysBack`.
@@ -43,18 +44,18 @@ public struct CardHistory: Sendable, Equatable {
     let today: Date
     /// Records of the ranges read to their end, then the current range's so far; each in the
     /// school's order (newest first).
-    private var finished: [CardRecord] = []
-    private var current: [CardRecord] = []
+    var finished: [CardRecord] = []
+    var current: [CardRecord] = []
     /// Oldest day of the ranges read to their end.
-    private var readFrom: String?
+    var readFrom: String?
     /// Days of finished ranges that may still miss records (the school stopped paging).
-    private var unsure: Set<String> = []
+    var unsure: Set<String> = []
     /// Days with a record that may be on the list twice (no voucher, no balance): no total.
-    private var mayRepeat: Set<String> = []
+    var mayRepeat: Set<String> = []
     /// Days back from today of the current range's last day.
-    private var rangeEnd = 0
+    var rangeEnd = 0
     private var page = 1
-    private var emptyRanges = 0
+    var emptyRanges = 0
     /// The current range came up short of the total the school gave for it.
     private var shortOfTotal = false
     /// The oldest day read when the first short page came: the records the school left out
@@ -64,7 +65,12 @@ public struct CardHistory: Sendable, Equatable {
     /// trusted for this range.
     private var wrongTotal = false
     /// No older records to ask for.
-    public private(set) var reachedEnd = false
+    public internal(set) var reachedEnd = false
+    /// Home's last records (`prefill(_:)`), shown on the days they hold in full until this read
+    /// has read those days itself; never counted by the stats (`hasRead(through:)`).
+    var prefilled: [CardRecord] = []
+    /// The oldest day `prefilled` holds in full.
+    var prefillFrom: String?
 
     public init(now: Date, calendar: Calendar = SchoolCalendar.shanghai) {
         self.calendar = calendar
@@ -73,7 +79,16 @@ public struct CardHistory: Sendable, Equatable {
 
     /// Every record read so far, newest range first; a meal paid with WeChat as one expense
     /// (`WeChatPairs`), its WeChat half left out while its day may still bring the other.
-    public var records: [CardRecord] { WeChatPairs.merged(finished + current) { isRead(day: $0) } }
+    /// Before a day is read, home's records of it (`prefill(_:)`), after this read's own.
+    public var records: [CardRecord] {
+        let read = readRecords
+        guard !prefilled.isEmpty else { return read }
+        let shows = prefillShows
+        return read + prefilled.filter { shows(Self.trimmed($0.date)) }
+    }
+
+    /// The records this read has read itself, without home's.
+    var readRecords: [CardRecord] { WeChatPairs.merged(finished + current) { isRead(day: $0) } }
 
     /// Days back from today of the current range's first day: no further than `maxDaysBack`.
     private var rangeBegin: Int { min(rangeEnd + Self.rangeDays, Self.maxDaysBack) - 1 }
@@ -91,8 +106,9 @@ public struct CardHistory: Sendable, Equatable {
 
     /// The oldest day read (fully or in part): the app's own records older than it wait for it.
     public var readThrough: String? {
-        if let cut = cutDay { return cut }
-        return readFrom
+        let read = cutDay ?? readFrom
+        guard let prefillFrom else { return read }
+        return min(read ?? prefillFrom, prefillFrom)
     }
 
     /// The oldest day of the current range so far, when its pages come newest first. Records
@@ -113,7 +129,8 @@ public struct CardHistory: Sendable, Equatable {
     /// Every record of `day` (`yyyyMMdd`) has been read, each once.
     public func isComplete(day: String) -> Bool {
         if mayRepeat.contains(day) || unsure.contains(day) { return false }
-        return isRead(day: day)
+        if isRead(day: day) { return true }
+        return day < SchoolCalendar.dayString(today, calendar: calendar) && prefillShows(day)
     }
 
     /// No more records of `day` will come: its range was read to its end (even when the school
@@ -189,9 +206,10 @@ public struct CardHistory: Sendable, Equatable {
         while let query = h.nextQuery {
             do {
                 let answer = try await fetch(query)
-                let before = h.records.count
+                // Rows of its own: home's records it replaces don't count as new.
+                let before = h.readRecords.count
                 h.receive(answer, for: query)
-                if h.records.count > before { break }
+                if h.readRecords.count > before { break }
             } catch let e as ServiceError {
                 return Load(history: h, failure: e)
             } catch {

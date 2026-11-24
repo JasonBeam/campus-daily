@@ -10,21 +10,25 @@ import Core
 
 extension CardRecordsSource {
     /// `campus`'s school session (the live one, or a sample's, which reads nothing): pages for
-    /// the person signed in when the list was read from today.
+    /// the person signed in when the list was read from today. The records are kept in memory for
+    /// the person while the app runs (`CampusModel.recordsMemory`), and home's last records show
+    /// until the first page comes.
     @MainActor static func school(_ campus: CampusModel) -> CardRecordsSource {
         let session = campus.schoolSession
         return CardRecordsSource(stamp:{ await session.personStamp() },
                                  page:{ query, stamp in try await session.cardHistoryPage(query, since:stamp) },
                                  samePerson:{ await session.isSamePerson(since:$0) },
-                                 renew:{ [weak campus] in await campus?.renewCardSession() ?? false })
+                                 renew:{ [weak campus] in await campus?.renewCardSession() ?? false },
+                                 memory:campus.recordsMemory,
+                                 prefill:{ [weak campus] in campus?.snapshot.activity.value })
     }
 }
 
 /// 校园卡记录's state for SwiftUI, over Core's `CardRecordsLoader`, and the page's spending
-/// stats (`SpendStats`) for the span chosen. The records are not stored: every visit (and every
-/// pull) starts from today, and reads back as far as the stats need. The span, the start day
-/// set for this term and the categories counted are kept in the graph's preferences once
-/// `bind(_:)` gives them.
+/// stats (`SpendStats`) for the span chosen. The records are never written anywhere: a visit
+/// starts from those kept in memory for the person (the source's `memory`), or from today, and
+/// reads back as far as the stats need. The span, the start day set for this term and the
+/// categories counted are kept in the graph's preferences once `bind(_:)` gives them.
 @MainActor final class CardRecordsModel: ObservableObject {
     @Published private(set) var state = CardRecordsState()
     /// The stats' span: kept under `SpendSpan.storeKey`; the records are read back far enough for it.
@@ -71,6 +75,9 @@ extension CardRecordsSource {
     var loadingMore: Bool { state.loadingMore }
     var moreFailed: Bool { state.moreFailed }
     var reloads: Int { state.reloads }
+    /// The records kept from an earlier visit are shown, and the newest days could not be read
+    /// again: the list and stats are as last read (a pull tries again).
+    var refreshFailed: Bool { state.refreshFailed }
     /// The calendar the records are read in (the school's, or the sample's).
     var calendar: Calendar { loader.calendar }
 
