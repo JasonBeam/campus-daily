@@ -67,6 +67,9 @@ public struct CardRecordsState: Sendable, Equatable {
     private var stamp = 0
     /// Bumped by `reload()`: a read that returns afterwards is dropped.
     private var generation = 0
+    /// The oldest day (`yyyyMMdd`) the records page's stats need: after a read from today or an
+    /// older page, older pages are read on until the list holds it, ends, or a read fails.
+    public private(set) var target: String?
 
     public init(source: CardRecordsSource, now: @escaping () -> Date = Date.init) {
         self.source = source; self.now = now
@@ -94,31 +97,53 @@ public struct CardRecordsState: Sendable, Equatable {
             next.history = load.history; next.phase = .loaded; next.moreFailed = load.failure != nil
         }
         state = next
+        if next.phase == .loaded, load.failure == nil, needsMore(load.history) {
+            Task { [weak self] in await self?.loadMore() }
+        }
     }
 
-    /// Older records: when the list's end appears, or 「点这里再试」.
+    /// Reads back until the list holds `day` (`yyyyMMdd`), its end, or a failure; from then on
+    /// every read goes on back to it (see `target`). Returns at once while another read runs:
+    /// that one goes on to `day`.
+    public func read(through day: String) async {
+        target = day
+        await loadMore()
+    }
+
+    /// The list does not hold `target` yet.
+    private func needsMore(_ history: CardHistory) -> Bool {
+        guard let target else { return false }
+        return !history.hasRead(through: target)
+    }
+
+    /// Older records: when the list's end appears, or 「点这里再试」; then on back to `target`.
     public func loadMore() async {
         guard state.phase == .loaded, !state.reloading, !state.loadingMore,
-              let current = state.history, !current.reachedEnd else { return }
+              var current = state.history, !current.reachedEnd else { return }
         let mine = generation
         state.loadingMore = true
         state.moreFailed = false
-        let load = await Self.read(current, source: source, stamp: stamp)
-        // A read from today started meanwhile: it owns the list (and `loadingMore`) now.
-        guard mine == generation, !state.reloading, state.history == current else { return }
-        if load.failure != nil, !(await source.samePerson(stamp)) {
-            // Signed out, or someone else signed in: their rows go, and the list is read again
-            // for whoever is signed in now (nothing, signed out).
-            guard mine == generation, !state.reloading else { return }
-            state = CardRecordsState()
-            await reload()
-            return
+        while true {
+            let load = await Self.read(current, source: source, stamp: stamp)
+            // A read from today started meanwhile: it owns the list (and `loadingMore`) now.
+            guard mine == generation, !state.reloading, state.history == current else { return }
+            if load.failure != nil, !(await source.samePerson(stamp)) {
+                // Signed out, or someone else signed in: their rows go, and the list is read again
+                // for whoever is signed in now (nothing, signed out).
+                guard mine == generation, !state.reloading else { return }
+                state = CardRecordsState()
+                await reload()
+                return
+            }
+            let more = load.failure == nil && !load.history.reachedEnd && needsMore(load.history)
+            var next = state
+            next.history = load.history
+            next.moreFailed = load.failure != nil
+            next.loadingMore = more
+            state = next
+            guard more else { return }
+            current = load.history
         }
-        var next = state
-        next.history = load.history
-        next.moreFailed = load.failure != nil
-        next.loadingMore = false
-        state = next
     }
 
     /// Pages from `history` on. A failure that says the card session is gone has it renewed

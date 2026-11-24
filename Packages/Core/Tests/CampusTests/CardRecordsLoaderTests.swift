@@ -353,4 +353,65 @@ import XCTest
         await loader.reload()
         XCTAssertEqual(loader.state.phase, .failed)
     }
+
+    // MARK: Reading back for the stats
+
+    /// The stats need records back to a day: older pages are read on, through empty ranges and
+    /// past ranges with rows, until the list holds it.
+    func testReadThroughGoesBackUntilTheDayIsHeld() async {
+        let school = School(today: [Self.record(Self.today, "090000")])
+        await school.set(older: [Self.record("20261010", "120000"), Self.record("20260901", "120000")])
+        let loader = makeLoader(school)
+        await loader.reload()
+        XCTAssertFalse(loader.state.history?.hasRead(through: "20260901") ?? true)
+        await loader.read(through: "20260901")
+        XCTAssertEqual(loader.target, "20260901")
+        XCTAssertTrue(loader.state.history?.hasRead(through: "20260901") ?? false)
+        XCTAssertEqual(loader.state.history?.records.count, 3)
+        XCTAssertFalse(loader.state.loadingMore)
+        XCTAssertFalse(loader.state.moreFailed)
+    }
+
+    /// A pull starts from today again and reads on back to the day the stats need by itself.
+    func testAPullReadsBackToTheDayAgain() async throws {
+        let school = School(today: [Self.record(Self.today, "090000")])
+        await school.set(older: [Self.record("20261001", "120000")])
+        let loader = makeLoader(school)
+        await loader.reload()
+        await loader.read(through: "20261001")
+        await loader.reload()
+        for _ in 0..<2000 {
+            if loader.state.history?.hasRead(through: "20261001") == true, !loader.state.loadingMore { break }
+            try await Task.sleep(nanoseconds: 1_000_000)
+        }
+        XCTAssertTrue(loader.state.history?.hasRead(through: "20261001") ?? false)
+        XCTAssertEqual(loader.state.history?.records.count, 2)
+    }
+
+    /// An older page failing stops the reading back: the footer offers to try again.
+    func testAFailureStopsReadingBack() async {
+        let school = School(today: [Self.record(Self.today, "090000")])
+        let loader = makeLoader(school)
+        await loader.reload()
+        await school.set(failToday: false, failOlder: true)
+        await loader.read(through: "20260901")
+        XCTAssertTrue(loader.state.moreFailed)
+        XCTAssertFalse(loader.state.loadingMore)
+        XCTAssertFalse(loader.state.history?.hasRead(through: "20260901") ?? true)
+        // Trying again goes on back to the day.
+        await school.set(failToday: false, failOlder: false)
+        await loader.loadMore()
+        XCTAssertTrue(loader.state.history?.hasRead(through: "20260901") ?? false)
+    }
+
+    /// Without a day to reach, 「load more」 stops at the first page with rows, as before.
+    func testLoadMoreWithoutATargetStopsAtRows() async {
+        let school = School(today: [Self.record(Self.today, "090000")])
+        await school.set(older: [Self.record("20261010", "120000"), Self.record("20260901", "120000")])
+        let loader = makeLoader(school)
+        await loader.reload()
+        await loader.loadMore()
+        XCTAssertEqual(loader.state.history?.records.count, 2)
+        XCTAssertFalse(loader.state.history?.hasRead(through: "20260901") ?? true)
+    }
 }
