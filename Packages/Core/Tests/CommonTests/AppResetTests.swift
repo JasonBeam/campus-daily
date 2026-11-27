@@ -59,8 +59,9 @@ final class AppResetTests: XCTestCase {
     /// A new Keychain item is cleared by reset too; this count makes adding one a conscious step.
     func testResetCoversEveryKeychainItem() {
         XCTAssertEqual(Set(AppReset.keychainItems), Set(StoreKey.allCases))
-        XCTAssertEqual(AppReset.keychainItems.count, 19, "a new item: check reset clears it, then update this count")
+        XCTAssertEqual(AppReset.keychainItems.count, 20, "a new item: check reset clears it, then update this count")
         XCTAssertTrue(AppReset.keychainItems.contains(.sharedSessionEpoch))
+        XCTAssertTrue(AppReset.keychainItems.contains(.cardHistorySession))
         // The finished laundry orders go, and so does their salt.
         XCTAssertTrue(AppReset.keychainItems.contains(.laundryHistory))
         XCTAssertTrue(AppReset.keychainItems.contains(.laundryHistorySalt))

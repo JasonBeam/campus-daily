@@ -55,7 +55,8 @@ import Core
     /// parameters are app resources and stay.
     private var files: [URL] {
         guard let support = services.applicationSupport else { return [] }
-        return ["Water", "LaundryCache", "WaterSession", FileDebugLog.folderName].map { support.appendingPathComponent($0, isDirectory:true) }
+        return ["Water", "LaundryCache", "WaterSession", CardHistoryDiskCoordinator.folderName, FileDebugLog.folderName]
+            .map { support.appendingPathComponent($0, isDirectory:true) }
             + [CrashReportsLaunch.pendingFolder(in:support)]
             + [RetiredDiagnostics.exportFolder(in:FileManager.default.temporaryDirectory)]
     }

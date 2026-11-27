@@ -148,8 +148,9 @@ import XCTest
         XCTAssertEqual(again.state.history?.records.count, 98)
     }
 
-    /// Kept yesterday: not shown as today's, but still joined after the newest range.
-    func testKeptYesterdayIsJoinedButNotShownFirst() async throws {
+    /// Kept yesterday: shown at once (anchored on yesterday, so offline visits still display cached
+    /// records with an as-of date), then joined after the newest 14-day range comes in.
+    func testKeptYesterdayShowsImmediatelyAndJoinsToday() async throws {
         let yesterday = cal.date(byAdding: .day, value: -1, to: noon)!
         let rows = (1..<90).map { record(id(back: $0)) }
         let school = School(rows: rows, today: id(back: 1))
@@ -158,6 +159,7 @@ import XCTest
         first.setTarget(id(back: 29, from: yesterday))
         await first.reload()
         await settled(first)
+        let keptYesterday = try XCTUnwrap(first.state.history)
 
         let todaySchool = School(rows: rows + [record(id(back: 0))], today: id(back: 0))
         await todaySchool.hold()
@@ -165,13 +167,42 @@ import XCTest
         again.setTarget(id(back: 13))
         let visit = Task { await again.reload() }
         await held(todaySchool)
-        XCTAssertEqual(again.state.phase, .loading)
+        XCTAssertEqual(again.state.phase, .loaded, "yesterday's cache shows immediately while refreshing")
+        XCTAssertEqual(again.state.history, keptYesterday)
+        XCTAssertTrue(again.state.reloading)
         await todaySchool.release()
         await visit.value
         await settled(again)
         let queries = await todaySchool.queries
         XCTAssertEqual(queries.count, 1)
         XCTAssertTrue(again.state.history?.hasRead(through: id(back: 42)) ?? false, "yesterday's 42 days back")
+        XCTAssertFalse(again.state.refreshFailed)
+    }
+
+    /// Kept yesterday and today is offline: yesterday's cached records stay shown with `refreshFailed`
+    /// and their original save timestamp.
+    func testKeptYesterdayStaysShownWhenOffline() async throws {
+        let yesterday = cal.date(byAdding: .day, value: -1, to: noon)!
+        let rows = (1..<45).map { record(id(back: $0)) }
+        let school = School(rows: rows, today: id(back: 1))
+        let memory = CardRecordsMemory()
+        let first = loader(school, memory: memory, now: yesterday)
+        first.setTarget(id(back: 29, from: yesterday))
+        await first.reload()
+        await settled(first)
+        let keptYesterday = try XCTUnwrap(first.state.history)
+        let savedAt = first.state.cachedSavedAt
+
+        let offlineToday = School(rows: rows, today: id(back: 0))
+        await offlineToday.fail(true)
+        let again = loader(offlineToday, memory: memory, now: noon)
+        again.setTarget(id(back: 29))
+        await again.reload()
+        await settled(again)
+        XCTAssertEqual(again.state.phase, .loaded)
+        XCTAssertEqual(again.state.history, keptYesterday)
+        XCTAssertTrue(again.state.refreshFailed)
+        XCTAssertEqual(again.state.cachedSavedAt, savedAt)
     }
 
     /// Someone else's records (another stamp) are not used.

@@ -41,7 +41,7 @@ public struct CardHistory: Sendable, Equatable {
 
     let calendar: Calendar
     /// Start of the school's today.
-    let today: Date
+    public let today: Date
     /// Records of the ranges read to their end, then the current range's so far; each in the
     /// school's order (newest first).
     var finished: [CardRecord] = []

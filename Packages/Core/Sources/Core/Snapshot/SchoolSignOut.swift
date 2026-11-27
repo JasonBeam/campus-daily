@@ -19,23 +19,30 @@ public final class SchoolSignOut: @unchecked Sendable {
     let refresher: SnapshotRefresher
     private let lock = NSLock()
     private var last: Task<Bool, Never>?
+    let cardHistoryCache: (any CardHistoryCaching)?
     let debugLog: any DebugLogSink
 
-    public init(session: SchoolSession, refresher: SnapshotRefresher, debugLog: any DebugLogSink = NoDebugLog()) {
-        self.session = session; self.refresher = refresher; self.debugLog = debugLog
+    public init(session: SchoolSession, refresher: SnapshotRefresher,
+                cardHistoryCache: (any CardHistoryCaching)? = nil,
+                debugLog: any DebugLogSink = NoDebugLog()) {
+        self.session = session; self.refresher = refresher
+        self.cardHistoryCache = cardHistoryCache
+        self.debugLog = debugLog
     }
 
     /// Starts a sign-out at once (after any still running). Its value: true when everything was
     /// deleted, false when something is still stored (退出登录 can be tried again).
     @discardableResult public func start() -> Task<Bool, Never> {
         lock.withLock {
-            let before = last, session = session, refresher = refresher, debugLog = debugLog
+            let before = last, session = session, refresher = refresher
+            let cardHistoryCache = cardHistoryCache, debugLog = debugLog
             let task = Task {
                 _ = await before?.value
                 await refresher.revokeLease()
                 var deleted = true
                 do { try await session.signOut() } catch { deleted = false }
                 do { try await refresher.clear() } catch { deleted = false }
+                await cardHistoryCache?.invalidateAndClear()
                 // The TestFlight log and its salt go too, whatever was left stored.
                 debugLog.clear()
                 return deleted

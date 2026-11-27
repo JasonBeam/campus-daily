@@ -61,9 +61,12 @@ struct PowerChoice: Identifiable, Equatable {
         didSet { recordsMemory.clear(); recordsMemory = CardRecordsMemory() }
     }
     /// 校园卡记录's records kept in memory for the person signed in now, while the app runs: a
-    /// page opened again shows them and reads only the newest days (`CardRecordsLoader`). Never
-    /// written anywhere; a new, empty one with every change of person.
+    /// page opened again shows them and reads only the newest days (`CardRecordsLoader`).
+    /// A new, empty one with every change of person.
     private(set) var recordsMemory = CardRecordsMemory()
+    /// App-private disk cache coordinator for campus card history (`CardHistory/<sessionID>/`).
+    /// Nil-backed (zero disk/Keychain touches) in sample mode.
+    let cardHistoryCache: CardHistoryDiskCoordinator
     /// The `personChanges` the shown `snapshot` was read for: after a switch of person it stays
     /// the previous person's until their clean-up empties it.
     private var snapshotPerson = 0
@@ -112,8 +115,15 @@ struct PowerChoice: Identifiable, Equatable {
         refresher = stack.refresher
         self.reminders = reminders
         self.hotWater = hotWater
-        signOuts = SchoolSignOut(session:stack.session, refresher:stack.refresher, debugLog:services.debugLog)
+        cardHistoryCache = CardHistoryDiskCoordinator.forServices(services)
+        signOuts = SchoolSignOut(session:stack.session, refresher:stack.refresher,
+                                 cardHistoryCache:cardHistoryCache, debugLog:services.debugLog)
         reload()
+    }
+
+    /// Sweeps orphan campus card history cache directories once unlocked (launch, foreground).
+    func sweepCardHistoryOrphans() async {
+        await cardHistoryCache.sweepOrphans()
     }
 
     /// Launch, before the launch lookup: a meter an older build bound to the campus node counts
@@ -293,22 +303,13 @@ struct PowerChoice: Identifiable, Equatable {
         // A sign-in that throws after its writes began has changed the person too.
         _ = try await SchoolSession.signingIn(on:session, {
             try await refresher.holdingLease { owning in
-                try await session.adoptWebState(state, owning:owning)
+                try await session.adoptWebState(state, dormAddress:login.dormAddress, owning:owning)
             }
         }, changed:{ personChanges += 1; person = personChanges },
            cleanUp:{ await previousPersonCleared(unconfirmed:$0, dormAndMeterCleared:$1, since:started, person:person) })
         await refresher.noteChange()
-        // Signed out (or reset), or someone else signed in, while that ran: the dorm must not be written back.
+        // Signed out (or reset), or someone else signed in, while that ran: do not overwrite UI state.
         guard started == signOutGeneration, person == personChanges else { return }
-        let raw = login.dormAddress.trimmingCharacters(in:.whitespacesAndNewlines)
-        if !raw.isEmpty {
-            var stored = (try? schoolVault.profile()) ?? nil ?? SchoolProfile()
-            if stored.residence?.raw != raw {
-                stored.residence = PortalResidence(raw:raw)
-                stored.meter = nil
-            }
-            try schoolVault.saveProfile(stored)
-        }
         reload(); issue = nil; lastRefresh = nil
         lookup.clear(); powerMatchIssue = nil
         // Every sign-in, from any screen: the meter is looked for when none is bound.
@@ -382,6 +383,8 @@ struct PowerChoice: Identifiable, Equatable {
         let person = person ?? personChanges
         guard started == signOutGeneration, person == personChanges else { return }
         forgetRecordsStatsPreferences()
+        await cardHistoryCache.invalidateStaleSession()
+        guard started == signOutGeneration, person == personChanges else { return }
         // Before any wait: the previous person's binding no longer starts anything (a start that
         // hasn't sent its authorize request is taken back), and their balance goes.
         accountGeneration += 1

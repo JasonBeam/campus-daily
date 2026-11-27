@@ -50,8 +50,11 @@ extension SpendStats {
     /// on, the ones counted are listed too, at nothing spent.
     public static func make(span: SpendSpan, history: CardHistory, termStart: Date,
                             included: Set<CardRecordKind> = Set(SpendCategories.all),
-                            calendar: Calendar = SchoolCalendar.shanghai) -> SpendStats? {
+                            calendar: Calendar = SchoolCalendar.shanghai,
+                            now: Date? = nil) -> SpendStats? {
         let today = history.today
+        let wallToday = calendar.startOfDay(for: now ?? today)
+        let isCurrentDay = calendar.isDate(today, inSameDayAs: wallToday)
         let first: Date
         if let days = span.days {
             first = calendar.date(byAdding: .day, value: -(days - 1), to: today) ?? today
@@ -109,13 +112,21 @@ extension SpendStats {
         if span.days != nil {
             bars = spanDays.enumerated().map { i, day in
                 SpendBar(id: day.id, days: [day.id], spent: Money(fen: spentOn[day.id] ?? 0), unsure: unsure(day.id),
-                         isCurrent: day.id == todayID, beforeStart: false,
+                         isCurrent: isCurrentDay && day.id == todayID, beforeStart: false,
                          axisLabel: dayLabel(span: span, index: i, count: spanDays.count, day: day.date, calendar: calendar))
             }
         } else {
-            bars = weekBars(spanDays, spentOn: spentOn, unsure: unsure, calendar: calendar)
+            bars = weekBars(spanDays, spentOn: spentOn, unsure: unsure, isCurrentDay: isCurrentDay, calendar: calendar)
         }
-        if !bars.isEmpty { bars[bars.count - 1].axisLabel = span == .term ? "本周" : "今天" }
+        if !bars.isEmpty {
+            if isCurrentDay {
+                bars[bars.count - 1].axisLabel = span == .term ? "本周" : "今天"
+            } else if span == .month {
+                bars[bars.count - 1].axisLabel = SchoolCalendar.dayTitle(today, calendar: calendar)
+            } else if span == .term, bars[bars.count - 1].axisLabel == nil {
+                bars[bars.count - 1].axisLabel = SchoolCalendar.dayTitle(today, calendar: calendar)
+            }
+        }
 
         // Left out, it stays on the list at nothing spent: it can be counted again from there.
         for kind in SpendCategories.all where !included.contains(kind) && byKind[kind] == nil { byKind[kind] = 0 }
@@ -170,7 +181,7 @@ extension SpendStats {
     /// term's days in it through today. A week's label is its month (「9月」) when its first day
     /// begins a new month on the chart; the last bar's (「本周」) is set by the caller.
     private static func weekBars(_ days: [Day], spentOn: [String: Int], unsure: (String) -> Bool,
-                                 calendar: Calendar) -> [SpendBar] {
+                                 isCurrentDay: Bool, calendar: Calendar) -> [SpendBar] {
         var weeks: [[Day]] = []
         for day in days {
             // Weekday 2 is Monday.
@@ -183,7 +194,7 @@ extension SpendStats {
             lastMonth = month
             let ids = week.map(\.id)
             return SpendBar(id: ids[0], days: ids, spent: Money(fen: ids.reduce(0) { $0 + (spentOn[$1] ?? 0) }),
-                            unsure: ids.contains(where: unsure), isCurrent: week.last?.id == days.last?.id,
+                            unsure: ids.contains(where: unsure), isCurrent: isCurrentDay && week.last?.id == days.last?.id,
                             beforeStart: false, axisLabel: label)
         }
     }

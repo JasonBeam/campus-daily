@@ -103,8 +103,12 @@ private struct LiveAppHooks: ViewModifier {
                     // Launched before the first unlock (pre-warmed), the Keychain could not be read:
                     // read it again now, before the home's foreground refresh runs.
                     campus.reload()
-                    // A previous person's snapshot still under the stale mark: replaced, offline.
-                    Task { await campus.finishPendingClear() }
+                    // A previous person's snapshot still under the stale mark: replaced, offline;
+                    // also sweep any orphaned card-history session folders once unlocked.
+                    Task {
+                        await campus.finishPendingClear()
+                        await campus.sweepCardHistoryOrphans()
+                    }
                     Task { await reminders.refreshAuthorization() }
                     // Back from Alipay without a callback URL (checkout links): read the order.
                     Task { await laundry.refreshOrder() }

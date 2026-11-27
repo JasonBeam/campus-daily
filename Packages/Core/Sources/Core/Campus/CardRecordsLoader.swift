@@ -22,6 +22,9 @@ public struct CardRecordsSource: Sendable {
     /// The person's records kept while the app runs: a visit shows them at once and reads only
     /// the newest range again. Nil: every visit reads from today.
     public var memory: CardRecordsMemory?
+    /// Optional app-private disk cache (`CardHistoryDiskCoordinator`): nil in sample mode and
+    /// tests that want memory-only behavior.
+    public var diskCache: (any CardHistoryCaching)?
     /// Home's last read of the card's records (`HomeSnapshot.activity`), shown on a visit until
     /// the first pages come (`CardHistory.prefill(_:)`).
     public var prefill: (@MainActor @Sendable () -> CardActivity?)?
@@ -32,9 +35,10 @@ public struct CardRecordsSource: Sendable {
                 renew: @escaping @Sendable () async -> Bool = { false },
                 calendar: Calendar = SchoolCalendar.shanghai,
                 memory: CardRecordsMemory? = nil,
+                diskCache: (any CardHistoryCaching)? = nil,
                 prefill: (@MainActor @Sendable () -> CardActivity?)? = nil) {
         self.stamp = stamp; self.page = page; self.samePerson = samePerson; self.renew = renew
-        self.calendar = calendar; self.memory = memory; self.prefill = prefill
+        self.calendar = calendar; self.memory = memory; self.diskCache = diskCache; self.prefill = prefill
     }
 }
 
@@ -57,25 +61,28 @@ public struct CardRecordsState: Sendable, Equatable {
     /// Reads from today that came in: the list's end is renewed with each, so one already in
     /// view asks for older pages for the new list.
     public var reloads = 0
-    /// A visit showed the records kept in memory and could not read the newest range again: the
-    /// list is as it was when last read. Cleared by the next read from today that comes in.
+    /// A visit showed cached records (from memory or disk) and could not read the newest range
+    /// again: the list is as it was when last read. Cleared by the next read from today that comes in.
     public var refreshFailed = false
+    /// When the shown cached records were last saved (from memory or disk), used to show the
+    /// same-day "as of HH:mm" hint while `refreshFailed` is true.
+    public var cachedSavedAt: Date?
     public init() {}
 }
 
 /// 校园卡记录's reads: from today on a visit or pull, older pages as the list's end appears.
-/// Nothing is written anywhere. With the source's `memory`, a visit shows the records kept from
-/// an earlier visit at once (on the same day), reads only the newest range again and joins it
-/// onto them; a pull always reads from today afresh. Without kept records, home's last read
-/// (`prefill`) shows until the first page comes. A read that returns after a newer read from
-/// today started is dropped, and so is an older page read for a list that has been replaced
-/// meanwhile.
+/// With `memory` and/or `diskCache`, a first visit hydrates cached records at once, reads only
+/// the newest 14-day range and joins it onto them (strictly requiring real date overlap via
+/// `CardHistory.joined(earlier:)`); a pull always reads from today afresh and overwrites the
+/// cache. Without cached records, home's last read (`prefill`) shows until the first page comes.
+/// A read that returns after a newer read from today started is dropped, and so is an older page
+/// read for a list that has been replaced meanwhile.
 @MainActor public final class CardRecordsLoader {
     public private(set) var state = CardRecordsState() {
         didSet {
             guard state != oldValue else { return }
-            if state.phase == .loaded, !state.reloading, let history = state.history {
-                source.memory?.keep(history, stamp: stamp)
+            if state.phase == .loaded, !state.reloading, !state.refreshFailed, let history = state.history {
+                source.memory?.keep(history, stamp: stamp, savedAt: state.cachedSavedAt)
             }
             changed?(state)
         }
@@ -103,14 +110,25 @@ public struct CardRecordsState: Sendable, Equatable {
     public func reload() async {
         generation += 1
         let mine = generation
-        // The page's first read: it may start from what is kept, or from home's last records.
+        // The page's first read: it may start from what is kept (memory or disk), or from home's last records.
         let visit = mine == 1
         state.reloading = true
         let stamp = await source.stamp()
         guard mine == generation else { return }
         var start = CardHistory(now: now(), calendar: source.calendar)
         let load: CardHistory.Load
-        if visit, let kept = source.memory?.history(for: stamp) {
+        var keptEntry: CachedCardHistory? = visit ? source.memory?.entry(for: stamp) : nil
+        if visit, keptEntry == nil, let disk = source.diskCache {
+            let source = source
+            let loaded = await disk.load(now: now(), calendar: source.calendar,
+                                         samePerson: { await source.samePerson(stamp) })
+            guard mine == generation else { return }
+            if let loaded, await source.samePerson(stamp) {
+                keptEntry = loaded
+                source.memory?.keep(loaded.history, stamp: stamp, savedAt: loaded.savedAt)
+            }
+        }
+        if visit, let kept = keptEntry {
             guard let fresh = await rejoin(kept, start: start, stamp: stamp, mine: mine) else { return }
             load = fresh
         } else {
@@ -126,54 +144,93 @@ public struct CardRecordsState: Sendable, Equatable {
             load = await Self.read(start, source: source, stamp: stamp)
         }
         guard mine == generation else { return }
+        // Home's records it showed meanwhile (`prefill`) are not a read: nothing of its own, and
+        // the read failed. On a pull-to-refresh while offline, keep the same person's already
+        // loaded real history with `refreshFailed = true` instead of blanking the page.
+        if load.history.readRecords.isEmpty, load.failure != nil {
+            if !visit, let existing = state.history, existing.holdsFirstRange,
+               self.stamp == stamp, await source.samePerson(stamp) {
+                guard mine == generation else { return }
+                var next = state
+                next.reloading = false
+                next.loadingMore = false
+                next.refreshFailed = true
+                next.reloads += 1
+                state = next
+                return
+            }
+            self.stamp = stamp
+            var next = state
+            next.reloading = false
+            next.loadingMore = false
+            next.refreshFailed = false
+            next.cachedSavedAt = nil
+            next.reloads += 1
+            next.history = nil
+            next.phase = .failed
+            next.moreFailed = false
+            state = next
+            return
+        }
+        let savedAt = load.history.holdsFirstRange ? now() : nil
         self.stamp = stamp
         var next = state
         next.reloading = false
         next.loadingMore = false
         next.refreshFailed = false
+        next.cachedSavedAt = savedAt
         next.reloads += 1
-        // Home's records it showed meanwhile (`prefill`) are not a read: nothing of its own, and
-        // the read failed.
-        if load.history.readRecords.isEmpty, load.failure != nil {
-            next.history = nil; next.phase = .failed; next.moreFailed = false
-        } else {
-            next.history = load.history; next.phase = .loaded; next.moreFailed = load.failure != nil
-        }
+        next.history = load.history
+        next.phase = .loaded
+        next.moreFailed = load.failure != nil
         state = next
-        if next.phase == .loaded, load.failure == nil, needsMore(load.history) {
+        if let savedAt, load.history.holdsFirstRange {
+            await persist(load.history, stamp: stamp, savedAt: savedAt, mine: mine)
+        }
+        if mine == generation, next.phase == .loaded, load.failure == nil, needsMore(load.history) {
             Task { [weak self] in await self?.loadMore() }
         }
     }
 
-    /// A visit with records kept: shows them at once when they were read today, reads the newest
-    /// range again and joins it onto them, then reads on back to `target` if need be. A failure
-    /// leaves the kept records shown, if they were (`refreshFailed`). Otherwise (kept records
-    /// too old to join, or a failure with nothing shown) the read comes back for the caller to
-    /// take as a read from today; nil when done.
-    private func rejoin(_ kept: CardHistory, start: CardHistory, stamp: Int, mine: Int) async -> CardHistory.Load? {
-        let shown = kept.today == start.today
+    /// A visit with cached records: shows them at once (same day or earlier day), reads the
+    /// newest 14-day range again and joins it onto them via real date overlap, then reads on back
+    /// to `target` if need be. A failure leaves the cached records shown with `refreshFailed` and
+    /// their original `savedAt`. Otherwise (cached records too old to join / gapped, or no overlap)
+    /// the read comes back for the caller to take as a fresh read from today; nil when done.
+    private func rejoin(_ kept: CachedCardHistory, start: CardHistory, stamp: Int, mine: Int) async -> CardHistory.Load? {
+        let shown = kept.history.today <= start.today
         if shown {
             self.stamp = stamp
             var next = state
-            next.history = kept
+            next.history = kept.history
+            next.cachedSavedAt = kept.savedAt
             next.phase = .loaded
             state = next
         }
         let load = await Self.read(start, source: source, stamp: stamp, firstRange: true)
         guard mine == generation else { return nil }
         if load.failure != nil {
+            guard await source.samePerson(stamp) else {
+                guard mine == generation else { return nil }
+                source.memory?.clear()
+                state = CardRecordsState()
+                return nil
+            }
             guard shown else { return load }
             var next = state
             next.reloading = false
             next.refreshFailed = true
+            next.cachedSavedAt = kept.savedAt
             next.reloads += 1
             state = next
             return nil
         }
-        guard let joined = load.history.joined(earlier: kept) else { return load }
+        guard let joined = load.history.joined(earlier: kept.history) else { return load }
+        let savedAt = now()
         self.stamp = stamp
         var next = state
         next.history = joined
+        next.cachedSavedAt = savedAt
         next.phase = .loaded
         next.reloading = false
         next.loadingMore = false
@@ -181,7 +238,8 @@ public struct CardRecordsState: Sendable, Equatable {
         next.refreshFailed = false
         next.reloads += 1
         state = next
-        if needsMore(joined), !joined.reachedEnd {
+        await persist(joined, stamp: stamp, savedAt: savedAt, mine: mine)
+        if mine == generation, needsMore(joined), !joined.reachedEnd {
             Task { [weak self] in await self?.loadMore() }
         }
         return nil
@@ -212,6 +270,9 @@ public struct CardRecordsState: Sendable, Equatable {
         guard state.phase == .loaded, !state.reloading, !state.loadingMore,
               var current = state.history, !current.reachedEnd else { return }
         let mine = generation
+        let startingReadFrom = current.readFrom
+        let startingReachedEnd = current.reachedEnd
+        var latestToPersist: CardHistory?
         state.loadingMore = true
         state.moreFailed = false
         while true {
@@ -227,15 +288,32 @@ public struct CardRecordsState: Sendable, Equatable {
                 await reload()
                 return
             }
+            if load.history.holdsFirstRange,
+               (load.history.readFrom != startingReadFrom || load.history.reachedEnd != startingReachedEnd) {
+                latestToPersist = load.history
+            }
             let more = load.failure == nil && !load.history.reachedEnd && needsMore(load.history)
+            let savedAt = (!more && latestToPersist != nil && !state.refreshFailed) ? now() : state.cachedSavedAt
             var next = state
             next.history = load.history
             next.moreFailed = load.failure != nil
             next.loadingMore = more
+            if !state.refreshFailed { next.cachedSavedAt = savedAt }
             state = next
-            guard more else { return }
+            guard more else {
+                if let latestToPersist, !state.refreshFailed {
+                    await persist(latestToPersist, stamp: stamp, savedAt: savedAt ?? now(), mine: mine)
+                }
+                return
+            }
             current = load.history
         }
+    }
+
+    private func persist(_ history: CardHistory, stamp: Int, savedAt: Date, mine: Int) async {
+        guard mine == generation, history.holdsFirstRange, let disk = source.diskCache else { return }
+        let source = source
+        await disk.save(history, savedAt: savedAt, samePerson: { await source.samePerson(stamp) })
     }
 
     /// Pages from `history` on. A failure that says the card session is gone has it renewed

@@ -12,7 +12,7 @@ import Foundation
 /// written anywhere. Its owner (`CampusModel`) makes a new one for every change of person and
 /// clears the old one.
 @MainActor public final class CardRecordsMemory {
-    private var kept: (history: CardHistory, stamp: Int)?
+    private var kept: (history: CardHistory, stamp: Int, savedAt: Date?)?
 
     public init() {}
 
@@ -23,11 +23,17 @@ import Foundation
         return kept.history
     }
 
+    /// The records and save timestamp kept for `stamp`, or nil when none or another person's.
+    public func entry(for stamp: Int) -> CachedCardHistory? {
+        guard let kept, kept.stamp == stamp else { return nil }
+        return CachedCardHistory(history: kept.history, savedAt: kept.savedAt)
+    }
+
     /// Keeps `history`, read for the person signed in at `stamp`, once its first range is read
     /// to its end; a read that has not got that far leaves what is kept alone.
-    public func keep(_ history: CardHistory, stamp: Int) {
+    public func keep(_ history: CardHistory, stamp: Int, savedAt: Date? = nil) {
         guard history.holdsFirstRange else { return }
-        kept = (history, stamp)
+        kept = (history, stamp, savedAt)
     }
 
     public func clear() { kept = nil }

@@ -226,8 +226,40 @@ struct SpendStatsText {
 
     /// The records kept from before are shown and the newest could not be read
     /// (`CardRecordsModel.refreshFailed`): over the stats, as both they and the list are old.
+    /// Fallback wording when neither `savedAt` nor `cachedToday` is known.
     var refreshFailed: String {
-        warm ? "最新的记录没读到，这里是刚才读到的。下拉再试。" : "未能读取最新记录，当前显示此前读取的内容；可下拉重试"
+        refreshFailed(savedAt:nil, cachedToday:nil, now:Date())
+    }
+
+    /// Offline cache as-of hint (Camo 5626):
+    /// - Cached today with `savedAt`: 「今天 HH:mm」 (24-hour clock in `calendar`);
+    /// - Cached yesterday or earlier: 「M月d日」 (no space between month and day);
+    /// - Unknown timestamp fallback.
+    func refreshFailed(savedAt: Date?, cachedToday: Date?, now: Date = Date()) -> String {
+        let todayStart = calendar.startOfDay(for:now)
+        if let savedAt, calendar.isDate(savedAt, inSameDayAs:now),
+           cachedToday.map({ calendar.isDate($0, inSameDayAs:now) }) ?? true {
+            let parts = calendar.dateComponents([.hour, .minute], from:savedAt)
+            let clock = String(format:"%02d:%02d", parts.hour ?? 0, parts.minute ?? 0)
+            return warm
+                ? "最新的记录没读到，这里只到今天 \(clock)。下拉再试。"
+                : "未能读取最新记录，当前内容截至今天 \(clock)；可下拉重试"
+        }
+        if let day = cachedToday, calendar.startOfDay(for:day) < todayStart {
+            let title = SchoolCalendar.dayTitle(day, calendar:calendar)
+            return warm
+                ? "最新的记录没读到，这里只到 \(title)。下拉再试。"
+                : "未能读取最新记录，当前内容截至 \(title)；可下拉重试"
+        }
+        if let savedAt, calendar.startOfDay(for:savedAt) < todayStart {
+            let title = SchoolCalendar.dayTitle(savedAt, calendar:calendar)
+            return warm
+                ? "最新的记录没读到，这里只到 \(title)。下拉再试。"
+                : "未能读取最新记录，当前内容截至 \(title)；可下拉重试"
+        }
+        return warm
+            ? "最新的记录没读到，这里显示上次读到的。下拉再试。"
+            : "未能读取最新记录，当前显示此前读取的内容；可下拉重试"
     }
 
     /// The last category counted was tapped: read out, and for a while in the category note's place.

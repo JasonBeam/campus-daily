@@ -41,6 +41,12 @@ struct SpendStatsView: View {
     /// The records shown are those kept from before; the newest could not be read
     /// (`CardRecordsModel.refreshFailed`): a line says so under the span switch.
     var stale = false
+    /// When the cached records were last saved (`CardRecordsModel.cachedSavedAt`).
+    var staleSavedAt: Date?
+    /// The cached history's anchor day (`CardRecordsModel.cachedToday`).
+    var staleToday: Date?
+    /// Wall clock used to distinguish same-day vs earlier-day offline copy.
+    var now: Date = Date()
     /// The records' calendar (`CardRecordsModel.calendar`): days are named and picked in it.
     let calendar: Calendar
 
@@ -60,10 +66,11 @@ struct SpendStatsView: View {
     init(phase: Phase, span: Binding<SpendSpan>, placeholder: [SpendBar] = [], term: TermStartSheet.Term? = nil,
          setTermStart: @escaping (Date?) -> Void = { _ in }, pinned: String? = nil, comparing: Bool = false,
          toggleCategory: ((CardRecordKind) -> Bool)? = nil, counted: Set<CardRecordKind>? = nil, stale: Bool = false,
-         calendar: Calendar) {
+         staleSavedAt: Date? = nil, staleToday: Date? = nil, now: Date = Date(), calendar: Calendar) {
         self.phase = phase; _span = span; self.placeholder = placeholder; self.term = term
         self.setTermStart = setTermStart; self.pinned = pinned; self.comparing = comparing
         self.toggleCategory = toggleCategory; self.counted = counted; self.stale = stale
+        self.staleSavedAt = staleSavedAt; self.staleToday = staleToday; self.now = now
         self.calendar = calendar
         _selected = State(initialValue:pinned)
     }
@@ -338,7 +345,8 @@ struct SpendStatsView: View {
     private var staleLine: some View {
         HStack(alignment:.firstTextBaseline, spacing:5) {
             Image(systemName:"exclamationmark.arrow.circlepath").accessibilityHidden(true)
-            Text(text.refreshFailed).fixedSize(horizontal:false, vertical:true)
+            Text(text.refreshFailed(savedAt:staleSavedAt, cachedToday:staleToday, now:now))
+                .fixedSize(horizontal:false, vertical:true)
         }
         .scaledFont(13, relativeTo:.footnote)
         .foregroundStyle(Theme.ink2)

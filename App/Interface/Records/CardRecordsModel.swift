@@ -22,6 +22,7 @@ extension CardRecordsSource {
                                  samePerson:{ await session.isSamePerson(since:$0) },
                                  renew:{ [weak campus] in await campus?.renewCardSession() ?? false },
                                  memory:campus.recordsMemory,
+                                 diskCache:campus.cardHistoryCache,
                                  prefill:{ [weak campus] in
                                      guard let campus, campus.personChanges == person else { return nil }
                                      return campus.recordsPrefill
@@ -30,10 +31,11 @@ extension CardRecordsSource {
 }
 
 /// 校园卡记录's state for SwiftUI, over Core's `CardRecordsLoader`, and the page's spending
-/// stats (`SpendStats`) for the span chosen. The records are never written anywhere: a visit
-/// starts from those kept in memory for the person (the source's `memory`), or from today, and
-/// reads back as far as the stats need. The span, the start day set for this term and the
-/// categories counted are kept in the graph's preferences once `bind(_:)` gives them.
+/// stats (`SpendStats`) for the span chosen. A visit hydrates from in-memory or app-private disk
+/// cache (when available), reads the newest 14-day range to join via real date overlap, and reads
+/// back as far as the stats need; a pull always reads afresh from today. The span, the start day
+/// set for this term and the categories counted are kept in the graph's preferences once
+/// `bind(_:)` gives them.
 @MainActor final class CardRecordsModel: ObservableObject {
     @Published private(set) var state = CardRecordsState()
     /// The stats' span: kept under `SpendSpan.storeKey`; the records are read back far enough for it.
@@ -80,23 +82,43 @@ extension CardRecordsSource {
     var loadingMore: Bool { state.loadingMore }
     var moreFailed: Bool { state.moreFailed }
     var reloads: Int { state.reloads }
-    /// The records kept from an earlier visit are shown, and the newest days could not be read
-    /// again: the list and stats are as last read (a pull tries again).
+    /// The records kept from an earlier visit (memory or disk) are shown, and the newest days
+    /// could not be read again: the list and stats are as last read (a pull tries again).
     var refreshFailed: Bool {
         #if DEBUG
         if demoRefreshFailed { return true }
         #endif
         return state.refreshFailed
     }
+    /// When the shown cached records were saved, for same-day 「截至今天 HH:mm」 offline copy.
+    var cachedSavedAt: Date? {
+        #if DEBUG
+        if demoRefreshFailed { return demoRefreshSavedAt }
+        #endif
+        return state.cachedSavedAt
+    }
+    /// The cached history's anchor day (`history.today`), for cross-day 「截至 M月d日」 offline copy.
+    var cachedToday: Date? {
+        #if DEBUG
+        if demoRefreshFailed, let demoRefreshToday { return demoRefreshToday }
+        #endif
+        return state.history?.today
+    }
+    /// Wall clock for formatting offline as-of hints consistently with stats.
+    var currentNow: Date { now() }
     #if DEBUG
     /// `SpendStatsDemo.refreshFailed`: as if the newest records could not be read; a pull clears it.
     @Published private(set) var demoRefreshFailed = false
+    private var demoRefreshSavedAt: Date?
+    private var demoRefreshToday: Date?
     private var demoRefreshFailedShown = false
     /// Puts the demo's line up, once: the stats' row appearing again (scrolled back into view)
     /// doesn't bring it back after a pull.
-    func showDemoRefreshFailed() {
+    func showDemoRefreshFailed(savedAt: Date? = nil, cachedToday: Date? = nil) {
         guard !demoRefreshFailedShown else { return }
         demoRefreshFailedShown = true
+        demoRefreshSavedAt = savedAt
+        demoRefreshToday = cachedToday
         demoRefreshFailed = true
     }
     #endif
@@ -111,7 +133,11 @@ extension CardRecordsSource {
         #endif
         await loader.reload()
         #if DEBUG
-        if demoShown { demoRefreshFailed = false }
+        if demoShown {
+            demoRefreshFailed = false
+            demoRefreshSavedAt = nil
+            demoRefreshToday = nil
+        }
         #endif
     }
     /// Older records: when the list's end appears, or 「点这里再试」.
@@ -196,15 +222,17 @@ extension CardRecordsSource {
             set(stats:nil, loading:false, failed:true, comparing:false)
         case .loaded:
             guard let history = state.history else { set(stats:nil, loading:false, failed:true, comparing:false); return }
-            let start = termStart
-            let first = SpendStats.firstDayNeeded(span:statsSpan, today:now(), termStart:start, calendar:calendar)
+            let wallNow = now()
+            let statsAnchor = (state.refreshFailed || state.reloading) ? history.today : wallNow
+            let start = TermStart.start(today:statsAnchor, custom:customTermStart, calendar:calendar)
+            let first = SpendStats.firstDayNeeded(span:statsSpan, today:statsAnchor, termStart:start, calendar:calendar)
             let made = SpendStats.make(span:statsSpan, history:history, termStart:start, included:includedCategories,
-                                       calendar:calendar)
+                                       calendar:calendar, now:wallNow)
             // Always the span's day, a nearer one too: a read running stops there, and a pull
             // reads back to it only.
             let moved = loader.target != first
             loader.setTarget(first)
-            if history.hasRead(through:first) || state.moreFailed {
+            if history.hasRead(through:first) || state.moreFailed || state.refreshFailed {
                 set(stats:made, loading:false, failed:made == nil, comparing:false)
                 return
             }

@@ -1,0 +1,214 @@
+//
+//  CardHistory+Cache.swift
+//  XiaoRiChang
+//
+//  Created by @Zach677 on 2026/11/27.
+//
+
+import Foundation
+import CryptoKit
+
+/// App-private Keychain anchor (`StoreKey.cardHistorySession`, `whenUnlockedThisDeviceOnly`)
+/// binding a session's private disk cache directory (`CardHistory/<sessionID>/cache.v1.json`)
+/// to both the cross-process `SessionEpoch.id` and a 32-byte random salt.
+/// Contains no plaintext student ID, card number, `custid`, or `voucher`.
+public struct CardHistorySessionAnchor: Codable, Equatable, Sendable {
+    public var epochID: String
+    public var sessionID: String
+    public var salt: Data
+
+    public init(epochID: String, sessionID: String, salt: Data) {
+        self.epochID = epochID
+        self.sessionID = sessionID
+        self.salt = salt
+    }
+
+    public var isValid: Bool {
+        !epochID.isEmpty && !sessionID.isEmpty && salt.count == 32
+    }
+}
+
+/// Whitelisted on-disk JSON envelope for `<Application Support>/CardHistory/<sessionID>/cache.v1.json`.
+/// Never stores `voucher`, plaintext account/card IDs, tokens, passwords, residence, or half-read pages.
+public struct CardHistoryDiskEnvelope: Codable, Equatable, Sendable {
+    public static let currentSchemaVersion = 1
+
+    public var schemaVersion: Int
+    public var ownerTag: String
+    public var savedAt: Date
+    public var today: String
+    public var readFrom: String
+    public var emptyRanges: Int
+    public var reachedEnd: Bool
+    public var unsure: [String]
+    public var mayRepeat: [String]
+    public var records: [CardRecord]
+
+    public init(schemaVersion: Int = currentSchemaVersion,
+                ownerTag: String,
+                savedAt: Date,
+                today: String,
+                readFrom: String,
+                emptyRanges: Int,
+                reachedEnd: Bool,
+                unsure: [String],
+                mayRepeat: [String],
+                records: [CardRecord]) {
+        self.schemaVersion = schemaVersion
+        self.ownerTag = ownerTag
+        self.savedAt = savedAt
+        self.today = today
+        self.readFrom = readFrom
+        self.emptyRanges = emptyRanges
+        self.reachedEnd = reachedEnd
+        self.unsure = unsure
+        self.mayRepeat = mayRepeat
+        self.records = records
+    }
+}
+
+/// Validated cached history loaded from memory or disk, along with its save timestamp and
+/// optional session provenance.
+public struct CachedCardHistory: Equatable, Sendable {
+    public var history: CardHistory
+    public var savedAt: Date?
+    public var epochID: String?
+    public var sessionID: String?
+
+    public init(history: CardHistory, savedAt: Date?, epochID: String? = nil, sessionID: String? = nil) {
+        self.history = history
+        self.savedAt = savedAt
+        self.epochID = epochID
+        self.sessionID = sessionID
+    }
+}
+
+public extension CardHistory {
+    /// Read/write retention window: keep at most 210 days of complete ranges ending on `today`.
+    static let maxCacheDays = 210
+    /// Encoded JSON upper bound: 1 MiB. Older days are trimmed forward until within budget.
+    static let maxCacheBytes = 1_048_576
+    /// Maximum age on open before a cached history is discarded and rebuilt from the school.
+    static let maxCacheAge: TimeInterval = 30 * 24 * 3600
+
+    /// Computes HMAC-SHA256(salt, confirmedIdentity) as lowercase hex.
+    static func ownerTag(identity: String, salt: Data) -> String {
+        let mac = HMAC<SHA256>.authenticationCode(for: Data(identity.utf8), using: SymmetricKey(data: salt))
+        return mac.map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// Serializes finished ranges of this history into a whitelisted, size-bounded JSON envelope.
+    /// Returns `nil` when the first range is not yet complete (`!holdsFirstRange`) or when even
+    /// a single day exceeds `maxBytes`. Never includes in-flight `current` half-pages or `prefilled`.
+    func cacheEnvelope(ownerTag: String,
+                       savedAt: Date,
+                       maxDays: Int = CardHistory.maxCacheDays,
+                       maxBytes: Int = CardHistory.maxCacheBytes) -> (envelope: CardHistoryDiskEnvelope, data: Data)? {
+        guard let initialReadFrom = readFrom,
+              let oldestDate = Self.date(of: initialReadFrom, calendar: calendar) else { return nil }
+        let todayID = SchoolCalendar.dayString(today, calendar: calendar)
+        guard initialReadFrom <= todayID else { return nil }
+
+        let cutoffDate = calendar.date(byAdding: .day, value: -(max(maxDays, 1) - 1), to: today) ?? today
+        let cutoffID = SchoolCalendar.dayString(cutoffDate, calendar: calendar)
+
+        let effectiveReadFrom = max(initialReadFrom, cutoffID)
+        let effectiveReachedEnd = reachedEnd && effectiveReadFrom == initialReadFrom
+
+        let mergedFinished = WeChatPairs.merged(finished) { _ in true }.map { row in
+            var copy = row
+            copy.voucher = nil
+            return copy
+        }
+
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .deferredToDate
+
+        func makeEnvelope(from floorDay: String, reachedEnd: Bool) -> (CardHistoryDiskEnvelope, Data)? {
+            let filteredRecords = mergedFinished.filter { row in
+                let day = Self.trimmed(row.date)
+                return day >= floorDay && day <= todayID
+            }
+            let filteredUnsure = unsure.filter { $0 >= floorDay && $0 <= todayID }.sorted()
+            let filteredMayRepeat = mayRepeat.filter { $0 >= floorDay && $0 <= todayID }.sorted()
+            let envelope = CardHistoryDiskEnvelope(
+                ownerTag: ownerTag,
+                savedAt: savedAt,
+                today: todayID,
+                readFrom: floorDay,
+                emptyRanges: emptyRanges,
+                reachedEnd: reachedEnd,
+                unsure: filteredUnsure,
+                mayRepeat: filteredMayRepeat,
+                records: filteredRecords
+            )
+            guard let data = try? encoder.encode(envelope) else { return nil }
+            return (envelope, data)
+        }
+
+        if let first = makeEnvelope(from: effectiveReadFrom, reachedEnd: effectiveReachedEnd),
+           first.1.count <= maxBytes {
+            return first
+        }
+
+        // Over byte budget: binary-search the earliest floor day within [effectiveReadFrom...today]
+        // whose encoded envelope fits in `maxBytes`, always setting `reachedEnd = false`.
+        let startDate = max(oldestDate, cutoffDate)
+        guard let totalDays = calendar.dateComponents([.day], from: startDate, to: today).day,
+              totalDays >= 0 else { return nil }
+        var low = 1
+        var high = totalDays
+        var best: (CardHistoryDiskEnvelope, Data)?
+
+        while low <= high {
+            let mid = (low + high) / 2
+            guard let candidateDate = calendar.date(byAdding: .day, value: mid, to: startDate) else { break }
+            let candidateID = SchoolCalendar.dayString(candidateDate, calendar: calendar)
+            if let encoded = makeEnvelope(from: candidateID, reachedEnd: false), encoded.1.count <= maxBytes {
+                best = encoded
+                high = mid - 1
+            } else {
+                low = mid + 1
+            }
+        }
+        return best
+    }
+
+    /// Reconstructs a `CardHistory` from a validated disk envelope, enforcing schema version,
+    /// 30-day open age limit, and the 210-day retention window on read as well.
+    static func fromCacheEnvelope(_ envelope: CardHistoryDiskEnvelope,
+                                  now: Date,
+                                  calendar: Calendar = SchoolCalendar.shanghai,
+                                  maxDays: Int = CardHistory.maxCacheDays,
+                                  maxAge: TimeInterval = CardHistory.maxCacheAge) -> CardHistory? {
+        guard envelope.schemaVersion == CardHistoryDiskEnvelope.currentSchemaVersion else { return nil }
+        guard now.timeIntervalSince(envelope.savedAt) <= maxAge else { return nil }
+        guard let todayDate = Self.date(of: envelope.today, calendar: calendar),
+              let rawReadFromDate = Self.date(of: envelope.readFrom, calendar: calendar),
+              envelope.readFrom <= envelope.today else { return nil }
+
+        let cutoffDate = calendar.date(byAdding: .day, value: -(max(maxDays, 1) - 1), to: todayDate) ?? todayDate
+        let cutoffID = SchoolCalendar.dayString(cutoffDate, calendar: calendar)
+        let effectiveReadFrom = max(envelope.readFrom, cutoffID)
+        let effectiveReadFromDate = max(rawReadFromDate, cutoffDate)
+        let prunedOlder = effectiveReadFrom != envelope.readFrom
+        guard let back = calendar.dateComponents([.day], from: effectiveReadFromDate, to: todayDate).day,
+              back >= 0 else { return nil }
+
+        var history = CardHistory(now: todayDate, calendar: calendar)
+        history.finished = envelope.records.filter { row in
+            let day = Self.trimmed(row.date)
+            return day >= effectiveReadFrom && day <= envelope.today
+        }
+        history.current = []
+        history.readFrom = effectiveReadFrom
+        history.unsure = Set(envelope.unsure.filter { $0 >= effectiveReadFrom && $0 <= envelope.today })
+        history.mayRepeat = Set(envelope.mayRepeat.filter { $0 >= effectiveReadFrom && $0 <= envelope.today })
+        history.rangeEnd = back + 1
+        history.emptyRanges = max(0, envelope.emptyRanges)
+        history.reachedEnd = (!prunedOlder && envelope.reachedEnd) || history.rangeEnd >= Self.maxDaysBack
+        history.prefilled = []
+        history.prefillFrom = nil
+        return history
+    }
+}

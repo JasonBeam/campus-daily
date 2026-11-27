@@ -268,12 +268,13 @@ extension SchoolSession {
     /// (`commitLogin`): the lease lost meanwhile, nothing is written and `busy` is thrown.
     /// No portal token comes with it, so no dorm is read here (the app keeps the dorm address
     /// the portal page showed).
-    public func adoptWebState(_ elecampusState: Data, owning: LeaseOwnership) async throws -> SignInSummary {
+    public func adoptWebState(_ elecampusState: Data, dormAddress: String = "", owning: LeaseOwnership) async throws -> SignInSummary {
         guard let root = try? JSONValue.parse(elecampusState),
               let token = (root["logintoken"] ?? root["loginInfo"]?["token"])?.text, !token.isEmpty,
               let sys = root["loginInfo"]?["syscustid"]?.text, !sys.isEmpty else {
             throw ServiceError.malformed(.ecykt, "elecampus_state")
         }
+        let trimmedDorm = dormAddress.trimmingCharacters(in: .whitespacesAndNewlines)
         let areacode = root["schoolid"]?.text ?? EcyktSession.defaultAreacode
         let session = EcyktSession(token: token, syscustid: sys, custid: root["custInfo"]?["custid"]?.text,
                                    cardUnionID: root["custInfo"]?["custunionid"]?.text, areacode: areacode, userAgent: EcyktSession.defaultUserAgent,
@@ -308,6 +309,14 @@ extension SchoolSession {
                 // Nor its portal token: a re-exchange with it would sign the previous person in again.
                 try vault.saveEcyktSession(updated)
                 if dropDorm && !needsSwitch { try vault.saveProfile(SchoolProfile()) }
+                if !trimmedDorm.isEmpty {
+                    var profile = (try? vault.profile()) ?? nil ?? SchoolProfile()
+                    if profile.residence?.raw != trimmedDorm {
+                        profile.residence = PortalResidence(raw: trimmedDorm)
+                        profile.meter = nil
+                    }
+                    try vault.saveProfile(profile)
+                }
                 // Post-write read-back verification inside the same commit lock.
                 guard try vault.ecyktSession() == updated else {
                     throw StorageError(operation: "verify credentials", status: -1)
