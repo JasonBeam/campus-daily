@@ -6,6 +6,11 @@
 //
 
 import Foundation
+#if canImport(Darwin)
+import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 
 /// The lock around state the app shares with its extensions (the App Group's preferences, its
 /// files): what runs in `body` is one read-compare-write the other process can't land in the
@@ -31,5 +36,37 @@ public extension SharedLock {
     /// `lockedWhenFree` in the caller's isolation.
     func lockedWhenFree<T>(_ body: () throws -> T, isolation: isolated (any Actor)? = #isolation) async throws -> T {
         try await lockedWhenFree(isolation: isolation, body)
+    }
+}
+
+/// Fail-closed lock used when no cross-process lock file is available in production:
+/// every operation throws and never runs `body`.
+public struct FailingSharedLock: SharedLock {
+    public init() {}
+    public func locked<T>(_ body: () throws -> T) throws -> T {
+        throw LeaseFile.Failure(step: "lock", code: ENOENT)
+    }
+    public func lockedWhenFree<T>(isolation: isolated (any Actor)?, _ body: () throws -> T) async throws -> T {
+        throw LeaseFile.Failure(step: "lock", code: ENOENT)
+    }
+    public func lockedIfFree<T>(_ body: () throws -> T) throws -> T {
+        throw LeaseFile.Failure(step: "lock", code: ENOENT)
+    }
+}
+
+/// In-memory mutual-exclusion lock for tests and sample mode (never used as a production fallback).
+public final class InMemoryCommitLock: SharedLock, @unchecked Sendable {
+    // @unchecked: `nsLock` serializes all access.
+    private let nsLock = NSLock()
+    public init() {}
+    public func locked<T>(_ body: () throws -> T) throws -> T {
+        nsLock.lock()
+        defer { nsLock.unlock() }
+        return try body()
+    }
+    public func lockedIfFree<T>(_ body: () throws -> T) throws -> T {
+        guard nsLock.try() else { throw LeaseFile.Failure(step: "lock", code: EWOULDBLOCK) }
+        defer { nsLock.unlock() }
+        return try body()
     }
 }

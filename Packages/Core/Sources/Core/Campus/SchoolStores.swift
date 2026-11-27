@@ -31,8 +31,9 @@ public struct StoredSchoolVault: SchoolVault {
     public func loginDeviceID() throws -> String? { try store.readJSON(DeviceBox.self, .schoolDevice)?.id }
     public func saveLoginDeviceID(_ id: String?) throws { try store.writeJSON(id.map(DeviceBox.init), .schoolDevice) }
 
-    private struct StaleBox: Codable { var since: Date }
-    public func markSnapshotStale(since: Date) throws { try store.writeJSON(StaleBox(since: since), .sharedSnapshotStale) }
+    public func sessionEpoch() throws -> SessionEpoch? { try SessionEpochStore(store: store).read() }
+    public func saveSessionEpoch(_ epoch: SessionEpoch?) throws { try SessionEpochStore(store: store).write(epoch) }
+    public func hasLegacyStaleMark() throws -> Bool { try SessionEpochStore(store: store).hasLegacyStaleMark() }
 
     public func credentialBytes() throws -> [Data?] {
         [try store.read(.schoolEcykt), try store.read(.schoolPortal), try store.read(.schoolPassword)]

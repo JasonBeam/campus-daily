@@ -39,7 +39,7 @@ final class CampusWidgetPlanTests: XCTestCase {
         let first = CampusWidgetPlan.face(choice(store), now:now, preview:false, lines:ReminderLines())
         XCTAssertTrue(showsPrevious(first), "drawn with A's numbers first")
 
-        try StoredSchoolVault(store:store).markSnapshotStale(since:now)
+        try store.write(Data("{\"since\":0}".utf8), for:.sharedSnapshotStale)
         store.refusingReads = [.schoolPassword]
         let later = choice(store)
         let face = CampusWidgetPlan.face(later, now:now, preview:false, lines:ReminderLines())
@@ -52,7 +52,7 @@ final class CampusWidgetPlanTests: XCTestCase {
 
     func testABlankDrawnBySnapshotIsNotUndoneByALaterUnreadableTimeline() throws {
         let store = try seeded()
-        try StoredSchoolVault(store:store).markSnapshotStale(since:now)
+        try StoredSchoolVault(store:store).saveSessionEpoch(SessionEpoch(phase:.activePendingClear))
         let blank = CampusWidgetPlan.face(choice(store), now:now, preview:false, lines:ReminderLines())
         XCTAssertFalse(showsPrevious(blank))
         XCTAssertNil(blank.balance, "marked: drawn without numbers")

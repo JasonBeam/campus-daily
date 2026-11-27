@@ -14,10 +14,20 @@ import Core
 /// this, the next person's showers would be billed to the person who signed out.
 @MainActor
 final class SignOutHotWaterTests: XCTestCase {
+    private var leaseFiles: [URL] = []
+
+    override func tearDown() {
+        leaseFiles.forEach { try? FileManager.default.removeItem(at:$0) }
+        leaseFiles = []
+        super.tearDown()
+    }
+
     private func models(_ store: ScriptedStore, support: URL? = nil, defaults: UserDefaults = SampleDefaults()) -> (CampusModel, ShowerModel) {
+        let leaseURL = FileManager.default.temporaryDirectory.appendingPathComponent("signout-hw-lease-\(UUID().uuidString)")
+        leaseFiles.append(leaseURL)
         let services = CampusServices(kind:.live, secureStore:store, defaults:defaults, sharedPreferences:nil,
                                       schoolHTTP:SampleHTTPClient(), showerHTTP:SampleHTTPClient(), laundryHTTP:SampleHTTPClient(),
-                                      feedbackHTTP:nil, showerTransport:SampleShowerTransport(), leaseFile:nil,
+                                      feedbackHTTP:nil, showerTransport:SampleShowerTransport(), leaseFile:LeaseFile(url:leaseURL),
                                       applicationSupport:support, sharedDidChange:{})
         let reminders = Reminders.sample(defaults:services.defaults)
         let shower = ShowerModel(services:services, reminders:reminders, activities:nil, gate:LiveShowerGate())

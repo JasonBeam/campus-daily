@@ -159,13 +159,12 @@ public struct RefreshLease: Sendable {
 
     /// `body` inside the file's lock, whoever holds the lease; the lease itself is left as it is.
     /// For a write that needs no lease of its own but must not land between another owner's
-    /// compare and write (保存密码 off). Only a lease with no file at all (a build with no
-    /// container for it) runs `body` as it is. A file that can't be opened, locked or read
-    /// (protected before the first unlock) throws that error and `body` does not run: unlocked,
-    /// it could land between the other process's compare and write. What `body` throws is
-    /// rethrown; once `body` ran, its result stands even if the file could not be written after.
+    /// compare and write (保存密码 off). Fails closed when `file` is nil or can't be opened,
+    /// locked, or read (protected before the first unlock): throws that error and `body` does
+    /// not run. What `body` throws is rethrown; once `body` ran, its result stands even if the
+    /// file could not be written after.
     public func locked<T>(_ body: () throws -> T) throws -> T {
-        guard let file else { return try body() }
+        guard let file else { throw LeaseFile.Failure(step: "lock", code: ENOENT) }
         var ran: Result<T, Error>?
         do {
             _ = try file.update { current -> (RefreshLease.Record?, Void) in
@@ -210,7 +209,7 @@ public struct RefreshLease: Sendable {
     /// it and parking the calling thread meanwhile (tests). The app's sign-out and reset use
     /// `clear(waitingAtMost:)` (`SnapshotRefresher.revokeLease`), whose wait suspends.
     public func clear() throws {
-        guard let file else { return }
+        guard let file else { throw LeaseFile.Failure(step: "lock", code: ENOENT) }
         _ = try file.update(wait: .unbounded) { _ in (nil, ()) }
     }
 
@@ -309,7 +308,7 @@ extension RefreshLease {
     /// Throws `LeaseFile.Failure` when the lease could not be removed (`isLockTimeout`: the
     /// lock stayed held).
     public func clear(waitingAtMost wait: TimeInterval) async throws {
-        guard let file else { return }
+        guard let file else { throw LeaseFile.Failure(step: "lock", code: ENOENT) }
         _ = try await file.update(waitingAtMost: wait, untilCancelled: false) { _ in (nil, ()) }
     }
 
@@ -358,7 +357,7 @@ extension RefreshLease {
     /// `locked` for async callers, waiting up to `wait` for the lock by suspending.
     func locked<T>(isolation: isolated (any Actor)? = #isolation, waitingAtMost wait: TimeInterval,
                    _ body: () throws -> T) async throws -> T {
-        guard let file else { return try body() }
+        guard let file else { throw LeaseFile.Failure(step: "lock", code: ENOENT) }
         var ran: Result<T, Error>?
         do {
             _ = try await file.update(waitingAtMost: wait) { current -> (RefreshLease.Record?, Void) in
@@ -375,7 +374,7 @@ extension RefreshLease {
     /// `locked` without waiting at all: throws at once while another step holds the lock
     /// (the main thread: `ThemeStore.select`).
     public func lockedIfFree<T>(_ body: () throws -> T) throws -> T {
-        guard let file else { return try body() }
+        guard let file else { throw LeaseFile.Failure(step: "lock", code: ENOENT) }
         var ran: Result<T, Error>?
         do {
             _ = try file.update(wait: .no) { current -> (RefreshLease.Record?, Void) in

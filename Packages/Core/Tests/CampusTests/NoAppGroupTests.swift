@@ -118,19 +118,22 @@ final class NoAppGroupTests: XCTestCase {
         XCTAssertTrue(h.server.requests.isEmpty, "nothing is sent")
     }
 
-    /// A lease without a file can never be taken (the app with no container to keep its own in):
-    /// a login under it runs without the lease rather than waiting and failing as busy.
-    func testLoginUnderALeaseWithoutAFileRunsWithoutIt() async throws {
+    /// A lease without a file fails closed: a login under it cannot acquire the commit lock and
+    /// throws `SchoolLoginFailure.busy` without running `body`.
+    func testLoginUnderALeaseWithoutAFileFailsClosed() async throws {
         let h = Harness()
         let refresher = SnapshotRefresher(school: h.session(), store: h.snapshots,
                                           lease: RefreshLease(file: nil, owner: "app-1"), leaseWait: 5,
                                           sleep: { _ in XCTFail("nothing to wait for") })
-        let value = try await refresher.holdingLease { owning -> Int in
-            let wrote = try await owning.write { 1 }
-            XCTAssertEqual(wrote, 1, "writes are not blocked")
-            return 2
+        do {
+            _ = try await refresher.holdingLease { _ -> Int in
+                XCTFail("must fail closed without a lock file")
+                return 0
+            }
+            XCTFail("expected SchoolLoginFailure.busy")
+        } catch let error as SchoolLoginFailure {
+            XCTAssertEqual(error, .busy)
         }
-        XCTAssertEqual(value, 2)
     }
 }
 

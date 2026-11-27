@@ -33,9 +33,10 @@ public enum StoreKey: String, Sendable, CaseIterable {
     case sharedCredentialLog = "shared.credentialLog"
     /// A reset is under way, since when (`ResetMarker`). Holds a time only.
     case sharedResetMarker = "shared.resetMarker"
-    /// The shared snapshot may still hold the previous person's numbers (`since` a time only):
-    /// nothing reads it while this is there, and the next snapshot write drops it.
+    /// Legacy 0.11.5 stale snapshot marker (read/cleared on upgrade only; no longer written).
     case sharedSnapshotStale = "shared.snapshotStale"
+    /// Cross-process session epoch (`SessionEpoch`): random id and lifecycle phase only.
+    case sharedSessionEpoch = "shared.sessionEpoch"
     /// How 开始洗澡 treats a balance below zero on this phone (`ShowerStartOverrideStore`).
     case showerStartMode = "water.startMode"
 
@@ -60,7 +61,7 @@ public enum StoreKey: String, Sendable, CaseIterable {
     /// laundry items live only in the app's private group, which the widget is not entitled to.
     public var isShared: Bool {
         switch self {
-        case .sharedSnapshot, .sharedReminderLines, .sharedCredentialLog, .sharedResetMarker, .sharedSnapshotStale, .schoolEcykt, .schoolPortal, .schoolProfile, .schoolPassword, .schoolDevice:
+        case .sharedSnapshot, .sharedReminderLines, .sharedCredentialLog, .sharedResetMarker, .sharedSnapshotStale, .sharedSessionEpoch, .schoolEcykt, .schoolPortal, .schoolProfile, .schoolPassword, .schoolDevice:
             return true
         case .showerBinding, .showerSession, .showerRetained, .showerStartMode, .laundryAccount, .laundryCheckout, .laundryHistory, .laundryHistorySalt:
             return false

@@ -59,7 +59,8 @@ final class AppResetTests: XCTestCase {
     /// A new Keychain item is cleared by reset too; this count makes adding one a conscious step.
     func testResetCoversEveryKeychainItem() {
         XCTAssertEqual(Set(AppReset.keychainItems), Set(StoreKey.allCases))
-        XCTAssertEqual(AppReset.keychainItems.count, 18, "a new item: check reset clears it, then update this count")
+        XCTAssertEqual(AppReset.keychainItems.count, 19, "a new item: check reset clears it, then update this count")
+        XCTAssertTrue(AppReset.keychainItems.contains(.sharedSessionEpoch))
         // The finished laundry orders go, and so does their salt.
         XCTAssertTrue(AppReset.keychainItems.contains(.laundryHistory))
         XCTAssertTrue(AppReset.keychainItems.contains(.laundryHistorySalt))
@@ -119,7 +120,9 @@ final class AppResetTests: XCTestCase {
         XCTAssertNil(try signOutStore.read(.schoolEcykt), "card session and its times")
         XCTAssertNil(try signOutStore.read(.schoolPortal), "portal token and its time")
         XCTAssertNil(signOutStore.leaseFile.storedOwner(), "the other process's lease too")
-        XCTAssertEqual(try SharedSnapshotStore(store: signOutStore).loadSnapshot(), .empty)
+        XCTAssertNil(try SharedSnapshotStore(store: signOutStore).loadSnapshot(), "signed-out epoch hides snapshot")
+        XCTAssertEqual(stack.refresher.latest(), .empty)
+        XCTAssertEqual(try SessionEpochStore(store: signOutStore).read()?.phase, .signedOut)
     }
 
     /// 清爽 chosen on an install with the App Group: the choice lives in the group's preferences,
@@ -206,9 +209,10 @@ final class AppResetTests: XCTestCase {
         XCTAssertThrowsError(try AppReset.clear(store: store, preferences: defaults, preferencesDomain: suite, shared: nil, files: [])) {
             XCTAssertEqual(($0 as? AppReset.Failure)?.items, ["school.password"])
         }
-        for key in StoreKey.allCases where key != .schoolPassword && key != .sharedResetMarker {
+        for key in StoreKey.allCases where key != .schoolPassword && key != .sharedResetMarker && key != .sharedSessionEpoch {
             XCTAssertNil(try store.read(key), key.rawValue)
         }
+        XCTAssertNotNil(try store.read(.sharedSessionEpoch), "kept while any school item or snapshot remains")
         XCTAssertNotNil(try store.read(.sharedResetMarker), "deleted only after everything else (run removes it after a failure)")
     }
 

@@ -82,10 +82,11 @@ final class SnapshotStaleMarkSignInTests: XCTestCase {
                 XCTAssertTrue(error is StorageError, "byForm \(byForm): \(error)")
             }
             let steps = store.steps
-            let mark = try XCTUnwrap(steps.firstIndex(of: "write shared.snapshotStale"), "byForm \(byForm): \(steps)")
+            let mark = try XCTUnwrap(steps.firstIndex(of: "write shared.sessionEpoch"), "byForm \(byForm): \(steps)")
             XCTAssertFalse(steps[..<mark].contains { $0.contains(" school.") || $0.hasSuffix(" shared.snapshot") },
-                           "byForm \(byForm): the mark goes before anything else: \(steps)")
-            XCTAssertNotNil(try store.read(.sharedSnapshotStale), "byForm \(byForm)")
+                           "byForm \(byForm): the switching epoch goes before anything else: \(steps)")
+            XCTAssertNil(try store.read(.sharedSnapshotStale), "byForm \(byForm): legacy stale marker is never written")
+            XCTAssertEqual(try SessionEpochStore(store: store).read()?.phase, .switching, "byForm \(byForm): stays in .switching after partial failure")
             XCTAssertNil(try SharedSnapshotStore(store: store).loadSnapshot(), "byForm \(byForm): the previous numbers are hidden")
             XCTAssertEqual(cleanUps, [true], "byForm \(byForm): the clean-up still runs")
             let after = await session.personStamp()
@@ -101,13 +102,13 @@ final class SnapshotStaleMarkSignInTests: XCTestCase {
             let credentials = try StoredSchoolVault(store: store).credentialBytes()
             let profile = try store.read(.schoolProfile)
             store.forgetSteps()
-            store.refusingWrites = [.sharedSnapshotStale]
+            store.refusingWrites = [.sharedSessionEpoch]
             let session = makeSession(h, on: store)
             let before = await session.personStamp()
             var cleanUps: [Bool] = [], changes = 0
             do {
                 try await signIn(session, byForm: byForm, cleanUps: &cleanUps, changes: &changes)
-                XCTFail("byForm \(byForm): the mark could not be written")
+                XCTFail("byForm \(byForm): the epoch could not be written")
             } catch {
                 XCTAssertTrue(error is StorageError, "byForm \(byForm): \(error)")
             }
@@ -134,6 +135,7 @@ final class SnapshotStaleMarkSignInTests: XCTestCase {
             try await signIn(session, byForm: byForm, account: "99100991", cleanUps: &cleanUps, changes: &changes)
             XCTAssertEqual(cleanUps, [], "byForm \(byForm): the same person")
             XCTAssertNil(try store.read(.sharedSnapshotStale), "byForm \(byForm)")
+            XCTAssertNil(try SessionEpochStore(store: store).read(), "byForm \(byForm): same person on 0.11.5 keeps snapshot readable")
             XCTAssertEqual(try SharedSnapshotStore(store: store).loadSnapshot()?.card.value, previous, "byForm \(byForm): their numbers stay")
         }
     }
@@ -146,13 +148,14 @@ final class SnapshotStaleMarkSignInTests: XCTestCase {
         var cleanUps: [Bool] = [], changes = 0
         try await signIn(session, byForm: false, cleanUps: &cleanUps, changes: &changes)
         XCTAssertEqual(cleanUps, [false], "a confirmed switch")
-        XCTAssertNotNil(try store.read(.sharedSnapshotStale))
+        XCTAssertNil(try store.read(.sharedSnapshotStale), "legacy stale marker is never written")
+        XCTAssertEqual(try SessionEpochStore(store: store).read()?.phase, .activePendingClear)
         XCTAssertNil(try SharedSnapshotStore(store: store).loadSnapshot())
         XCTAssertNil(WidgetStoredData.read(snapshots: SharedSnapshotStore(store: store), vault: StoredSchoolVault(store: store))?.snapshot)
     }
 
     /// Nothing tells whether it is the same person (the stored card session no longer decodes):
-    /// marked too.
+    /// transitions through a new epoch.
     func testASignInThatCannotTellThePersonMarksTheSnapshot() async throws {
         let h = try harness(byForm: false)
         let store = KeyedFailureStore()
@@ -163,7 +166,8 @@ final class SnapshotStaleMarkSignInTests: XCTestCase {
         var cleanUps: [Bool] = [], changes = 0
         try await signIn(session, byForm: false, cleanUps: &cleanUps, changes: &changes)
         XCTAssertEqual(cleanUps, [true], "unconfirmed")
-        XCTAssertNotNil(try store.read(.sharedSnapshotStale))
+        XCTAssertNil(try store.read(.sharedSnapshotStale), "legacy stale marker is never written")
+        XCTAssertEqual(try SessionEpochStore(store: store).read()?.phase, .activePendingClear)
         XCTAssertNil(try SharedSnapshotStore(store: store).loadSnapshot())
     }
 
@@ -182,13 +186,13 @@ final class SnapshotStaleMarkSignInTests: XCTestCase {
         let store = KeyedFailureStore()
         try seed(store, card: Self.otherCard)
         let stored = try Self.credentialKeys.map { try store.read($0) }
-        store.refusingWrites = [.sharedSnapshotStale, .sharedSnapshot]
+        store.refusingWrites = [.sharedSessionEpoch, .sharedSnapshot]
         let (session, _, signOuts) = makeSignOuts(h, on: store)
         do {
             try await session.signOut()
-            XCTFail("the mark could not be written")
+            XCTFail("the epoch could not be written")
         } catch let failure as SchoolSession.SignOutFailure {
-            XCTAssertEqual(failure.items, ["snapshotStale"])
+            XCTAssertEqual(failure.items, ["sessionEpoch"])
         }
         XCTAssertEqual(try Self.credentialKeys.map { try store.read($0) }, stored, "every credential is as it was")
 
@@ -206,7 +210,8 @@ final class SnapshotStaleMarkSignInTests: XCTestCase {
         let deleted = await signOuts.start().value
         XCTAssertFalse(deleted, "the snapshot could not be cleared")
         for key in Self.credentialKeys { XCTAssertNil(try store.read(key), "\(key.rawValue) deleted all the same") }
-        XCTAssertNotNil(try store.read(.sharedSnapshotStale), "the mark stays")
+        XCTAssertNil(try store.read(.sharedSnapshotStale), "legacy stale marker is never written")
+        XCTAssertEqual(try SessionEpochStore(store: store).read()?.phase, .signedOutPendingClear, "stays pending clear")
         XCTAssertNotNil(try store.read(.sharedSnapshot), "the old bytes could not be replaced")
         XCTAssertEqual(refresher.latest(), .empty)
         XCTAssertNil(try SharedSnapshotStore(store: store).loadSnapshot(), "read again (a relaunch)")
@@ -222,13 +227,14 @@ final class SnapshotStaleMarkSignInTests: XCTestCase {
         let deleted = await signOuts.start().value
         XCTAssertTrue(deleted)
         let steps = store.steps
-        let mark = try XCTUnwrap(steps.firstIndex(of: "write shared.snapshotStale"))
+        let pending = try XCTUnwrap(steps.firstIndex(of: "write shared.sessionEpoch"))
         let empty = try XCTUnwrap(steps.firstIndex(of: "write shared.snapshot"))
-        let unmark = try XCTUnwrap(steps.firstIndex(of: "delete shared.snapshotStale"))
-        XCTAssertFalse(steps[..<mark].contains { $0.contains(" school.") }, "the mark before any credential goes: \(steps)")
-        XCTAssertLessThan(empty, unmark)
+        let finalEpoch = try XCTUnwrap(steps.lastIndex(of: "write shared.sessionEpoch"))
+        XCTAssertFalse(steps[..<pending].contains { $0.contains(" school.") }, "the epoch before any credential goes: \(steps)")
+        XCTAssertLessThan(empty, finalEpoch)
         XCTAssertNil(try store.read(.sharedSnapshotStale))
-        XCTAssertEqual(try SharedSnapshotStore(store: store).loadSnapshot(), .empty)
+        XCTAssertEqual(try SessionEpochStore(store: store).read()?.phase, .signedOut)
+        XCTAssertNil(try SharedSnapshotStore(store: store).loadSnapshot())
 
         let failing = KeyedFailureStore()
         try seed(failing, card: Self.otherCard)
@@ -237,7 +243,6 @@ final class SnapshotStaleMarkSignInTests: XCTestCase {
         let (_, _, again) = makeSignOuts(h, on: failing)
         let failed = await again.start().value
         XCTAssertFalse(failed)
-        XCTAssertFalse(failing.steps.contains("delete shared.snapshotStale"), "\(failing.steps)")
-        XCTAssertNotNil(try failing.read(.sharedSnapshotStale))
+        XCTAssertEqual(try SessionEpochStore(store: failing).read()?.phase, .signedOutPendingClear)
     }
 }

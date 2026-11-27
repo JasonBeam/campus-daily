@@ -60,9 +60,11 @@ final class StaleSchoolSignInTests: XCTestCase {
     func testAnOvertakenSignInThatFailsLeavesTheNewSignInAlone() async throws {
         let store = ScriptedStore()
         let http = HeldCardCheck()
+        let leaseURL = FileManager.default.temporaryDirectory.appendingPathComponent("stale-signin-lease-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at:leaseURL) }
         let services = CampusServices(kind:.live, secureStore:store, defaults:SampleDefaults(), sharedPreferences:nil,
                                       schoolHTTP:http, showerHTTP:SampleHTTPClient(), laundryHTTP:SampleHTTPClient(),
-                                      feedbackHTTP:nil, showerTransport:SampleShowerTransport(), leaseFile:nil,
+                                      feedbackHTTP:nil, showerTransport:SampleShowerTransport(), leaseFile:LeaseFile(url:leaseURL),
                                       applicationSupport:nil, sharedDidChange:{})
         try services.schoolVault.saveEcyktSession(EcyktSession(token:"SYNTHETIC-OLD", syscustid:"SYNTHETIC-SYS", cardUnionID:"SYNTHETIC-CARD-1"))
         let reminders = Reminders.sample(defaults:services.defaults)
@@ -78,8 +80,12 @@ final class StaleSchoolSignInTests: XCTestCase {
         try await campus.adoptWebState(Self.webLogin)
         try shower.saveBinding(Fixture.binding)
         await waitUntil { shower.gateRecord != .notLoaded }
-        let numbers = HomeSnapshot(card:Tile(value:Money(fen:790), fetchedAt:Date(timeIntervalSince1970:1_793_000_000)), roomLabel:"99栋 991")
-        try SharedSnapshotStore(store:store).saveSnapshot(numbers)
+        let snapshots = SharedSnapshotStore(store:store)
+        let epoch = try snapshots.sessionEpoch()
+        let numbers = try XCTUnwrap(try snapshots.commitSnapshot(
+            HomeSnapshot(card:Tile(value:Money(fen:790), fetchedAt:Date(timeIntervalSince1970:1_793_000_000)), roomLabel:"99栋 991"),
+            expectedEpoch:epoch
+        )).snapshot
         campus.reload()
         XCTAssertEqual(campus.snapshot, numbers)
 

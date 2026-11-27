@@ -10,9 +10,9 @@ import Foundation
 /// The card session: liveness, writing it back, and the steps that run on it (the hot-water
 /// hand-off, the card records).
 extension SchoolSession {
-    /// False only when the card session was read and is not there. Async like the
-    /// `SchoolReader` requirement, so this is what the refresher calls (not the protocol's default).
-    public func hasCardSession() async -> Bool { vault.cardSessionStored() ?? true }
+    /// False only when the card session was read and is not there. Synchronous and nonisolated
+    /// so the refresher can verify it inside the commit lock before writing a snapshot.
+    public nonisolated func hasCardSession() -> Bool { vault.cardSessionStored() ?? true }
 
     enum WriteBack { case written, kept, signedOut, lostLease }
 
@@ -23,6 +23,7 @@ extension SchoolSession {
     func writeBack(_ session: EcyktSession, over base: EcyktSession, owning: LeaseOwnership) async -> WriteBack {
         let vault = vault
         func compare() -> WriteBack? {
+            if let epoch = try? vault.sessionEpoch(), epoch.hidesAccountUI { return .signedOut }
             let current: EcyktSession?
             do { current = try vault.ecyktSession() } catch { return .kept }
             guard let current else { return .signedOut }
@@ -89,6 +90,7 @@ extension SchoolSession {
     private func saveIfUnchanged(_ live: EcyktSession, over base: EcyktSession, owning: LeaseOwnership) async {
         let vault = vault
         _ = await writeCredential(.cardSession, owning: owning) {
+            if let epoch = try? vault.sessionEpoch(), epoch.hidesAccountUI { return }
             guard let current = (try? vault.ecyktSession()) ?? nil,
                   current.token == base.token, current.syscustid == base.syscustid else { return }
             try? vault.saveEcyktSession(live)

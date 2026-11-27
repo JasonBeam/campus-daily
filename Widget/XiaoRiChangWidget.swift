@@ -27,37 +27,48 @@ struct CampusTimeline: TimelineProvider {
     static let readDeadline: TimeInterval = 20
     static let interval: TimeInterval = 30 * 60
 
-    /// The snapshot and account, or nil before the first unlock / on a Keychain error.
-    private static func stored() -> WidgetStoredData? {
-        WidgetStoredData.read(snapshots:SharedSnapshotStore(store:SharedKeychain.store),
-                              vault:StoredSchoolVault(store:SharedKeychain.store))
-    }
-
     func placeholder(in context: Context) -> CampusEntry { CampusEntry(date:Date(), model:.placeholderFace) }
-    /// Transient (gallery, first add): the stored snapshot, no network. Unreadable: grey bars,
-    /// never numbers this read did not check (`CampusWidgetPlan`).
+    /// Transient (gallery, first add): the stored snapshot, no network. Re-checks the session
+    /// epoch right before calling `completion` so a concurrent logout/switch never leaks numbers.
     func getSnapshot(in context: Context, completion: @escaping (CampusEntry) -> Void) {
         let now = Date()
-        let choice = WidgetDrawChoice.choose(Self.stored())
-        completion(CampusEntry(date:now, model:CampusWidgetPlan.face(choice, now:now, preview:context.isPreview,
+        let snapshots = SharedSnapshotStore(store:SharedKeychain.store)
+        let vault = StoredSchoolVault(store:SharedKeychain.store)
+        let stored = WidgetStoredData.read(snapshots:snapshots, vault:vault)
+        let initial = WidgetDrawChoice.choose(stored)
+        let candidate: HomeSnapshot? = if case .draw(let snapshot, _) = initial { snapshot } else { nil }
+        let verified = WidgetDrawChoice.verifiedForCompletion(
+            initial:initial, initialEpoch:stored?.epoch, drawn:candidate,
+            snapshots:snapshots, vault:vault
+        )
+        completion(CampusEntry(date:now, model:CampusWidgetPlan.face(verified.choice, now:now, preview:context.isPreview,
                                                                      lines:ReminderLines.shared())))
     }
     /// Finishes a pending clear of the previous person's snapshot (offline), reads the school
-    /// data (unless the app just did), then draws; again in 30 minutes. When the numbers turn
-    /// stale before then by time alone, a second entry switches at that moment. Locked since a
-    /// restart, or the Keychain refused: not "signed out", and no numbers; asked again soon.
+    /// data (unless the app just did), re-checks the session epoch right before calling
+    /// `completion`, then draws; again in 30 minutes.
     func getTimeline(in context: Context, completion: @escaping (Timeline<CampusEntry>) -> Void) {
         let done = Completion(call:completion)
         Task {
             let now = Date()
+            let snapshots = SharedSnapshotStore(store:SharedKeychain.store)
+            let vault = StoredSchoolVault(store:SharedKeychain.store)
             await Self.school.refresher.finishPendingClear(lockWait:SchoolRefreshStack.widgetPendingClearWait)
-            let choice = WidgetDrawChoice.choose(Self.stored())
+            let stored = WidgetStoredData.read(snapshots:snapshots, vault:vault)
+            let initial = WidgetDrawChoice.choose(stored)
             var drawn: HomeSnapshot?
-            if case .draw = choice {
-                drawn = await WidgetRefresh.run(Self.school.refresher, now:now, deadline:Self.readDeadline)
+            if case .draw = initial {
+                let canRefresh = stored?.epoch?.allowsRefreshCommit ?? true
+                if canRefresh {
+                    drawn = await WidgetRefresh.run(Self.school.refresher, now:now, deadline:Self.readDeadline,
+                                                    expectedEpochID:stored?.epoch?.id)
+                }
             }
-            // The account read above: a second read failing here would draw "no saved password".
-            let plan = CampusWidgetPlan.timeline(choice, drawn:drawn, now:now, interval:Self.interval, lines:ReminderLines.shared())
+            let verified = WidgetDrawChoice.verifiedForCompletion(
+                initial:initial, initialEpoch:stored?.epoch, drawn:drawn,
+                snapshots:snapshots, vault:vault
+            )
+            let plan = CampusWidgetPlan.timeline(verified.choice, drawn:verified.drawn, now:now, interval:Self.interval, lines:ReminderLines.shared())
             done.call(Timeline(entries:plan.faces.map { CampusEntry(date:$0.date, model:$0.model) }, policy:.after(plan.next)))
         }
     }

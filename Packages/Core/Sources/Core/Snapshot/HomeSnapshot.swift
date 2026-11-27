@@ -42,16 +42,19 @@ public struct HomeSnapshot: Sendable, Codable, Equatable {
     /// The ecykt session failed the liveness check: show "需重新登录" next to old values.
     public var needsLogin: Bool
     public var checkedAt: Date?
+    /// The `SessionEpoch.id` this snapshot was written for (`nil` for legacy 0.11.5 snapshots or `.empty`).
+    public var epochID: String?
 
     public init(card: Tile<Money> = Tile(), power: Tile<Meter> = Tile(), activity: Tile<CardActivity> = Tile(),
-                roomLabel: String? = nil, needsLogin: Bool = false, checkedAt: Date? = nil) {
+                roomLabel: String? = nil, needsLogin: Bool = false, checkedAt: Date? = nil,
+                epochID: String? = nil) {
         self.card = card; self.power = power; self.activity = activity; self.roomLabel = roomLabel
-        self.needsLogin = needsLogin; self.checkedAt = checkedAt
+        self.needsLogin = needsLogin; self.checkedAt = checkedAt; self.epochID = epochID
     }
 
-    private enum CodingKeys: String, CodingKey { case card, power, activity, roomLabel, needsLogin, checkedAt }
+    private enum CodingKeys: String, CodingKey { case card, power, activity, roomLabel, needsLogin, checkedAt, epochID }
 
-    /// A snapshot stored before the records were read has no `activity`: it reads as never read.
+    /// A snapshot stored before the records or epoch were added has no `activity` / `epochID`.
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         card = try c.decode(Tile<Money>.self, forKey: .card)
@@ -60,6 +63,12 @@ public struct HomeSnapshot: Sendable, Codable, Equatable {
         roomLabel = try c.decodeIfPresent(String.self, forKey: .roomLabel)
         needsLogin = try c.decode(Bool.self, forKey: .needsLogin)
         checkedAt = try c.decodeIfPresent(Date.self, forKey: .checkedAt)
+        epochID = try c.decodeIfPresent(String.self, forKey: .epochID)
+    }
+
+    /// True when the snapshot carries no readings, errors, login flag, or check time (ignoring `epochID`).
+    public var isEmpty: Bool {
+        card == Tile() && power == Tile() && activity == Tile() && roomLabel == nil && !needsLogin && checkedAt == nil
     }
 
     public static let empty = HomeSnapshot()

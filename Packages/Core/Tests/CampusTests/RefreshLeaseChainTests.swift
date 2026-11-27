@@ -202,7 +202,9 @@ final class SignOutDuringOtherProcessLoginTests: XCTestCase {
         XCTAssertNil(try h.vault.account())
         XCTAssertNil(try h.vault.loginDeviceID())
         XCTAssertTrue(h.server.requests(path: "/csalogintoken/450010").isEmpty, "no exchange after the sign-out")
-        XCTAssertEqual(try h.snapshots.loadSnapshot(), SchoolSnapshotReducer.reduce(.empty, .signedOut))
+        XCTAssertNil(try h.snapshots.loadSnapshot(), "signed-out epoch hides snapshot")
+        XCTAssertEqual(app.latest(), .empty)
+        XCTAssertEqual(try SessionEpochStore(store: h.store).read()?.phase, .signedOut)
     }
 
     func testRevokedLeaseStopsTheOtherProcessWritingBack() async throws { try await run(revokingLease: true) }
@@ -264,19 +266,21 @@ final class SignOutBeforeTheSnapshotSaveTests: XCTestCase {
         try h.server.serve("ecykt/getSysBindCustInfo-ok")
         try h.server.serve("ecykt/getUserBalance-ok")
         try h.server.serve("ecykt/card-getRecordList-ok")
-        let store = h.store, snapshots = h.snapshots
+        let store = h.store
         let between = Lines()
         store.beforeNextWrite(to: .sharedSnapshot) {
             if RefreshLease(file: store.leaseFile, owner: "signed-out").tryClear() { between.append("lease removed") }
         }
         let report = await RefreshLeaseChainTests().refresher(h, owner: "widget-1").refresh(inBackground: true)
         XCTAssertEqual(between.all, [], "the sign-out can't land between the lease check and the save")
-        // The sign-out, after the save: lease, items, empty snapshot.
-        try RefreshLease(file: store.leaseFile, owner: "signed-out").clear()
-        for key: StoreKey in [.schoolPassword, .schoolPortal, .schoolEcykt, .schoolProfile, .schoolDevice] { try? store.delete(key) }
-        try snapshots.saveSnapshot(SchoolSnapshotReducer.reduce(.empty, .signedOut))
+        // The sign-out, after the save: signOut + clear (epoch -> .signedOut, empty snapshot).
+        try await h.session().signOut()
+        let app = RefreshLeaseChainTests().refresher(h, owner: "signed-out")
+        try await app.clear()
         XCTAssertTrue(report.snapshotSaved)
-        XCTAssertEqual(try h.snapshots.loadSnapshot(), SchoolSnapshotReducer.reduce(.empty, .signedOut))
+        XCTAssertNil(try h.snapshots.loadSnapshot())
+        XCTAssertEqual(app.latest(), .empty)
+        XCTAssertEqual(try SessionEpochStore(store: store).read()?.phase, .signedOut)
     }
 
     /// The other process tries to take the lease over right as the save lands: it waits for
@@ -298,66 +302,83 @@ final class SignOutBeforeTheSnapshotSaveTests: XCTestCase {
     }
 }
 
-/// After the locked save, outside the lock: the other process signed out (its lease removal
-/// first) or only took the lease over. A fake reader does that in `hasCardSession`, the step
-/// after the save.
+/// Inside the commit lock before saving: if the card session is gone (signed out) or the
+/// session epoch changed, nothing is written.
 final class AfterTheSnapshotSaveTests: XCTestCase {
     final class Reader: PlainSchoolReader, @unchecked Sendable {
         let reading: SchoolReading
-        let afterSave: @Sendable () -> Bool
-        init(_ reading: SchoolReading, afterSave: @escaping @Sendable () -> Bool) { self.reading = reading; self.afterSave = afterSave }
+        let cardSession: @Sendable () -> Bool
+        init(_ reading: SchoolReading, cardSession: @escaping @Sendable () -> Bool) {
+            self.reading = reading; self.cardSession = cardSession
+        }
         func refresh(inBackground: Bool, mayMint: @Sendable () async -> Bool) async -> SchoolReading { reading }
-        func hasCardSession() async -> Bool { afterSave() }
+        func hasCardSession() -> Bool { cardSession() }
     }
 
-    func run(_ h: Harness, afterSave: @escaping @Sendable () -> Bool) async -> RefreshReport {
+    func run(_ h: Harness, cardSession: @escaping @Sendable () -> Bool) async -> RefreshReport {
         let reading = SchoolReading(outcome: .ok, checkedAt: h.clock.now, balance: .success(Money(fen: 500)), readAt: h.clock.now)
-        let refresher = SnapshotRefresher(school: Reader(reading, afterSave: afterSave), store: h.snapshots,
+        let refresher = SnapshotRefresher(school: Reader(reading, cardSession: cardSession), store: h.snapshots,
                                           lease: RefreshLease(file: h.store.leaseFile, owner: "widget-1", now: h.clock.function),
                                           leaseWait: 3, sleep: { _ in try? await Task.sleep(nanoseconds: 1_000_000) })
         return await refresher.refresh(inBackground: true)
     }
 
-    func testSignedOutRightAfterTheSaveClearsTheSnapshotAgain() async throws {
+    func testSignedOutBeforeCommitRejectsTheSave() async throws {
         let h = Harness()
-        let store = h.store
+        let calls = Counter()
         let report = await run(h) {
-            // The other process signs out: lease first, then its items. Its own empty snapshot
-            // is not written yet (or it was written before this read's save landed).
-            try? RefreshLease(file: store.leaseFile, owner: "signed-out").clear()
-            return false
+            // First call (prepareRefreshEpoch): signed in; second call (inside commit lock): signed out.
+            calls.next() == 1
         }
         XCTAssertEqual(report.outcome, .notSignedIn)
         XCTAssertFalse(report.snapshotSaved)
         XCTAssertNil(try h.snapshots.loadSnapshot()?.card.value, "the signed-out snapshot stays empty")
     }
 
-    /// The clear is a compare-and-write: it removes only the snapshot this read saved. A
-    /// snapshot stored after it (the next person signed in before the clear landed) stays.
-    func testASnapshotStoredAfterTheSaveIsNotCleared() async throws {
+    /// Another process switched epochs while this read was running: the stale read is rejected
+    /// and the next person's snapshot stays intact.
+    func testASnapshotForANewEpochIsNotOverwritten() async throws {
         let h = Harness()
-        let store = h.store, snapshots = h.snapshots
-        let report = await run(h) {
-            try? RefreshLease(file: store.leaseFile, owner: "signed-out").clear()
-            var newer = (try? snapshots.loadSnapshot()) ?? .empty
-            newer.card.value = Money(fen: 900)
-            try? snapshots.saveSnapshot(newer)
-            return false
+        let store = h.store
+        let epochA = SessionEpoch(id: "epoch-A", phase: .active)
+        try SessionEpochStore(store: store).write(epochA)
+        let epochB = SessionEpoch(id: "epoch-B", phase: .active)
+        var snapshotB = HomeSnapshot(checkedAt: h.clock.now, epochID: epochB.id)
+        snapshotB.card.succeed(Money(fen: 900), at: h.clock.now)
+        let savedB = snapshotB
+        let reading = SchoolReading(outcome: .ok, checkedAt: h.clock.now, balance: .success(Money(fen: 500)), readAt: h.clock.now)
+        let reader = HookReader(reading: reading) {
+            try? SessionEpochStore(store: store).write(epochB)
+            try? SharedSnapshotStore(store: store).saveSnapshot(savedB)
         }
+        let refresher = SnapshotRefresher(school: reader, store: h.snapshots,
+                                          lease: RefreshLease(file: h.store.leaseFile, owner: "widget-1", now: h.clock.function),
+                                          leaseWait: 3, sleep: { _ in try? await Task.sleep(nanoseconds: 1_000_000) })
+        let report = await refresher.refresh(inBackground: true)
         XCTAssertFalse(report.snapshotSaved)
         XCTAssertEqual(try h.snapshots.loadSnapshot()?.card.value, Money(fen: 900))
     }
 
-    func testStillSignedInWithTheLeaseLostKeepsTheSave() async throws {
+    func testStillSignedInKeepsTheSave() async throws {
         let h = Harness()
-        let store = h.store, clock = h.clock
-        let report = await run(h) {
-            clock.advance(RefreshLease.defaultDuration + 1)
-            XCTAssertTrue(RefreshLease(file: store.leaseFile, owner: "app-2", now: clock.function).acquire())
-            return true
-        }
+        let report = await run(h) { true }
         XCTAssertTrue(report.snapshotSaved)
         XCTAssertEqual(try h.snapshots.loadSnapshot()?.card.value, Money(fen: 500))
+    }
+
+    private final class Counter: @unchecked Sendable {
+        private let lock = NSLock()
+        private var n = 0
+        func next() -> Int { lock.withLock { n += 1; return n } }
+    }
+
+    private struct HookReader: PlainSchoolReader {
+        let reading: SchoolReading
+        let duringRefresh: @Sendable () -> Void
+        func refresh(inBackground: Bool, mayMint: @Sendable () async -> Bool) async -> SchoolReading {
+            duringRefresh()
+            return reading
+        }
     }
 }
 

@@ -18,9 +18,19 @@ public struct SchoolShownItems: Sendable, Equatable {
         self.signedIn = signedIn; self.profile = profile; self.account = account
     }
 
-    /// The items as stored now. One whose read fails (the Keychain before the first unlock, an
-    /// item that no longer decodes) keeps what is shown: only a read that finds nothing clears it.
+    /// The items as stored now. During `.switching`, `.signedOutPendingClear`, or `.signedOut`
+    /// (or an undecodable epoch), account and profile are hidden regardless of any leftover items.
+    /// A Keychain read failure (before the first unlock) keeps what is shown.
     public func reread(from vault: SchoolVault) -> SchoolShownItems {
+        do {
+            if let epoch = try vault.sessionEpoch(), epoch.hidesAccountUI {
+                return SchoolShownItems(signedIn: false, profile: nil, account: nil)
+            }
+        } catch let error as StorageError where error.isUndecodable {
+            return SchoolShownItems(signedIn: false, profile: nil, account: nil)
+        } catch {
+            return self
+        }
         func read<T>(_ item: () throws -> T?, else shown: T?) -> T? {
             do { return try item() } catch { return shown }
         }

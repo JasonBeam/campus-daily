@@ -225,19 +225,31 @@ public enum AppReset {
         try finish(failed, files: files, fileManager: fileManager, store: store)
     }
 
-    /// The Keychain items but the reset marker, the stale mark only once the snapshot is gone,
-    /// and the app's own preferences. What could not be deleted.
+    /// School Keychain items that must all be deleted alongside `shared.snapshot` before
+    /// `shared.sessionEpoch` can be removed.
+    private static let schoolKeys: Set<StoreKey> = [
+        .schoolPortal, .schoolEcykt, .schoolProfile, .schoolPassword, .schoolDevice,
+    ]
+
+    /// The Keychain items but the reset marker; the legacy stale mark goes once the snapshot is
+    /// gone, and the session epoch goes only once both the snapshot and all school items are
+    /// gone. What could not be deleted.
     private static func deleteStored(store: SecureStore, preferences: UserDefaults, preferencesDomain: String) -> [String] {
         var failed: [String] = []
         var snapshotGone = true
-        for key in keychainItems where key != .sharedResetMarker && key != .sharedSnapshotStale {
+        var schoolItemsGone = true
+        for key in keychainItems where key != .sharedResetMarker && key != .sharedSnapshotStale && key != .sharedSessionEpoch {
             do { try store.delete(key) } catch {
                 failed.append(key.rawValue)
                 if key == .sharedSnapshot { snapshotGone = false }
+                if schoolKeys.contains(key) { schoolItemsGone = false }
             }
         }
         if snapshotGone {
             do { try store.delete(.sharedSnapshotStale) } catch { failed.append(StoreKey.sharedSnapshotStale.rawValue) }
+        }
+        if snapshotGone && schoolItemsGone {
+            do { try store.delete(.sharedSessionEpoch) } catch { failed.append(StoreKey.sharedSessionEpoch.rawValue) }
         }
         preferences.removePersistentDomain(forName: preferencesDomain)
         return failed

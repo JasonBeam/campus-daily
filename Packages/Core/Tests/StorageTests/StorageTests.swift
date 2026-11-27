@@ -111,7 +111,7 @@ final class KeychainStoreTests: XCTestCase {
         XCTAssertEqual(StoreKey.schoolEcykt.accessibility, .afterFirstUnlockThisDeviceOnly)
         XCTAssertEqual(StoreKey.allCases.filter(\.isShared),
                        [.schoolPortal, .schoolEcykt, .schoolProfile, .schoolPassword, .schoolDevice, .sharedSnapshot, .sharedReminderLines,
-                        .sharedCredentialLog, .sharedResetMarker, .sharedSnapshotStale])
+                        .sharedCredentialLog, .sharedResetMarker, .sharedSnapshotStale, .sharedSessionEpoch])
         XCTAssertEqual(StoreKey.schoolPassword.accessibility, .afterFirstUnlockThisDeviceOnly)
         XCTAssertEqual(PreferenceKey.reminder("card"), "xrc.reminder.card")
         XCTAssertEqual(SharedSnapshotStore.widgetKind, "XiaoRiChangBalances")
@@ -133,8 +133,9 @@ final class KeychainStoreTests: XCTestCase {
         XCTAssertEqual(StoreKey.laundryHistory.service, "org.zaxh.xiaorichang.laundry.history.v1")
         XCTAssertEqual(StoreKey.laundryHistorySalt.service, "org.zaxh.xiaorichang.laundry.historySalt.v1")
         XCTAssertEqual(StoreKey.sharedSnapshotStale.service, "org.zaxh.xiaorichang.shared.snapshotStale.v1")
+        XCTAssertEqual(StoreKey.sharedSessionEpoch.service, "org.zaxh.xiaorichang.shared.sessionEpoch.v1")
         XCTAssertEqual(StoreKey.showerStartMode.service, "org.zaxh.xiaorichang.water.startMode.v1")
-        XCTAssertEqual(StoreKey.allCases.count, 18, "a new item needs its stored name pinned here")
+        XCTAssertEqual(StoreKey.allCases.count, 19, "a new item needs its stored name pinned here")
     }
 
     /// The finished-order list and its salt stay in the app's private group: the widget can't read them.
@@ -279,7 +280,8 @@ final class KeychainStoreTests: XCTestCase {
     /// changes what the widget can see or when an item can be read; update docs/privacy.md too.
     func testEveryItemsGroupAndAccessibilityArePinned() throws {
         let shared: Set<StoreKey> = [.schoolPortal, .schoolEcykt, .schoolProfile, .schoolPassword, .schoolDevice,
-                                     .sharedSnapshot, .sharedReminderLines, .sharedCredentialLog, .sharedResetMarker, .sharedSnapshotStale]
+                                     .sharedSnapshot, .sharedReminderLines, .sharedCredentialLog, .sharedResetMarker,
+                                     .sharedSnapshotStale, .sharedSessionEpoch]
         let kc = appKeychain()
         let store = appStore(kc)
         for k in StoreKey.allCases {

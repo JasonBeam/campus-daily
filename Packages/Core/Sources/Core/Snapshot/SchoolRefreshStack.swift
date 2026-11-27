@@ -23,23 +23,46 @@ public struct SchoolRefreshStack: Sendable {
     public static let widgetPendingClearWait: TimeInterval = 0.5
 
     /// `leaseFile`: `RefreshLease.appFile()` in the app, `RefreshLease.sharedFile()` in the
-    /// widget. Signed without the App Group, the app's is in its own container, so the app's
-    /// reads and logins still take turns, and the widget has none and never reads, so the two
-    /// never read at the same time. An app with no file at all refreshes without the lease.
+    /// widget. Always creates a `RefreshLease`: when `leaseFile` is `nil`, the lease is
+    /// unavailable and fails closed across refresh, login commits, and locked writes.
     public init(store: SecureStore, http: HTTPClient, role: String, leaseWait: TimeInterval, leaseFile: LeaseFile?,
                 didWriteSnapshot: @escaping @Sendable () -> Void = {},
                 diagnostic: @escaping @Sendable (String) -> Void = SnapshotRefresher.osLog,
                 debugLog: any DebugLogSink = NoDebugLog()) {
-        let lease: RefreshLease? = leaseFile == nil && role != "widget" ? nil : RefreshLease(file: leaseFile, owner: RefreshLease.owner(role))
+        let lease = RefreshLease(file: leaseFile, owner: RefreshLease.owner(role))
         session = SchoolSession(portal: PortalClient(http: http), ecykt: EcyktClient(http: http),
                                 vault: StoredSchoolVault(store: store), passwordLogin: CASLoginClient(http: http),
                                 diagnostic: diagnostic,
                                 createsLoginDeviceID: role != "widget", debugLog: debugLog,
-                                profileLock: lease ?? UnsharedLock())
+                                profileLock: lease)
         refresher = SnapshotRefresher(school: session, store: SharedSnapshotStore(store: store, didWrite: didWriteSnapshot,
                                                                                   diagnostic: diagnostic),
                                       lease: lease,
                                       leaseWait: leaseWait, diagnostic: diagnostic)
+    }
+
+    /// In-memory stack for sample mode and tests without an on-disk lease file.
+    public static func inMemory(store: SecureStore, http: HTTPClient, role: String = "app",
+                                didWriteSnapshot: @escaping @Sendable () -> Void = {},
+                                diagnostic: @escaping @Sendable (String) -> Void = { _ in },
+                                debugLog: any DebugLogSink = NoDebugLog(),
+                                lock: InMemoryCommitLock = InMemoryCommitLock()) -> SchoolRefreshStack {
+        let session = SchoolSession(portal: PortalClient(http: http), ecykt: EcyktClient(http: http),
+                                    vault: StoredSchoolVault(store: store), passwordLogin: CASLoginClient(http: http),
+                                    diagnostic: diagnostic,
+                                    createsLoginDeviceID: role != "widget", debugLog: debugLog,
+                                    profileLock: lock)
+        let refresher = SnapshotRefresher(school: session,
+                                          store: SharedSnapshotStore(store: store, didWrite: didWriteSnapshot,
+                                                                     diagnostic: diagnostic),
+                                          diagnostic: diagnostic,
+                                          inMemoryLock: lock)
+        return SchoolRefreshStack(session: session, refresher: refresher)
+    }
+
+    private init(session: SchoolSession, refresher: SnapshotRefresher) {
+        self.session = session
+        self.refresher = refresher
     }
 
     /// The URLSession client for the school hosts only.
@@ -55,10 +78,11 @@ public enum WidgetRefresh {
     /// enough, giving up after `deadline`: then the read is cancelled (it writes nothing) and
     /// the stored snapshot is returned at once, without waiting for the cancelled read to wind
     /// down. Returns the snapshot to draw.
-    public static func run(_ refresher: SnapshotRefresher, now: Date, deadline: TimeInterval) async -> HomeSnapshot {
+    public static func run(_ refresher: SnapshotRefresher, now: Date, deadline: TimeInterval,
+                           expectedEpochID: String? = nil) async -> HomeSnapshot {
         let stored = refresher.latest()
         guard WidgetStatus.shouldRefresh(snapshot: stored, now: now) else { return stored }
-        return await withCheckedContinuation { continuation in
+        let result = await withCheckedContinuation { continuation in
             let once = Once(continuation)
             let read = Task {
                 let snapshot = await refresher.refresh(inBackground: true).snapshot
@@ -70,6 +94,10 @@ public enum WidgetRefresh {
                 once.resume(refresher.latest())
             }
         }
+        if let expectedEpochID, !result.isEmpty, result.epochID != expectedEpochID {
+            return .empty
+        }
+        return result
     }
 
     /// Resumes the continuation with the first answer only.

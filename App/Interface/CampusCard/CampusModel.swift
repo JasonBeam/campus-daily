@@ -443,7 +443,7 @@ struct PowerChoice: Identifiable, Equatable {
     /// still stored: the switch reads it back (on) and says it wasn't turned off.
     func forgetPassword() async throws {
         defer { reload() }
-        try await session.forgetPassword(lockingWith:refresher.lease)
+        try await session.forgetPassword(lockingWith:refresher.commitLock)
     }
 
     /// Reset, before the stores are cleared: a refresh still running must not write the old

@@ -474,7 +474,8 @@ final class ShowerBalanceAccountTests: XCTestCase {
             XCTAssertTrue(school.isHoldingRecords, "\(skip): the next round's records are on their way")
             if skip == "older" {
                 // The other process stored a newer reading meanwhile.
-                try SharedSnapshotStore(store:store).saveSnapshot(HomeSnapshot(checkedAt:Date().addingTimeInterval(60)))
+                let epoch = try SharedSnapshotStore(store:store).sessionEpoch()
+                try SharedSnapshotStore(store:store).saveSnapshot(HomeSnapshot(checkedAt:Date().addingTimeInterval(60), epochID:epoch?.id))
             } else {
                 try RefreshLease(file:LeaseFile(url:leaseURL), owner:"widget-synthetic").clear()
             }

@@ -37,7 +37,7 @@ final class WidgetDrawChoiceTests: XCTestCase {
 
     func testAMarkedSnapshotWithAnUnreadableAccountDrawsNoNumbers() throws {
         let store = try seeded()
-        try StoredSchoolVault(store: store).markSnapshotStale(since: Date())
+        try store.write(Data("{\"since\":0}".utf8), for: .sharedSnapshotStale)
         store.refusingReads = [.schoolPassword]
         let drawn = choice(store)
         XCTAssertEqual(drawn, .noNumbers(retryAfter: WidgetStoredData.unreadableRetry))
@@ -58,10 +58,17 @@ final class WidgetDrawChoiceTests: XCTestCase {
         XCTAssertEqual(choice(store), .noNumbers(retryAfter: WidgetStoredData.unreadableRetry))
     }
 
-    /// Marked, everything else readable: drawn, with no snapshot (the signed-in face, no numbers).
-    func testAMarkedSnapshotDrawsWithoutNumbers() throws {
+    /// Non-active epochs: `.activePendingClear` hides snapshot while keeping account readable;
+    /// `.switching`, `.signedOutPendingClear`, and `.signedOut` hide both snapshot and account.
+    func testANonActiveEpochDrawsWithoutNumbers() throws {
         let store = try seeded()
-        try StoredSchoolVault(store: store).markSnapshotStale(since: Date())
+        let vault = StoredSchoolVault(store: store)
+        try vault.saveSessionEpoch(SessionEpoch(phase: .activePendingClear))
         XCTAssertEqual(choice(store), .draw(snapshot: nil, account: SchoolAccount(account: "99100991")))
+
+        for phase in [SessionEpoch.Phase.switching, .signedOutPendingClear, .signedOut] {
+            try vault.saveSessionEpoch(SessionEpoch(phase: phase))
+            XCTAssertEqual(choice(store), .draw(snapshot: nil, account: nil), "phase \(phase) hides snapshot and account")
+        }
     }
 }
