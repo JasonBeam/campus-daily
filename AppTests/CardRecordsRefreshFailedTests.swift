@@ -125,6 +125,51 @@ import Core
             "最新的记录没读到，这里只到 11月22日。下拉再试。")
     }
 
+    func testLoadMoreOlderSpanDoesNotAdvanceOfflineAsOfTime() async throws {
+        let at0830 = calendar.date(from:DateComponents(year:2026, month:11, day:24, hour:8, minute:30))!
+        let at1200 = calendar.date(from:DateComponents(year:2026, month:11, day:24, hour:12, minute:0))!
+        let at1215 = calendar.date(from:DateComponents(year:2026, month:11, day:24, hour:12, minute:15))!
+
+        var clock = at0830
+        let school = School()
+        let memory = CardRecordsMemory()
+        let sample = SampleData.recordsSource(now:at0830, delay:.milliseconds(1))
+        let source = CardRecordsSource(stamp:{ 0 }, page:{ query, stamp in
+            if await school.failing { throw Unreadable() }
+            return try await sample.page(query, stamp)
+        }, calendar:sample.calendar, memory:memory)
+        let defaults = SampleDefaults()
+        defaults.set("week", forKey:SpendSpan.storeKey)
+
+        // 08:30: open 7-day span (reads newest 14-day range).
+        let first = CardRecordsModel(source:source, preferences:defaults, now:{ clock })
+        await first.reload()
+        try await settled(first)
+        XCTAssertEqual(first.cachedSavedAt, at0830)
+        XCTAssertEqual(first.state.cachedLatestReadAt, at0830)
+
+        // 12:00: switch to 30-day span (reads older pages only, does NOT re-read today's range).
+        clock = at1200
+        first.statsSpan = .month
+        try await settled(first)
+        XCTAssertEqual(first.cachedSavedAt, at0830, "older pagination must not bump latestReadAt to 12:00")
+        XCTAssertEqual(first.state.cachedLatestReadAt, at0830)
+
+        // 12:15: offline reopen shows 「今天 08:30」, not 「今天 12:00」.
+        clock = at1215
+        await school.fail(true)
+        let again = CardRecordsModel(source:source, preferences:defaults, now:{ clock })
+        await again.reload()
+        try await settled(again)
+        XCTAssertTrue(again.refreshFailed)
+        XCTAssertEqual(again.cachedSavedAt, at0830)
+        XCTAssertEqual(again.state.cachedLatestReadAt, at0830)
+        let line = SpendStatsText(theme:.warm, calendar:calendar)
+            .refreshFailed(savedAt:again.cachedSavedAt,
+                           cachedToday:again.cachedToday, now:at1215)
+        XCTAssertEqual(line, "最新的记录没读到，这里只到今天 08:30。下拉再试。")
+    }
+
     func testLocalDiskCacheWriteAppliesCompleteProtectionAndExcludesBackup() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("xrc-card-cache-attr-\(UUID().uuidString)", isDirectory:true)

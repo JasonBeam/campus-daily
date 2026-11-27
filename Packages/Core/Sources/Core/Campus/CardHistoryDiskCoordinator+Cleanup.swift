@@ -27,8 +27,9 @@ extension CardHistoryDiskCoordinator {
         if let hook = beforeInvalidateRemove {
             await hook(oldSessionID)
         }
-        guard !isCurrentActiveSession(oldSessionID) else { return }
-        try? fileSystem.removeItem(at: sessionDirectory(root: root, sessionID: oldSessionID))
+        guard !isCurrentActiveSession(oldSessionID),
+              let oldDir = sessionDirectory(root: root, sessionID: oldSessionID) else { return }
+        try? fileSystem.removeItem(at: oldDir)
     }
 
     /// Invalidates and cleans up a previous-epoch anchor and orphan directories after an account
@@ -63,8 +64,9 @@ extension CardHistoryDiskCoordinator {
                 if let hook = beforeInvalidateRemove {
                     await hook(anchor.sessionID)
                 }
-                if !isCurrentActiveSession(anchor.sessionID) {
-                    try? fileSystem.removeItem(at: sessionDirectory(root: root, sessionID: anchor.sessionID))
+                if !isCurrentActiveSession(anchor.sessionID),
+                   let oldDir = sessionDirectory(root: root, sessionID: anchor.sessionID) {
+                    try? fileSystem.removeItem(at: oldDir)
                 }
                 await sweepOrphans()
             }

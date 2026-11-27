@@ -18,6 +18,10 @@ public enum StoreKey: String, Sendable, CaseIterable {
     /// The browser id the school login sees from this install (random, not personal).
     case schoolDevice = "school.device"
     case showerBinding = "water.binding"
+    /// Cross-process `SessionEpoch.id` that owned `water.binding` when it was saved; nil for
+    /// legacy bindings saved before `SessionEpoch` existed. App-private, cleared with reset or
+    /// when `water.binding` is cleared.
+    case showerBindingEpoch = "water.bindingEpoch"
     case showerSession = "water.session"
     /// Hot-water records kept by a next use while they wait for the user's check.
     case showerRetained = "water.retained"
@@ -72,7 +76,7 @@ public enum StoreKey: String, Sendable, CaseIterable {
         switch self {
         case .sharedSnapshot, .sharedReminderLines, .sharedCredentialLog, .sharedResetMarker, .sharedSnapshotStale, .sharedSessionEpoch, .schoolEcykt, .schoolPortal, .schoolProfile, .schoolPassword, .schoolDevice:
             return true
-        case .showerBinding, .showerSession, .showerRetained, .showerStartMode, .laundryAccount, .laundryCheckout, .laundryHistory, .laundryHistorySalt, .cardHistorySession:
+        case .showerBinding, .showerBindingEpoch, .showerSession, .showerRetained, .showerStartMode, .laundryAccount, .laundryCheckout, .laundryHistory, .laundryHistorySalt, .cardHistorySession:
             return false
         }
     }

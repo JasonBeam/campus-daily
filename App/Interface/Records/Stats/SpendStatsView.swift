@@ -220,6 +220,10 @@ struct SpendStatsView: View {
                     .scaledFont(15, relativeTo:.subheadline).foregroundStyle(Theme.ink2)
                     .fixedSize(horizontal:false, vertical:true)
             }
+        } else if let bar = selectedBar, bar.unsure, bar.spent == .zero {
+            Text(text.incompleteBar)
+                .scaledFont(22, .semibold, design:theme.numberDesign, relativeTo:.title2)
+                .foregroundStyle(Theme.ink)
         } else if let bar = selectedBar, bar.spent == .zero {
             Text(text.nothingSpent)
                 .scaledFont(22, .semibold, design:theme.numberDesign, relativeTo:.title2)
@@ -387,7 +391,9 @@ struct SpendStatsView: View {
 
     @ViewBuilder private var notes: some View {
         if let stats {
-            if let covered = stats.coveredFrom.flatMap(text.coveredFrom) {
+            if let from = stats.coveredFrom,
+               from > (stats.bars.first?.days.first ?? stats.bars.first?.id ?? ""),
+               let covered = text.coveredFrom(from) {
                 Text(covered)
                     .scaledFont(13, relativeTo:.footnote).foregroundStyle(Theme.ink2)
                     .fixedSize(horizontal:false, vertical:true)

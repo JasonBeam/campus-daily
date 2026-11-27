@@ -102,7 +102,7 @@ import XCTest
         let visited = await firstVisit(school, memory: memory)
         let kept = try XCTUnwrap(visited)
         XCTAssertTrue(kept.hasRead(through: id(back: 59)))
-        XCTAssertEqual(memory.history(for: 1), kept)
+        XCTAssertEqual(memory.history(for: 1, now: noon), kept)
         await school.clear()
 
         // Since: a new record today; and one 40 days back the school no longer lists.
@@ -127,7 +127,7 @@ import XCTest
         XCTAssertEqual(joined.records.filter { $0.date == id(back: 40) }.count, 1, "older days are not read again")
         XCTAssertTrue(joined.hasRead(through: id(back: 59)))
         XCTAssertFalse(again.state.refreshFailed)
-        XCTAssertEqual(memory.history(for: 1), joined, "kept for the next visit")
+        XCTAssertEqual(memory.history(for: 1, now: noon), joined, "kept for the next visit")
     }
 
     /// A span needing older days than kept reads on back from where the kept records end.
@@ -212,7 +212,7 @@ import XCTest
         let memory = CardRecordsMemory()
         _ = await firstVisit(school, memory: memory)
         await school.clear()
-        XCTAssertNil(memory.history(for: 2))
+        XCTAssertNil(memory.history(for: 2, now: noon))
 
         let other = loader(school, memory: memory, stamp: 2)
         other.setTarget(id(back: 59))
@@ -220,8 +220,8 @@ import XCTest
         await settled(other)
         let queries = await school.queries
         XCTAssertGreaterThan(queries.count, 1, "read from today")
-        XCTAssertEqual(memory.history(for: 2), other.state.history)
-        XCTAssertNil(memory.history(for: 1))
+        XCTAssertEqual(memory.history(for: 2, now: noon), other.state.history)
+        XCTAssertNil(memory.history(for: 1, now: noon))
     }
 
     /// The newest range fails: the kept records stay, said to be as last read.
@@ -294,5 +294,28 @@ import XCTest
         XCTAssertNil(first.state.history)
         XCTAssertFalse(first.state.moreFailed)
         XCTAssertFalse(first.state.refreshFailed)
+    }
+
+    /// Revo #5: memory cache enforces the same 30-day age limit and 210-day open-day window as
+    /// disk cache; expired memory entries are evicted and never shown again offline.
+    func testExpiredMemoryEntryOver30DaysIsNotShownOffline() async throws {
+        let rows = (0..<30).map { record(id(back: $0)) }
+        let school = School(rows: rows, today: id(back: 0))
+        let memory = CardRecordsMemory()
+        _ = await firstVisit(school, memory: memory)
+        XCTAssertNotNil(memory.entry(for: 1, now: noon))
+
+        let thirtyOneDaysLater = cal.date(byAdding: .day, value: 31, to: noon)!
+        XCTAssertNil(memory.entry(for: 1, now: thirtyOneDaysLater), "expired memory entry (>30d) must be evicted")
+
+        // Re-populate and verify loader also refuses expired memory when offline 31 days later.
+        _ = await firstVisit(school, memory: memory)
+        let offlineLater = School(rows: rows, today: id(back: 0, from: thirtyOneDaysLater))
+        await offlineLater.fail(true)
+        let again = loader(offlineLater, memory: memory, now: thirtyOneDaysLater)
+        await again.reload()
+        await settled(again)
+        XCTAssertEqual(again.state.phase, .failed, "expired memory must not display stale records offline")
+        XCTAssertNil(again.state.history)
     }
 }

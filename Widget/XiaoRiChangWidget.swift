@@ -28,48 +28,54 @@ struct CampusTimeline: TimelineProvider {
     static let interval: TimeInterval = 30 * 60
 
     func placeholder(in context: Context) -> CampusEntry { CampusEntry(date:Date(), model:.placeholderFace) }
-    /// Transient (gallery, first add): the stored snapshot, no network. Re-checks the session
-    /// epoch right before calling `completion` so a concurrent logout/switch never leaks numbers.
+    /// Transient (gallery, first add): the stored snapshot, no network. Constructs the candidate
+    /// face first (including reminder lines and theme), then acquires the shared commit lock
+    /// right before invoking `completion` to verify `shared.sessionEpoch`.
     func getSnapshot(in context: Context, completion: @escaping (CampusEntry) -> Void) {
         let now = Date()
         let snapshots = SharedSnapshotStore(store:SharedKeychain.store)
         let vault = StoredSchoolVault(store:SharedKeychain.store)
-        let stored = WidgetStoredData.read(snapshots:snapshots, vault:vault)
-        let initial = WidgetDrawChoice.choose(stored)
-        let candidate: HomeSnapshot? = if case .draw(let snapshot, _) = initial { snapshot } else { nil }
-        let verified = WidgetDrawChoice.verifiedForCompletion(
-            initial:initial, initialEpoch:stored?.epoch, drawn:candidate,
-            snapshots:snapshots, vault:vault
-        )
-        completion(CampusEntry(date:now, model:CampusWidgetPlan.face(verified.choice, now:now, preview:context.isPreview,
-                                                                     lines:ReminderLines.shared())))
+        let theme = ThemePreference.shared()
+        CampusWidgetDelivery.deliverSnapshot(
+            now:now,
+            preview:context.isPreview,
+            snapshots:snapshots,
+            vault:vault,
+            commitLock:Self.school.refresher.commitLock,
+            lines:{ ReminderLines.shared() }
+        ) { model in
+            completion(CampusEntry(date:now, model:model, theme:theme))
+        }
     }
     /// Finishes a pending clear of the previous person's snapshot (offline), reads the school
-    /// data (unless the app just did), re-checks the session epoch right before calling
-    /// `completion`, then draws; again in 30 minutes.
+    /// data (unless the app just did), constructs the candidate timeline first (including
+    /// reminder lines and theme), then acquires the shared commit lock right before invoking
+    /// `completion` to verify `shared.sessionEpoch`; again in 30 minutes.
     func getTimeline(in context: Context, completion: @escaping (Timeline<CampusEntry>) -> Void) {
         let done = Completion(call:completion)
         Task {
             let now = Date()
             let snapshots = SharedSnapshotStore(store:SharedKeychain.store)
             let vault = StoredSchoolVault(store:SharedKeychain.store)
-            await Self.school.refresher.finishPendingClear(lockWait:SchoolRefreshStack.widgetPendingClearWait)
-            let stored = WidgetStoredData.read(snapshots:snapshots, vault:vault)
-            let initial = WidgetDrawChoice.choose(stored)
-            var drawn: HomeSnapshot?
-            if case .draw = initial {
-                let canRefresh = stored?.epoch?.allowsRefreshCommit ?? true
-                if canRefresh {
-                    drawn = await WidgetRefresh.run(Self.school.refresher, now:now, deadline:Self.readDeadline,
-                                                    expectedEpochID:stored?.epoch?.id)
+            let theme = ThemePreference.shared()
+            await CampusWidgetDelivery.deliverTimeline(
+                now:now,
+                interval:Self.interval,
+                snapshots:snapshots,
+                vault:vault,
+                commitLock:Self.school.refresher.commitLock,
+                lines:{ ReminderLines.shared() },
+                finishPendingClear:{
+                    await Self.school.refresher.finishPendingClear(lockWait:SchoolRefreshStack.widgetPendingClearWait)
+                },
+                refresh:{ expectedEpochID in
+                    await WidgetRefresh.run(Self.school.refresher, now:now, deadline:Self.readDeadline,
+                                            expectedEpochID:expectedEpochID)
                 }
+            ) { plan in
+                done.call(Timeline(entries:plan.faces.map { CampusEntry(date:$0.date, model:$0.model, theme:theme) },
+                                   policy:.after(plan.next)))
             }
-            let verified = WidgetDrawChoice.verifiedForCompletion(
-                initial:initial, initialEpoch:stored?.epoch, drawn:drawn,
-                snapshots:snapshots, vault:vault
-            )
-            let plan = CampusWidgetPlan.timeline(verified.choice, drawn:verified.drawn, now:now, interval:Self.interval, lines:ReminderLines.shared())
-            done.call(Timeline(entries:plan.faces.map { CampusEntry(date:$0.date, model:$0.model) }, policy:.after(plan.next)))
         }
     }
 

@@ -108,9 +108,10 @@ public actor CardHistoryDiskCoordinator: CardHistoryCaching {
             if existing.epochID != context.epoch.id {
                 // Epoch mismatch (e.g. A -> B -> A after lock-screen anchor-delete failure or crash):
                 // IMMEDIATELY isolate; never open `existing.sessionID` even if `ownerTag` would match.
-                let oldDir = sessionDirectory(root: root, sessionID: existing.sessionID)
                 try? store.delete(.cardHistorySession)
-                try? fileSystem.removeItem(at: oldDir)
+                if let oldDir = sessionDirectory(root: root, sessionID: existing.sessionID) {
+                    try? fileSystem.removeItem(at: oldDir)
+                }
                 return nil
             }
             anchor = existing
@@ -121,7 +122,7 @@ public actor CardHistoryDiskCoordinator: CardHistoryCaching {
 
         let taskEpochID = context.epoch.id
         let taskSessionID = anchor.sessionID
-        let fileURL = cacheFileURL(root: root, sessionID: taskSessionID)
+        guard let fileURL = cacheFileURL(root: root, sessionID: taskSessionID) else { return nil }
 
         if let hook = beforeReadFile {
             await hook(taskEpochID, taskSessionID)
@@ -129,6 +130,29 @@ public actor CardHistoryDiskCoordinator: CardHistoryCaching {
         guard invalidationToken == startToken,
               await samePerson(),
               verifyActiveSession(epochID: taskEpochID, sessionID: taskSessionID) else {
+            return nil
+        }
+
+        // Enforce the byte budget BEFORE reading the file into memory or invoking JSONDecoder.
+        let fileSize: Int64
+        do {
+            fileSize = try fileSystem.fileSize(at: fileURL)
+        } catch {
+            if fileSystem.isNotFoundError(error) || fileSystem.isPermissionError(error) {
+                // Missing file (normal miss) or lock-screen EPERM/EACCES: never delete anything.
+                return nil
+            }
+            return nil
+        }
+        if fileSize < 0 || fileSize > Int64(maxBytes) {
+            if let hook = beforeSelfDelete {
+                await hook(taskEpochID, taskSessionID)
+            }
+            if invalidationToken == startToken,
+               verifyActiveSession(epochID: taskEpochID, sessionID: taskSessionID),
+               let dir = sessionDirectory(root: root, sessionID: taskSessionID) {
+                try? fileSystem.removeItem(at: dir)
+            }
             return nil
         }
 
@@ -148,7 +172,8 @@ public actor CardHistoryDiskCoordinator: CardHistoryCaching {
         let expectedTag = CardHistory.ownerTag(identity: context.identity, salt: anchor.salt)
         let envelope: CardHistoryDiskEnvelope
         let history: CardHistory
-        if let decoded = try? decoder.decode(CardHistoryDiskEnvelope.self, from: data),
+        if data.count <= maxBytes,
+           let decoded = try? decoder.decode(CardHistoryDiskEnvelope.self, from: data),
            decoded.schemaVersion == CardHistoryDiskEnvelope.currentSchemaVersion,
            decoded.ownerTag == expectedTag,
            let reconstructed = CardHistory.fromCacheEnvelope(decoded, now: now, calendar: calendar,
@@ -156,14 +181,15 @@ public actor CardHistoryDiskCoordinator: CardHistoryCaching {
             envelope = decoded
             history = reconstructed
         } else {
-            // File was readable, but corrupt, schema mismatch, wrong ownerTag, or expired (>30d):
+            // File was readable, but oversized, corrupt, schema mismatch, wrong ownerTag, or expired (>30d):
             // self-delete ONLY `taskSessionID` after re-verifying epoch & anchor still match.
             if let hook = beforeSelfDelete {
                 await hook(taskEpochID, taskSessionID)
             }
             if invalidationToken == startToken,
-               verifyActiveSession(epochID: taskEpochID, sessionID: taskSessionID) {
-                try? fileSystem.removeItem(at: sessionDirectory(root: root, sessionID: taskSessionID))
+               verifyActiveSession(epochID: taskEpochID, sessionID: taskSessionID),
+               let dir = sessionDirectory(root: root, sessionID: taskSessionID) {
+                try? fileSystem.removeItem(at: dir)
             }
             return nil
         }
@@ -174,13 +200,19 @@ public actor CardHistoryDiskCoordinator: CardHistoryCaching {
               verifyActiveSession(epochID: taskEpochID, sessionID: taskSessionID) else {
             return nil
         }
-        return CachedCardHistory(history: history, savedAt: envelope.savedAt,
-                                 epochID: taskEpochID, sessionID: taskSessionID)
+        return CachedCardHistory(history: history,
+                                 savedAt: envelope.savedAt,
+                                 latestReadAt: envelope.latestReadAt ?? envelope.savedAt,
+                                 epochID: taskEpochID,
+                                 sessionID: taskSessionID)
     }
 
     // MARK: - Save
 
-    public func save(_ history: CardHistory, savedAt: Date, samePerson: @Sendable () async -> Bool) async {
+    public func save(_ history: CardHistory,
+                     savedAt: Date,
+                     latestReadAt: Date,
+                     samePerson: @Sendable () async -> Bool) async {
         guard let root = rootDirectory, history.holdsFirstRange else { return }
         let startToken = invalidationToken
         guard await samePerson(), invalidationToken == startToken else { return }
@@ -221,8 +253,11 @@ public actor CardHistoryDiskCoordinator: CardHistoryCaching {
         }
 
         let ownerTag = CardHistory.ownerTag(identity: context.identity, salt: anchor.salt)
-        guard let encoded = history.cacheEnvelope(ownerTag: ownerTag, savedAt: savedAt,
-                                                  maxDays: maxDays, maxBytes: maxBytes) else {
+        guard let encoded = history.cacheEnvelope(ownerTag: ownerTag,
+                                                  savedAt: savedAt,
+                                                  latestReadAt: latestReadAt,
+                                                  maxDays: maxDays,
+                                                  maxBytes: maxBytes) else {
             return
         }
 
@@ -237,8 +272,10 @@ public actor CardHistoryDiskCoordinator: CardHistoryCaching {
             return
         }
 
-        let sessionDir = sessionDirectory(root: root, sessionID: anchor.sessionID)
-        let fileURL = cacheFileURL(root: root, sessionID: anchor.sessionID)
+        guard let sessionDir = sessionDirectory(root: root, sessionID: anchor.sessionID),
+              let fileURL = cacheFileURL(root: root, sessionID: anchor.sessionID) else {
+            return
+        }
         do {
             try fileSystem.createDirectory(at: root)
             try fileSystem.createDirectory(at: sessionDir)
@@ -249,8 +286,9 @@ public actor CardHistoryDiskCoordinator: CardHistoryCaching {
         }
 
         // Best-effort cleanup of replaced or orphaned session directories (never touches `anchor.sessionID`).
-        if let oldID = replacedOldSessionID, oldID != anchor.sessionID {
-            try? fileSystem.removeItem(at: sessionDirectory(root: root, sessionID: oldID))
+        if let oldID = replacedOldSessionID, oldID != anchor.sessionID,
+           let oldDir = sessionDirectory(root: root, sessionID: oldID) {
+            try? fileSystem.removeItem(at: oldDir)
         }
         sweepDirectories(in: root, keeping: anchor.sessionID)
     }
@@ -319,7 +357,7 @@ public actor CardHistoryDiskCoordinator: CardHistoryCaching {
     private func mintAndVerifyAnchor(epochID: String) -> CardHistorySessionAnchor? {
         guard let salt = randomSalt(), salt.count == 32 else { return nil }
         let sessionID = makeSessionID()
-        guard !sessionID.isEmpty else { return nil }
+        guard CardHistorySessionAnchor.isCanonicalSessionID(sessionID) else { return nil }
         let candidate = CardHistorySessionAnchor(epochID: epochID, sessionID: sessionID, salt: salt)
         do {
             try store.writeJSON(candidate, .cardHistorySession)
@@ -347,19 +385,32 @@ public actor CardHistoryDiskCoordinator: CardHistoryCaching {
         return true
     }
 
-    func sessionDirectory(root: URL, sessionID: String) -> URL {
-        root.appendingPathComponent(sessionID, isDirectory: true)
+    /// Resolves a canonical UUID session directory strictly one level beneath `root`.
+    /// Returns `nil` for any malformed, relative, or escaping session ID so deletes can never
+    /// touch sibling files outside `root`.
+    func sessionDirectory(root: URL, sessionID: String) -> URL? {
+        guard CardHistorySessionAnchor.isCanonicalSessionID(sessionID) else { return nil }
+        let cleanRoot = root.standardizedFileURL
+        let candidate = cleanRoot.appendingPathComponent(sessionID, isDirectory: true).standardizedFileURL
+        guard candidate.deletingLastPathComponent() == cleanRoot,
+              candidate.lastPathComponent == sessionID else {
+            return nil
+        }
+        return candidate
     }
 
-    private func cacheFileURL(root: URL, sessionID: String) -> URL {
-        sessionDirectory(root: root, sessionID: sessionID).appendingPathComponent(Self.cacheFileName)
+    private func cacheFileURL(root: URL, sessionID: String) -> URL? {
+        sessionDirectory(root: root, sessionID: sessionID)?.appendingPathComponent(Self.cacheFileName)
     }
 
     func sweepDirectories(in root: URL, keeping keepSessionID: String?) {
-        guard let entries = try? fileSystem.listDirectory(at: root) else { return }
+        let cleanRoot = root.standardizedFileURL
+        guard let entries = try? fileSystem.listDirectory(at: cleanRoot) else { return }
         for entry in entries {
-            if let keepSessionID, entry.lastPathComponent == keepSessionID { continue }
-            try? fileSystem.removeItem(at: entry)
+            let cleanEntry = entry.standardizedFileURL
+            guard cleanEntry.deletingLastPathComponent() == cleanRoot else { continue }
+            if let keepSessionID, cleanEntry.lastPathComponent == keepSessionID { continue }
+            try? fileSystem.removeItem(at: cleanEntry)
         }
     }
 }

@@ -37,9 +37,10 @@ final class ResetCrashReportsTests: XCTestCase {
         try Data(#"{"synthetic":true}"#.utf8).write(to: report)
 
         let http = SampleHTTPClient()
+        let leaseURL = support.appendingPathComponent("refresh.lease")
         let services = CampusServices(kind: .live, secureStore: InMemorySecureStore(), defaults: SampleDefaults(),
                                       sharedPreferences: nil, schoolHTTP: http, showerHTTP: http, laundryHTTP: http,
-                                      feedbackHTTP: nil, showerTransport: SampleShowerTransport(), leaseFile: nil,
+                                      feedbackHTTP: nil, showerTransport: SampleShowerTransport(), leaseFile: LeaseFile(url: leaseURL),
                                       applicationSupport: support, sharedDidChange: {})
         services.defaults.set(UUID().uuidString.lowercased(), forKey: installIDKey)
         let graph = CampusGraph.sample(on: services, theme: .warm)

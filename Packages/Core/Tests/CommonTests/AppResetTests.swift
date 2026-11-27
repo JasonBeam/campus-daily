@@ -59,8 +59,9 @@ final class AppResetTests: XCTestCase {
     /// A new Keychain item is cleared by reset too; this count makes adding one a conscious step.
     func testResetCoversEveryKeychainItem() {
         XCTAssertEqual(Set(AppReset.keychainItems), Set(StoreKey.allCases))
-        XCTAssertEqual(AppReset.keychainItems.count, 20, "a new item: check reset clears it, then update this count")
+        XCTAssertEqual(AppReset.keychainItems.count, 21, "a new item: check reset clears it, then update this count")
         XCTAssertTrue(AppReset.keychainItems.contains(.sharedSessionEpoch))
+        XCTAssertTrue(AppReset.keychainItems.contains(.showerBindingEpoch))
         XCTAssertTrue(AppReset.keychainItems.contains(.cardHistorySession))
         // The finished laundry orders go, and so does their salt.
         XCTAssertTrue(AppReset.keychainItems.contains(.laundryHistory))
@@ -436,5 +437,74 @@ final class AppResetTests: XCTestCase {
             XCTAssertEqual(steps, [])
             XCTAssertNotNil(try StoredSchoolVault(store: store).account())
         }
+    }
+
+    /// Revo #2: two independent clients sharing the same commit lock; while one holds it,
+    /// reset must fail closed and delete zero school/shared items or shared preferences.
+    func testResetWithCommitLockHeldDoesNotDeleteSharedOrSchoolItems() throws {
+        let lockURL = FileManager.default.temporaryDirectory.appendingPathComponent("reset-commit-lock-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: lockURL) }
+        let fd = open(lockURL.path, O_RDWR | O_CREAT | O_CLOEXEC, 0o600)
+        XCTAssertGreaterThanOrEqual(fd, 0)
+        XCTAssertEqual(flock(fd, LOCK_EX | LOCK_NB), 0)
+        defer { flock(fd, LOCK_UN); close(fd) }
+
+        let store = InMemorySecureStore()
+        let vault = StoredSchoolVault(store: store)
+        try vault.saveAccount(SchoolAccount(account: "99100991", password: "synthetic-pw-991"))
+        try vault.saveEcyktSession(EcyktSession(token: "t", syscustid: "s"))
+        try vault.savePortalToken(PortalToken("p"))
+        try vault.saveProfile(SchoolProfile(residence: PortalResidence(raw: "示例校区99栋")))
+        try vault.saveSessionEpoch(SessionEpoch(id: "E1", phase: .active))
+        try SharedSnapshotStore(store: store).saveSnapshot(HomeSnapshot(checkedAt: Date()))
+
+        let own = "reset-commit-own-\(UUID().uuidString)"
+        let group = "reset-commit-group-\(UUID().uuidString)"
+        let ownDefaults = try XCTUnwrap(UserDefaults(suiteName: own))
+        let groupDefaults = try XCTUnwrap(UserDefaults(suiteName: group))
+        defer { ownDefaults.removePersistentDomain(forName: own); groupDefaults.removePersistentDomain(forName: group) }
+        try ThemePreference(storage: groupDefaults).set(.clear, under: UnsharedLock())
+
+        let client2Lock = RefreshLease(file: LeaseFile(url: lockURL, insideLock: nil, lockWait: 0.05), owner: "client-2")
+        let shared = AppReset.SharedPreferences(defaults: groupDefaults, domain: group, lock: client2Lock)
+
+        XCTAssertThrowsError(try AppReset.clear(store: store, preferences: ownDefaults, preferencesDomain: own,
+                                                shared: shared, files: [], commitLock: client2Lock, expectedEpochID: "E1")) {
+            let items = ($0 as? AppReset.Failure)?.items ?? []
+            XCTAssertTrue(items.contains(StoreKey.sharedSessionEpoch.rawValue))
+        }
+        // Zero shared/school items deleted while the other client holds the lock.
+        XCTAssertEqual(try vault.account()?.account, "99100991")
+        XCTAssertNotNil(try vault.ecyktSession())
+        XCTAssertNotNil(try vault.portalToken())
+        XCTAssertNotNil(try vault.profile())
+        XCTAssertEqual(try SessionEpochStore(store: store).read()?.id, "E1")
+        XCTAssertNotNil(try store.read(.sharedSnapshot))
+        XCTAssertEqual(ThemePreference(storage: groupDefaults).theme, .clear)
+    }
+
+    /// Revo #2: a late reset clear carrying an older `expectedEpochID` must never delete a
+    /// newer account's active epoch, credentials, or snapshot.
+    func testLateResetClearWithStaleEpochDoesNotDeleteNewerEpoch() throws {
+        let store = InMemorySecureStore()
+        let vault = StoredSchoolVault(store: store)
+        try vault.saveAccount(SchoolAccount(account: "99200992", password: "synthetic-pw-992"))
+        try vault.saveEcyktSession(EcyktSession(token: "t-b", syscustid: "s-b"))
+        try vault.saveSessionEpoch(SessionEpoch(id: "E2", phase: .active))
+        try SharedSnapshotStore(store: store).saveSnapshot(HomeSnapshot(checkedAt: Date()))
+
+        let suite = "reset-late-epoch-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        XCTAssertThrowsError(try AppReset.clear(store: store, preferences: defaults, preferencesDomain: suite,
+                                                shared: nil, files: [], commitLock: UnsharedLock(),
+                                                expectedEpochID: "E1")) {
+            XCTAssertEqual(($0 as? AppReset.Failure)?.items, [StoreKey.sharedSessionEpoch.rawValue])
+        }
+        XCTAssertEqual(try SessionEpochStore(store: store).read()?.id, "E2")
+        XCTAssertEqual(try vault.account()?.account, "99200992")
+        XCTAssertEqual(try vault.ecyktSession()?.syscustid, "s-b")
+        XCTAssertNotNil(try store.read(.sharedSnapshot))
     }
 }

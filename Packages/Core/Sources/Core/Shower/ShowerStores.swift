@@ -29,7 +29,10 @@ public struct StoredShowerVault: ShowerVault {
         guard case .object(let fields)? = try? JSONValue.parse(data) else { return false }
         return fields["access"] != nil
     }
-    public func saveBinding(_ binding: ShowerBinding?) throws { try store.writeJSON(binding, .showerBinding) }
+    public func saveBinding(_ binding: ShowerBinding?) throws {
+        try store.writeJSON(binding, .showerBinding)
+        if binding == nil { try store.delete(.showerBindingEpoch) }
+    }
     /// Throws `ShowerEngineError.unreadableRecord` when the record is there but can't be decoded.
     public func showerState() throws -> ShowerState? {
         guard let data = try store.read(.showerSession) else { return nil }

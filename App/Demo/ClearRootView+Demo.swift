@@ -60,9 +60,10 @@ extension ClearRootView {
             freshPush(.laundry)
             return
         }
-        // campusdaily://demo/stats/<state>: 订单 with a washing order, its stats on that demo state.
+        // campusdaily://demo/stats/<state>: 订单 with a washing order (or stale list for refresh-failed-old), its stats on that demo state.
         SpendStatsDemo.current = SpendStatsDemo.handle(url)
-        if let records = SpendStatsDemo.current != nil ? RecordsDemo.open : RecordsDemo.handle(url) {
+        let statsRecords: RecordsDemo? = SpendStatsDemo.current.map { $0 == .refreshFailedOld ? .staleOld : .open }
+        if let records = statsRecords ?? RecordsDemo.handle(url) {
             navigator.setup = nil; navigator.panel = nil; navigator.laundryDemo = nil
             navigator.demo = normal
             navigator.recordsDemo = records

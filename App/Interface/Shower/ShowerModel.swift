@@ -177,6 +177,10 @@ enum ShowerProfileFiles {
                                                temporary:FileManager.default.temporaryDirectory)
         }
         binding = (try? services.showerVault.binding()) ?? nil
+        if ShowerEpochOwnership.needsReview(binding:binding, store:services.secureStore) {
+            residenceReviewRequired = true
+            services.defaults.set(true, forKey:PreferenceKey.showerNeedsResidenceReview)
+        }
         loadRecord()
         page = ShowerPageFlow(record:state)
         gate?.record = { [weak self] in self?.gateRecord ?? .notLoaded }
@@ -478,6 +482,7 @@ enum ShowerProfileFiles {
         balance = nil
         binding = (try? services.showerVault.binding()) ?? nil
         residenceReviewRequired = services.defaults.bool(forKey:PreferenceKey.showerNeedsResidenceReview)
+            || ShowerEpochOwnership.needsReview(binding:binding, store:services.secureStore)
         reviewAfterFailedSignOut = services.defaults.bool(forKey:PreferenceKey.showerReviewAfterFailedSignOut)
         verifiedDevice = nil; inspectionStatus = nil; inspectionFoundBusy = false; inspectionOutcome = nil; message = nil
         await reloadProfile()
@@ -500,7 +505,10 @@ enum ShowerProfileFiles {
             try services.showerVault.retainShower(state.persistable)
             try services.showerVault.saveShowerState(nil)
         }
-        do { try services.showerVault.saveBinding(value) }
+        do {
+            try services.showerVault.saveBinding(value)
+            try ShowerEpochOwnership.recordCurrentOwner(store:services.secureStore)
+        }
         catch {
             // The record's place is free already: show that, under the old binding.
             if keepsRecord { rebuildEngine() }
@@ -594,6 +602,10 @@ enum ShowerProfileFiles {
         guard let engine, let binding else { throw ShowerActionFailure(unavailableText) }
         if start {
             guard let intent, stillHolds(intent) else { throw ShowerActionFailure(.withdrawn) }
+            if ShowerEpochOwnership.needsReview(binding:binding, store:services.secureStore) {
+                if !residenceReviewRequired { setResidenceReview(true) }
+                throw ShowerActionFailure(startRefusalText)
+            }
         }
         guard !busy else { throw ShowerActionFailure(.busy) }
         // Over a shower that is over, 开始洗澡 (Siri, Shortcuts) is the page's 开始下一次洗澡.

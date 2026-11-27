@@ -135,8 +135,9 @@ final class KeychainStoreTests: XCTestCase {
         XCTAssertEqual(StoreKey.sharedSnapshotStale.service, "org.zaxh.xiaorichang.shared.snapshotStale.v1")
         XCTAssertEqual(StoreKey.sharedSessionEpoch.service, "org.zaxh.xiaorichang.shared.sessionEpoch.v1")
         XCTAssertEqual(StoreKey.showerStartMode.service, "org.zaxh.xiaorichang.water.startMode.v1")
+        XCTAssertEqual(StoreKey.showerBindingEpoch.service, "org.zaxh.xiaorichang.water.bindingEpoch.v1")
         XCTAssertEqual(StoreKey.cardHistorySession.service, "org.zaxh.xiaorichang.cardHistory.session.v1")
-        XCTAssertEqual(StoreKey.allCases.count, 20, "a new item needs its stored name pinned here")
+        XCTAssertEqual(StoreKey.allCases.count, 21, "a new item needs its stored name pinned here")
     }
 
     /// The card-history session anchor stays in the app's private group and requires unlock.
@@ -155,6 +156,9 @@ final class KeychainStoreTests: XCTestCase {
     /// The Swift names say shower; the stored names stay what installed builds already wrote.
     func testShowerItemsKeepTheirStoredNames() {
         XCTAssertEqual(StoreKey.showerBinding.service, "org.zaxh.xiaorichang.water.binding.v1")
+        XCTAssertEqual(StoreKey.showerBindingEpoch.service, "org.zaxh.xiaorichang.water.bindingEpoch.v1")
+        XCTAssertFalse(StoreKey.showerBindingEpoch.isShared)
+        XCTAssertEqual(StoreKey.showerBindingEpoch.accessibility, .afterFirstUnlockThisDeviceOnly)
         XCTAssertEqual(StoreKey.showerSession.service, "org.zaxh.xiaorichang.water.session.v1")
         XCTAssertEqual(PreferenceKey.showerNeedsResidenceReview, "xrc.water.needsResidenceReview")
     }

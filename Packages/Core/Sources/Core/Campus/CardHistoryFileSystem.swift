@@ -16,10 +16,16 @@ import Glibc
 /// and sweeping the app-private campus card history disk cache.
 public protocol CardHistoryCaching: Sendable {
     func load(now: Date, calendar: Calendar, samePerson: @Sendable () async -> Bool) async -> CachedCardHistory?
-    func save(_ history: CardHistory, savedAt: Date, samePerson: @Sendable () async -> Bool) async
+    func save(_ history: CardHistory, savedAt: Date, latestReadAt: Date, samePerson: @Sendable () async -> Bool) async
     func invalidateAndClear() async
     func invalidateStaleSession() async
     func sweepOrphans() async
+}
+
+public extension CardHistoryCaching {
+    func save(_ history: CardHistory, savedAt: Date, samePerson: @Sendable () async -> Bool) async {
+        await save(history, savedAt: savedAt, latestReadAt: savedAt, samePerson: samePerson)
+    }
 }
 
 /// File-system abstraction for `CardHistoryDiskCoordinator`, allowing production code to enforce
@@ -27,6 +33,7 @@ public protocol CardHistoryCaching: Sendable {
 /// tests inject lock-screen (`EPERM`/`EACCES`) and delete failures deterministically.
 public protocol CardHistoryFileSystem: Sendable {
     func fileExists(at url: URL) -> Bool
+    func fileSize(at url: URL) throws -> Int64
     func createDirectory(at url: URL) throws
     func listDirectory(at url: URL) throws -> [URL]
     func readFile(at url: URL) throws -> Data
@@ -41,6 +48,14 @@ public struct LocalCardHistoryFileSystem: CardHistoryFileSystem {
 
     public func fileExists(at url: URL) -> Bool {
         FileManager.default.fileExists(atPath: url.path)
+    }
+
+    public func fileSize(at url: URL) throws -> Int64 {
+        let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+        guard let size = attributes[.size] as? NSNumber else {
+            throw NSError(domain: NSCocoaErrorDomain, code: NSFileReadUnknownError)
+        }
+        return size.int64Value
     }
 
     public func createDirectory(at url: URL) throws {

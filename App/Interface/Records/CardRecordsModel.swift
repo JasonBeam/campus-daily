@@ -90,12 +90,13 @@ extension CardRecordsSource {
         #endif
         return state.refreshFailed
     }
-    /// When the shown cached records were saved, for same-day 「截至今天 HH:mm」 offline copy.
+    /// When the newest 14-day range of the shown cached records was last read from school,
+    /// for same-day 「截至今天 HH:mm」 offline copy (never bumped by older-page loads).
     var cachedSavedAt: Date? {
         #if DEBUG
         if demoRefreshFailed { return demoRefreshSavedAt }
         #endif
-        return state.cachedSavedAt
+        return state.cachedLatestReadAt ?? state.cachedSavedAt
     }
     /// The cached history's anchor day (`history.today`), for cross-day 「截至 M月d日」 offline copy.
     var cachedToday: Date? {

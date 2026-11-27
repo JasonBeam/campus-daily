@@ -93,7 +93,7 @@ struct SpendBarsChart: View {
             }
             .frame(maxWidth:.infinity, maxHeight:.infinity, alignment:.bottomLeading)
 
-            if let lit, look == .live {
+            if let lit, look == .live, !Self.isGap(bars[lit]) {
                 let bar = bars[lit]
                 let height = barHeight(bar, maxFen:maxFen)
                 BarSlotRow(count:bars.count, spacing:spacing, slots:[lit]) {
@@ -127,19 +127,33 @@ struct SpendBarsChart: View {
         .onAppear { grow() }
     }
 
+    /// A day/week with incomplete records and no known spending: left completely blank (no 2pt
+    /// baseline stub) so it is visually distinct from a confirmed ¥0 day, while the average line
+    /// still crosses through.
+    static func isGap(_ bar: SpendBar) -> Bool {
+        bar.unsure && bar.spent.fen <= 0
+    }
+
+    @ViewBuilder
     private func barShape(index: Int, bar: SpendBar, maxFen: Int, lit: Bool) -> some View {
-        let height = barHeight(bar, maxFen:maxFen)
-        let stub = look == .empty || (look == .live && bar.spent.fen <= 0)
-        let style: ThemeColor = switch look {
-        case .placeholder, .empty: Theme.fill
-        case .live where stub: open(bar) ? Theme.ink3 : Theme.fill
-        case .live: lit ? Theme.mark : Theme.mark.opacity(0.32)
+        if look == .live, Self.isGap(bar) {
+            Color.clear
+                .frame(height:0)
+                .frame(maxWidth:.infinity)
+        } else {
+            let height = barHeight(bar, maxFen:maxFen)
+            let stub = look == .empty || (look == .live && bar.spent.fen <= 0)
+            let style: ThemeColor = switch look {
+            case .placeholder, .empty: Theme.fill
+            case .live where stub: open(bar) ? Theme.ink3 : Theme.fill
+            case .live: lit ? Theme.mark : Theme.mark.opacity(0.32)
+            }
+            UnevenRoundedRectangle(topLeadingRadius:stub ? 0 : min(4, height / 2),
+                                   topTrailingRadius:stub ? 0 : min(4, height / 2), style:.continuous)
+                .fill(style)
+                .frame(height:stub ? 2 : max(height * (grown ? 1 : 0), 0))
+                .frame(maxWidth:.infinity)
         }
-        return UnevenRoundedRectangle(topLeadingRadius:stub ? 0 : min(4, height / 2),
-                                      topTrailingRadius:stub ? 0 : min(4, height / 2), style:.continuous)
-            .fill(style)
-            .frame(height:stub ? 2 : max(height * (grown ? 1 : 0), 0))
-            .frame(maxWidth:.infinity)
     }
 
     private func barHeight(_ bar: SpendBar, maxFen: Int) -> CGFloat {

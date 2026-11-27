@@ -100,6 +100,8 @@ struct SpendStatsText {
 
     /// In the big number's place for a bar (or a span) without spending.
     var nothingSpent: String { warm ? "没花钱" : "无支出" }
+    /// In the big number's place for a gap bar whose records are incomplete and have ¥0 read.
+    var incompleteBar: String { "记录不全" }
 
     /// The line under a looked-at day: against the span's daily average; nil for today (not over
     /// yet), a day without spending and a week (a week's total doesn't compare with a day's).
@@ -120,11 +122,22 @@ struct SpendStatsText {
         return [Part(text:"较日均 "), Part(text:Self.signed(difference), strong:true)]
     }
 
-    /// The chart's VoiceOver value for a bar: 「11月19日，32.10 元」.
+    /// The chart's VoiceOver value for a bar:
+    /// - Gap day (`bar.unsure && bar.spent == .zero`): 「11月19日，记录不全」
+    /// - Confirmed ¥0 day (`!bar.unsure && bar.spent == .zero`): 「11月19日，0 元」
+    /// - Spent day: 「11月19日，32.10 元」
     func spokenBar(_ bar: SpendBar) -> String {
         guard let first = bar.days.first.flatMap(day) else { return "" }
         let date = SchoolCalendar.dayTitle(first, calendar:calendar)
         let name = bar.days.count > 1 ? (warm ? date + "那周" : date + "起一周") : date
+        if bar.unsure, bar.spent == .zero {
+            return "\(name)，记录不全"
+        }
+        if bar.spent == .zero {
+            var words = "\(name)，0 元"
+            if bar.isCurrent { words += bar.days.count > 1 ? "，本周还没过完" : "，今天还没过完" }
+            return words
+        }
         var words = "\(name)，\(bar.spent.yuanText) 元"
         if bar.isCurrent { words += bar.days.count > 1 ? "，本周还没过完" : "，今天还没过完" }
         if bar.unsure { words += "，记录可能不全" }

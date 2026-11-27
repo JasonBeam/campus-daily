@@ -86,13 +86,18 @@ final class CardHistoryDiskCacheTests: XCTestCase {
         private let lock = NSLock()
         var failReadsWithPermission = false
         var failRemoves = false
+        var readCallCount = 0
 
         func fileExists(at url: URL) -> Bool { inner.fileExists(at: url) }
+        func fileSize(at url: URL) throws -> Int64 { try inner.fileSize(at: url) }
         func createDirectory(at url: URL) throws { try inner.createDirectory(at: url) }
         func listDirectory(at url: URL) throws -> [URL] { try inner.listDirectory(at: url) }
 
         func readFile(at url: URL) throws -> Data {
-            let blocked = lock.withLock { failReadsWithPermission }
+            let blocked = lock.withLock {
+                readCallCount += 1
+                return failReadsWithPermission
+            }
             if blocked {
                 throw NSError(domain: NSPOSIXErrorDomain, code: Int(EPERM))
             }
@@ -285,12 +290,13 @@ final class CardHistoryDiskCacheTests: XCTestCase {
         let store = InMemorySecureStore()
         let root = makeTempRoot()
         let fs = FaultyFileSystem()
+        let s1 = "00000000-0000-4000-8000-000000000001"
         try seedCommittedSession(store: store, epochID: "E1")
         let coordinator = CardHistoryDiskCoordinator(store: store, rootDirectory: root, fileSystem: fs,
-                                                     makeSessionID: { "S1" })
+                                                     makeSessionID: { s1 })
         await coordinator.save(makeHistory(ranges: 2), savedAt: noon, samePerson: { true })
         let originalAnchor = try XCTUnwrap(try store.readJSON(CardHistorySessionAnchor.self, .cardHistorySession))
-        let fileURL = root.appendingPathComponent("S1/cache.v1.json")
+        let fileURL = root.appendingPathComponent("\(s1)/cache.v1.json")
         XCTAssertTrue(FileManager.default.fileExists(atPath: fileURL.path))
 
         // 1. Keychain locked (-25308) on `cardHistory.session`: load, save, and sweep must not delete or mint.
@@ -316,18 +322,21 @@ final class CardHistoryDiskCacheTests: XCTestCase {
         // 3. Unlocked again: original cache loads intact.
         let recovered = await coordinator.load(now: noon, calendar: cal, samePerson: { true })
         XCTAssertNotNil(recovered)
-        XCTAssertEqual(recovered?.sessionID, "S1")
+        XCTAssertEqual(recovered?.sessionID, s1)
     }
 
-    /// Thread-safe counter for deterministic session IDs across `@Sendable` closures.
+    /// Thread-safe counter for deterministic canonical UUID session IDs across `@Sendable` closures.
     private final class SessionCounter: @unchecked Sendable {
         private let lock = NSLock()
         private var count = 0
         func next() -> String {
             lock.withLock {
                 count += 1
-                return "S\(count)"
+                return Self.id(count)
             }
+        }
+        static func id(_ index: Int) -> String {
+            String(format: "00000000-0000-4000-8000-%012d", index)
         }
     }
 
@@ -368,33 +377,37 @@ final class CardHistoryDiskCacheTests: XCTestCase {
         let counter = SessionCounter()
         let nextSessionID: @Sendable () -> String = { counter.next() }
 
-        // 1. A(E1) saves synthetic records into CardHistory/S1/cache.v1.json with anchor (E1, S1, K1).
+        let s1 = SessionCounter.id(1)
+        let s2 = SessionCounter.id(2)
+        let s3 = SessionCounter.id(3)
+
+        // 1. A(E1) saves synthetic records into CardHistory/<s1>/cache.v1.json with anchor (E1, s1, K1).
         try seedCommittedSession(store: store, epochID: "E1", unionID: "SYNTH_UNION_A", account: "2026000001")
         let coord1 = CardHistoryDiskCoordinator(store: store, rootDirectory: root, makeSessionID: nextSessionID)
         await coord1.save(makeHistory(ranges: 2, titlePrefix: "POS消费旧账号A"), savedAt: noon, samePerson: { true })
 
         let s1Anchor = try XCTUnwrap(try store.readJSON(CardHistorySessionAnchor.self, .cardHistorySession))
         XCTAssertEqual(s1Anchor.epochID, "E1")
-        XCTAssertEqual(s1Anchor.sessionID, "S1")
-        let s1File = root.appendingPathComponent("S1/cache.v1.json")
+        XCTAssertEqual(s1Anchor.sessionID, s1)
+        let s1File = root.appendingPathComponent("\(s1)/cache.v1.json")
         XCTAssertTrue(FileManager.default.fileExists(atPath: s1File.path))
 
         // 2. Switch A -> B(E2) while deleting `cardHistory.session` fails (e.g. lock-screen failure).
         try seedCommittedSession(store: store, epochID: "E2", unionID: "SYNTH_UNION_B", account: "2026000002")
         store.failWrites(to: .cardHistorySession, true)
         await coord1.invalidateStaleSession()
-        // Anchor is STILL (E1, S1, K1) because Keychain delete failed.
+        // Anchor is STILL (E1, s1, K1) because Keychain delete failed.
         XCTAssertEqual(try store.readJSON(CardHistorySessionAnchor.self, .cardHistorySession), s1Anchor)
 
         // 3. Switch B -> A(E3), then cold restart (fresh coordinator) while delete still fails.
         try seedCommittedSession(store: store, epochID: "E3", unionID: "SYNTH_UNION_A", account: "2026000001")
         let coordRestarted = CardHistoryDiskCoordinator(store: store, rootDirectory: root, makeSessionID: nextSessionID)
 
-        // Even though `ownerTag` still matches A, `E1 != E3` MUST block opening S1 (zero-frame display).
+        // Even though `ownerTag` still matches A, `E1 != E3` MUST block opening s1 (zero-frame display).
         let staleLoad = await coordRestarted.load(now: noon, calendar: cal, samePerson: { true })
         XCTAssertNil(staleLoad, "old epoch anchor must never reopen S1 after A->B->A")
 
-        // While deleting the old anchor still fails, save stays strictly memory-only and NEVER writes S1.
+        // While deleting the old anchor still fails, save stays strictly memory-only and NEVER writes s1.
         let s1BytesBefore = try? Data(contentsOf: s1File)
         await coordRestarted.save(makeHistory(ranges: 1, titlePrefix: "POS消费新A"), savedAt: noon, samePerson: { true })
         XCTAssertEqual(try store.readJSON(CardHistorySessionAnchor.self, .cardHistorySession), s1Anchor)
@@ -402,19 +415,19 @@ final class CardHistoryDiskCacheTests: XCTestCase {
             XCTAssertEqual(try? Data(contentsOf: s1File), s1BytesBefore)
         }
 
-        // 4. Restore Keychain write/delete permission: fresh save mints brand-new (E3, S2, K2) and sweeps S1.
+        // 4. Restore Keychain write/delete permission: fresh save mints brand-new (E3, s2, K2) and sweeps s1.
         store.failWrites(to: .cardHistorySession, false)
         await coordRestarted.save(makeHistory(ranges: 2, titlePrefix: "POS消费新会话A"), savedAt: noon, samePerson: { true })
         let newAnchor = try XCTUnwrap(try store.readJSON(CardHistorySessionAnchor.self, .cardHistorySession))
         XCTAssertEqual(newAnchor.epochID, "E3")
-        XCTAssertEqual(newAnchor.sessionID, "S2")
+        XCTAssertEqual(newAnchor.sessionID, s2)
         XCTAssertNotEqual(newAnchor.salt, s1Anchor.salt)
-        let s2File = root.appendingPathComponent("S2/cache.v1.json")
+        let s2File = root.appendingPathComponent("\(s2)/cache.v1.json")
         let s2Bytes = try Data(contentsOf: s2File)
-        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("S1").path),
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent(s1).path),
                        "old session directory S1 must be swept")
 
-        // 5. Verify a late stale task paused from an earlier session never deletes or mutates S3.
+        // 5. Verify a late stale task paused from an earlier session never deletes or mutates s3.
         let gate = WriteGate()
         let lateCoord = CardHistoryDiskCoordinator(store: store, rootDirectory: root, makeSessionID: nextSessionID)
         await lateCoord.setHooks(beforeWriteFile: { _, _ in
@@ -426,11 +439,11 @@ final class CardHistoryDiskCacheTests: XCTestCase {
             await lateCoord.save(lateHistory, savedAt: lateNoon, samePerson: { true })
         }
         await gate.waitUntilEntered()
-        // Advance epoch to E4 and mint S3 before releasing the paused E3/S2 write.
+        // Advance epoch to E4 and mint s3 before releasing the paused E3/s2 write.
         try seedCommittedSession(store: store, epochID: "E4", unionID: "SYNTH_UNION_B", account: "2026000002")
         let coordE4 = CardHistoryDiskCoordinator(store: store, rootDirectory: root, makeSessionID: nextSessionID)
         await coordE4.save(makeHistory(ranges: 1, titlePrefix: "POS消费账号B最新"), savedAt: noon, samePerson: { true })
-        let s3File = root.appendingPathComponent("S3/cache.v1.json")
+        let s3File = root.appendingPathComponent("\(s3)/cache.v1.json")
         let s3BytesBefore = try Data(contentsOf: s3File)
 
         await gate.release()
@@ -443,11 +456,12 @@ final class CardHistoryDiskCacheTests: XCTestCase {
         let store = InMemorySecureStore()
         let root = makeTempRoot()
         let fs = FaultyFileSystem()
+        let oldSession = UUID().uuidString
         try seedCommittedSession(store: store, epochID: "E1")
         let coordinator = CardHistoryDiskCoordinator(store: store, rootDirectory: root, fileSystem: fs,
-                                                     makeSessionID: { "S-OLD" })
+                                                     makeSessionID: { oldSession })
         await coordinator.save(makeHistory(ranges: 1), savedAt: noon, samePerson: { true })
-        let oldDir = root.appendingPathComponent("S-OLD")
+        let oldDir = root.appendingPathComponent(oldSession)
         XCTAssertTrue(FileManager.default.fileExists(atPath: oldDir.path))
 
         // Sign out while directory removal fails: anchor is deleted immediately so data is invisible.
@@ -603,5 +617,242 @@ final class CardHistoryDiskCacheTests: XCTestCase {
         XCTAssertEqual(term.bars.last?.isCurrent, false)
         XCTAssertEqual(term.bars.last?.axisLabel, "11月22日")
         XCTAssertNotEqual(term.bars.last?.axisLabel, "本周")
+    }
+
+    // MARK: - Round 2 Review Fixes (Revo #3, #4, #5)
+
+    /// Revo #4 (a): reading older pages at 12:00 must update `savedAt` (file write time) without
+    /// bumping `latestReadAt` (08:30, when the newest 14-day range was actually read from school).
+    @MainActor
+    func testLoadMoreOlderPagesDoesNotBumpLatestReadAt() async throws {
+        let store = InMemorySecureStore()
+        let root = makeTempRoot()
+        try seedCommittedSession(store: store, epochID: "E1")
+        let disk = CardHistoryDiskCoordinator(store: store, rootDirectory: root)
+
+        let at0830 = cal.date(from: DateComponents(year: 2026, month: 11, day: 24, hour: 8, minute: 30))!
+        let at1200 = cal.date(from: DateComponents(year: 2026, month: 11, day: 24, hour: 12, minute: 0))!
+        let at1215 = cal.date(from: DateComponents(year: 2026, month: 11, day: 24, hour: 12, minute: 15))!
+
+        var clock = at0830
+        let allRows = (0..<60).map { makeRecord(id(back: $0, from: at0830), yuan: "10.00", voucher: "T\($0)") }
+        let school = FakeSchool(rows: allRows, today: id(back: 0, from: at0830))
+        let memory = CardRecordsMemory()
+        let loader = CardRecordsLoader(
+            source: CardRecordsSource(stamp: { 1 }, page: { q, _ in try await school.page(q) },
+                                      memory: memory, diskCache: disk),
+            now: { clock }
+        )
+
+        // 08:30: read newest 14-day range only.
+        await loader.reload()
+        await waitSettled(loader)
+        XCTAssertEqual(loader.state.cachedLatestReadAt, at0830)
+        XCTAssertEqual(loader.state.cachedSavedAt, at0830)
+
+        // 12:00: load older pages (last month) without re-reading today's range.
+        clock = at1200
+        await loader.read(through: id(back: 45, from: at0830))
+        await waitSettled(loader)
+        XCTAssertEqual(loader.state.cachedSavedAt, at1200, "file write time updated to 12:00")
+        XCTAssertEqual(loader.state.cachedLatestReadAt, at0830, "newest-range read time stays 08:30")
+
+        // 12:15: cold restart offline -> must report latestReadAt = 08:30, NOT 12:00.
+        clock = at1215
+        await school.setFail(true)
+        let coldLoader = CardRecordsLoader(
+            source: CardRecordsSource(stamp: { 1 }, page: { q, _ in try await school.page(q) },
+                                      memory: CardRecordsMemory(), diskCache: disk),
+            now: { clock }
+        )
+        await coldLoader.reload()
+        await waitSettled(coldLoader)
+        XCTAssertTrue(coldLoader.state.refreshFailed)
+        XCTAssertEqual(coldLoader.state.cachedLatestReadAt, at0830)
+        XCTAssertEqual(coldLoader.state.cachedSavedAt, at1200)
+    }
+
+    /// Revo #4 (b): a short final page where `rows.count < expectedRemaining` marks the affected
+    /// days unsure and preserves that unsure state across disk save + reload (no fake day total).
+    func testShortFinalPageUnsureStatePersistsAcrossDiskRoundTrip() async throws {
+        let store = InMemorySecureStore()
+        let root = makeTempRoot()
+        try seedCommittedSession(store: store, epochID: "E1")
+        let disk = CardHistoryDiskCoordinator(store: store, rootDirectory: root)
+
+        var history = CardHistory(now: noon, calendar: cal)
+        let q1 = history.nextQuery!
+        var p1Rows: [CardRecord] = []
+        for i in 0..<50 {
+            let day = i < 30 ? id(back: 0) : id(back: 1)
+            p1Rows.append(makeRecord(day, yuan: "5.00", time: String(format: "%06d", 200000 - i), voucher: "P1-\(i)"))
+        }
+        history.receive(CardRecordPage(total: 65, rows: p1Rows), for: q1)
+        let q2 = try XCTUnwrap(history.nextQuery)
+        let cutDay = id(back: 5)
+        let p2Rows = (0..<10).map { i in
+            makeRecord(cutDay, yuan: "6.00", time: String(format: "%06d", 120000 - i), voucher: "P2-\(i)")
+        }
+        // School reports total = 65 (15 remaining expected), returns only 10 rows.
+        history.receive(CardRecordPage(total: 65, rows: p2Rows), for: q2)
+        XCTAssertFalse(history.isComplete(day: cutDay))
+
+        await disk.save(history, savedAt: noon, latestReadAt: noon, samePerson: { true })
+        let loadedRaw = await disk.load(now: noon, calendar: cal, samePerson: { true })
+        let loaded = try XCTUnwrap(loadedRaw)
+        XCTAssertFalse(loaded.history.isComplete(day: cutDay), "short final page remains unsure after disk reload")
+        let groups = CardDays.groups(history: loaded.history, app: [], now: noon)
+        XCTAssertNil(groups.first(where: { $0.id == cutDay })?.total, "incomplete cached day must not show a total")
+    }
+
+    /// Revo #5 (a): malformed/path-traversal anchor `sessionID` is rejected on decode/validation
+    /// and never touches sibling files during load or cleanup.
+    func testMalformedAnchorSessionIDDoesNotTouchSiblingFiles() async throws {
+        let store = InMemorySecureStore()
+        let baseDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("xrc-anchor-safety-\(UUID().uuidString)", isDirectory: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: baseDir) }
+        let root = baseDir.appendingPathComponent("CardHistory", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+
+        let sibling = baseDir.appendingPathComponent("sibling-keep.txt")
+        try Data("do-not-delete".utf8).write(to: sibling)
+        try seedCommittedSession(store: store, epochID: "E1")
+
+        // Write a malformed anchor attempting path traversal outside CardHistory root.
+        let badAnchor = CardHistorySessionAnchor(epochID: "E1", sessionID: "../sibling-keep.txt",
+                                                 salt: Data(repeating: 0xAA, count: 32))
+        XCTAssertFalse(badAnchor.isValid)
+        try store.write(try JSONEncoder().encode(badAnchor), for: .cardHistorySession)
+
+        let disk = CardHistoryDiskCoordinator(store: store, rootDirectory: root)
+        let loaded = await disk.load(now: noon, calendar: cal, samePerson: { true })
+        XCTAssertNil(loaded, "malformed anchor must be rejected")
+        await disk.invalidateStaleSession()
+        await disk.invalidateAndClear()
+        await disk.sweepOrphans()
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: sibling.path), "sibling file must remain untouched")
+        XCTAssertEqual(try Data(contentsOf: sibling), Data("do-not-delete".utf8))
+    }
+
+    /// Revo #5 (b): opening a 210-day disk cache 10 days later trims the oldest 10 days that now
+    /// fall outside the 210-day window anchored on the open day.
+    func testOpeningDiskCacheTenDaysLaterTrimsOldestTenDays() async throws {
+        let store = InMemorySecureStore()
+        let root = makeTempRoot()
+        try seedCommittedSession(store: store, epochID: "E1")
+        let disk = CardHistoryDiskCoordinator(store: store, rootDirectory: root)
+
+        // 15 ranges = 210 days ending on `noon`.
+        let full210 = makeHistory(ranges: 15, base: noon)
+        XCTAssertEqual(full210.readFrom, id(back: 209, from: noon))
+        await disk.save(full210, savedAt: noon, latestReadAt: noon, samePerson: { true })
+
+        let tenDaysLater = cal.date(byAdding: .day, value: 10, to: noon)!
+        let loadedRaw = await disk.load(now: tenDaysLater, calendar: cal, samePerson: { true })
+        let loaded = try XCTUnwrap(loadedRaw)
+
+        let expectedCutoff = id(back: 209, from: tenDaysLater) // = id(back: 199, from: noon)
+        XCTAssertEqual(loaded.history.readFrom, expectedCutoff, "oldest 10 days beyond 210d from open day must be trimmed")
+        XCTAssertTrue(loaded.history.records.allSatisfy { $0.date >= expectedCutoff })
+        XCTAssertFalse(loaded.history.records.contains { $0.date == id(back: 209, from: noon) })
+        XCTAssertFalse(loaded.history.records.contains { $0.date == id(back: 200, from: noon) })
+        XCTAssertTrue(loaded.history.records.contains { $0.date == id(back: 199, from: noon) })
+    }
+
+    /// Revo #5 (c): an on-disk cache file exceeding 1 MiB is rejected by file-size check BEFORE
+    /// reading its bytes into memory or decoding JSON.
+    func testOversizedDiskCacheOver1MiBIsRejectedBeforeReading() async throws {
+        let store = InMemorySecureStore()
+        let root = makeTempRoot()
+        let fs = FaultyFileSystem()
+        try seedCommittedSession(store: store, epochID: "E1")
+        let disk = CardHistoryDiskCoordinator(store: store, rootDirectory: root, fileSystem: fs)
+
+        // Seed valid session & small cache first so anchor exists.
+        await disk.save(makeHistory(ranges: 1, base: noon), savedAt: noon, latestReadAt: noon, samePerson: { true })
+        let anchorData = try XCTUnwrap(try store.read(.cardHistorySession))
+        let anchor = try JSONDecoder().decode(CardHistorySessionAnchor.self, from: anchorData)
+        let cacheURL = root.appendingPathComponent(anchor.sessionID, isDirectory: true)
+            .appendingPathComponent("cache.v1.json")
+
+        // Overwrite with > 1 MiB payload.
+        try Data(repeating: 0x20, count: CardHistory.maxCacheBytes + 1).write(to: cacheURL)
+        fs.readCallCount = 0
+
+        let loaded = await disk.load(now: noon, calendar: cal, samePerson: { true })
+        XCTAssertNil(loaded, "oversized cache file must be rejected")
+        XCTAssertEqual(fs.readCallCount, 0, "fileSize guard must reject before reading bytes into memory")
+    }
+
+    /// Revo #3: A's late disk-cache load / offline refresh failure returning after B's reload
+    /// started must never overwrite B's loaded state or set `refreshFailed` on B.
+    @MainActor
+    func testLateDiskOfflineFailureForADoesNotOverwriteB() async throws {
+        let store = InMemorySecureStore()
+        let root = makeTempRoot()
+        try seedCommittedSession(store: store, epochID: "E1", unionID: "SYNTH_UNION_A")
+        let disk = CardHistoryDiskCoordinator(store: store, rootDirectory: root)
+        let aHistory = makeHistory(ranges: 1, base: noon, titlePrefix: "POS消费A窗口")
+        await disk.save(aHistory, savedAt: noon, latestReadAt: noon, samePerson: { true })
+
+        actor SwitchedSchool {
+            var currentPerson = 1
+            var waitingA: CheckedContinuation<Void, Never>?
+            var aRows: [CardRecord]
+            var bRows: [CardRecord]
+            init(a: [CardRecord], b: [CardRecord]) { aRows = a; bRows = b }
+            func stamp() -> Int { currentPerson }
+            func isSame(_ s: Int) -> Bool { currentPerson == s }
+            func switchToB() { currentPerson = 2 }
+            func releaseA() { waitingA?.resume(); waitingA = nil }
+            func isAHolding() -> Bool { waitingA != nil }
+            func page(_ q: CardHistoryQuery, stamp: Int) async throws -> CardRecordPage {
+                if stamp == 1 {
+                    await withCheckedContinuation { waitingA = $0 }
+                    throw ServiceError.offline
+                }
+                return SampleData.recordPage(bRows, q)
+            }
+        }
+
+        let bRow = makeRecord(id(back: 0), yuan: "9.90", title: "POS消费B食堂", voucher: "B-1")
+        let school = SwitchedSchool(a: aHistory.records, b: [bRow])
+        let memory = CardRecordsMemory()
+        let loader = CardRecordsLoader(
+            source: CardRecordsSource(stamp: { await school.stamp() },
+                                      page: { q, s in try await school.page(q, stamp: s) },
+                                      samePerson: { await school.isSame($0) },
+                                      memory: memory, diskCache: disk),
+            now: { [noon] in noon }
+        )
+
+        // A starts visiting (hydrates A's disk cache and hangs on newest-range network refresh).
+        let aVisit = Task { await loader.reload() }
+        for _ in 0..<2000 {
+            if await school.isAHolding() { break }
+            try await Task.sleep(nanoseconds: 1_000_000)
+        }
+        let held = await school.isAHolding()
+        XCTAssertTrue(held)
+
+        // B signs in and starts reload while A is still in flight.
+        await school.switchToB()
+        await loader.reload()
+        await waitSettled(loader)
+        XCTAssertEqual(loader.state.phase, .loaded)
+        XCTAssertFalse(loader.state.refreshFailed)
+        XCTAssertEqual(loader.state.history?.records, [bRow])
+
+        // Now A's held offline failure returns late.
+        await school.releaseA()
+        await aVisit.value
+        await waitSettled(loader)
+
+        // B's state must remain intact: no A rows, no refreshFailed.
+        XCTAssertEqual(loader.state.phase, .loaded)
+        XCTAssertFalse(loader.state.refreshFailed)
+        XCTAssertEqual(loader.state.history?.records, [bRow])
     }
 }

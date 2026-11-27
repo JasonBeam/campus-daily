@@ -382,9 +382,6 @@ struct PowerChoice: Identifiable, Equatable {
     func previousPersonCleared(unconfirmed: Bool, dormAndMeterCleared: Bool, since started: Int, person: Int? = nil) async {
         let person = person ?? personChanges
         guard started == signOutGeneration, person == personChanges else { return }
-        forgetRecordsStatsPreferences()
-        await cardHistoryCache.invalidateStaleSession()
-        guard started == signOutGeneration, person == personChanges else { return }
         // Before any wait: the previous person's binding no longer starts anything (a start that
         // hasn't sent its authorize request is taken back), and their balance goes.
         accountGeneration += 1
@@ -392,6 +389,9 @@ struct PowerChoice: Identifiable, Equatable {
             shower.holdForSignOut()
             shower.noteBalance(nil)
         }
+        forgetRecordsStatsPreferences()
+        await cardHistoryCache.invalidateStaleSession()
+        guard started == signOutGeneration, person == personChanges else { return }
         let refresher = refresher
         #if DEBUG
         let afterSnapshotCleared = afterSnapshotCleared
@@ -449,14 +449,25 @@ struct PowerChoice: Identifiable, Equatable {
         try await session.forgetPassword(lockingWith:refresher.commitLock)
     }
 
+    /// Shared commit lock used by school session writes, sign-out, and reset cleanup.
+    var commitLock: any SharedLock { refresher.commitLock }
+
     /// Reset, before the stores are cleared: a refresh still running must not write the old
     /// values back afterwards, and the widget snapshot is cleared first so nothing rewrites it.
-    func signOutForReset() async {
+    /// Throws if sign-out fails (for example, commit lock held/unavailable) so reset does not
+    /// blindly delete shared credentials outside the commit lock. Returns the signed-out epoch ID
+    /// when present so reset cleanup verifies the epoch did not advance to a newer sign-in.
+    func signOutForReset() async throws -> String? {
         signOutGeneration += 1; personChanges += 1; accountGeneration += 1
         hotWater()?.noteBalance(nil)
-        _ = await signOuts.start().value
+        let signedOut = await signOuts.start().value
+        guard signedOut else {
+            throw AppReset.Failure(items:[StoreKey.sharedSessionEpoch.rawValue])
+        }
+        let epochID = (try? SessionEpochStore(store:services.secureStore).read())?.id
         configured = false; snapshot = .empty; snapshotPerson = personChanges; profile = nil; issue = nil; account = nil
         lookup.clear(); powerMatchIssue = nil; lastRefresh = nil
+        return epochID
     }
 
     func signOut() {
