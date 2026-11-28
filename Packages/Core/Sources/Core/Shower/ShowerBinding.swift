@@ -74,6 +74,63 @@ public struct ShowerBinding: Sendable, Equatable, Codable, CustomStringConvertib
     }
 }
 
+/// Persistent ownership gate tying `water.binding` (`water.bindingEpoch`) to `shared.sessionEpoch`
+/// so an interrupted account switch or sign-out (killed before UI cleanup writes
+/// `PreferenceKey.showerNeedsResidenceReview`) can never authorize a new shower start on cold
+/// start, while leaving close/settle of any existing in-flight shower untouched.
+public enum ShowerEpochOwnership {
+    private static func ownerTag(for epoch: SessionEpoch) -> String {
+        epoch.phase == .switching ? "\(epoch.id):switching" : epoch.id
+    }
+
+    /// Records the current `shared.sessionEpoch` as the owner of `water.binding`.
+    /// On a legacy install with neither an epoch nor a legacy stale mark, clears `water.bindingEpoch`
+    /// so the binding remains valid until the first account switch or sign-out.
+    /// Throws when the store cannot be read/written or when a legacy stale mark is present
+    /// without a committed epoch.
+    public static func recordCurrentOwner(store: SecureStore) throws {
+        let epochStore = SessionEpochStore(store: store)
+        let currentEpoch = try epochStore.read()
+        if let currentEpoch {
+            try store.write(Data(ownerTag(for: currentEpoch).utf8), for: .showerBindingEpoch)
+            return
+        }
+        if try epochStore.hasLegacyStaleMark() {
+            throw StorageError(operation: "write \(StoreKey.showerBindingEpoch.rawValue)", status: -1)
+        }
+        try store.delete(.showerBindingEpoch)
+    }
+
+    /// Returns `true` when `binding` is present and cannot be confirmed to belong to the current
+    /// school session epoch (fail-closed on Keychain read error, undecodable epoch, legacy stale
+    /// mark, epoch ID mismatch, or `.switching` recovery into `.signedOut` — including after an
+    /// account switch or sign-out whose UI cleanup was interrupted by a crash/kill).
+    public static func needsReview(binding: ShowerBinding?, store: SecureStore) -> Bool {
+        guard binding != nil else { return false }
+        let epochStore = SessionEpochStore(store: store)
+        let currentEpoch: SessionEpoch?
+        let hasLegacyStale: Bool
+        let bindingEpoch: String?
+        do {
+            currentEpoch = try epochStore.read()
+            hasLegacyStale = currentEpoch == nil ? try epochStore.hasLegacyStaleMark() : false
+            if let raw = try store.read(.showerBindingEpoch) {
+                guard let id = String(data: raw, encoding: .utf8), !id.isEmpty else { return true }
+                bindingEpoch = id
+            } else {
+                bindingEpoch = nil
+            }
+        } catch {
+            return true
+        }
+        if let currentEpoch {
+            return bindingEpoch != ownerTag(for: currentEpoch)
+        }
+        if hasLegacyStale { return true }
+        return bindingEpoch != nil
+    }
+}
+
 // MARK: - Authorize / settle results
 
 /// `bathingConsumptionAuthorization` reply: the 15-byte frame to write to the controller and

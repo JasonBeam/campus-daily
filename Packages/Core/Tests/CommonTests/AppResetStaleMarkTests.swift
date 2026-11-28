@@ -20,7 +20,8 @@ final class AppResetStaleMarkTests: XCTestCase {
         s = SchoolSnapshotReducer.reduce(s, .balance(.success(previous), at: Date(timeIntervalSince1970: 1_793_000_000)))
         try SharedSnapshotStore(store: store).saveSnapshot(s)
         try StoredSchoolVault(store: store).saveAccount(SchoolAccount(account: "99100991"))
-        try StoredSchoolVault(store: store).markSnapshotStale(since: Date(timeIntervalSince1970: 1_793_000_000))
+        try StoredSchoolVault(store: store).saveSessionEpoch(SessionEpoch(phase: .signedOutPendingClear))
+        try store.write(Data("{\"since\":0}".utf8), for: .sharedSnapshotStale)
     }
 
     func reset(_ store: SecureStore) throws {
@@ -41,7 +42,8 @@ final class AppResetStaleMarkTests: XCTestCase {
             XCTAssertTrue(failure.items.contains("shared.snapshot"), "\(failure.items)")
             XCTAssertFalse(failure.items.contains("shared.snapshotStale"), "\(failure.items)")
         }
-        XCTAssertNotNil(try store.read(.sharedSnapshotStale), "the mark stays while the snapshot does")
+        XCTAssertNotNil(try store.read(.sharedSnapshotStale), "the legacy mark stays while the snapshot does")
+        XCTAssertNotNil(try store.read(.sharedSessionEpoch), "the epoch stays while the snapshot does")
         XCTAssertNil(try store.read(.schoolPassword), "the rest was cleared all the same")
         let refresher = SnapshotRefresher(school: StaticReader(), store: SharedSnapshotStore(store: store))
         XCTAssertEqual(refresher.latest(), .empty)
@@ -52,14 +54,35 @@ final class AppResetStaleMarkTests: XCTestCase {
         try reset(store)
         XCTAssertNil(try store.read(.sharedSnapshot))
         XCTAssertNil(try store.read(.sharedSnapshotStale))
+        XCTAssertNil(try store.read(.sharedSessionEpoch))
     }
 
     func testAResetWithNoSnapshotDeletesTheMark() throws {
         let store = KeyedFailureStore()
-        try StoredSchoolVault(store: store).markSnapshotStale(since: Date())
+        try StoredSchoolVault(store: store).saveSessionEpoch(SessionEpoch(phase: .signedOutPendingClear))
+        try store.write(Data("{\"since\":0}".utf8), for: .sharedSnapshotStale)
         XCTAssertNil(try store.read(.sharedSnapshot))
         try reset(store)
         XCTAssertNil(try store.read(.sharedSnapshotStale))
+        XCTAssertNil(try store.read(.sharedSessionEpoch))
+    }
+
+    func testAResetKeepsTheEpochWhileAnySchoolItemCannotBeDeleted() throws {
+        let store = KeyedFailureStore()
+        try seed(store)
+        store.refusingDeletes = [.schoolPassword]
+        do {
+            try reset(store)
+            XCTFail("school.password could not be deleted")
+        } catch let failure as AppReset.Failure {
+            XCTAssertTrue(failure.items.contains("school.password"), "\(failure.items)")
+            XCTAssertFalse(failure.items.contains("shared.sessionEpoch"), "\(failure.items)")
+        }
+        XCTAssertNil(try store.read(.sharedSnapshot), "the snapshot itself was deleted")
+        XCTAssertNotNil(try store.read(.sharedSessionEpoch), "the epoch stays while any school item remains")
+        store.refusingDeletes = []
+        try reset(store)
+        XCTAssertNil(try store.read(.sharedSessionEpoch))
     }
 
     /// The mark itself can't be deleted: the reset says so (and is tried again).

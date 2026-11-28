@@ -18,7 +18,7 @@ extension RecordsDemo {
             data.laundry = .running(program:"标准洗", end:now.addingTimeInterval(18 * 60 - 30))
         case .signedOut:
             data.signedIn = false
-        case .list, .loading, .more, .end, .failed, .moreFailed, .empty:
+        case .list, .loading, .more, .end, .failed, .moreFailed, .empty, .staleOld:
             break
         }
         return data

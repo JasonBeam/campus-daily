@@ -102,7 +102,7 @@ import XCTest
         let visited = await firstVisit(school, memory: memory)
         let kept = try XCTUnwrap(visited)
         XCTAssertTrue(kept.hasRead(through: id(back: 59)))
-        XCTAssertEqual(memory.history(for: 1), kept)
+        XCTAssertEqual(memory.history(for: 1, now: noon), kept)
         await school.clear()
 
         // Since: a new record today; and one 40 days back the school no longer lists.
@@ -127,7 +127,7 @@ import XCTest
         XCTAssertEqual(joined.records.filter { $0.date == id(back: 40) }.count, 1, "older days are not read again")
         XCTAssertTrue(joined.hasRead(through: id(back: 59)))
         XCTAssertFalse(again.state.refreshFailed)
-        XCTAssertEqual(memory.history(for: 1), joined, "kept for the next visit")
+        XCTAssertEqual(memory.history(for: 1, now: noon), joined, "kept for the next visit")
     }
 
     /// A span needing older days than kept reads on back from where the kept records end.
@@ -148,8 +148,9 @@ import XCTest
         XCTAssertEqual(again.state.history?.records.count, 98)
     }
 
-    /// Kept yesterday: not shown as today's, but still joined after the newest range.
-    func testKeptYesterdayIsJoinedButNotShownFirst() async throws {
+    /// Kept yesterday: shown at once (anchored on yesterday, so offline visits still display cached
+    /// records with an as-of date), then joined after the newest 14-day range comes in.
+    func testKeptYesterdayShowsImmediatelyAndJoinsToday() async throws {
         let yesterday = cal.date(byAdding: .day, value: -1, to: noon)!
         let rows = (1..<90).map { record(id(back: $0)) }
         let school = School(rows: rows, today: id(back: 1))
@@ -158,6 +159,7 @@ import XCTest
         first.setTarget(id(back: 29, from: yesterday))
         await first.reload()
         await settled(first)
+        let keptYesterday = try XCTUnwrap(first.state.history)
 
         let todaySchool = School(rows: rows + [record(id(back: 0))], today: id(back: 0))
         await todaySchool.hold()
@@ -165,13 +167,42 @@ import XCTest
         again.setTarget(id(back: 13))
         let visit = Task { await again.reload() }
         await held(todaySchool)
-        XCTAssertEqual(again.state.phase, .loading)
+        XCTAssertEqual(again.state.phase, .loaded, "yesterday's cache shows immediately while refreshing")
+        XCTAssertEqual(again.state.history, keptYesterday)
+        XCTAssertTrue(again.state.reloading)
         await todaySchool.release()
         await visit.value
         await settled(again)
         let queries = await todaySchool.queries
         XCTAssertEqual(queries.count, 1)
         XCTAssertTrue(again.state.history?.hasRead(through: id(back: 42)) ?? false, "yesterday's 42 days back")
+        XCTAssertFalse(again.state.refreshFailed)
+    }
+
+    /// Kept yesterday and today is offline: yesterday's cached records stay shown with `refreshFailed`
+    /// and their original save timestamp.
+    func testKeptYesterdayStaysShownWhenOffline() async throws {
+        let yesterday = cal.date(byAdding: .day, value: -1, to: noon)!
+        let rows = (1..<45).map { record(id(back: $0)) }
+        let school = School(rows: rows, today: id(back: 1))
+        let memory = CardRecordsMemory()
+        let first = loader(school, memory: memory, now: yesterday)
+        first.setTarget(id(back: 29, from: yesterday))
+        await first.reload()
+        await settled(first)
+        let keptYesterday = try XCTUnwrap(first.state.history)
+        let savedAt = first.state.cachedSavedAt
+
+        let offlineToday = School(rows: rows, today: id(back: 0))
+        await offlineToday.fail(true)
+        let again = loader(offlineToday, memory: memory, now: noon)
+        again.setTarget(id(back: 29))
+        await again.reload()
+        await settled(again)
+        XCTAssertEqual(again.state.phase, .loaded)
+        XCTAssertEqual(again.state.history, keptYesterday)
+        XCTAssertTrue(again.state.refreshFailed)
+        XCTAssertEqual(again.state.cachedSavedAt, savedAt)
     }
 
     /// Someone else's records (another stamp) are not used.
@@ -181,7 +212,7 @@ import XCTest
         let memory = CardRecordsMemory()
         _ = await firstVisit(school, memory: memory)
         await school.clear()
-        XCTAssertNil(memory.history(for: 2))
+        XCTAssertNil(memory.history(for: 2, now: noon))
 
         let other = loader(school, memory: memory, stamp: 2)
         other.setTarget(id(back: 59))
@@ -189,8 +220,8 @@ import XCTest
         await settled(other)
         let queries = await school.queries
         XCTAssertGreaterThan(queries.count, 1, "read from today")
-        XCTAssertEqual(memory.history(for: 2), other.state.history)
-        XCTAssertNil(memory.history(for: 1))
+        XCTAssertEqual(memory.history(for: 2, now: noon), other.state.history)
+        XCTAssertNil(memory.history(for: 1, now: noon))
     }
 
     /// The newest range fails: the kept records stay, said to be as last read.
@@ -263,5 +294,28 @@ import XCTest
         XCTAssertNil(first.state.history)
         XCTAssertFalse(first.state.moreFailed)
         XCTAssertFalse(first.state.refreshFailed)
+    }
+
+    /// Revo #5: memory cache enforces the same 30-day age limit and 210-day open-day window as
+    /// disk cache; expired memory entries are evicted and never shown again offline.
+    func testExpiredMemoryEntryOver30DaysIsNotShownOffline() async throws {
+        let rows = (0..<30).map { record(id(back: $0)) }
+        let school = School(rows: rows, today: id(back: 0))
+        let memory = CardRecordsMemory()
+        _ = await firstVisit(school, memory: memory)
+        XCTAssertNotNil(memory.entry(for: 1, now: noon))
+
+        let thirtyOneDaysLater = cal.date(byAdding: .day, value: 31, to: noon)!
+        XCTAssertNil(memory.entry(for: 1, now: thirtyOneDaysLater), "expired memory entry (>30d) must be evicted")
+
+        // Re-populate and verify loader also refuses expired memory when offline 31 days later.
+        _ = await firstVisit(school, memory: memory)
+        let offlineLater = School(rows: rows, today: id(back: 0, from: thirtyOneDaysLater))
+        await offlineLater.fail(true)
+        let again = loader(offlineLater, memory: memory, now: thirtyOneDaysLater)
+        await again.reload()
+        await settled(again)
+        XCTAssertEqual(again.state.phase, .failed, "expired memory must not display stale records offline")
+        XCTAssertNil(again.state.history)
     }
 }

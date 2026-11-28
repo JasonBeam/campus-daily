@@ -451,4 +451,95 @@ import XCTest
         XCTAssertEqual(loader.state.history?.records.count, 2)
         XCTAssertFalse(loader.state.history?.hasRead(through: "20260901") ?? true)
     }
+
+    /// Revo #3: when `loadMore` receives partial older rows for person A and then fails after
+    /// person B signed in (or person B signed in during the page read), A's partial rows must
+    /// never be kept in state or memory, and the loader cleanly reloads for B.
+    func testPartialOlderRowsBeforeFailureForPreviousPersonAreNeverPublished() async {
+        let aToday = Self.record(Self.today, "090000", "12.00")
+        let aPartialOlder = Self.record("20261010", "120000", "8.00")
+        let bToday = Self.record(Self.today, "100000", "3.00")
+
+        actor PartialFailSchool {
+            let aToday: CardRecord
+            let aPartialOlder: CardRecord
+            let bToday: CardRecord
+            var person = 1
+            var olderPageCalls = 0
+            init(aToday: CardRecord, aPartialOlder: CardRecord, bToday: CardRecord) {
+                self.aToday = aToday; self.aPartialOlder = aPartialOlder; self.bToday = bToday
+            }
+            func stamp() -> Int { person }
+            func isSame(_ s: Int) -> Bool { person == s }
+            func page(_ q: CardHistoryQuery, stamp: Int) async throws -> CardRecordPage {
+                if q.end == CardRecordsLoaderTests.today {
+                    return CardRecordPage(total: 1, rows: [stamp == 1 ? aToday : bToday])
+                }
+                olderPageCalls += 1
+                if olderPageCalls == 1 {
+                    // Return partial page (total 80, only 1 row); with `target` earlier than this
+                    // range, `loadMore` continues to page 2.
+                    return CardRecordPage(total: 80, rows: [aPartialOlder])
+                }
+                // Before page 2 completes, person B signs in and page 2 fails.
+                person = 2
+                throw ServiceError.offline
+            }
+        }
+
+        let school = PartialFailSchool(aToday: aToday, aPartialOlder: aPartialOlder, bToday: bToday)
+        let memory = CardRecordsMemory()
+        let loader = CardRecordsLoader(
+            source: CardRecordsSource(stamp: { await school.stamp() },
+                                      page: { q, s in try await school.page(q, stamp: s) },
+                                      samePerson: { await school.isSame($0) },
+                                      memory: memory),
+            now: { [noon] in noon }
+        )
+        await loader.reload()
+        XCTAssertEqual(loader.state.history?.records, [aToday])
+
+        await loader.read(through: "20261001")
+        XCTAssertEqual(loader.state.phase, .loaded)
+        XCTAssertEqual(loader.state.history?.records, [bToday], "reloaded cleanly for B without keeping A's partial rows")
+        XCTAssertFalse(loader.state.history?.records.contains(aPartialOlder) ?? false)
+        XCTAssertFalse(loader.state.moreFailed)
+        XCTAssertNil(memory.history(for: 1, now: noon))
+
+        // Also cover a single `reload` (firstRange) where page 1 returns partial rows for A and
+        // page 2 fails after B signs in: A's partial rows must NEVER be published even once.
+        actor ReloadPartialFailSchool {
+            let aPartial: CardRecord
+            var person = 1
+            var calls = 0
+            init(aPartial: CardRecord) { self.aPartial = aPartial }
+            func stamp() -> Int { person }
+            func isSame(_ s: Int) -> Bool { person == s }
+            func page(_ q: CardHistoryQuery, stamp: Int) async throws -> CardRecordPage {
+                calls += 1
+                if calls == 1 {
+                    person = 2
+                    return CardRecordPage(total: 80, rows: [aPartial])
+                }
+                throw ServiceError.offline
+            }
+        }
+        let reloadSchool = ReloadPartialFailSchool(aPartial: aToday)
+        let reloadMemory = CardRecordsMemory()
+        var observedRecords: [[CardRecord]] = []
+        let reloadLoader = CardRecordsLoader(
+            source: CardRecordsSource(stamp: { await reloadSchool.stamp() },
+                                      page: { q, s in try await reloadSchool.page(q, stamp: s) },
+                                      samePerson: { await reloadSchool.isSame($0) },
+                                      memory: reloadMemory),
+            now: { [noon] in noon }
+        )
+        reloadLoader.changed = { state in
+            if let rows = state.history?.records, !rows.isEmpty { observedRecords.append(rows) }
+        }
+        await reloadLoader.reload()
+        XCTAssertTrue(observedRecords.isEmpty, "A's partial rows after person switch must never be published")
+        XCTAssertNil(reloadLoader.state.history)
+        XCTAssertNil(reloadMemory.history(for: 1, now: noon))
+    }
 }

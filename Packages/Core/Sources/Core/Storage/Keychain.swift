@@ -235,6 +235,7 @@ public final class InMemorySecureStore: SecureStore, @unchecked Sendable {
     private let lock = NSLock()
     private var items: [StoreKey: Data] = [:]
     private var failing: Set<StoreKey> = []
+    private var unreadableKeys: Set<StoreKey> = []
     private var unreadable = false
     private var afterWrite: [StoreKey: @Sendable () -> Void] = [:]
     private var beforeWrite: [StoreKey: @Sendable () -> Void] = [:]
@@ -254,13 +255,21 @@ public final class InMemorySecureStore: SecureStore, @unchecked Sendable {
     /// Every read fails as the Keychain does before the first unlock (`errSecInteractionNotAllowed`).
     public func failReads(_ fail: Bool = true) { lock.withLock { unreadable = fail } }
 
+    /// Reads of `key` fail with `errSecInteractionNotAllowed` (`-25308`), e.g. a
+    /// `whenUnlockedThisDeviceOnly` item while the phone is locked.
+    public func failReads(from key: StoreKey, _ fail: Bool = true) {
+        lock.withLock { if fail { unreadableKeys.insert(key) } else { unreadableKeys.remove(key) } }
+    }
+
     public func failWrites(to key: StoreKey, _ fail: Bool = true) {
         lock.withLock { if fail { failing.insert(key) } else { failing.remove(key) } }
     }
 
     public func read(_ key: StoreKey) throws -> Data? {
         try lock.withLock {
-            if unreadable { throw StorageError(operation: "read \(key.rawValue)", status: -25308) }
+            if unreadable || unreadableKeys.contains(key) {
+                throw StorageError(operation: "read \(key.rawValue)", status: -25308)
+            }
             return items[key]
         }
     }

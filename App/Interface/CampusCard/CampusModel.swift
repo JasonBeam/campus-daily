@@ -61,9 +61,12 @@ struct PowerChoice: Identifiable, Equatable {
         didSet { recordsMemory.clear(); recordsMemory = CardRecordsMemory() }
     }
     /// 校园卡记录's records kept in memory for the person signed in now, while the app runs: a
-    /// page opened again shows them and reads only the newest days (`CardRecordsLoader`). Never
-    /// written anywhere; a new, empty one with every change of person.
+    /// page opened again shows them and reads only the newest days (`CardRecordsLoader`).
+    /// A new, empty one with every change of person.
     private(set) var recordsMemory = CardRecordsMemory()
+    /// App-private disk cache coordinator for campus card history (`CardHistory/<sessionID>/`).
+    /// Nil-backed (zero disk/Keychain touches) in sample mode.
+    let cardHistoryCache: CardHistoryDiskCoordinator
     /// The `personChanges` the shown `snapshot` was read for: after a switch of person it stays
     /// the previous person's until their clean-up empties it.
     private var snapshotPerson = 0
@@ -112,8 +115,15 @@ struct PowerChoice: Identifiable, Equatable {
         refresher = stack.refresher
         self.reminders = reminders
         self.hotWater = hotWater
-        signOuts = SchoolSignOut(session:stack.session, refresher:stack.refresher, debugLog:services.debugLog)
+        cardHistoryCache = CardHistoryDiskCoordinator.forServices(services)
+        signOuts = SchoolSignOut(session:stack.session, refresher:stack.refresher,
+                                 cardHistoryCache:cardHistoryCache, debugLog:services.debugLog)
         reload()
+    }
+
+    /// Sweeps orphan campus card history cache directories once unlocked (launch, foreground).
+    func sweepCardHistoryOrphans() async {
+        await cardHistoryCache.sweepOrphans()
     }
 
     /// Launch, before the launch lookup: a meter an older build bound to the campus node counts
@@ -293,22 +303,13 @@ struct PowerChoice: Identifiable, Equatable {
         // A sign-in that throws after its writes began has changed the person too.
         _ = try await SchoolSession.signingIn(on:session, {
             try await refresher.holdingLease { owning in
-                try await session.adoptWebState(state, owning:owning)
+                try await session.adoptWebState(state, dormAddress:login.dormAddress, owning:owning)
             }
         }, changed:{ personChanges += 1; person = personChanges },
            cleanUp:{ await previousPersonCleared(unconfirmed:$0, dormAndMeterCleared:$1, since:started, person:person) })
         await refresher.noteChange()
-        // Signed out (or reset), or someone else signed in, while that ran: the dorm must not be written back.
+        // Signed out (or reset), or someone else signed in, while that ran: do not overwrite UI state.
         guard started == signOutGeneration, person == personChanges else { return }
-        let raw = login.dormAddress.trimmingCharacters(in:.whitespacesAndNewlines)
-        if !raw.isEmpty {
-            var stored = (try? schoolVault.profile()) ?? nil ?? SchoolProfile()
-            if stored.residence?.raw != raw {
-                stored.residence = PortalResidence(raw:raw)
-                stored.meter = nil
-            }
-            try schoolVault.saveProfile(stored)
-        }
         reload(); issue = nil; lastRefresh = nil
         lookup.clear(); powerMatchIssue = nil
         // Every sign-in, from any screen: the meter is looked for when none is bound.
@@ -381,7 +382,6 @@ struct PowerChoice: Identifiable, Equatable {
     func previousPersonCleared(unconfirmed: Bool, dormAndMeterCleared: Bool, since started: Int, person: Int? = nil) async {
         let person = person ?? personChanges
         guard started == signOutGeneration, person == personChanges else { return }
-        forgetRecordsStatsPreferences()
         // Before any wait: the previous person's binding no longer starts anything (a start that
         // hasn't sent its authorize request is taken back), and their balance goes.
         accountGeneration += 1
@@ -389,6 +389,9 @@ struct PowerChoice: Identifiable, Equatable {
             shower.holdForSignOut()
             shower.noteBalance(nil)
         }
+        forgetRecordsStatsPreferences()
+        await cardHistoryCache.invalidateStaleSession()
+        guard started == signOutGeneration, person == personChanges else { return }
         let refresher = refresher
         #if DEBUG
         let afterSnapshotCleared = afterSnapshotCleared
@@ -443,17 +446,36 @@ struct PowerChoice: Identifiable, Equatable {
     /// still stored: the switch reads it back (on) and says it wasn't turned off.
     func forgetPassword() async throws {
         defer { reload() }
-        try await session.forgetPassword(lockingWith:refresher.lease)
+        try await session.forgetPassword(lockingWith:refresher.commitLock)
     }
+
+    /// Shared commit lock used by school session writes, sign-out, and reset cleanup.
+    var commitLock: any SharedLock { refresher.commitLock }
 
     /// Reset, before the stores are cleared: a refresh still running must not write the old
     /// values back afterwards, and the widget snapshot is cleared first so nothing rewrites it.
-    func signOutForReset() async {
+    /// Throws if sign-out fails (for example, commit lock held/unavailable) or if the resulting
+    /// signed-out epoch cannot be read back, so reset stays fail-closed and never deletes shared
+    /// credentials without a verified epoch.
+    func signOutForReset() async throws -> String {
         signOutGeneration += 1; personChanges += 1; accountGeneration += 1
         hotWater()?.noteBalance(nil)
-        _ = await signOuts.start().value
+        let signedOut = await signOuts.start().value
+        guard signedOut else {
+            throw AppReset.Failure(items:[StoreKey.sharedSessionEpoch.rawValue])
+        }
+        let epoch: SessionEpoch?
+        do {
+            epoch = try SessionEpochStore(store:services.secureStore).read()
+        } catch {
+            throw AppReset.Failure(items:[StoreKey.sharedSessionEpoch.rawValue])
+        }
+        guard let epochID = epoch?.id, !epochID.isEmpty else {
+            throw AppReset.Failure(items:[StoreKey.sharedSessionEpoch.rawValue])
+        }
         configured = false; snapshot = .empty; snapshotPerson = personChanges; profile = nil; issue = nil; account = nil
         lookup.clear(); powerMatchIssue = nil; lastRefresh = nil
+        return epochID
     }
 
     func signOut() {

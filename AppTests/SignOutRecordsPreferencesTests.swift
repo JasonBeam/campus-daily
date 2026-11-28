@@ -14,10 +14,20 @@ import Core
 /// fails keeps them.
 @MainActor
 final class SignOutRecordsPreferencesTests: XCTestCase {
+    private var leaseFiles: [URL] = []
+
+    override func tearDown() {
+        leaseFiles.forEach { try? FileManager.default.removeItem(at:$0) }
+        leaseFiles = []
+        super.tearDown()
+    }
+
     private func campus(_ store: ScriptedStore = ScriptedStore(), defaults: SampleDefaults) -> CampusModel {
+        let leaseURL = FileManager.default.temporaryDirectory.appendingPathComponent("signout-pref-lease-\(UUID().uuidString)")
+        leaseFiles.append(leaseURL)
         let services = CampusServices(kind:.live, secureStore:store, defaults:defaults, sharedPreferences:nil,
                                       schoolHTTP:SampleHTTPClient(), showerHTTP:SampleHTTPClient(), laundryHTTP:SampleHTTPClient(),
-                                      feedbackHTTP:nil, showerTransport:SampleShowerTransport(), leaseFile:nil,
+                                      feedbackHTTP:nil, showerTransport:SampleShowerTransport(), leaseFile:LeaseFile(url:leaseURL),
                                       applicationSupport:nil, sharedDidChange:{})
         return CampusModel(services:services, stack:services.schoolStack(), reminders:.sample(defaults:defaults)) { nil }
     }

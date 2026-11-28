@@ -18,6 +18,7 @@ import Core
 /// - `s30-one`: the sample's 30 天 counting 食堂 only, the last capsule that can't be turned off;
 /// - `s7-zero`: the sample's 7 天 counting 电费 only, which it has none of: every capsule spent on off;
 /// - `refresh-failed`: the sample's 30 天, as if the newest records could not be read (a pull clears it);
+/// - `refresh-failed-old`: 30 天 cached 2 days ago, offline (「只到 M月d日」 / 「截至 M月d日」, last bar labeled by date);
 /// made up rather than worked out (synthetic amounts, today's dates), the span switch working
 /// on them and 改开学日 changing nothing:
 /// - `load`: 本学期 still reading; `empty`: 7 天 with nothing spent; `failed`: the read failed;
@@ -28,6 +29,7 @@ enum SpendStatsDemo: String {
     case s30One = "s30-one"
     case s7Zero = "s7-zero"
     case refreshFailed = "refresh-failed"
+    case refreshFailedOld = "refresh-failed-old"
 
     /// Its stats are made up, not the sample records' own.
     var madeUp: Bool { ![.s7, .day, .s30, .s30On, .s30One, .s7Zero, .refreshFailed, .sem].contains(self) }
@@ -55,7 +57,7 @@ enum SpendStatsDemo: String {
     var span: SpendSpan {
         switch self {
         case .s7, .day, .s7Zero, .empty, .failed: return .week
-        case .s30, .s30On, .s30One, .refreshFailed, .notes: return .month
+        case .s30, .s30On, .s30One, .refreshFailed, .refreshFailedOld, .notes: return .month
         case .sem, .load: return .term
         }
     }
@@ -64,7 +66,11 @@ enum SpendStatsDemo: String {
         switch self {
         case .load: return .loading
         case .failed: return .failed
-        default: return .loaded(Self.stats(span, empty:self == .empty, notes:self == .notes, now:now))
+        case .refreshFailedOld:
+            let cal = SchoolCalendar.shanghai
+            let cachedDay = cal.date(byAdding:.day, value:-2, to:cal.startOfDay(for:now)) ?? now
+            return .loaded(Self.stats(span, empty:false, notes:false, hasGapDays:true, now:cachedDay, isCurrentDay:false))
+        default: return .loaded(Self.stats(span, empty:self == .empty, notes:self == .notes, hasGapDays:self == .notes, now:now))
         }
     }
 
@@ -84,22 +90,45 @@ enum SpendStatsDemo: String {
                                  720, 1430, 1760, 1300, 3200, 1100, 1920, 1550, 1700]
     private static let weeks = [13870, 12880, 12320, 11960, 4900, 7400, 11890, 11730, 10750, 11430, 10200, 12720, 4310]
 
-    static func stats(_ span: SpendSpan, empty: Bool, notes: Bool, now: Date) -> SpendStats {
+    static func stats(_ span: SpendSpan, empty: Bool, notes: Bool, hasGapDays: Bool = false,
+                      now: Date, isCurrentDay: Bool = true) -> SpendStats {
+        let cal = SchoolCalendar.shanghai
         let shape = SpendBarsPlaceholder.bars(span, termStart:termStart(now:now), now:now)
         let amounts = span == .week ? week : span == .month ? month : weeks
-        let bars = shape.enumerated().map { index, bar in
+        let lateStartIndex = (notes && span == .month && shape.count > 6) ? 4 : 0
+        let gapIndices: Set<Int> = (hasGapDays && span != .term) ? [20, 21] : []
+        var bars = shape.enumerated().map { index, bar in
             var bar = bar
-            bar.spent = Money(fen:empty ? 0 : amounts[index % amounts.count])
-            bar.unsure = notes && span != .term && (index == 20 || index == 21)
+            if index < lateStartIndex {
+                bar.spent = .zero
+                bar.unsure = false
+            } else if gapIndices.contains(index) {
+                bar.spent = .zero
+                bar.unsure = true
+            } else {
+                bar.spent = Money(fen:empty ? 0 : amounts[index % amounts.count])
+                bar.unsure = false
+            }
+            if !isCurrentDay { bar.isCurrent = false }
             return bar
         }
-        let days = bars.reduce(0) { $0 + $1.days.count }
-        let total = bars.reduce(Money.zero) { $0 + $1.spent }
+        if !isCurrentDay, !bars.isEmpty {
+            if span == .month {
+                bars[bars.count - 1].axisLabel = SchoolCalendar.dayTitle(now, calendar:cal)
+            } else if span == .term {
+                bars[bars.count - 1].axisLabel = SchoolCalendar.dayTitle(now, calendar:cal)
+            } else if span == .week {
+                bars[bars.count - 1].axisLabel = ["日", "一", "二", "三", "四", "五", "六"][cal.component(.weekday, from:now) - 1]
+            }
+        }
+        let coveredBars = bars.dropFirst(lateStartIndex)
+        let days = coveredBars.reduce(0) { $0 + $1.days.count }
+        let total = coveredBars.reduce(Money.zero) { $0 + $1.spent }
         let average = Money(fen:Int((Double(total.fen) / Double(max(days, 1))).rounded()))
-        let versus: Money? = empty || span == .term ? nil : Money(fen:span == .week ? 1230 : -2160)
+        let versus: Money? = empty || span == .term || lateStartIndex > 0 ? nil : Money(fen:span == .week ? 1230 : -2160)
         return SpendStats(span:span, total:total, dailyAverage:average, versusPrevious:versus, bars:bars,
-                          shares:shares(total, span:span), unsureDays:notes ? 2 : 0,
-                          coveredFrom:notes ? bars.first?.id : nil,
+                          shares:shares(total, span:span), unsureDays:gapIndices.isEmpty ? 0 : gapIndices.count,
+                          coveredFrom:lateStartIndex > 0 ? bars[lateStartIndex].id : nil,
                           termStart:span == .term ? SchoolCalendar.dayString(termStart(now:now), calendar:SchoolCalendar.shanghai) : nil)
     }
 

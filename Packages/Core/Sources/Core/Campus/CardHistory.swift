@@ -41,7 +41,7 @@ public struct CardHistory: Sendable, Equatable {
 
     let calendar: Calendar
     /// Start of the school's today.
-    let today: Date
+    public let today: Date
     /// Records of the ranges read to their end, then the current range's so far; each in the
     /// school's order (newest first).
     var finished: [CardRecord] = []
@@ -157,8 +157,10 @@ public struct CardHistory: Sendable, Equatable {
             wrongTotal = true
         }
         if let total = answer.total, !wrongTotal {
+            let priorNominal = (query.page - 1) * query.pageSize
+            let expectedOnPage = min(query.pageSize, max(total - priorNominal, 0))
             last = answer.rows.isEmpty || query.page * query.pageSize >= total
-            if answer.rows.count < query.pageSize && query.page * query.pageSize < total && !shortOfTotal {
+            if answer.rows.count < expectedOnPage && !shortOfTotal {
                 shortOfTotal = true
                 shortCut = cutDay
             }

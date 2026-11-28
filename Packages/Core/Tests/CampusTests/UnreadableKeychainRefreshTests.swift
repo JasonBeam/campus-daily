@@ -74,24 +74,24 @@ final class UnreadableKeychainRefreshTests: XCTestCase {
         XCTAssertTrue(h.server.requests(path: "/getMyECard").isEmpty)
     }
 
-    func testHasCardSessionIsFalseOnlyWhenNothingIsStored() async throws {
+    func testHasCardSessionIsFalseOnlyWhenNothingIsStored() throws {
         let h = Harness()
         let session = h.session()
-        var has = await session.hasCardSession()
+        var has = session.hasCardSession()
         XCTAssertFalse(has)
-        // What the refresher asks after saving (a sign-out in the other process).
+        // What the refresher asks inside the commit lock before saving.
         let reader: any SchoolReader = session
-        has = await reader.hasCardSession()
+        has = reader.hasCardSession()
         XCTAssertFalse(has, "the session's own answer, not the protocol's default")
         try h.signedIn()
-        has = await session.hasCardSession()
+        has = session.hasCardSession()
         XCTAssertTrue(has)
         h.store.failReads()
-        has = await session.hasCardSession()
+        has = session.hasCardSession()
         XCTAssertTrue(has, "a read that fails says nothing")
         h.store.failReads(false)
         try h.store.write(Data(#"{"shape":"older"}"#.utf8), for: .schoolEcykt)
-        has = await session.hasCardSession()
+        has = session.hasCardSession()
         XCTAssertTrue(has, "nor does an item that no longer decodes")
     }
 

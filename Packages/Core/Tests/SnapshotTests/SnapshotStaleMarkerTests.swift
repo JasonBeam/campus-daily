@@ -24,7 +24,8 @@ final class SnapshotStaleMarkerTests: XCTestCase {
     }
 
     func mark(_ store: SecureStore) throws {
-        try StoredSchoolVault(store: store).markSnapshotStale(since: t0)
+        // Legacy 0.11.5 stale marker written directly (production no longer writes it).
+        try store.write(Data("{\"since\":0}".utf8), for: .sharedSnapshotStale)
     }
 
     func testAMarkedSnapshotReadsAsNothing() throws {
@@ -41,7 +42,7 @@ final class SnapshotStaleMarkerTests: XCTestCase {
         let read = WidgetStoredData.read(snapshots: snapshots, vault: StoredSchoolVault(store: store))
         XCTAssertNotNil(read)
         XCTAssertNil(read?.snapshot)
-        XCTAssertEqual(read?.account?.account, "99100991", "the account reads as usual")
+        XCTAssertNil(read?.account, "legacy stale mark hides account too until migrated")
     }
 
     /// The mark is only looked for, never decoded: a damaged one still hides.
@@ -59,11 +60,18 @@ final class SnapshotStaleMarkerTests: XCTestCase {
         try mark(store)
         let refresher = SnapshotRefresher(school: ScriptedSchoolReader(SchoolReading(outcome: .failed(.offline), checkedAt: t1)),
                                           store: snapshots)
+        // Legacy 0.11.5 stale mark conservatively transitions to `.switching` and refuses refresh.
         let report = await refresher.refresh(inBackground: false)
-        XCTAssertTrue(report.snapshotSaved)
+        XCTAssertEqual(report.outcome, .notSignedIn)
+        XCTAssertFalse(report.snapshotSaved)
         XCTAssertNil(report.snapshot.card.value, "the report has none of the previous person's numbers")
         XCTAssertNil(try snapshots.loadSnapshot()?.card.value, "nor does what was stored")
-        XCTAssertNil(try store.read(.sharedSnapshotStale), "a write that went through drops the mark")
+        XCTAssertEqual(try SessionEpochStore(store: store).read()?.phase, .switching)
+
+        // Running `finishPendingClear` completes the conservative cleanup to `.signedOut`.
+        refresher.finishPendingClear()
+        XCTAssertEqual(try SessionEpochStore(store: store).read()?.phase, .signedOut)
+        XCTAssertNil(try store.read(.sharedSnapshotStale), "cleanup drops the legacy mark")
     }
 
     func testAClearThatCannotWriteKeepsTheMarkAndHides() async throws {
@@ -107,29 +115,35 @@ final class SnapshotStaleMarkerTests: XCTestCase {
         try mark(store)
         refresher.finishPendingClear()
         XCTAssertNil(try store.read(.sharedSnapshotStale))
-        XCTAssertEqual(try snapshots.loadSnapshot(), .empty, "the previous person's bytes are replaced")
+        XCTAssertNil(try snapshots.loadSnapshot(), "legacy stale migrated to epoch-gated empty snapshot")
+        XCTAssertNotNil(try SessionEpochStore(store: store).read(), "migrated to SessionEpoch")
         XCTAssertEqual(reader.callCount, 0, "nothing was read from the school")
 
-        let mine = previousPersonsSnapshot()
+        let epoch = try XCTUnwrap(try SessionEpochStore(store: store).read())
+        XCTAssertEqual(epoch.phase, .signedOut, "0.11.5 stale mark conservatively migrates to .signedOut")
+
+        // When `.active`, `finishPendingClear` leaves the current epoch's snapshot untouched.
+        let activeEpoch = SessionEpoch(phase: .active)
+        try SessionEpochStore(store: store).write(activeEpoch)
+        var mine = previousPersonsSnapshot()
+        mine.epochID = activeEpoch.id
         try snapshots.saveSnapshot(mine)
         refresher.finishPendingClear()
-        XCTAssertEqual(try snapshots.loadSnapshot(), mine, "without a mark nothing changes")
+        XCTAssertEqual(try snapshots.loadSnapshot(), mine, "without a pending clear nothing changes")
     }
 
-    /// No container for the lease file (`RefreshLease.locked` would just run the body): the
-    /// pending clear is skipped, and the mark alone keeps the numbers hidden.
+    /// No container for the lease file: the pending clear fails closed, and the mark alone keeps
+    /// the numbers hidden.
     func testFinishPendingClearWithoutALeaseFileOnlyHides() throws {
         let store = InMemorySecureStore()
         let snapshots = SharedSnapshotStore(store: store)
         try snapshots.saveSnapshot(previousPersonsSnapshot())
         try mark(store)
-        for lease in [nil, RefreshLease(file: nil, owner: "widget-1")] {
-            let refresher = SnapshotRefresher(school: ScriptedSchoolReader(SchoolReading(outcome: .ok, checkedAt: t1)),
-                                              store: snapshots, lease: lease)
-            refresher.finishPendingClear()
-            XCTAssertNotNil(try store.read(.sharedSnapshotStale))
-            XCTAssertEqual(refresher.latest(), .empty)
-        }
+        let refresher = SnapshotRefresher(school: ScriptedSchoolReader(SchoolReading(outcome: .ok, checkedAt: t1)),
+                                          store: snapshots, lease: RefreshLease(file: nil, owner: "widget-1"))
+        refresher.finishPendingClear()
+        XCTAssertNotNil(try store.read(.sharedSnapshotStale))
+        XCTAssertEqual(refresher.latest(), .empty)
     }
 
     func testTheWidgetsReadDrawsNothingOldWhileMarked() async throws {

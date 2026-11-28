@@ -98,14 +98,18 @@ public enum AppReset {
     /// for them). A stop after the sign-out runs `resync` instead: the shower may be running, so
     /// its Live Activity and reminder are put back in step with the record, not removed.
     @MainActor public static func run(marker: ResetMarker, now: Date, clock: () -> Date = Date.init, lock: () -> Lock?,
-                                      signOut: () async -> Void, clear: () async throws -> Void,
+                                      signOut: () async throws -> Void, clear: () async throws -> Void,
                                       reload: () async -> Void, resync: () async -> Void = {}) async throws -> Stop? {
         try marker.begin(at: now)
         if let found = lock() {
             try? marker.end()
             return Stop(found, signedOut: false)
         }
-        await signOut()
+        do { try await signOut() } catch {
+            try? marker.end()
+            await resync()
+            throw error
+        }
         do { try marker.begin(at: clock()) } catch {
             // Without a fresh marker a start could slip in during the clear: stop here.
             try? marker.end()
@@ -143,7 +147,7 @@ public enum AppReset {
     /// nothing is cleared: by then the user may have signed in and set things up again; that
     /// is `abandoned`, so the user learns the reset never finished. Nil when there is no marker.
     @MainActor public static func resume(marker: ResetMarker, now: Date, clock: () -> Date = Date.init, lock: () -> Lock?,
-                                         signOut: () async -> Void, clear: () async throws -> Void,
+                                         signOut: () async throws -> Void, clear: () async throws -> Void,
                                          reload: () async -> Void, resync: () async -> Void = {}) async throws -> Resumed? {
         guard marker.startedAt() != nil else { return nil }
         guard marker.refusesStarts(at: now) else {
@@ -174,6 +178,7 @@ public enum AppReset {
     public struct Failure: LocalizedError, Sendable, Equatable {
         /// Item or file names only (never values).
         public var items: [String]
+        public init(items: [String]) { self.items = items }
         public var errorDescription: String? { "重置没做完，有些东西没清掉。再试一次。" }
     }
 
@@ -202,45 +207,159 @@ public enum AppReset {
     /// cleared without being listed. `shared`: the App Group's whole domain goes too (the theme),
     /// inside its lock.
     public static func clear(store: SecureStore, preferences: UserDefaults, preferencesDomain: String,
-                             shared: SharedPreferences?, files: [URL], fileManager: FileManager = .default) throws {
-        var failed = deleteStored(store: store, preferences: preferences, preferencesDomain: preferencesDomain)
-        if let shared {
-            do { try shared.lock.locked { shared.removeAll() } } catch { failed.append("preferences.shared") }
+                             shared: SharedPreferences?, files: [URL], fileManager: FileManager = .default,
+                             commitLock: (any SharedLock)? = nil, expectedEpochID: String? = nil) throws {
+        var failed: [String] = []
+        let sharedLock = commitLock ?? shared?.lock
+        if let sharedLock {
+            do {
+                let outcome: (epochMismatch: Bool, failed: [String]) = try sharedLock.locked {
+                    guard epochMatches(store: store, expectedEpochID: expectedEpochID) else {
+                        return (true, [StoreKey.sharedSessionEpoch.rawValue])
+                    }
+                    let keyFailed = deleteSharedStored(store: store)
+                    shared?.removeAll()
+                    return (false, keyFailed)
+                }
+                if outcome.epochMismatch {
+                    throw Failure(items: outcome.failed)
+                }
+                failed.append(contentsOf: outcome.failed)
+            } catch let failure as Failure {
+                throw failure
+            } catch {
+                if commitLock != nil {
+                    var lockFailed: [String] = []
+                    if shared != nil { lockFailed.append("preferences.shared") }
+                    lockFailed.append(StoreKey.sharedSessionEpoch.rawValue)
+                    throw Failure(items: lockFailed)
+                }
+                if shared != nil { failed.append("preferences.shared") }
+                if shared == nil || hasAnySharedItem(store: store) {
+                    failed.append(StoreKey.sharedSessionEpoch.rawValue)
+                }
+            }
+        } else {
+            if epochMatches(store: store, expectedEpochID: expectedEpochID) {
+                failed.append(contentsOf: deleteSharedStored(store: store))
+            } else {
+                throw Failure(items: [StoreKey.sharedSessionEpoch.rawValue])
+            }
         }
+        failed.append(contentsOf: deletePrivateStored(store: store, preferences: preferences, preferencesDomain: preferencesDomain))
         try finish(failed, files: files, fileManager: fileManager, store: store)
     }
 
     /// `clear` for the app's reset, on the main actor: the same steps, but the wait for the
     /// shared lock suspends (`SharedLock.lockedWhenFree`) instead of holding the main thread
-    /// while the widget's step has the lock.
+    /// while the widget's step has the lock. All school/shared Keychain items and shared
+    /// preferences are deleted inside the same commit lock, verifying `expectedEpochID` when given.
     public static func clearWithoutBlocking(isolation: isolated (any Actor)? = #isolation, store: SecureStore,
                                             preferences: UserDefaults, preferencesDomain: String,
                                             shared: SharedPreferences?, files: [URL],
-                                            fileManager: FileManager = .default) async throws {
-        var failed = deleteStored(store: store, preferences: preferences, preferencesDomain: preferencesDomain)
-        if let shared {
-            do { try await shared.lock.lockedWhenFree(isolation: isolation) { shared.removeAll() } }
-            catch { failed.append("preferences.shared") }
+                                            fileManager: FileManager = .default,
+                                            commitLock: (any SharedLock)? = nil,
+                                            expectedEpochID: String? = nil) async throws {
+        var failed: [String] = []
+        let sharedLock = commitLock ?? shared?.lock
+        if let sharedLock {
+            do {
+                let outcome: (epochMismatch: Bool, failed: [String]) = try await sharedLock.lockedWhenFree(isolation: isolation) {
+                    guard epochMatches(store: store, expectedEpochID: expectedEpochID) else {
+                        return (true, [StoreKey.sharedSessionEpoch.rawValue])
+                    }
+                    let keyFailed = deleteSharedStored(store: store)
+                    shared?.removeAll()
+                    return (false, keyFailed)
+                }
+                if outcome.epochMismatch {
+                    throw Failure(items: outcome.failed)
+                }
+                failed.append(contentsOf: outcome.failed)
+            } catch let failure as Failure {
+                throw failure
+            } catch {
+                if commitLock != nil {
+                    var lockFailed: [String] = []
+                    if shared != nil { lockFailed.append("preferences.shared") }
+                    lockFailed.append(StoreKey.sharedSessionEpoch.rawValue)
+                    throw Failure(items: lockFailed)
+                }
+                if shared != nil { failed.append("preferences.shared") }
+                if shared == nil || hasAnySharedItem(store: store) {
+                    failed.append(StoreKey.sharedSessionEpoch.rawValue)
+                }
+            }
+        } else {
+            if epochMatches(store: store, expectedEpochID: expectedEpochID) {
+                failed.append(contentsOf: deleteSharedStored(store: store))
+            } else {
+                throw Failure(items: [StoreKey.sharedSessionEpoch.rawValue])
+            }
         }
+        failed.append(contentsOf: deletePrivateStored(store: store, preferences: preferences, preferencesDomain: preferencesDomain))
         try finish(failed, files: files, fileManager: fileManager, store: store)
     }
 
-    /// The Keychain items but the reset marker, the stale mark only once the snapshot is gone,
-    /// and the app's own preferences. What could not be deleted.
-    private static func deleteStored(store: SecureStore, preferences: UserDefaults, preferencesDomain: String) -> [String] {
+    /// School Keychain items that must all be deleted alongside `shared.snapshot` before
+    /// `shared.sessionEpoch` can be removed.
+    private static let schoolKeys: Set<StoreKey> = [
+        .schoolPortal, .schoolEcykt, .schoolProfile, .schoolPassword, .schoolDevice,
+    ]
+
+    /// App-private Keychain items and the app's own UserDefaults domain.
+    private static func deletePrivateStored(store: SecureStore, preferences: UserDefaults,
+                                            preferencesDomain: String) -> [String] {
+        var failed: [String] = []
+        for key in keychainItems where !key.isShared {
+            do { try store.delete(key) } catch { failed.append(key.rawValue) }
+        }
+        preferences.removePersistentDomain(forName: preferencesDomain)
+        return failed
+    }
+
+    /// Verifies that `shared.sessionEpoch` has not advanced to a newer ID since reset sign-out.
+    private static func epochMatches(store: SecureStore, expectedEpochID: String?) -> Bool {
+        guard let expectedEpochID else { return true }
+        do {
+            let current = try SessionEpochStore(store: store).read()
+            if let current, current.id != expectedEpochID { return false }
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    /// Shared/school Keychain items (must run inside the shared commit lock when one exists).
+    private static func deleteSharedStored(store: SecureStore) -> [String] {
         var failed: [String] = []
         var snapshotGone = true
-        for key in keychainItems where key != .sharedResetMarker && key != .sharedSnapshotStale {
+        var schoolItemsGone = true
+        for key in keychainItems where key.isShared && key != .sharedResetMarker && key != .sharedSnapshotStale && key != .sharedSessionEpoch {
             do { try store.delete(key) } catch {
                 failed.append(key.rawValue)
                 if key == .sharedSnapshot { snapshotGone = false }
+                if schoolKeys.contains(key) { schoolItemsGone = false }
             }
         }
         if snapshotGone {
             do { try store.delete(.sharedSnapshotStale) } catch { failed.append(StoreKey.sharedSnapshotStale.rawValue) }
         }
-        preferences.removePersistentDomain(forName: preferencesDomain)
+        if snapshotGone && schoolItemsGone {
+            do { try store.delete(.sharedSessionEpoch) } catch { failed.append(StoreKey.sharedSessionEpoch.rawValue) }
+        }
         return failed
+    }
+
+    private static func hasAnySharedItem(store: SecureStore) -> Bool {
+        for key in keychainItems where key.isShared && key != .sharedResetMarker {
+            do {
+                if try store.read(key) != nil { return true }
+            } catch {
+                return true
+            }
+        }
+        return false
     }
 
     /// The files, then the reset marker when everything else went.

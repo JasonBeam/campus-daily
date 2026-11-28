@@ -24,12 +24,19 @@ public protocol SchoolVault: Sendable {
     /// absent): what a login compares before it writes over them. Throws only when the store
     /// can't be read, never because an item no longer decodes.
     func credentialBytes() throws -> [Data?]
-    /// Hides the shared snapshot from every reader until a snapshot write goes through
-    /// (`SharedSnapshotStore`): someone else is signing in, or the person is signing out.
-    func markSnapshotStale(since: Date) throws
+    /// Reads the shared session epoch (`nil` on fresh install / 0.11.5 upgrade).
+    func sessionEpoch() throws -> SessionEpoch?
+    /// Writes (or deletes when `nil`) the shared session epoch.
+    func saveSessionEpoch(_ epoch: SessionEpoch?) throws
+    /// True when the legacy 0.11.5 `shared.snapshotStale` marker is present.
+    func hasLegacyStaleMark() throws -> Bool
 }
 
 public extension SchoolVault {
+    func sessionEpoch() throws -> SessionEpoch? { nil }
+    func saveSessionEpoch(_ epoch: SessionEpoch?) throws {}
+    func hasLegacyStaleMark() throws -> Bool { false }
+
     /// Whether a card session is stored: nil when that can't be told (the Keychain refused the
     /// read, before the first unlock say, or the item no longer decodes). Only false is "signed out".
     func cardSessionStored() -> Bool? {

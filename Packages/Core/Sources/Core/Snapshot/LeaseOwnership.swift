@@ -9,16 +9,39 @@ import Foundation
 
 /// Handed to a credential or snapshot write-back that runs under the refresh lease: the write
 /// happens in one locked step with the check that the lease is still ours
-/// (`RefreshLease.withOwnership`). Without a lease (tests, previews, an app with no container
-/// for its lease file) it just runs. The wait for the file's lock suspends the caller (an
-/// actor's step stays on that actor, `body` runs there inside the lock) and holds no thread;
-/// it ends after the lease's `lockWait`.
+/// (`RefreshLease.withOwnership`). Passing `nil` (`LeaseOwnership(nil)` / `.unavailable`) fails
+/// closed: every write reports `.lost` and never executes `body`. Tests and sample mode can
+/// explicitly opt into an in-memory lock via `.inMemory(_:)` or `.unchecked`.
 public struct LeaseOwnership: Sendable {
-    let lease: RefreshLease?
+    private enum Backing: Sendable {
+        case leased(RefreshLease)
+        case unavailable
+        case inMemory(InMemoryCommitLock)
+    }
 
-    public init(_ lease: RefreshLease?) { self.lease = lease }
+    private let backing: Backing
 
-    public static let unchecked = LeaseOwnership(nil)
+    /// Fails closed when `lease` is `nil` (or when `lease.file` is `nil`).
+    public init(_ lease: RefreshLease?) {
+        if let lease {
+            self.backing = .leased(lease)
+        } else {
+            self.backing = .unavailable
+        }
+    }
+
+    private init(_ backing: Backing) { self.backing = backing }
+
+    /// Fail-closed ownership: every write returns `.lost` without running `body`.
+    public static let unavailable = LeaseOwnership(.unavailable)
+
+    /// In-memory commit lock for tests and sample mode (never used in production).
+    public static func inMemory(_ lock: InMemoryCommitLock = InMemoryCommitLock()) -> LeaseOwnership {
+        LeaseOwnership(.inMemory(lock))
+    }
+
+    /// Convenience in-memory ownership for unit tests.
+    public static let unchecked = LeaseOwnership(.inMemory(InMemoryCommitLock()))
 
     /// nil = the lease is not ours any more, the file's lock stayed held for the whole wait,
     /// or the task was cancelled (the widget past its deadline, about to be suspended: it must
@@ -58,8 +81,15 @@ public struct LeaseOwnership: Sendable {
     /// held for the whole wait. Either way `body` did not run.
     func attempt<T>(isolation: isolated (any Actor)? = #isolation, retaking: Bool,
                     _ body: () throws -> T) async throws -> RefreshLease.Owned<T> {
-        guard let lease else { return .ran(try body()) }
-        guard !Task.isCancelled else { return .lost }
-        return try await lease.withOwnership(waitingAtMost: lease.lockWait, retaking: retaking, body)
+        switch backing {
+        case .unavailable:
+            return .lost
+        case .inMemory(let lock):
+            guard !Task.isCancelled else { return .lost }
+            return .ran(try lock.locked(body))
+        case .leased(let lease):
+            guard !Task.isCancelled else { return .lost }
+            return try await lease.withOwnership(waitingAtMost: lease.lockWait, retaking: retaking, body)
+        }
     }
 }

@@ -58,8 +58,8 @@ enum AppEnvironment {
     /// The live school stack, for the live `CampusModel` and the background refresh.
     static var liveSchoolStack: SchoolRefreshStack { schoolStack }
     /// The lock around what the app shares with its extensions besides the school session (the
-    /// theme): the refresh lease file's, whoever holds the lease.
-    static var sharedLock: any SharedLock { schoolStack.refresher.lease ?? UnsharedLock() }
+    /// theme): the refresh lease file's, whoever holds the lease (fails closed if unavailable).
+    static var sharedLock: any SharedLock { schoolStack.refresher.lease ?? FailingSharedLock() }
     /// The App Group's preferences, for 重置校日常; nil in a build without the group.
     static var sharedPreferences: AppReset.SharedPreferences? {
         guard let group = AppIdentity.usableAppGroup, let defaults = UserDefaults(suiteName:group) else { return nil }

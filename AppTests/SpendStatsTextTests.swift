@@ -225,4 +225,77 @@ final class SpendStatsTextTests: XCTestCase {
         XCTAssertEqual(Chart.touch(.looking(x:15), moved:CGSize(width:5, height:40), at:20), .looking(x:20))
         XCTAssertEqual(Chart.touch(.scrolling, moved:CGSize(width:80, height:6), at:90), .scrolling)
     }
+
+    // MARK: - Design #1-#4: Gap vs zero-yuan bars, VoiceOver, and demo contracts
+
+    func testGapBarIsDistinctFromZeroYuanBarAndReadsIncompleteInVoiceOver() {
+        let gap = bar("20261119", fen:0, unsure:true)
+        let zero = bar("20261119", fen:0, unsure:false)
+        let partialSpent = bar("20261119", fen:1250, unsure:true)
+
+        XCTAssertTrue(SpendBarsChart.isGap(gap), "unsure day with ¥0 is rendered as a blank gap")
+        XCTAssertFalse(SpendBarsChart.isGap(zero), "confirmed ¥0 day keeps the 2pt baseline stub")
+        XCTAssertFalse(SpendBarsChart.isGap(partialSpent), "unsure day with known spending still draws its bar")
+
+        XCTAssertEqual(warm.incompleteBar, "记录不全")
+        XCTAssertEqual(clear.incompleteBar, "记录不全")
+        XCTAssertEqual(warm.spokenBar(gap), "11月19日，记录不全")
+        XCTAssertEqual(clear.spokenBar(gap), "11月19日，记录不全")
+        XCTAssertEqual(warm.spokenBar(zero), "11月19日，0 元")
+        XCTAssertEqual(clear.spokenBar(zero), "11月19日，0 元")
+        XCTAssertEqual(warm.spokenBar(partialSpent), "11月19日，12.50 元，记录可能不全")
+    }
+
+    func testSignedAmountRunJoinsSignAndYenWithWordJoiner() {
+        XCTAssertEqual(SpendStatsView.nonBreakingRun("\u{2212}¥21.60"), "\u{2212}\u{2060}¥21.60")
+        XCTAssertEqual(SpendStatsView.nonBreakingRun("+¥12.30"), "+\u{2060}¥12.30")
+        XCTAssertEqual(SpendStatsView.nonBreakingRun("¥17.63"), "¥17.63")
+    }
+
+    func testUncoveredDaysBeforeCoveredFromOrTermStartAreBlankLikeGaps() {
+        let gap = bar("20261119", fen:0, unsure:true)
+        let beforeCovered = bar("20261101", fen:0, unsure:false)
+        let onCoveredZero = bar("20261102", fen:0, unsure:false)
+        let onCoveredSpent = bar("20261102", fen:1500, unsure:false)
+        let uncoveredWeek = bar("20261019", fen:0, days:["20261019", "20261020", "20261025"])
+        let overlappingWeek = bar("20261026", fen:0, days:["20261026", "20261102"])
+        var beforeTerm = bar("20260831", fen:0, unsure:false)
+        beforeTerm.beforeStart = true
+
+        XCTAssertTrue(SpendBarsChart.isBlank(gap, coveredFrom:"20261102"))
+        XCTAssertTrue(SpendBarsChart.isBlank(beforeCovered, coveredFrom:"20261102"))
+        XCTAssertTrue(SpendBarsChart.isBlank(uncoveredWeek, coveredFrom:"20261102"))
+        XCTAssertTrue(SpendBarsChart.isBlank(beforeTerm, coveredFrom:nil))
+        XCTAssertFalse(SpendBarsChart.isBlank(overlappingWeek, coveredFrom:"20261102"))
+        XCTAssertFalse(SpendBarsChart.isBlank(onCoveredZero, coveredFrom:"20261102"))
+        XCTAssertFalse(SpendBarsChart.isBlank(onCoveredSpent, coveredFrom:"20261102"))
+    }
+
+    #if DEBUG
+    func testSpendStatsDemoRefreshFailedOldAndNotesContracts() throws {
+        let cal = SchoolCalendar.shanghai
+        let now = cal.date(from:DateComponents(year:2026, month:11, day:27, hour:12))!
+
+        // Design #3: cross-day offline demo with gap bars MUST show unsureDays > 0 reminder.
+        guard case .loaded(let oldStats) = SpendStatsDemo.refreshFailedOld.phase(.month, now:now) else {
+            return XCTFail("expected loaded stats for refresh-failed-old")
+        }
+        XCTAssertEqual(oldStats.unsureDays, 2)
+        XCTAssertEqual(oldStats.bars.filter(SpendBarsChart.isGap).count, 2)
+        XCTAssertEqual(oldStats.bars.last?.isCurrent, false)
+        XCTAssertEqual(oldStats.bars.last?.axisLabel, "11月25日")
+
+        // Design #4: notes demo coveredFrom must be strictly later than the span's first bar.
+        guard case .loaded(let notesStats) = SpendStatsDemo.notes.phase(.month, now:now) else {
+            return XCTFail("expected loaded stats for notes")
+        }
+        let firstID = try XCTUnwrap(notesStats.bars.first?.id)
+        let coveredFrom = try XCTUnwrap(notesStats.coveredFrom)
+        XCTAssertGreaterThan(coveredFrom, firstID, "coveredFrom note only makes sense when strictly after range start")
+        XCTAssertEqual(notesStats.unsureDays, 2)
+
+        // Design #1: stale-old records demo has no today/yesterday app activities.
+        XCTAssertTrue(RecordsDemo.staleOld.app(now:now).isEmpty)
+    }
+    #endif
 }

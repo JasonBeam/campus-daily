@@ -14,10 +14,20 @@ import Core
 /// this, the next person's showers would be billed to the person who signed out.
 @MainActor
 final class SignOutHotWaterTests: XCTestCase {
+    private var leaseFiles: [URL] = []
+
+    override func tearDown() {
+        leaseFiles.forEach { try? FileManager.default.removeItem(at:$0) }
+        leaseFiles = []
+        super.tearDown()
+    }
+
     private func models(_ store: ScriptedStore, support: URL? = nil, defaults: UserDefaults = SampleDefaults()) -> (CampusModel, ShowerModel) {
+        let leaseURL = FileManager.default.temporaryDirectory.appendingPathComponent("signout-hw-lease-\(UUID().uuidString)")
+        leaseFiles.append(leaseURL)
         let services = CampusServices(kind:.live, secureStore:store, defaults:defaults, sharedPreferences:nil,
                                       schoolHTTP:SampleHTTPClient(), showerHTTP:SampleHTTPClient(), laundryHTTP:SampleHTTPClient(),
-                                      feedbackHTTP:nil, showerTransport:SampleShowerTransport(), leaseFile:nil,
+                                      feedbackHTTP:nil, showerTransport:SampleShowerTransport(), leaseFile:LeaseFile(url:leaseURL),
                                       applicationSupport:support, sharedDidChange:{})
         let reminders = Reminders.sample(defaults:services.defaults)
         let shower = ShowerModel(services:services, reminders:reminders, activities:nil, gate:LiveShowerGate())
@@ -295,5 +305,89 @@ final class SignOutHotWaterTests: XCTestCase {
         XCTAssertEqual(try vault.binding(), Fixture.binding)
         XCTAssertEqual(shower.binding, Fixture.binding)
         XCTAssertNil(campus.switchNotice)
+    }
+
+    /// Revo #1: after a new epoch is published (account switch) and the process is killed before
+    /// UI cleanup clears the binding or writes `showerNeedsResidenceReview`, cold start must refuse
+    /// any new normal or next shower start with the previous user's binding, while keeping an
+    /// already-open shower's binding intact so close/settle still works.
+    func testColdStartAfterNewEpochBeforeBindingClearBlocksNewStartsAndPreservesClose() async throws {
+        let store = ScriptedStore()
+        let support = try Fixture.supportWithProfile()
+        let defaults = SampleDefaults()
+        let schoolVault = StoredSchoolVault(store:store)
+        let showerVault = StoredShowerVault(store:store)
+
+        // 1. User A is signed in under epoch E1 and saves a hot-water binding.
+        try schoolVault.saveSessionEpoch(SessionEpoch(id:"E1", phase:.active))
+        let (_, showerA) = models(store, support:support, defaults:defaults)
+        await waitUntil { showerA.gateRecord != .notLoaded && showerA.profileLoaded }
+        try showerA.saveBinding(Fixture.binding)
+        XCTAssertTrue(showerA.mayStart, "A's own binding works under E1")
+
+        // 2. User B signs in (publishes E2 .activePendingClear) and the app crashes BEFORE
+        //    `previousPersonCleared` / `clearBindingForAccountSwitch` / UserDefaults flag runs.
+        try schoolVault.saveSessionEpoch(SessionEpoch(id:"E2", phase:.activePendingClear))
+        XCTAssertFalse(defaults.bool(forKey:PreferenceKey.showerNeedsResidenceReview),
+                       "UI flag was not written before crash")
+
+        // Cold start (idle): old binding must NOT authorize new starts.
+        let (_, coldIdle) = models(store, support:support, defaults:SampleDefaults())
+        await waitUntil { coldIdle.gateRecord != .notLoaded && coldIdle.profileLoaded }
+        XCTAssertTrue(coldIdle.residenceReviewRequired)
+        XCTAssertFalse(coldIdle.mayStart, "old binding cannot start a new shower after epoch switch")
+        XCTAssertEqual(coldIdle.startRefusalText, Self.switchLine)
+
+        // Cold start over a shower that is over (`canStartNext`): next start is ALSO blocked.
+        let over = ShowerState(phase:.running, machineID:"11223344", peripheralID:"P",
+                               startedAt:Date(timeIntervalSince1970:1_800_000_000),
+                               authorizeSent:true, authorizationID:"AABBCCDD", stateReviewRequired:true)
+        try showerVault.saveShowerState(over)
+        let (_, coldOver) = models(store, support:support, defaults:SampleDefaults())
+        await waitUntil { coldOver.gateRecord != .notLoaded && coldOver.profileLoaded }
+        XCTAssertTrue(coldOver.residenceReviewRequired)
+        XCTAssertFalse(coldOver.mayStartNext, "old binding cannot start a next shower either")
+        XCTAssertTrue(coldOver.mayRebind, "user can still rebind for B")
+
+        // Cold start with an already-open shower: binding stays and close/settle remains allowed!
+        try showerVault.saveShowerState(Fixture.running)
+        let (_, coldRunning) = models(store, support:support, defaults:SampleDefaults())
+        await waitUntil { coldRunning.state.phase == .running && coldRunning.profileLoaded }
+        XCTAssertEqual(coldRunning.binding, Fixture.binding, "open shower keeps its binding for close/settle")
+        XCTAssertTrue(coldRunning.residenceReviewRequired)
+        XCTAssertFalse(coldRunning.mayStart)
+        XCTAssertTrue(coldRunning.mayFinish, "existing open shower can still close and settle")
+
+        // 3. Rebinding under E2 records E2 ownership; a subsequent cold start allows starting again.
+        try showerVault.saveShowerState(nil)
+        let (_, rebindModel) = models(store, support:support, defaults:SampleDefaults())
+        await waitUntil { rebindModel.gateRecord != .notLoaded && rebindModel.profileLoaded }
+        XCTAssertTrue(rebindModel.residenceReviewRequired)
+        try rebindModel.saveBinding(Fixture.binding)
+        XCTAssertFalse(rebindModel.residenceReviewRequired)
+        let (_, coldAfterRebind) = models(store, support:support, defaults:SampleDefaults())
+        await waitUntil { coldAfterRebind.gateRecord != .notLoaded && coldAfterRebind.profileLoaded }
+        XCTAssertFalse(coldAfterRebind.residenceReviewRequired)
+        XCTAssertTrue(coldAfterRebind.mayStart)
+    }
+
+    /// Revo #1: mid-switch (`.switching`) or undecodable epoch on cold start also fails closed.
+    func testColdStartDuringSwitchingOrUndecodableEpochBlocksStart() async throws {
+        let store = ScriptedStore()
+        let support = try Fixture.supportWithProfile()
+        try StoredShowerVault(store:store).saveBinding(Fixture.binding)
+        try store.write(Data("E1".utf8), for:.showerBindingEpoch)
+
+        try StoredSchoolVault(store:store).saveSessionEpoch(SessionEpoch(id:"E1", phase:.switching))
+        let (_, switchingModel) = models(store, support:support, defaults:SampleDefaults())
+        await waitUntil { switchingModel.gateRecord != .notLoaded && switchingModel.profileLoaded }
+        XCTAssertTrue(switchingModel.residenceReviewRequired)
+        XCTAssertFalse(switchingModel.mayStart)
+
+        try store.write(Data("not-json".utf8), for:.sharedSessionEpoch)
+        let (_, corruptModel) = models(store, support:support, defaults:SampleDefaults())
+        await waitUntil { corruptModel.gateRecord != .notLoaded && corruptModel.profileLoaded }
+        XCTAssertTrue(corruptModel.residenceReviewRequired)
+        XCTAssertFalse(corruptModel.mayStart)
     }
 }

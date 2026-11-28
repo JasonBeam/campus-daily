@@ -314,6 +314,7 @@ extension SchoolSession {
     func followReplacedMeter(_ seen: MeterBinding, to comAddress: String, owning: LeaseOwnership) async {
         let vault = vault
         _ = try? await owning.write {
+            if let epoch = try vault.sessionEpoch(), epoch.hidesAccountUI { return }
             guard let next = Self.withMeterMoved(try vault.profile(), seen: seen, to: comAddress) else { return }
             try vault.saveProfile(next)
         }

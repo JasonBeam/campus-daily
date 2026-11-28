@@ -22,9 +22,11 @@ final class SchoolLoginDebugLogTests: XCTestCase {
 
     func testAnUnknownPageIsLoggedAsUnknownOnly() async {
         let log = AppRecordingLog()
+        let leaseURL = FileManager.default.temporaryDirectory.appendingPathComponent("login-log-lease-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at:leaseURL) }
         let services = CampusServices(kind:.live, secureStore:InMemorySecureStore(), defaults:SampleDefaults(), sharedPreferences:nil,
                                       schoolHTTP:StrangePage(), showerHTTP:SampleHTTPClient(), laundryHTTP:SampleHTTPClient(),
-                                      feedbackHTTP:nil, showerTransport:SampleShowerTransport(), leaseFile:nil,
+                                      feedbackHTTP:nil, showerTransport:SampleShowerTransport(), leaseFile:LeaseFile(url:leaseURL),
                                       applicationSupport:nil, sharedDidChange:{}, debugLog:log)
         let campus = CampusModel(services:services, stack:services.schoolStack(), reminders:.sample(defaults:services.defaults)) { nil }
         let state = await campus.submitLogin(account:"99100991", password:"synthetic-pw-991", savePassword:false)

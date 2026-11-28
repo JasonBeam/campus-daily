@@ -25,6 +25,7 @@ enum RecordsDemo: String {
     case moreFailed = "more-failed"
     case empty, open
     case signedOut = "signed-out"
+    case staleOld = "stale-old"
 
     #if DEBUG
     static func handle(_ url: URL) -> RecordsDemo? {
@@ -35,17 +36,18 @@ enum RecordsDemo: String {
     }
     #endif
 
-    /// The app's own records: those of the home demo, none for `empty`.
+    /// The app's own records: those of the home demo, none for `empty` or `staleOld`.
     func app(now: Date = Date()) -> [AppActivity] {
-        self == .empty ? [] : HomeData.sample(now:now).appActivities
+        (self == .empty || self == .staleOld) ? [] : HomeData.sample(now:now).appActivities
     }
 
     var source: CardRecordsSource {
         let demo = self
         let school = SampleData.calendar
-        let rows = SampleData.cardRecords(days:demo.days, now:Date(), school:school)
+        let anchorNow = Date()
+        let rows = SampleData.cardRecords(days:demo.days, now:anchorNow, school:school)
         return CardRecordsSource(stamp:{ 0 }, page:{ query, _ in
-            let firstRange = query.end == SchoolCalendar.dayString(Date(), calendar:school)
+            let firstRange = query.end == SchoolCalendar.dayString(anchorNow, calendar:school)
             // Older ranges, read on for the stats, come quicker.
             try await Task.sleep(for:.milliseconds(firstRange ? 500 : 120))
             switch demo {
@@ -63,6 +65,7 @@ enum RecordsDemo: String {
     private var days: [Int] {
         switch self {
         case .list, .open: return SampleData.recordDays
+        case .staleOld: return SampleData.recordDays.filter { $0 >= 2 }
         case .loading, .failed, .empty, .signedOut: return []
         case .more, .moreFailed: return [0, 1, 16, 17]
         case .end: return [0]

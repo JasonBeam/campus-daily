@@ -13,11 +13,11 @@ import Core
 /// signed-out face) and asks again soon; nothing the process drew before stands in for it. A
 /// timeline always has a face: an empty one could leave what is on screen as it is.
 enum CampusWidgetPlan {
-    struct Face {
+    struct Face: Sendable {
         let date: Date
         let model: CampusWidgetModel
     }
-    struct Faces {
+    struct Faces: Sendable {
         let faces: [Face]
         let next: Date
     }
@@ -60,5 +60,101 @@ enum CampusWidgetPlan {
         var model = CampusWidgetModel.placeholderFace
         model.now = now
         return model
+    }
+}
+
+/// Shared delivery boundary for both WidgetKit provider entry points (`getSnapshot` and
+/// `getTimeline`). Constructs the candidate face/timeline first (including reading reminder lines),
+/// then acquires the shared commit lock immediately before invoking `completion` to verify
+/// `shared.sessionEpoch`. If the epoch changed, is not active, or the commit lock is unavailable,
+/// discards the candidate and delivers a safe face/timeline (offline-rebuilt or placeholder).
+enum CampusWidgetDelivery {
+    /// `getSnapshot` delivery path: no network; constructs face first, then verifies under
+    /// `commitLock` right before calling `completion`.
+    static func deliverSnapshot(
+        now: Date,
+        preview: Bool,
+        snapshots: SnapshotStoring,
+        vault: SchoolVault,
+        commitLock: any SharedLock,
+        lines: () -> ReminderLines,
+        beforeVerify: (() -> Void)? = nil,
+        completion: (CampusWidgetModel) -> Void
+    ) {
+        let stored = WidgetStoredData.read(snapshots:snapshots, vault:vault)
+        let initial = WidgetDrawChoice.choose(stored)
+        let candidateSnapshot: HomeSnapshot? = if case .draw(let snapshot, _) = initial { snapshot } else { nil }
+        let reminderLines = lines()
+        let constructed = CampusWidgetPlan.face(initial, now:now, preview:preview, lines:reminderLines)
+        beforeVerify?()
+
+        let finalModel: CampusWidgetModel
+        do {
+            finalModel = try commitLock.locked {
+                let verified = WidgetDrawChoice.verifiedForCompletion(
+                    initial:initial, initialEpoch:stored?.epoch, drawn:candidateSnapshot,
+                    snapshots:snapshots, vault:vault
+                )
+                if verified.choice == initial && verified.drawn == candidateSnapshot {
+                    return constructed
+                }
+                return CampusWidgetPlan.face(verified.choice, now:now, preview:preview, lines:reminderLines)
+            }
+        } catch {
+            // Commit lock unavailable: fail closed with no numbers.
+            finalModel = CampusWidgetPlan.face(.noNumbers(retryAfter:WidgetStoredData.unreadableRetry),
+                                               now:now, preview:preview, lines:reminderLines)
+        }
+        completion(finalModel)
+    }
+
+    /// `getTimeline` delivery path: finishes pending clear, runs optional network refresh,
+    /// reads reminder lines and constructs the candidate timeline FIRST, then verifies under
+    /// `commitLock` immediately before calling `completion`.
+    static func deliverTimeline(
+        now: Date,
+        interval: TimeInterval,
+        snapshots: SnapshotStoring,
+        vault: SchoolVault,
+        commitLock: any SharedLock,
+        lines: @Sendable () -> ReminderLines,
+        finishPendingClear: @Sendable () async -> Void,
+        refresh: @Sendable (_ expectedEpochID: String?) async -> HomeSnapshot?,
+        beforeVerify: (@Sendable () async -> Void)? = nil,
+        completion: @Sendable (CampusWidgetPlan.Faces) -> Void
+    ) async {
+        await finishPendingClear()
+        let stored = WidgetStoredData.read(snapshots:snapshots, vault:vault)
+        let initial = WidgetDrawChoice.choose(stored)
+        var drawn: HomeSnapshot?
+        if case .draw = initial {
+            let canRefresh = stored?.epoch?.allowsRefreshCommit ?? true
+            if canRefresh {
+                drawn = await refresh(stored?.epoch?.id)
+            }
+        }
+        let reminderLines = lines()
+        let constructed = CampusWidgetPlan.timeline(initial, drawn:drawn, now:now, interval:interval, lines:reminderLines)
+        if let beforeVerify { await beforeVerify() }
+
+        let finalPlan: CampusWidgetPlan.Faces
+        do {
+            finalPlan = try await commitLock.lockedWhenFree {
+                let verified = WidgetDrawChoice.verifiedForCompletion(
+                    initial:initial, initialEpoch:stored?.epoch, drawn:drawn,
+                    snapshots:snapshots, vault:vault
+                )
+                if verified.choice == initial && verified.drawn == drawn {
+                    return constructed
+                }
+                return CampusWidgetPlan.timeline(verified.choice, drawn:verified.drawn, now:now,
+                                                 interval:interval, lines:reminderLines)
+            }
+        } catch {
+            // Commit lock unavailable: fail closed with one no-numbers entry.
+            finalPlan = CampusWidgetPlan.timeline(.noNumbers(retryAfter:WidgetStoredData.unreadableRetry),
+                                                  drawn:nil, now:now, interval:interval, lines:reminderLines)
+        }
+        completion(finalPlan)
     }
 }

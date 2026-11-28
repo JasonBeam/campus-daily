@@ -18,6 +18,10 @@ public enum StoreKey: String, Sendable, CaseIterable {
     /// The browser id the school login sees from this install (random, not personal).
     case schoolDevice = "school.device"
     case showerBinding = "water.binding"
+    /// Cross-process `SessionEpoch.id` that owned `water.binding` when it was saved; nil for
+    /// legacy bindings saved before `SessionEpoch` existed. App-private, cleared with reset or
+    /// when `water.binding` is cleared.
+    case showerBindingEpoch = "water.bindingEpoch"
     case showerSession = "water.session"
     /// Hot-water records kept by a next use while they wait for the user's check.
     case showerRetained = "water.retained"
@@ -33,11 +37,15 @@ public enum StoreKey: String, Sendable, CaseIterable {
     case sharedCredentialLog = "shared.credentialLog"
     /// A reset is under way, since when (`ResetMarker`). Holds a time only.
     case sharedResetMarker = "shared.resetMarker"
-    /// The shared snapshot may still hold the previous person's numbers (`since` a time only):
-    /// nothing reads it while this is there, and the next snapshot write drops it.
+    /// Legacy 0.11.5 stale snapshot marker (read/cleared on upgrade only; no longer written).
     case sharedSnapshotStale = "shared.snapshotStale"
+    /// Cross-process session epoch (`SessionEpoch`): random id and lifecycle phase only.
+    case sharedSessionEpoch = "shared.sessionEpoch"
     /// How 开始洗澡 treats a balance below zero on this phone (`ShowerStartOverrideStore`).
     case showerStartMode = "water.startMode"
+    /// App-private anchor for the local campus card history disk cache (`CardHistorySessionAnchor`).
+    /// Holds only `(epochID, sessionID, salt)` — never plaintext student/card IDs.
+    case cardHistorySession = "cardHistory.session"
 
     public static let servicePrefix = "org.zaxh.xiaorichang."
     public static let account = "default"
@@ -49,10 +57,16 @@ public enum StoreKey: String, Sendable, CaseIterable {
         case afterFirstUnlockThisDeviceOnly
     }
 
-    /// Every item is readable after the first unlock, so the background refresh and the widget
-    /// work while the phone is locked. None leaves this device (no iCloud Keychain, no backup
+    /// Most items are readable after the first unlock so background refresh and the widget work
+    /// while the phone is locked; `cardHistory.session` is app-private and locked until unlock
+    /// (`whenUnlockedThisDeviceOnly`). None leaves this device (no iCloud Keychain, no backup
     /// restore onto another phone).
-    public var accessibility: Accessibility { .afterFirstUnlockThisDeviceOnly }
+    public var accessibility: Accessibility {
+        switch self {
+        case .cardHistorySession: return .whenUnlockedThisDeviceOnly
+        default: return .afterFirstUnlockThisDeviceOnly
+        }
+    }
 
     /// Written to the shared access group so the widget extension can read them: the snapshot and
     /// reminder lines it shows, the lifetime lines its refresh writes, the reset marker, the mark that hides a stale snapshot, and everything its own school refresh needs (card session, portal
@@ -60,9 +74,9 @@ public enum StoreKey: String, Sendable, CaseIterable {
     /// laundry items live only in the app's private group, which the widget is not entitled to.
     public var isShared: Bool {
         switch self {
-        case .sharedSnapshot, .sharedReminderLines, .sharedCredentialLog, .sharedResetMarker, .sharedSnapshotStale, .schoolEcykt, .schoolPortal, .schoolProfile, .schoolPassword, .schoolDevice:
+        case .sharedSnapshot, .sharedReminderLines, .sharedCredentialLog, .sharedResetMarker, .sharedSnapshotStale, .sharedSessionEpoch, .schoolEcykt, .schoolPortal, .schoolProfile, .schoolPassword, .schoolDevice:
             return true
-        case .showerBinding, .showerSession, .showerRetained, .showerStartMode, .laundryAccount, .laundryCheckout, .laundryHistory, .laundryHistorySalt:
+        case .showerBinding, .showerBindingEpoch, .showerSession, .showerRetained, .showerStartMode, .laundryAccount, .laundryCheckout, .laundryHistory, .laundryHistorySalt, .cardHistorySession:
             return false
         }
     }

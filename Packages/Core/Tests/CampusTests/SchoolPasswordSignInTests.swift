@@ -142,7 +142,7 @@ final class SchoolPasswordSignInTests: XCTestCase {
         try await h.session().savePassword("synthetic-pw-991", owning: .unchecked)
         XCTAssertEqual(try h.vault.account()?.usablePassword, "synthetic-pw-991")
         XCTAssertEqual(login.calls.map(\.account), ["99100991", "99100991"])
-        try await h.session().forgetPassword(lockingWith: nil)
+        try await h.session().forgetPassword(lockingWith: InMemoryCommitLock())
         XCTAssertEqual(try h.vault.account(), SchoolAccount(account: "99100991"))
     }
 

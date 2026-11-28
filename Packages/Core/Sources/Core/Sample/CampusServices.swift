@@ -65,6 +65,11 @@ public final class CampusServices: @unchecked Sendable {
     /// The school session and the snapshot refresher on these services (the app's "app" role).
     public func schoolStack(role: String = "app") -> SchoolRefreshStack {
         let changed = sharedDidChange
+        if kind == .sample, leaseFile == nil {
+            return SchoolRefreshStack.inMemory(store: secureStore, http: schoolHTTP, role: role,
+                                               didWriteSnapshot: { changed() },
+                                               debugLog: role == "widget" ? NoDebugLog() : debugLog)
+        }
         return SchoolRefreshStack(store: secureStore, http: schoolHTTP, role: role, leaseWait: SchoolRefreshStack.appLeaseWait,
                                   leaseFile: leaseFile, didWriteSnapshot: { changed() },
                                   debugLog: role == "widget" ? NoDebugLog() : debugLog)

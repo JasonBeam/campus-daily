@@ -78,7 +78,7 @@ public enum WidgetStatus {
     ///   `staleAfter` before `now` (exactly `staleAfter` is still fresh).
     /// - fresh: otherwise.
     public static func freshness(snapshot: HomeSnapshot?, account: SchoolAccount?, now: Date) -> WidgetFreshness {
-        guard let snapshot, snapshot != .empty else { return .never }
+        guard let snapshot, !snapshot.isEmpty else { return .never }
         if hasSavedPassword(account) {
             guard snapshot.needsLogin else { return .fresh }
             return account?.autoLogin(at: now) == .pausedNoAnswer ? .stale : .expired
@@ -109,7 +109,7 @@ public enum WidgetStatus {
     /// Whether the widget runs a school read before drawing: not when nobody is signed in, and
     /// not when the snapshot was checked less than `minimumRefreshInterval` ago.
     public static func shouldRefresh(snapshot: HomeSnapshot?, now: Date) -> Bool {
-        guard let snapshot, snapshot != .empty else { return false }
+        guard let snapshot, !snapshot.isEmpty else { return false }
         guard let checked = snapshot.checkedAt else { return true }
         let age = now.timeIntervalSince(checked)
         // A check stamped in the future (the clock moved back) counts as old.

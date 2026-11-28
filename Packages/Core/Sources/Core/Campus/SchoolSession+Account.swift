@@ -6,6 +6,11 @@
 //
 
 import Foundation
+#if canImport(Darwin)
+import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 
 /// Account storage: the app's own sign-in, 保存密码 on and off, the web sign-in, sign-out, and
 /// the one locked step every login writes its credentials in.
@@ -33,6 +38,9 @@ extension SchoolSession {
     /// any pause.
     public func savePassword(_ password: String, account given: String? = nil, owning: LeaseOwnership) async throws {
         let start = try Self.storedCredentials(vault)
+        if let phase = start.epochPhase, phase == .switching || phase == .signedOutPendingClear || phase == .signedOut {
+            throw SchoolLoginFailure.busy
+        }
         // Nobody can tell who is signed in: the password can't be checked against them.
         if start.unreadablePerson { throw SchoolLoginFailure.unreadableAccount }
         let stored = start.account
@@ -57,6 +65,9 @@ extension SchoolSession {
         }
         let vault = vault, portalToken = stamped(token), saving = SchoolAccount(account: account, password: password)
         try await Self.commitLogin(owning, vault, from: start) {
+            if let epoch = try vault.sessionEpoch(), epoch.hidesAccountUI {
+                throw SchoolLoginFailure.busy
+            }
             if let exchanged { try vault.saveEcyktSession(exchanged) }
             try vault.savePortalToken(portalToken)
             try vault.saveAccount(saving)
@@ -64,18 +75,16 @@ extension SchoolSession {
     }
 
     /// Turning 保存密码 off: the password goes; the account name stays for display. Read and
-    /// written inside the lease file's lock (`RefreshLease.locked`, whoever holds the lease), so
-    /// it never lands between a refresh's compare and write of the saved account: that refresh's
-    /// write-back then finds another password and leaves the account alone. Never waits for the
-    /// lease itself, so a refresh running elsewhere doesn't make it fail. A lease file that
-    /// can't be locked (before the first unlock) throws and leaves the password stored.
-    public func forgetPassword(lockingWith lease: RefreshLease?) async throws {
+    /// written inside the commit lock (`SharedLock.lockedWhenFree`), failing closed when no lock
+    /// is available or the lock cannot be acquired.
+    public func forgetPassword(lockingWith lock: (any SharedLock)?) async throws {
+        guard let lock else { throw LeaseFile.Failure(step: "lock", code: ENOENT) }
         let vault = vault
-        let forget = {
+        try await lock.lockedWhenFree {
+            if let epoch = try vault.sessionEpoch(), epoch.hidesAccountUI { return }
             guard let stored = try vault.account(), stored.password != nil else { return }
             try vault.saveAccount(SchoolAccount(account: stored.account))
         }
-        if let lease { try await lease.lockedWhenFree(forget) } else { try forget() }
     }
 
     /// The card a login's check found, as evidence of who signed in: not when it was a fallback
@@ -118,10 +127,19 @@ extension SchoolSession {
     struct StoredCredentials: Equatable {
         /// Card session, portal token, account (`SchoolVault.credentialBytes()`).
         var bytes: [Data?]
+        /// Epoch id and phase at login start (`nil` on 0.11.5 upgrade / fresh install).
+        var epochID: String?
+        var epochPhase: SessionEpoch.Phase?
         /// Decoded for the login's own use; nil when absent or no longer decodable.
         var session: EcyktSession?
         var account: SchoolAccount?
-        static func == (a: StoredCredentials, b: StoredCredentials) -> Bool { a.bytes == b.bytes }
+        static func == (a: StoredCredentials, b: StoredCredentials) -> Bool {
+            guard a.bytes == b.bytes, a.epochID == b.epochID else { return false }
+            if a.epochPhase == b.epochPhase { return true }
+            if a.epochPhase == .activePendingClear && b.epochPhase == .active { return true }
+            if a.epochPhase == .signedOutPendingClear && b.epochPhase == .signedOut { return true }
+            return false
+        }
         /// The card session or the account is stored and doesn't decode: someone was signed in,
         /// and it can't be told who.
         var unreadablePerson: Bool {
@@ -131,8 +149,32 @@ extension SchoolSession {
 
     /// Throws only when the store can't be read (before the first unlock, say).
     static func storedCredentials(_ vault: SchoolVault) throws -> StoredCredentials {
-        StoredCredentials(bytes: try vault.credentialBytes(), session: (try? vault.ecyktSession()) ?? nil,
-                          account: (try? vault.account()) ?? nil)
+        let bytes = try vault.credentialBytes()
+        let epochID: String?
+        let epochPhase: SessionEpoch.Phase?
+        do {
+            let epoch = try vault.sessionEpoch()
+            epochID = epoch?.id
+            epochPhase = epoch?.phase
+        } catch let error as StorageError where error.isUndecodable {
+            epochID = "<undecodable>"
+            epochPhase = .switching
+        }
+        return StoredCredentials(bytes: bytes, epochID: epochID, epochPhase: epochPhase,
+                                 session: (try? vault.ecyktSession()) ?? nil,
+                                 account: (try? vault.account()) ?? nil)
+    }
+
+    private static func needsNewEpoch(match: SignedInPerson.Match, vault: SchoolVault) throws -> Bool {
+        if match != .same { return true }
+        do {
+            if let current = try vault.sessionEpoch() {
+                return !current.allowsRefreshCommit
+            }
+            return try vault.hasLegacyStaleMark()
+        } catch let error as StorageError where error.isUndecodable {
+            return true
+        }
     }
 
     /// A login's writes (sign-in from the form or the web page, 保存密码) in one locked step:
@@ -167,35 +209,54 @@ extension SchoolSession {
         let (card, updated) = try await liveCard(session)
         try ensureSignedIn(since: started)
         let match = SignedInPerson.match(before, cardUnionID: Self.evidence(card, updated), account: account)
-        let vault = vault, token = stamped(portalToken), at = now()
+        let vault = vault, token = stamped(portalToken)
         var writing = false
+        var switchedEpoch = false
         let old: SchoolProfile?, profile: SchoolProfile
         do {
             (old, profile) = try await Self.commitLogin(owning, vault, from: start) { () -> (SchoolProfile?, SchoolProfile) in
-                if match != .same { try vault.markSnapshotStale(since: at) }
+                let healthyPreviousEpoch = try !Self.needsNewEpoch(match: .same, vault: vault)
+                let needsSwitch = match != .same || !healthyPreviousEpoch
+                let newEpochID: String? = needsSwitch ? UUID().uuidString : nil
+                if let newEpochID {
+                    try vault.saveSessionEpoch(SessionEpoch(id: newEpochID, phase: .switching))
+                }
                 writing = true
+                if needsSwitch { switchedEpoch = true }
                 let old = (try? vault.profile()) ?? nil
-                if match == .different { try Self.clearPreviousPerson(vault) }
+                if needsSwitch { try Self.clearPreviousPerson(vault) }
                 try vault.savePortalToken(token)
                 try vault.saveEcyktSession(updated)
-                var profile = (try? vault.profile()) ?? SchoolProfile()
+                let reuseMeterForConfirmedRoom = !needsSwitch || (match == .unknown && healthyPreviousEpoch)
+                var profile = reuseMeterForConfirmedRoom ? (old ?? SchoolProfile()) : SchoolProfile()
                 if let residence {
                     if profile.residence?.address != residence.address { profile.meter = nil }
                     profile.residence = residence
-                } else if match != .same {
+                } else if match != .same || needsSwitch {
                     profile = SchoolProfile()
                 }
                 try vault.saveProfile(profile)
                 if let saving { try vault.saveAccount(saving) }
+                // Post-write read-back verification inside the same commit lock.
+                let readSession = try vault.ecyktSession()
+                let readToken = try vault.portalToken()
+                let readAccount = try vault.account()
+                guard readSession == updated, readToken == token,
+                      (saving != nil ? readAccount == saving : (!needsSwitch || readAccount == nil)) else {
+                    throw StorageError(operation: "verify credentials", status: -1)
+                }
+                if let newEpochID {
+                    try vault.saveSessionEpoch(SessionEpoch(id: newEpochID, phase: .activePendingClear))
+                }
                 return (old, profile)
             }
         } catch {
             // A write failed after the step began (the previous person's items may be gone
             // already): their work still in flight is stale all the same.
-            if writing, match != .same { started = newPerson() }
+            if writing, (match != .same || switchedEpoch) { started = newPerson() }
             throw error
         }
-        if match != .same { started = newPerson() }
+        if match != .same || switchedEpoch { started = newPerson() }
         return SignInSummary(switchedAccount: match == .different,
                              previousPersonUnconfirmed: before != nil && match == .unknown,
                              dormAndMeterCleared: Self.cleared(old, now: profile))
@@ -207,12 +268,13 @@ extension SchoolSession {
     /// (`commitLogin`): the lease lost meanwhile, nothing is written and `busy` is thrown.
     /// No portal token comes with it, so no dorm is read here (the app keeps the dorm address
     /// the portal page showed).
-    public func adoptWebState(_ elecampusState: Data, owning: LeaseOwnership) async throws -> SignInSummary {
+    public func adoptWebState(_ elecampusState: Data, dormAddress: String = "", owning: LeaseOwnership) async throws -> SignInSummary {
         guard let root = try? JSONValue.parse(elecampusState),
               let token = (root["logintoken"] ?? root["loginInfo"]?["token"])?.text, !token.isEmpty,
               let sys = root["loginInfo"]?["syscustid"]?.text, !sys.isEmpty else {
             throw ServiceError.malformed(.ecykt, "elecampus_state")
         }
+        let trimmedDorm = dormAddress.trimmingCharacters(in: .whitespacesAndNewlines)
         let areacode = root["schoolid"]?.text ?? EcyktSession.defaultAreacode
         let session = EcyktSession(token: token, syscustid: sys, custid: root["custInfo"]?["custid"]?.text,
                                    cardUnionID: root["custInfo"]?["custunionid"]?.text, areacode: areacode, userAgent: EcyktSession.defaultUserAgent,
@@ -227,32 +289,54 @@ extension SchoolSession {
         // As for the form sign-in: without the new dorm, a dorm and meter that may be someone
         // else's are not kept. No dorm is read here, so that happens right here.
         let dropDorm = match == .unknown && before != nil
-        let vault = vault, at = now()
+        let vault = vault
         var writing = false
+        var switchedEpoch = false
         let old: SchoolProfile?
         do {
             old = try await Self.commitLogin(owning, vault, from: start) { () -> SchoolProfile? in
-                if match != .same { try vault.markSnapshotStale(since: at) }
+                let needsSwitch = try Self.needsNewEpoch(match: match, vault: vault)
+                let newEpochID: String? = needsSwitch ? UUID().uuidString : nil
+                if let newEpochID {
+                    try vault.saveSessionEpoch(SessionEpoch(id: newEpochID, phase: .switching))
+                }
                 writing = true
+                if needsSwitch { switchedEpoch = true }
                 let old = (try? vault.profile()) ?? nil
-                if switched { try Self.clearPreviousPerson(vault) }
+                if needsSwitch { try Self.clearPreviousPerson(vault) }
                 // The web page never tells us the account: a saved password stays only when the
                 // card shows it is the same person (the widget keeps signing in with it).
                 // Nor its portal token: a re-exchange with it would sign the previous person in again.
-                if match != .same {
-                    try vault.saveAccount(nil)
-                    try vault.savePortalToken(nil)
-                }
                 try vault.saveEcyktSession(updated)
-                if dropDorm { try vault.saveProfile(SchoolProfile()) }
+                if dropDorm && !needsSwitch { try vault.saveProfile(SchoolProfile()) }
+                if !trimmedDorm.isEmpty {
+                    var profile = (try? vault.profile()) ?? nil ?? SchoolProfile()
+                    if profile.residence?.raw != trimmedDorm {
+                        profile.residence = PortalResidence(raw: trimmedDorm)
+                        profile.meter = nil
+                    }
+                    try vault.saveProfile(profile)
+                }
+                // Post-write read-back verification inside the same commit lock.
+                guard try vault.ecyktSession() == updated else {
+                    throw StorageError(operation: "verify credentials", status: -1)
+                }
+                if needsSwitch {
+                    guard try vault.portalToken() == nil, try vault.account() == nil else {
+                        throw StorageError(operation: "verify credentials", status: -1)
+                    }
+                }
+                if let newEpochID {
+                    try vault.saveSessionEpoch(SessionEpoch(id: newEpochID, phase: .activePendingClear))
+                }
                 return old
             }
         } catch {
             // As for the form sign-in: begun writes make the previous person's work stale.
-            if writing, match != .same { _ = newPerson() }
+            if writing, (match != .same || switchedEpoch) { _ = newPerson() }
             throw error
         }
-        if match != .same { _ = newPerson() }
+        if match != .same || switchedEpoch { _ = newPerson() }
         return SignInSummary(switchedAccount: switched,
                              previousPersonUnconfirmed: before != nil && match == .unknown,
                              dormAndMeterCleared: Self.cleared(old, now: (try? vault.profile()) ?? nil))
@@ -263,30 +347,53 @@ extension SchoolSession {
         public var items: [String]
     }
 
-    /// Marks the shared snapshot stale first, on its own: a mark that can't be written fails the
-    /// sign-out (`snapshotStale`) with every credential still stored, so the snapshot, which the
-    /// empty one may then fail to replace, is still that person's own. Then deletes the saved
-    /// password (it sits in the shared group the widget reads), then everything else; the
-    /// credentials' obtained/alive times go with their items. (The refresh lease and the empty
-    /// snapshot are the refresher's: `SnapshotRefresher.clear()`, which drops the mark once the
-    /// empty snapshot is saved.) A failed deletion doesn't stop the rest; the failures are
-    /// reported together at the end. Work still running for the person is stale either way.
-    public func signOut() throws {
+    /// Runs sign-out inside `profileLock` (failing closed without touching credentials if the
+    /// lock cannot be acquired): first writes `(newID, .switching)`, deletes all school items,
+    /// and only when every deletion succeeds advances to `(newID, .signedOutPendingClear)`.
+    /// If any deletion fails, stays in `(newID, .switching)` so `finishPendingClear()` retries
+    /// cleanup and lands in `.signedOut`.
+    public func signOut() async throws {
+        let vault = vault
+        let newID = UUID().uuidString
+        let failed: [String]
+        do {
+            failed = try await profileLock.lockedWhenFree { () throws -> [String] in
+                do {
+                    try vault.saveSessionEpoch(SessionEpoch(id: newID, phase: .switching))
+                } catch {
+                    throw SignOutFailure(items: ["sessionEpoch"])
+                }
+                var failed: [String] = []
+                let steps: [(String, () throws -> Void)] = [
+                    ("account", { try vault.saveAccount(nil) }),
+                    ("portalToken", { try vault.savePortalToken(nil) }),
+                    ("ecyktSession", { try vault.saveEcyktSession(nil) }),
+                    ("profile", { try vault.saveProfile(nil) }),
+                    ("loginDevice", { try vault.saveLoginDeviceID(nil) }),
+                ]
+                for (name, step) in steps {
+                    do { try step() } catch { failed.append(name) }
+                }
+                if !failed.isEmpty {
+                    // Stay in `(newID, .switching)` so `finishPendingClear` retries cleanup.
+                    return failed
+                }
+                do {
+                    try vault.saveSessionEpoch(SessionEpoch(id: newID, phase: .signedOutPendingClear))
+                } catch {
+                    return ["sessionEpoch"]
+                }
+                return []
+            }
+        } catch let error as SignOutFailure {
+            throw error
+        } catch {
+            // Fail closed when the commit lock cannot be acquired: do not touch credentials.
+            throw SignOutFailure(items: ["sessionEpoch"])
+        }
         signOutGeneration += 1
         personGeneration += 1
         loggedExpiries = []
-        do { try vault.markSnapshotStale(since: now()) } catch { throw SignOutFailure(items: ["snapshotStale"]) }
-        var failed: [String] = []
-        let steps: [(String, () throws -> Void)] = [
-            ("account", { try self.vault.saveAccount(nil) }),
-            ("portalToken", { try self.vault.savePortalToken(nil) }),
-            ("ecyktSession", { try self.vault.saveEcyktSession(nil) }),
-            ("profile", { try self.vault.saveProfile(nil) }),
-            ("loginDevice", { try self.vault.saveLoginDeviceID(nil) }),
-        ]
-        for (name, step) in steps {
-            do { try step() } catch { failed.append(name) }
-        }
         if !failed.isEmpty { throw SignOutFailure(items: failed) }
     }
 }

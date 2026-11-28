@@ -55,7 +55,8 @@ import Core
     /// parameters are app resources and stay.
     private var files: [URL] {
         guard let support = services.applicationSupport else { return [] }
-        return ["Water", "LaundryCache", "WaterSession", FileDebugLog.folderName].map { support.appendingPathComponent($0, isDirectory:true) }
+        return ["Water", "LaundryCache", "WaterSession", CardHistoryDiskCoordinator.folderName, FileDebugLog.folderName]
+            .map { support.appendingPathComponent($0, isDirectory:true) }
             + [CrashReportsLaunch.pendingFolder(in:support)]
             + [RetiredDiagnostics.exportFolder(in:FileManager.default.temporaryDirectory)]
     }
@@ -85,10 +86,11 @@ import Core
         guard !running else { return nil }
         running = true
         defer { running = false }
+        var expectedEpochID: String?
         let stopped = try await AppReset.run(marker:marker, now:Date(),
                                              lock:{ self.anyLock(shower:shower, laundry:laundry) },
-                                             signOut:{ await campus.signOutForReset() },
-                                             clear:{ try await self.clear() },
+                                             signOut:{ expectedEpochID = try await campus.signOutForReset() },
+                                             clear:{ try await self.clear(commitLock:campus.commitLock, expectedEpochID:expectedEpochID) },
                                              reload:{ await self.reload(campus:campus, shower:shower, laundry:laundry, theme:theme) },
                                              resync:{ self.resync(campus:campus, shower:shower) })
         if stopped == nil { finished() }
@@ -101,11 +103,12 @@ import Core
         running = true
         defer { running = false }
         let resumed: AppReset.Resumed?
+        var expectedEpochID: String?
         do {
             resumed = try await AppReset.resume(marker:marker, now:Date(),
                                                 lock:{ self.anyLock(shower:shower, laundry:laundry) },
-                                                signOut:{ await campus.signOutForReset() },
-                                                clear:{ try await self.clear() },
+                                                signOut:{ expectedEpochID = try await campus.signOutForReset() },
+                                                clear:{ try await self.clear(commitLock:campus.commitLock, expectedEpochID:expectedEpochID) },
                                                 reload:{ await self.reload(campus:campus, shower:shower, laundry:laundry, theme:theme) },
                                                 resync:{ self.resync(campus:campus, shower:shower) })
         } catch {
@@ -126,13 +129,14 @@ import Core
     }
 
     /// The main thread never waits for the shared lock here (`AppReset.clearWithoutBlocking`).
-    private func clear() async throws {
+    private func clear(commitLock: any SharedLock, expectedEpochID: String?) async throws {
         // The log's lines and salt in memory too, not only its folder (below). The widget's part
         // in the App Group goes here too, inside the widget's lock (`WidgetDebugLog.remove`).
         services.debugLog.clear()
         try await AppReset.clearWithoutBlocking(store:services.secureStore, preferences:services.defaults,
                                                 preferencesDomain:Bundle.main.bundleIdentifier ?? "",
-                                                shared:sharedPreferences, files:files)
+                                                shared:sharedPreferences, files:files,
+                                                commitLock:commitLock, expectedEpochID:expectedEpochID)
     }
 
     private func reload(campus: CampusModel, shower: ShowerModel, laundry: LaundryModel, theme: ThemeStore) async {

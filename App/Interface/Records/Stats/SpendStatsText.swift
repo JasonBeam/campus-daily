@@ -100,6 +100,8 @@ struct SpendStatsText {
 
     /// In the big number's place for a bar (or a span) without spending.
     var nothingSpent: String { warm ? "没花钱" : "无支出" }
+    /// In the big number's place for a gap bar whose records are incomplete and have ¥0 read.
+    var incompleteBar: String { "记录不全" }
 
     /// The line under a looked-at day: against the span's daily average; nil for today (not over
     /// yet), a day without spending and a week (a week's total doesn't compare with a day's).
@@ -120,11 +122,22 @@ struct SpendStatsText {
         return [Part(text:"较日均 "), Part(text:Self.signed(difference), strong:true)]
     }
 
-    /// The chart's VoiceOver value for a bar: 「11月19日，32.10 元」.
+    /// The chart's VoiceOver value for a bar:
+    /// - Gap day (`bar.unsure && bar.spent == .zero`): 「11月19日，记录不全」
+    /// - Confirmed ¥0 day (`!bar.unsure && bar.spent == .zero`): 「11月19日，0 元」
+    /// - Spent day: 「11月19日，32.10 元」
     func spokenBar(_ bar: SpendBar) -> String {
         guard let first = bar.days.first.flatMap(day) else { return "" }
         let date = SchoolCalendar.dayTitle(first, calendar:calendar)
         let name = bar.days.count > 1 ? (warm ? date + "那周" : date + "起一周") : date
+        if bar.unsure, bar.spent == .zero {
+            return "\(name)，记录不全"
+        }
+        if bar.spent == .zero {
+            var words = "\(name)，0 元"
+            if bar.isCurrent { words += bar.days.count > 1 ? "，本周还没过完" : "，今天还没过完" }
+            return words
+        }
         var words = "\(name)，\(bar.spent.yuanText) 元"
         if bar.isCurrent { words += bar.days.count > 1 ? "，本周还没过完" : "，今天还没过完" }
         if bar.unsure { words += "，记录可能不全" }
@@ -226,8 +239,40 @@ struct SpendStatsText {
 
     /// The records kept from before are shown and the newest could not be read
     /// (`CardRecordsModel.refreshFailed`): over the stats, as both they and the list are old.
+    /// Fallback wording when neither `savedAt` nor `cachedToday` is known.
     var refreshFailed: String {
-        warm ? "最新的记录没读到，这里是刚才读到的。下拉再试。" : "未能读取最新记录，当前显示此前读取的内容；可下拉重试"
+        refreshFailed(savedAt:nil, cachedToday:nil, now:Date())
+    }
+
+    /// Offline cache as-of hint (Camo 5626):
+    /// - Cached today with `savedAt`: 「今天 HH:mm」 (24-hour clock in `calendar`);
+    /// - Cached yesterday or earlier: 「M月d日」 (no space between month and day);
+    /// - Unknown timestamp fallback.
+    func refreshFailed(savedAt: Date?, cachedToday: Date?, now: Date = Date()) -> String {
+        let todayStart = calendar.startOfDay(for:now)
+        if let savedAt, calendar.isDate(savedAt, inSameDayAs:now),
+           cachedToday.map({ calendar.isDate($0, inSameDayAs:now) }) ?? true {
+            let parts = calendar.dateComponents([.hour, .minute], from:savedAt)
+            let clock = String(format:"%02d:%02d", parts.hour ?? 0, parts.minute ?? 0)
+            return warm
+                ? "最新的记录没读到，这里只到今天 \(clock)。下拉再试。"
+                : "未能读取最新记录，当前内容截至今天 \(clock)；可下拉重试"
+        }
+        if let day = cachedToday, calendar.startOfDay(for:day) < todayStart {
+            let title = SchoolCalendar.dayTitle(day, calendar:calendar)
+            return warm
+                ? "最新的记录没读到，这里只到 \(title)。下拉再试。"
+                : "未能读取最新记录，当前内容截至 \(title)；可下拉重试"
+        }
+        if let savedAt, calendar.startOfDay(for:savedAt) < todayStart {
+            let title = SchoolCalendar.dayTitle(savedAt, calendar:calendar)
+            return warm
+                ? "最新的记录没读到，这里只到 \(title)。下拉再试。"
+                : "未能读取最新记录，当前内容截至 \(title)；可下拉重试"
+        }
+        return warm
+            ? "最新的记录没读到，这里显示上次读到的。下拉再试。"
+            : "未能读取最新记录，当前显示此前读取的内容；可下拉重试"
     }
 
     /// The last category counted was tapped: read out, and for a while in the category note's place.

@@ -6,6 +6,11 @@
 //
 
 import Foundation
+#if canImport(Darwin)
+import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 #if canImport(os)
 import os
 #endif
@@ -20,12 +25,12 @@ public protocol SchoolReader: Sendable {
     func refresh(inBackground: Bool, mayMint: @Sendable () async -> Bool, owning: LeaseOwnership,
                  numbers: @Sendable (SchoolReading) async -> Void) async -> SchoolReading
     /// False only when the stored card session is known to be gone (signed out); a read that
-    /// fails says nothing.
-    func hasCardSession() async -> Bool
+    /// fails says nothing. Checked synchronously inside the commit lock before writing a snapshot.
+    func hasCardSession() -> Bool
 }
 
 public extension SchoolReader {
-    func hasCardSession() async -> Bool { true }
+    func hasCardSession() -> Bool { true }
 }
 
 extension SchoolSession: SchoolReader {}
@@ -92,13 +97,32 @@ public actor SnapshotRefresher {
     let store: SnapshotStoring
     /// Failures worth a look, by event name only (no values), e.g. the snapshot could not be saved.
     let diagnostic: @Sendable (String) -> Void
-    /// Nil = this process is the only refresher (tests of the in-process rules). Public for a
-    /// write that only needs the lease file's lock (`RefreshLease.locked`).
+    /// Nil only in unit tests / sample mode (backed by `inMemoryLock`). Production always has a
+    /// `RefreshLease` (which fails closed when its file is unavailable).
     public nonisolated let lease: RefreshLease?
+    private nonisolated let inMemoryLock: InMemoryCommitLock?
+    /// The commit lock for this refresher: `lease` in production (fails closed if its file is
+    /// unavailable), or `inMemoryLock` in tests/samples. Never falls open.
+    public nonisolated var commitLock: any SharedLock {
+        if let lease { return lease }
+        if let inMemoryLock { return inMemoryLock }
+        return FailingSharedLock()
+    }
     let leaseWait: TimeInterval
     let sleep: @Sendable (TimeInterval) async -> Void
     /// How often the lease is renewed while a read runs.
     let renewInterval: TimeInterval
+
+    /// Thread-safe holder for the `SessionEpoch` tracked across partial + final writes of one run.
+    private final class RunEpoch: @unchecked Sendable {
+        private let lock = NSLock()
+        private var value: SessionEpoch?
+        init(_ initial: SessionEpoch?) { value = initial }
+        var current: SessionEpoch? {
+            get { lock.withLock { value } }
+            set { lock.withLock { value = newValue } }
+        }
+    }
 
     private struct Run {
         let id: Int
@@ -127,10 +151,12 @@ public actor SnapshotRefresher {
     public init(school: SchoolReader, store: SnapshotStoring, lease: RefreshLease? = nil, leaseWait: TimeInterval = 15,
                 sleep: @escaping @Sendable (TimeInterval) async -> Void = { try? await Task.sleep(nanoseconds: UInt64($0 * 1_000_000_000)) },
                 renewInterval: TimeInterval = RefreshLease.renewInterval,
-                diagnostic: @escaping @Sendable (String) -> Void = SnapshotRefresher.osLog) {
+                diagnostic: @escaping @Sendable (String) -> Void = SnapshotRefresher.osLog,
+                inMemoryLock: InMemoryCommitLock? = nil) {
         self.school = school; self.store = store; self.lease = lease; self.leaseWait = leaseWait; self.sleep = sleep
         self.renewInterval = renewInterval
         self.diagnostic = diagnostic
+        self.inMemoryLock = lease == nil ? (inMemoryLock ?? InMemoryCommitLock()) : nil
     }
 
     public static let osLog: @Sendable (String) -> Void = { event in
@@ -177,32 +203,39 @@ public actor SnapshotRefresher {
         return await wait(for: id, task)
     }
 
-    /// Signed out: the shared snapshot goes back to empty and the lease is removed (whoever
-    /// holds it: the other process's read finds nobody signed in and writes nothing). A refresh
-    /// still running here is dropped. The lease's removal waits for the file's lock as
-    /// `revokeLease` does; the rest follows it in one step here.
+    /// Signed out or switched account: revokes the lease, invalidates any in-flight refresh in
+    /// this process, wipes `shared.snapshot` to `.empty` inside the commit lock, and advances any
+    /// pending-clear epoch (`.signedOutPendingClear` -> `.signedOut`, `.activePendingClear` -> `.active`).
     public func clear() async throws {
         await revokeLease()
         generation += 1
         current = nil
-        try store.saveSnapshot(SchoolSnapshotReducer.reduce(latest(), .signedOut))
+        let store = store
+        if let lease {
+            try await lease.locked(waitingAtMost: lease.lockWait) { try store.clearSnapshot() }
+        } else if let inMemoryLock {
+            try inMemoryLock.locked { try store.clearSnapshot() }
+        } else {
+            throw LeaseFile.Failure(step: "lock", code: ENOENT)
+        }
     }
 
-    /// The previous person's snapshot is still stored under the stale mark (its clean-up could
-    /// not write, or the app was killed before it did): replaced by the empty one and the mark
-    /// dropped, without the network, at launch, in the foreground and before each widget
-    /// timeline. The check, the write and the drop are one step inside the lease file's lock
-    /// (whoever holds the lease), so it never lands between another owner's compare and write;
-    /// the lease itself is neither taken nor waited for. Without a file to lock (no container
-    /// for it) nothing is done: the mark alone keeps the numbers hidden until the next write.
-    /// The lock is waited for at most `LeaseFile.defaultLockWait`, parking the calling thread
-    /// (tests); the app and the widget call `finishPendingClear(lockWait:)`. Not free by then,
-    /// nothing is done this time (logged) and the mark stays for the next call.
+    /// Finishes any pending clear (`.activePendingClear`, `.signedOutPendingClear`, or legacy
+    /// 0.11.5 `shared.snapshotStale`) inside the commit lock without using the network.
+    /// Fails closed (does nothing) when the production lease has no lock file.
     public nonisolated func finishPendingClear() {
-        guard let lease, lease.isAvailable else { return }
         let store = store
-        do { try lease.locked { try store.finishPendingClear() } } catch {
-            pendingClearFailed(error)
+        if let lease {
+            guard lease.isAvailable else { return }
+            do { try lease.locked { try store.finishPendingClear() } } catch {
+                pendingClearFailed(error)
+            }
+            return
+        }
+        if let inMemoryLock {
+            do { try inMemoryLock.locked { try store.finishPendingClear() } } catch {
+                pendingClearFailed(error)
+            }
         }
     }
 
@@ -210,10 +243,18 @@ public actor SnapshotRefresher {
     /// before each timeline): the wait for the file's lock suspends, for at most `lockWait`
     /// seconds, and holds no thread meanwhile.
     public nonisolated func finishPendingClear(lockWait: TimeInterval) async {
-        guard let lease, lease.isAvailable else { return }
         let store = store
-        do { try await lease.locked(waitingAtMost: lockWait) { try store.finishPendingClear() } } catch {
-            pendingClearFailed(error)
+        if let lease {
+            guard lease.isAvailable else { return }
+            do { try await lease.locked(waitingAtMost: lockWait) { try store.finishPendingClear() } } catch {
+                pendingClearFailed(error)
+            }
+            return
+        }
+        if let inMemoryLock {
+            do { try inMemoryLock.locked { try store.finishPendingClear() } } catch {
+                pendingClearFailed(error)
+            }
         }
     }
 
@@ -260,39 +301,39 @@ public actor SnapshotRefresher {
         if current?.id == id { current = nil }
     }
 
-    /// A login from the app's form or Settings (password login, saving a password, the web
-    /// sign-in) and the hot-water hand-off under the lease, so none of them runs beside
-    /// the other process's automatic login. Waits up to `leaseWait` for a read in either
-    /// process, and only a few seconds (one lock wait) for a file lock that stays held
-    /// (`acquire(_:)`); still held then, nothing is sent and `SchoolLoginFailure.busy` is thrown. The
-    /// lease is kept alive while `body` runs and given back after it. Every credential `body`
-    /// writes goes through `owning`: one locked step with the check that the lease is still
-    /// ours, so there is no variant without it. The heartbeat stops quietly when a renewal fails
-    /// (the app was suspended past the lease, and the other process may have taken it), while
-    /// the body keeps running; its writes then find the lease lost and write nothing. Without a
-    /// lease, or with one that has no file to lock (the app with no container for one, where no
-    /// other process can take it either), `body` just runs with `.unchecked`.
+    /// Runs a login or hot-water hand-off under the cross-process refresh lease.
+    /// Fails closed (`SchoolLoginFailure.busy`) when the production lease has no lock file
+    /// (`!shared.isAvailable`) or cannot be acquired — never falls back to `.unchecked`.
     public nonisolated func holdingLease<T: Sendable>(_ body: @Sendable (_ owning: LeaseOwnership) async throws -> T) async throws -> T {
-        guard let shared = lease, shared.isAvailable else { return try await body(.unchecked) }
-        // Its own owner, one per call: neither the lease this process's refresh holds nor one
-        // another login or hand-off here holds is "ours" to reuse, so a second one waits
-        // for the first, and the first giving its lease back never releases the second's.
-        let lease = shared.with(owner: shared.owner + "-login-" + UUID().uuidString)
-        guard await acquire(lease) else {
-            try Task.checkCancellation()
-            throw SchoolLoginFailure.busy
+        if let shared = lease {
+            guard shared.isAvailable else {
+                try Task.checkCancellation()
+                throw SchoolLoginFailure.busy
+            }
+            // Its own owner, one per call: neither the lease this process's refresh holds nor one
+            // another login or hand-off here holds is "ours" to reuse, so a second one waits
+            // for the first, and the first giving its lease back never releases the second's.
+            let lease = shared.with(owner: shared.owner + "-login-" + UUID().uuidString)
+            guard await acquire(lease) else {
+                try Task.checkCancellation()
+                throw SchoolLoginFailure.busy
+            }
+            let heartbeat = Self.keepAlive(lease, every: renewInterval)
+            do {
+                let value = try await body(LeaseOwnership(lease))
+                heartbeat.cancel(); await heartbeat.value
+                await lease.release(waitingAtMost: lease.lockWait)
+                return value
+            } catch {
+                heartbeat.cancel(); await heartbeat.value
+                await lease.release(waitingAtMost: lease.lockWait)
+                throw error
+            }
         }
-        let heartbeat = Self.keepAlive(lease, every: renewInterval)
-        do {
-            let value = try await body(LeaseOwnership(lease))
-            heartbeat.cancel(); await heartbeat.value
-            await lease.release(waitingAtMost: lease.lockWait)
-            return value
-        } catch {
-            heartbeat.cancel(); await heartbeat.value
-            await lease.release(waitingAtMost: lease.lockWait)
-            throw error
+        if let inMemoryLock {
+            return try await body(.inMemory(inMemoryLock))
         }
+        throw SchoolLoginFailure.busy
     }
 
     /// The shortest lock wait one try to take the lease gets, even with `leaseWait` (nearly) used up.
@@ -348,6 +389,36 @@ public actor SnapshotRefresher {
         // Kept alive for the whole read: a slow chain must not let the other process take over
         // halfway and mint or log in a second time.
         let heartbeat = lease.map { Self.keepAlive($0, every: renewInterval) }
+        let ownership: LeaseOwnership
+        if let lease {
+            ownership = LeaseOwnership(lease)
+        } else if let inMemoryLock {
+            ownership = .inMemory(inMemoryLock)
+        } else {
+            ownership = .unavailable
+        }
+        let store = store, school = school
+        let startEpoch: SessionEpoch?
+        do {
+            guard let prepared = try await ownership.write({ () throws -> SessionEpoch? in
+                try store.prepareRefreshEpoch(hasCardSession: school.hasCardSession())
+            }) else {
+                heartbeat?.cancel(); await heartbeat?.value
+                if let lease { await lease.release(waitingAtMost: lease.lockWait) }
+                return RefreshReport(outcome: .leaseLost, snapshot: latest(), snapshotSaved: false)
+            }
+            startEpoch = prepared
+        } catch {
+            heartbeat?.cancel(); await heartbeat?.value
+            if let lease { await lease.release(waitingAtMost: lease.lockWait) }
+            return RefreshReport(outcome: .interrupted, snapshot: latest(), snapshotSaved: false)
+        }
+        if let startEpoch, !startEpoch.allowsRefreshCommit {
+            heartbeat?.cancel(); await heartbeat?.value
+            if let lease { await lease.release(waitingAtMost: lease.lockWait) }
+            return RefreshReport(outcome: .notSignedIn, snapshot: .empty, snapshotSaved: false)
+        }
+        let runEpoch = RunEpoch(startEpoch)
         // The balance and the meter are stored as soon as they are in (a widget that runs out of
         // time while the card records load keeps them); the full reading is stored at the end.
         let reading = await school.refresh(inBackground: inBackground,
@@ -355,11 +426,13 @@ public actor SnapshotRefresher {
                                                guard let lease else { return true }
                                                return await lease.renew(waitingAtMost: lease.lockWait)
                                            },
-                                           owning: LeaseOwnership(lease),
+                                           owning: ownership,
                                            numbers: { [weak self] partial in
-                                               _ = await self?.write(partial, started: started, lease: lease)
+                                               _ = await self?.write(partial, started: started, runEpoch: runEpoch,
+                                                                     ownership: ownership, lease: lease)
                                            })
-        let (written, stored) = await write(reading, started: started, lease: lease)
+        let (written, stored) = await write(reading, started: started, runEpoch: runEpoch,
+                                            ownership: ownership, lease: lease)
         var report = written
         // Only a read this round actually stored as the newest one (whether or not the local save
         // then failed) is delivered; a failed current round delivers unknown. One whose last write
@@ -392,43 +465,64 @@ public actor SnapshotRefresher {
     /// `stored`: this reading went into the snapshot as the newest one (its save attempted under
     /// the lease, and not lost to a sign-out right after); false when it was skipped.
     @discardableResult
-    private func write(_ reading: SchoolReading, started: Int, lease: RefreshLease?) async -> (report: RefreshReport, stored: Bool) {
+    private func write(_ reading: SchoolReading, started: Int, runEpoch: RunEpoch,
+                       ownership: LeaseOwnership, lease: RefreshLease?) async -> (report: RefreshReport, stored: Bool) {
         guard started == generation, !Task.isCancelled else {
             let outcome: RefreshReport.Outcome = started == generation ? reading.outcome : .notSignedIn
             return (RefreshReport(outcome: outcome, snapshot: latest(), snapshotSaved: false), false)
         }
-        enum Step { case older(HomeSnapshot), stored(HomeSnapshot, saved: Bool) }
-        let store = store, diagnostic = diagnostic
-        let step = (try? await LeaseOwnership(lease).write { () -> Step in
+        if reading.outcome == .interrupted || reading.outcome == .leaseLost {
+            return (RefreshReport(outcome: reading.outcome, snapshot: latest(), snapshotSaved: false),
+                    reading.outcome == .interrupted)
+        }
+        enum Step {
+            case older(HomeSnapshot)
+            case signedOut(HomeSnapshot)
+            case epochRejected(HomeSnapshot)
+            case stored(HomeSnapshot, saved: Bool, committedEpoch: SessionEpoch?)
+        }
+        let store = store, school = school, diagnostic = diagnostic, expected = runEpoch.current
+        let step = (try? await ownership.write { () -> Step in
+            guard school.hasCardSession() else {
+                return .signedOut(latest())
+            }
+            let currentEpoch: SessionEpoch?
+            do { currentEpoch = try store.sessionEpoch() } catch {
+                return .epochRejected(latest())
+            }
+            if let expected {
+                guard let currentEpoch, currentEpoch.id == expected.id, currentEpoch.allowsRefreshCommit else {
+                    return .epochRejected(latest())
+                }
+            } else if currentEpoch != nil {
+                return .epochRejected(latest())
+            }
             let stored = latest()
             guard !Self.isOlder(reading, than: stored) else { return .older(stored) }
             let snapshot = Self.apply(reading, to: stored)
-            do { try store.saveSnapshot(snapshot) } catch {
+            do {
+                guard let result = try store.commitSnapshot(snapshot, expectedEpoch: expected) else {
+                    return .epochRejected(latest())
+                }
+                return .stored(result.snapshot, saved: true, committedEpoch: result.epoch)
+            } catch {
                 diagnostic(Self.saveFailedEvent(error))
-                return .stored(snapshot, saved: false)
+                return .stored(snapshot, saved: false, committedEpoch: nil)
             }
-            return .stored(snapshot, saved: true)
         }) ?? nil
         let snapshot: HomeSnapshot, saved: Bool
         switch step {
-        case nil, .older?:
+        case .signedOut(let stored)?:
+            return (RefreshReport(outcome: .notSignedIn, snapshot: stored, snapshotSaved: false), false)
+        case nil, .older?, .epochRejected?:
             let stored: HomeSnapshot
-            if case .older(let s)? = step { stored = s } else { stored = latest() }
+            if case .older(let s)? = step { stored = s }
+            else if case .epochRejected(let s)? = step { stored = s }
+            else { stored = latest() }
             return (RefreshReport(outcome: reading.outcome, snapshot: stored, snapshotSaved: false), false)
-        case .stored(let s, let ok)?:
+        case .stored(let s, let ok, let committedEpoch)?:
             snapshot = s; saved = ok
-        }
-        // After the save: the other process may sign out now (its lease removal first, then its
-        // items). The card session is read first and the lease checked after that read, so a
-        // sign-out that lands while the session is read is still seen. The lease check, the
-        // compare and the clear are one locked step: only the snapshot this read saved is
-        // cleared, never one stored since (the next person's).
-        if saved, let lease, !(await school.hasCardSession()) {
-            let lost: Void? = await lease.afterLosing(waitingAtMost: lease.lockWait) {
-                guard latest() == snapshot else { return }
-                try? store.saveSnapshot(SchoolSnapshotReducer.reduce(snapshot, .signedOut))
-            }
-            if lost != nil { return (RefreshReport(outcome: .notSignedIn, snapshot: latest(), snapshotSaved: false), false) }
+            if ok { runEpoch.current = committedEpoch }
         }
         return (RefreshReport(outcome: reading.outcome, snapshot: snapshot, snapshotSaved: saved), true)
     }
@@ -465,7 +559,7 @@ public actor SnapshotRefresher {
         case .interrupted, .leaseLost:
             return s
         case .notSignedIn:
-            guard s != .empty else { return s }
+            guard !s.isEmpty else { return s }
             s = SchoolSnapshotReducer.reduce(s, .sessionExpired(.sessionExpired(.ecykt), at: reading.checkedAt))
         case .needsLogin(let e):
             s = SchoolSnapshotReducer.reduce(s, .sessionExpired(e, at: reading.checkedAt))

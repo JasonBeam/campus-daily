@@ -111,7 +111,7 @@ final class KeychainStoreTests: XCTestCase {
         XCTAssertEqual(StoreKey.schoolEcykt.accessibility, .afterFirstUnlockThisDeviceOnly)
         XCTAssertEqual(StoreKey.allCases.filter(\.isShared),
                        [.schoolPortal, .schoolEcykt, .schoolProfile, .schoolPassword, .schoolDevice, .sharedSnapshot, .sharedReminderLines,
-                        .sharedCredentialLog, .sharedResetMarker, .sharedSnapshotStale])
+                        .sharedCredentialLog, .sharedResetMarker, .sharedSnapshotStale, .sharedSessionEpoch])
         XCTAssertEqual(StoreKey.schoolPassword.accessibility, .afterFirstUnlockThisDeviceOnly)
         XCTAssertEqual(PreferenceKey.reminder("card"), "xrc.reminder.card")
         XCTAssertEqual(SharedSnapshotStore.widgetKind, "XiaoRiChangBalances")
@@ -133,8 +133,17 @@ final class KeychainStoreTests: XCTestCase {
         XCTAssertEqual(StoreKey.laundryHistory.service, "org.zaxh.xiaorichang.laundry.history.v1")
         XCTAssertEqual(StoreKey.laundryHistorySalt.service, "org.zaxh.xiaorichang.laundry.historySalt.v1")
         XCTAssertEqual(StoreKey.sharedSnapshotStale.service, "org.zaxh.xiaorichang.shared.snapshotStale.v1")
+        XCTAssertEqual(StoreKey.sharedSessionEpoch.service, "org.zaxh.xiaorichang.shared.sessionEpoch.v1")
         XCTAssertEqual(StoreKey.showerStartMode.service, "org.zaxh.xiaorichang.water.startMode.v1")
-        XCTAssertEqual(StoreKey.allCases.count, 18, "a new item needs its stored name pinned here")
+        XCTAssertEqual(StoreKey.showerBindingEpoch.service, "org.zaxh.xiaorichang.water.bindingEpoch.v1")
+        XCTAssertEqual(StoreKey.cardHistorySession.service, "org.zaxh.xiaorichang.cardHistory.session.v1")
+        XCTAssertEqual(StoreKey.allCases.count, 21, "a new item needs its stored name pinned here")
+    }
+
+    /// The card-history session anchor stays in the app's private group and requires unlock.
+    func testCardHistorySessionIsPrivateAndWhenUnlocked() {
+        XCTAssertFalse(StoreKey.cardHistorySession.isShared)
+        XCTAssertEqual(StoreKey.cardHistorySession.accessibility, .whenUnlockedThisDeviceOnly)
     }
 
     /// The finished-order list and its salt stay in the app's private group: the widget can't read them.
@@ -147,6 +156,9 @@ final class KeychainStoreTests: XCTestCase {
     /// The Swift names say shower; the stored names stay what installed builds already wrote.
     func testShowerItemsKeepTheirStoredNames() {
         XCTAssertEqual(StoreKey.showerBinding.service, "org.zaxh.xiaorichang.water.binding.v1")
+        XCTAssertEqual(StoreKey.showerBindingEpoch.service, "org.zaxh.xiaorichang.water.bindingEpoch.v1")
+        XCTAssertFalse(StoreKey.showerBindingEpoch.isShared)
+        XCTAssertEqual(StoreKey.showerBindingEpoch.accessibility, .afterFirstUnlockThisDeviceOnly)
         XCTAssertEqual(StoreKey.showerSession.service, "org.zaxh.xiaorichang.water.session.v1")
         XCTAssertEqual(PreferenceKey.showerNeedsResidenceReview, "xrc.water.needsResidenceReview")
     }
@@ -279,7 +291,9 @@ final class KeychainStoreTests: XCTestCase {
     /// changes what the widget can see or when an item can be read; update docs/privacy.md too.
     func testEveryItemsGroupAndAccessibilityArePinned() throws {
         let shared: Set<StoreKey> = [.schoolPortal, .schoolEcykt, .schoolProfile, .schoolPassword, .schoolDevice,
-                                     .sharedSnapshot, .sharedReminderLines, .sharedCredentialLog, .sharedResetMarker, .sharedSnapshotStale]
+                                     .sharedSnapshot, .sharedReminderLines, .sharedCredentialLog, .sharedResetMarker,
+                                     .sharedSnapshotStale, .sharedSessionEpoch]
+        let whenUnlocked: Set<StoreKey> = [.cardHistorySession]
         let kc = appKeychain()
         let store = appStore(kc)
         for k in StoreKey.allCases {
@@ -287,7 +301,8 @@ final class KeychainStoreTests: XCTestCase {
             let home = shared.contains(k) ? group : app, other = shared.contains(k) ? app : group
             XCTAssertEqual(kc.items[key(k, home)], Data(k.rawValue.utf8), k.rawValue)
             XCTAssertNil(kc.items[key(k, other)], k.rawValue)
-            XCTAssertEqual(kc.accessibility[key(k, home)], .afterFirstUnlockThisDeviceOnly, k.rawValue)
+            let expected: StoreKey.Accessibility = whenUnlocked.contains(k) ? .whenUnlockedThisDeviceOnly : .afterFirstUnlockThisDeviceOnly
+            XCTAssertEqual(kc.accessibility[key(k, home)], expected, k.rawValue)
         }
     }
 
@@ -528,6 +543,17 @@ final class KeychainStoreTests: XCTestCase {
         kc.readStatus = -25308 // errSecInteractionNotAllowed (locked device)
         let store = KeychainSecureStore(backend: kc, accessGroup: nil)
         XCTAssertThrowsError(try store.read(.schoolEcykt)) { XCTAssertEqual(($0 as? StorageError)?.status, -25308) }
+    }
+
+    func testCardHistorySessionUsesPrivateGroupAndWhenUnlockedAccessibility() throws {
+        let kc = appKeychain()
+        let store = appStore(kc)
+        try store.write(Data("anchor".utf8), for: .cardHistorySession)
+        XCTAssertFalse(StoreKey.cardHistorySession.isShared)
+        XCTAssertEqual(StoreKey.cardHistorySession.accessibility, .whenUnlockedThisDeviceOnly)
+        XCTAssertEqual(kc.items[key(.cardHistorySession, app)], Data("anchor".utf8))
+        XCTAssertNil(kc.items[key(.cardHistorySession, group)])
+        XCTAssertEqual(kc.accessibility[key(.cardHistorySession, app)], .whenUnlockedThisDeviceOnly)
     }
 }
 

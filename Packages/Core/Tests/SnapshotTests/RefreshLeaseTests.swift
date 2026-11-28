@@ -54,7 +54,7 @@ final class RefreshLeaseTests: XCTestCase {
     }
 
     /// A locked step runs whoever holds the lease, keeps the lock while it runs, and leaves the
-    /// lease as it was. Without a file it just runs.
+    /// lease as it was. Without a file it fails closed and does not run `body`.
     func testALockedStepRunsWhoeverHoldsTheLease() throws {
         let app = lease("app-1"), widget = lease("widget-1")
         XCTAssertTrue(widget.acquire())
@@ -66,18 +66,20 @@ final class RefreshLeaseTests: XCTestCase {
         XCTAssertTrue(widget.holds())
         XCTAssertFalse(app.holds())
         XCTAssertThrowsError(try app.locked { throw CocoaError(.fileWriteUnknown) }, "what the step throws is rethrown")
-        XCTAssertEqual(try RefreshLease(file: nil, owner: "app-2").locked { 8 }, 8)
+        var ranWithoutFile = false
+        XCTAssertThrowsError(try RefreshLease(file: nil, owner: "app-2").locked { ranWithoutFile = true; return 8 })
+        XCTAssertFalse(ranWithoutFile, "no lock file fails closed")
     }
 
-    /// A lease file is configured but can't be opened (protected before the first unlock): the
-    /// locked step does not run its body unlocked; it throws, and nothing ran. Only a lease
-    /// with no file at all runs it as it is.
+    /// A lease file that is missing or can't be opened (protected before the first unlock): the
+    /// locked step does not run its body unlocked; it throws, and nothing ran.
     func testALockedStepThatCannotTakeTheLockDoesNotRun() {
         let missing = FileManager.default.temporaryDirectory.appendingPathComponent("no-such-dir-\(UUID().uuidString)/lease")
         var ran = false
         XCTAssertThrowsError(try RefreshLease(file: LeaseFile(url: missing), owner: "app-1", now: clock.function).locked { ran = true })
         XCTAssertFalse(ran, "the body never ran without the lock")
-        XCTAssertEqual(try RefreshLease(file: nil, owner: "app-2").locked { 8 }, 8)
+        XCTAssertThrowsError(try RefreshLease(file: nil, owner: "app-2").locked { ran = true; return 8 })
+        XCTAssertFalse(ran, "nil lease file also fails closed")
     }
 
     /// Sign-out from the app while the widget is inside a lease step: the wait for the file

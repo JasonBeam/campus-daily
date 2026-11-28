@@ -91,6 +91,15 @@ public actor SchoolSession {
 
     private func read(inBackground: Bool, mayMint: @Sendable () async -> Bool, owning: LeaseOwnership,
                       numbers: @Sendable (SchoolReading) async -> Void) async -> SchoolReading {
+        // Check session epoch before touching credentials or network: never refresh during
+        // switching or signed-out states; Keychain error is an interruption.
+        do {
+            if let epoch = try vault.sessionEpoch(), !epoch.allowsRefreshCommit {
+                return SchoolReading(outcome: .notSignedIn, checkedAt: now())
+            }
+        } catch {
+            return unreadableSession(error)
+        }
         // A read the Keychain refuses (before the first unlock) says nothing about the login:
         // only a read that finds nothing is "not signed in". A session that no longer decodes
         // won't on the next try either: the user signs in again.

@@ -91,8 +91,18 @@ final class AccountSwitchSnapshotTests: XCTestCase {
         var value: Int { lock.withLock { n } }
     }
 
+    private var createdLeases: [URL] = []
+
+    override func tearDown() {
+        createdLeases.forEach { try? FileManager.default.removeItem(at:$0) }
+        createdLeases = []
+        super.tearDown()
+    }
+
     private func leaseFile() -> LeaseFile {
-        LeaseFile(url:FileManager.default.temporaryDirectory.appendingPathComponent("switch-lease-\(UUID().uuidString)"))
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("switch-lease-\(UUID().uuidString)")
+        createdLeases.append(url)
+        return LeaseFile(url:url)
     }
 
     private func makeServices(_ store: ScriptedStore, http: HTTPClient, lease: LeaseFile?, redraws: Counter = Counter(),
@@ -151,7 +161,7 @@ final class AccountSwitchSnapshotTests: XCTestCase {
         store.refusing = []
         await relaunched.finishPendingClear()
         XCTAssertNil(try store.read(.sharedSnapshotStale))
-        XCTAssertEqual(try SharedSnapshotStore(store:store).loadSnapshot(), .empty)
+        XCTAssertEqual(try SharedSnapshotStore(store:store).loadSnapshot()?.isEmpty, true)
         XCTAssertFalse(showsPersonA(relaunched.snapshot))
     }
 
@@ -160,7 +170,7 @@ final class AccountSwitchSnapshotTests: XCTestCase {
     func testASwitchGivesTheRecordsPagesANewIdentityAndForgetsTheStats() async throws {
         let store = ScriptedStore()
         try seedPersonA(store)
-        let services = makeServices(store, http:CardCheck(card:"SYNTHETIC-CARD-B"), lease:nil)
+        let services = makeServices(store, http:CardCheck(card:"SYNTHETIC-CARD-B"), lease:leaseFile())
         let campus = makeCampus(services)
         services.defaults.set("term", forKey:SpendSpan.storeKey)
         services.defaults.set("20261114", forKey:TermStartStore.key)
@@ -188,7 +198,7 @@ final class AccountSwitchSnapshotTests: XCTestCase {
         try StoredSchoolVault(store:store).saveEcyktSession(EcyktSession(token:"SYNTHETIC-A", syscustid:"SYNTHETIC-SYS",
                                                                         cardUnionID:"SYNTHETIC-CARD-A"))
         try SharedSnapshotStore(store:store).saveSnapshot(SampleData.homeSnapshot(now:Date()))
-        let campus = makeCampus(makeServices(store, http:CardCheck(card:"SYNTHETIC-CARD-B"), lease:nil))
+        let campus = makeCampus(makeServices(store, http:CardCheck(card:"SYNTHETIC-CARD-B"), lease:leaseFile()))
         let pageA = CardRecordsSource.school(campus)
         XCTAssertNotNil(pageA.prefill?(), "A's own page shows home's records")
 
@@ -208,8 +218,9 @@ final class AccountSwitchSnapshotTests: XCTestCase {
     }
 
     /// A home refresh started for A reads A's numbers (¥56.50) after B signed in, before A's
-    /// widget snapshot is cleared (no lease file: nothing keeps its write out of that gap):
-    /// home never shows them, reminders never judge them, and the clean-up leaves none stored.
+    /// widget snapshot is cleared (in-memory commit lock without cross-process lease exclusivity,
+    /// so A's read finishes right in that gap): `SessionEpoch` rejects A's write, home never shows
+    /// A's numbers, reminders never judge them, and the clean-up leaves an empty snapshot for B.
     func testARefreshStartedBeforeASwitchDoesNotPutThePreviousPersonBack() async throws {
         let store = ScriptedStore()
         try seedPersonA(store)
@@ -220,7 +231,9 @@ final class AccountSwitchSnapshotTests: XCTestCase {
         let reminders = Reminders.sample(defaults:services.defaults)
         var judged: [HomeSnapshot] = []
         reminders.campusEvaluated = { judged.append($0) }
-        let campus = makeCampus(services, reminders:reminders)
+        let stack = SchoolRefreshStack.inMemory(store:store, http:http)
+        let shower = ShowerModel(services:services, reminders:reminders, activities:nil, gate:LiveShowerGate())
+        let campus = CampusModel(services:services, stack:stack, reminders:reminders) { shower }
         XCTAssertTrue(showsPersonA(campus.snapshot))
 
         let refreshed = Counter()
@@ -230,8 +243,8 @@ final class AccountSwitchSnapshotTests: XCTestCase {
         http.stopHolding()
         http.card = "SYNTHETIC-CARD-B"
 
-        // B is signed in (stored, A's snapshot marked stale); right before A's snapshot is
-        // cleared, A's read gets its answers and finishes.
+        // B is signed in (stored, epoch advanced to `.activePendingClear`); right before A's
+        // snapshot is cleared, A's read gets its answers and tries to commit.
         var storedInTheGap: HomeSnapshot?
         var homeInTheGap: HomeSnapshot?
         campus.beforeSnapshotCleared = {
@@ -245,12 +258,12 @@ final class AccountSwitchSnapshotTests: XCTestCase {
         await refresh.value
 
         XCTAssertEqual(refreshed.value, 1, "A's refresh finished before the clean-up's clear")
-        XCTAssertEqual(storedInTheGap?.card.value, fresh, "A's read was written in the gap")
+        XCTAssertNil(storedInTheGap, "SessionEpoch rejects A's late write and hides the snapshot in the gap")
         // Home still holds A's earlier numbers until the clean-up empties it; not the new read.
         XCTAssertNotEqual(homeInTheGap?.card.value, fresh, "home, A's refresh just back")
         XCTAssertFalse(isA(campus.snapshot), "home, after the clean-up")
         XCTAssertFalse(isA(try SharedSnapshotStore(store:store).loadSnapshot()), "stored, after the clean-up")
-        XCTAssertEqual(try SharedSnapshotStore(store:store).loadSnapshot(), .empty)
+        XCTAssertEqual(try SharedSnapshotStore(store:store).loadSnapshot()?.isEmpty, true)
         XCTAssertNil(try store.read(.sharedSnapshotStale))
         XCTAssertFalse(judged.contains(where:isA), "reminders never judged A's numbers")
     }
@@ -259,7 +272,7 @@ final class AccountSwitchSnapshotTests: XCTestCase {
         let store = ScriptedStore()
         try seedPersonA(store)
         let redraws = Counter()
-        let campus = makeCampus(makeServices(store, http:CardCheck(card:"SYNTHETIC-CARD-B"), lease:nil, redraws:redraws))
+        let campus = makeCampus(makeServices(store, http:CardCheck(card:"SYNTHETIC-CARD-B"), lease:leaseFile(), redraws:redraws))
         store.refusing = [.sharedSnapshot]
         try await campus.adoptWebState(Self.webLogin(card:"SYNTHETIC-CARD-B"))
         XCTAssertGreaterThanOrEqual(redraws.value, 1, "asked to draw again though nothing was written")
@@ -276,13 +289,13 @@ final class AccountSwitchSnapshotTests: XCTestCase {
         try vault.saveEcyktSession(EcyktSession(token:"SYNTHETIC-A", syscustid:"SYNTHETIC-SYS", cardUnionID:"SYNTHETIC-CARD-A"))
         try vault.savePortalToken(PortalToken("SYNTHETIC-PORTAL"))
         let credentials = try vault.credentialBytes()
-        let services = makeServices(store, http:SampleHTTPClient(), lease:nil, support:try Fixture.supportWithProfile())
+        let services = makeServices(store, http:SampleHTTPClient(), lease:leaseFile(), support:try Fixture.supportWithProfile())
         let reminders = Reminders.sample(defaults:services.defaults)
         let shower = ShowerModel(services:services, reminders:reminders, activities:nil, gate:LiveShowerGate())
         let campus = CampusModel(services:services, stack:services.schoolStack(), reminders:reminders) { shower }
         await waitUntil { shower.gateRecord != .notLoaded && shower.profileLoaded }
         XCTAssertTrue(shower.mayStart)
-        store.refusing = [.sharedSnapshotStale, .sharedSnapshot]
+        store.refusing = [.sharedSessionEpoch, .sharedSnapshotStale, .sharedSnapshot]
 
         campus.signOut()
         await waitUntil { campus.signOutFailed }

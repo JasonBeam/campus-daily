@@ -410,6 +410,29 @@ final class CardHistoryTests: XCTestCase {
         XCTAssertTrue(load.history.reachedEnd)
         XCTAssertTrue(CardDays.groups(history: load.history, app: [], now: noon).isEmpty)
     }
+
+    /// Revo #4: when `total` says 65 rows exist across 2 pages (50 + 15 expected), but page 2
+    /// actually returns only 10 rows (< expected 15), the range closes with the affected tail days
+    /// marked unsure so they never show a fake complete day total.
+    func testShortFinalPageBelowExpectedRemainingMarksDaysUnsure() {
+        var history = CardHistory(now: noon)
+        let first = history.nextQuery!
+        // Page 1: full 50 rows across 10/30 (30) and 10/29 (20).
+        history.receive(CardRecordPage(total: 65, rows: meals("20261030", 30) + meals("20261029", 20)), for: first)
+        XCTAssertEqual(history.nextQuery?.page, 2)
+
+        // Page 2: school claims total=65 (so 15 remaining expected), but only sends 10 rows on 10/25.
+        history.receive(CardRecordPage(total: 65, rows: meals("20261025", 10)), for: history.nextQuery!)
+        XCTAssertEqual(history.nextQuery?.end, "20261016", "range closed after short final page")
+        XCTAssertTrue(history.isComplete(day: "20261030"), "newer than the cut")
+        XCTAssertTrue(history.isComplete(day: "20261029"), "page 1 filled through 10/29")
+        for day in ["20261025", "20261024", "20261017"] {
+            XCTAssertFalse(history.isComplete(day: day), "\(day) must be marked unsure when final page is short")
+        }
+        let groups = CardDays.groups(history: history, app: [], now: noon)
+        XCTAssertNotNil(groups.first(where: { $0.id == "20261030" })?.total)
+        XCTAssertNil(groups.first(where: { $0.id == "20261025" })?.total, "incomplete day must not show a total")
+    }
 }
 
 /// The read behind the page: the stored card session as is, nothing minted or written.
