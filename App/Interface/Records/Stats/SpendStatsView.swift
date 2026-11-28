@@ -273,10 +273,18 @@ struct SpendStatsView: View {
 
     private static func join(_ parts: [SpendStatsText.Part]) -> Text {
         parts.reduce(Text(verbatim:"")) { line, part in
-            let run = part.strong ? Text(part.text).fontWeight(.semibold).foregroundStyle(Theme.ink)
+            let run = part.strong ? Text(Self.nonBreakingRun(part.text)).fontWeight(.semibold).foregroundStyle(Theme.ink)
                                   : Text(part.text).foregroundStyle(Theme.ink2)
             return Text("\(line)\(run)")
         }
+    }
+
+    /// Keeps a leading sign (`+` / `−`) glued to `¥` with a Word Joiner (U+2060) so line wrapping
+    /// at large Dynamic Type sizes moves the entire signed amount as one unit.
+    static func nonBreakingRun(_ text: String) -> String {
+        text.replacingOccurrences(of:"\u{2212}¥", with:"\u{2212}\u{2060}¥")
+            .replacingOccurrences(of:"+¥", with:"+\u{2060}¥")
+            .replacingOccurrences(of:"-¥", with:"-\u{2060}¥")
     }
 
     /// The average line with a comparison as long as the total, the widest it is likely to be.

@@ -454,17 +454,25 @@ struct PowerChoice: Identifiable, Equatable {
 
     /// Reset, before the stores are cleared: a refresh still running must not write the old
     /// values back afterwards, and the widget snapshot is cleared first so nothing rewrites it.
-    /// Throws if sign-out fails (for example, commit lock held/unavailable) so reset does not
-    /// blindly delete shared credentials outside the commit lock. Returns the signed-out epoch ID
-    /// when present so reset cleanup verifies the epoch did not advance to a newer sign-in.
-    func signOutForReset() async throws -> String? {
+    /// Throws if sign-out fails (for example, commit lock held/unavailable) or if the resulting
+    /// signed-out epoch cannot be read back, so reset stays fail-closed and never deletes shared
+    /// credentials without a verified epoch.
+    func signOutForReset() async throws -> String {
         signOutGeneration += 1; personChanges += 1; accountGeneration += 1
         hotWater()?.noteBalance(nil)
         let signedOut = await signOuts.start().value
         guard signedOut else {
             throw AppReset.Failure(items:[StoreKey.sharedSessionEpoch.rawValue])
         }
-        let epochID = (try? SessionEpochStore(store:services.secureStore).read())?.id
+        let epoch: SessionEpoch?
+        do {
+            epoch = try SessionEpochStore(store:services.secureStore).read()
+        } catch {
+            throw AppReset.Failure(items:[StoreKey.sharedSessionEpoch.rawValue])
+        }
+        guard let epochID = epoch?.id, !epochID.isEmpty else {
+            throw AppReset.Failure(items:[StoreKey.sharedSessionEpoch.rawValue])
+        }
         configured = false; snapshot = .empty; snapshotPerson = personChanges; profile = nil; issue = nil; account = nil
         lookup.clear(); powerMatchIssue = nil; lastRefresh = nil
         return epochID

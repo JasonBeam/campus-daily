@@ -246,6 +246,31 @@ final class SpendStatsTextTests: XCTestCase {
         XCTAssertEqual(warm.spokenBar(partialSpent), "11月19日，12.50 元，记录可能不全")
     }
 
+    func testSignedAmountRunJoinsSignAndYenWithWordJoiner() {
+        XCTAssertEqual(SpendStatsView.nonBreakingRun("\u{2212}¥21.60"), "\u{2212}\u{2060}¥21.60")
+        XCTAssertEqual(SpendStatsView.nonBreakingRun("+¥12.30"), "+\u{2060}¥12.30")
+        XCTAssertEqual(SpendStatsView.nonBreakingRun("¥17.63"), "¥17.63")
+    }
+
+    func testUncoveredDaysBeforeCoveredFromOrTermStartAreBlankLikeGaps() {
+        let gap = bar("20261119", fen:0, unsure:true)
+        let beforeCovered = bar("20261101", fen:0, unsure:false)
+        let onCoveredZero = bar("20261102", fen:0, unsure:false)
+        let onCoveredSpent = bar("20261102", fen:1500, unsure:false)
+        let uncoveredWeek = bar("20261019", fen:0, days:["20261019", "20261020", "20261025"])
+        let overlappingWeek = bar("20261026", fen:0, days:["20261026", "20261102"])
+        var beforeTerm = bar("20260831", fen:0, unsure:false)
+        beforeTerm.beforeStart = true
+
+        XCTAssertTrue(SpendBarsChart.isBlank(gap, coveredFrom:"20261102"))
+        XCTAssertTrue(SpendBarsChart.isBlank(beforeCovered, coveredFrom:"20261102"))
+        XCTAssertTrue(SpendBarsChart.isBlank(uncoveredWeek, coveredFrom:"20261102"))
+        XCTAssertTrue(SpendBarsChart.isBlank(beforeTerm, coveredFrom:nil))
+        XCTAssertFalse(SpendBarsChart.isBlank(overlappingWeek, coveredFrom:"20261102"))
+        XCTAssertFalse(SpendBarsChart.isBlank(onCoveredZero, coveredFrom:"20261102"))
+        XCTAssertFalse(SpendBarsChart.isBlank(onCoveredSpent, coveredFrom:"20261102"))
+    }
+
     #if DEBUG
     func testSpendStatsDemoRefreshFailedOldAndNotesContracts() throws {
         let cal = SchoolCalendar.shanghai

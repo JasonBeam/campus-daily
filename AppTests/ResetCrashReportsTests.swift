@@ -52,4 +52,32 @@ final class ResetCrashReportsTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: pending.path))
         XCTAssertNil(services.defaults.string(forKey: installIDKey))
     }
+
+    func testSignOutForResetFailsClosedWhenEpochReadFailsAfterSignOut() async throws {
+        let support = FileManager.default.temporaryDirectory.appendingPathComponent("apptests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: support) }
+        try FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
+
+        let store = ScriptedStore()
+        store.afterWrite = { key in
+            guard key == .sharedSessionEpoch else { return }
+            if let epoch = try? SessionEpochStore(store: store).read(), epoch.phase == .signedOut {
+                store.refusingReads = [.sharedSessionEpoch]
+            }
+        }
+        let http = SampleHTTPClient()
+        let leaseURL = support.appendingPathComponent("refresh.lease")
+        let services = CampusServices(kind: .live, secureStore: store, defaults: SampleDefaults(),
+                                      sharedPreferences: nil, schoolHTTP: http, showerHTTP: http, laundryHTTP: http,
+                                      feedbackHTTP: nil, showerTransport: SampleShowerTransport(), leaseFile: LeaseFile(url: leaseURL),
+                                      applicationSupport: support, sharedDidChange: {})
+        let graph = CampusGraph.sample(on: services, theme: .warm)
+
+        do {
+            _ = try await graph.campus.signOutForReset()
+            XCTFail("expected AppReset.Failure when signed-out epoch cannot be read back")
+        } catch let failure as AppReset.Failure {
+            XCTAssertEqual(failure.items, [StoreKey.sharedSessionEpoch.rawValue])
+        }
+    }
 }

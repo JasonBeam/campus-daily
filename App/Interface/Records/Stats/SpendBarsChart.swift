@@ -93,7 +93,7 @@ struct SpendBarsChart: View {
             }
             .frame(maxWidth:.infinity, maxHeight:.infinity, alignment:.bottomLeading)
 
-            if let lit, look == .live, !Self.isGap(bars[lit]) {
+            if let lit, look == .live, !Self.isBlank(bars[lit], coveredFrom:coveredFrom) {
                 let bar = bars[lit]
                 let height = barHeight(bar, maxFen:maxFen)
                 BarSlotRow(count:bars.count, spacing:spacing, slots:[lit]) {
@@ -134,9 +134,15 @@ struct SpendBarsChart: View {
         bar.unsure && bar.spent.fen <= 0
     }
 
+    /// A bar left completely blank (no 2pt baseline stub): either an incomplete ¥0 gap or a day/week
+    /// without school coverage (`!canLook`, e.g. before `coveredFrom` or term start).
+    static func isBlank(_ bar: SpendBar, coveredFrom: String?) -> Bool {
+        isGap(bar) || !canLook(at:bar, coveredFrom:coveredFrom)
+    }
+
     @ViewBuilder
     private func barShape(index: Int, bar: SpendBar, maxFen: Int, lit: Bool) -> some View {
-        if look == .live, Self.isGap(bar) {
+        if look == .live, Self.isBlank(bar, coveredFrom:coveredFrom) {
             Color.clear
                 .frame(height:0)
                 .frame(maxWidth:.infinity)
@@ -145,7 +151,7 @@ struct SpendBarsChart: View {
             let stub = look == .empty || (look == .live && bar.spent.fen <= 0)
             let style: ThemeColor = switch look {
             case .placeholder, .empty: Theme.fill
-            case .live where stub: open(bar) ? Theme.ink3 : Theme.fill
+            case .live where stub: Theme.ink3
             case .live: lit ? Theme.mark : Theme.mark.opacity(0.32)
             }
             UnevenRoundedRectangle(topLeadingRadius:stub ? 0 : min(4, height / 2),
